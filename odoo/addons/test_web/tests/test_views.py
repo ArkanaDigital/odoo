@@ -1,3 +1,4 @@
+import re
 from odoo.tests import Form, common
 
 from odoo.exceptions import ValidationError
@@ -10,7 +11,7 @@ class TestViewGroups(ViewCase):
         """ Checks that attrs/modifiers with groups work
         """
         self.env.user.group_ids = [(6, 0, [self.env.ref('base.group_system').id])]
-        f = Form(self.env['test_orm.model.some_access'], view='test_orm.view_model_some_access')
+        f = Form(self.env['test_orm.model.some_access'], view='test_base.view_model_some_access')
         f.a = 1
         f.b = 2
         with self.assertRaisesRegex(AssertionError, "can't write on readonly field 'c'"):
@@ -23,7 +24,7 @@ class TestViewGroups(ViewCase):
         # other access
 
         self.env.user.group_ids = [(6, 0, [self.env.ref('base.group_public').id])]
-        f = Form(self.env['test_orm.model.some_access'], view='test_orm.view_model_some_access')
+        f = Form(self.env['test_orm.model.some_access'], view='test_base.view_model_some_access')
         f.a = 1
         with self.assertRaisesRegex(AssertionError, "'b' was not found in the view"):
             f.b = 2
@@ -143,3 +144,25 @@ class TestViewGroups(ViewCase):
                 AssertionError, "can't write on readonly field 'name'"
             ):
                 form.name = "toto"
+
+    def test_list_column_group_on_field(self):
+        group = self.env["res.groups"].create({
+            "name": "test"
+        })
+        irm = self.env["ir.model.data"].create({
+            "res_id": group.id,
+            "model": group._name,
+            "module": "test_web",
+            "name": "group_test",
+        })
+
+        view = self.env["ir.ui.view"].create({
+            "type": "list",
+            "model": "test_orm.discussion",
+            "arch": f"""<list><column>
+                <field name="display_name" groups="{irm.complete_name}" />
+            </column></list>"""
+        })
+
+        res = self.env["test_orm.discussion"].with_user(self.env.ref("base.user_admin")).get_view(view.id, view.type)
+        self.assertXMLEqual(re.sub(r'[\n\s]', "", res["arch"]), """<list><column></column></list>""")

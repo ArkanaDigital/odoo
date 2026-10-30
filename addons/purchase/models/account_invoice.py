@@ -435,7 +435,10 @@ class AccountMove(models.Model):
                         # account.move.line model with the extra matching fields and extending the EDI extraction
                         # logic to fill these new fields.
                         purchase_line_candidates[purchase_line] = difflib.SequenceMatcher(
-                            None, invoice_line.name, purchase_line.name).ratio()
+                            None,
+                            invoice_line.label,
+                            purchase_line.label,
+                        ).ratio()
 
                 if len(purchase_line_candidates) > 0:
                     # We take the best match based on the name.
@@ -642,6 +645,13 @@ class AccountMove(models.Model):
 
         if not any(line.purchase_order_id for line in self.line_ids):
             self.invoice_origin = False
+
+    def _get_action_add_from_catalog_extra_context(self):
+        res = super()._get_action_add_from_catalog_extra_context()
+        if res.pop('search_default_seller_ids', None):
+            # Filter products with a pricelist or a confirmed purchase order
+            res['search_default_sold_by_vendor_id'] = self.partner_id.id
+        return res
 
 
 class AccountMoveLine(models.Model):

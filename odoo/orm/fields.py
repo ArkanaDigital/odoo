@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import functools
 import collections
-import itertools
 import logging
 import operator as pyoperator
 import re
@@ -18,8 +17,9 @@ from psycopg2.extras import Json as PsycopgJson
 
 from odoo.exceptions import AccessError, MissingError
 from odoo.tools import SQL, reset_cached_properties, sql
-from odoo.tools.constants import PREFETCH_MAX
+from odoo.tools.constants import IN_MAX
 from odoo.tools.misc import frozendict, SENTINEL, Sentinel, unique
+
 
 from .domains import Domain
 from .query import Query
@@ -467,15 +467,15 @@ class Field[T]:
             # by default, `state` fields should be reset on copy
             attrs['copy'] = attrs.get('copy', False)
         if attrs.get('_shareable'):
-            warnings.warn(f"_shareable attribute shouldn't be set to True on field {self}")
+            self._setup_warning("_shareable attribute shouldn't be set to True")
         if attrs.get('compute_sql'):
             if not attrs.get('compute'):
-                warnings.warn(f"compute_sql attribute makes sense only if {self} is a computed field")
+                self._setup_warning("compute_sql attribute makes sense only for a computed field")
             if 'compute_sudo' not in attrs:
-                warnings.warn(f"compute_sql requires an explicit compute_sudo parameter on {self}")
+                self._setup_warning("compute_sql requires an explicit compute_sudo parameter")
         if attrs.get('related'):
             if attrs.pop('compute', None):
-                warnings.warn(f"Field {self} is both compute and related. Set one of them to None.")
+                self._setup_warning("both compute and related are defined, set one of them to None")
             # by default, related fields are not stored, computed in superuser
             # mode, not copied and readonly
             attrs['store'] = store = attrs.get('store', False)
@@ -493,18 +493,18 @@ class Field[T]:
             attrs['readonly'] = attrs.get('readonly', not attrs.get('inverse'))
         if attrs.get('precompute'):
             if not attrs.get('compute') and not attrs.get('related'):
-                warnings.warn(f"precompute attribute doesn't make any sense on non computed field {self}", stacklevel=1)
+                self._setup_warning("precompute attribute doesn't make any sense on non computed field")
                 attrs['precompute'] = False
             elif not attrs.get('store'):
-                warnings.warn(f"precompute attribute has no impact on non stored field {self}", stacklevel=1)
+                self._setup_warning("precompute attribute has no impact on non stored field")
                 attrs['precompute'] = False
         if attrs.get('company_dependent'):
             if attrs.get('required'):
-                warnings.warn(f"company_dependent field {self} cannot be required", stacklevel=1)
+                self._setup_warning("company_dependent field cannot be required")
             if attrs.get('translate'):
-                warnings.warn(f"company_dependent field {self} cannot be translated", stacklevel=1)
+                self._setup_warning("company_dependent field cannot be translated")
             if self.type not in COMPANY_DEPENDENT_FIELDS:
-                warnings.warn(f"company_dependent field {self} is not one of the allowed types {COMPANY_DEPENDENT_FIELDS}", stacklevel=1)
+                self._setup_warning(f"company_dependent field is not one of the allowed types {COMPANY_DEPENDENT_FIELDS}")
             attrs['copy'] = attrs.get('copy', False)
             # speed up search and on delete
             attrs['index'] = attrs.get('index', 'btree_not_null')
@@ -560,41 +560,31 @@ class Field[T]:
             # validate field params
             for key in self._extra_keys__:
                 if not model._valid_field_parameter(self, key):
-                    _logger.warning(
-                        "Field %s: unknown parameter %r, if this is an actual"
+                    self._setup_warning(
+                        f"unknown parameter {key!r}, if this is an actual"
                         " parameter you may want to override the method"
                         " _valid_field_parameter on the relevant model in order to"
-                        " allow it",
-                        self, key
+                        " allow it"
                     )
-            if self.related:
-                self.setup_related(model)
-            else:
-                self.setup_nonrelated(model)
+
+            try:
+                self._setup(model)
+            except Exception as e:
+                e.add_note(f"Field setup failed: {self}")
+                raise
 
             if not isinstance(self.required, bool):
-                warnings.warn(f'Property {self}.required should be a boolean ({self.required}).', stacklevel=1)
+                self._setup_warning(f'property required should be a boolean ({self.required})')
 
             if not isinstance(self.readonly, bool):
-                warnings.warn(f'Property {self}.readonly should be a boolean ({self.readonly}).', stacklevel=1)
-
-            if self.store and self._depends_context and not all(
-                (self.translate and c == 'lang')
-                or (self.company_dependent and c == 'company')
-                for c in self._depends_context
-            ):
-                warnings.warn(f'Stored field {self} should not depend on context ({self._depends_context}).', stacklevel=1)
+                self._setup_warning(f'property readonly should be a boolean ({self.readonly})')
 
             self._setup_done = True
             # column_type might be changed during Field.setup
             reset_cached_properties(self)
-    #
-    # Setup of non-related fields
-    #
 
-    def setup_nonrelated(self, model: BaseModel) -> None:
-        """ Determine the dependencies and inverse field(s) of ``self``. """
-        pass
+    def _setup_warning(self, message: str):
+        warnings.warn(f"{self}: {message}", stacklevel=2)
 
     def get_depends(self, model: BaseModel) -> tuple[Iterable[str], Iterable[str]]:
         """ Return the field's dependencies and cache dependencies. """
@@ -635,13 +625,14 @@ class Field[T]:
 
         return depends, depends_context
 
-    #
-    # Setup of related fields
-    #
+    def _setup(self, model: BaseModel) -> None:
+        """Implementation of the setup of the field."""
+        if not self.related:
+            return
 
-    def setup_related(self, model: BaseModel) -> None:
         """ Setup the attributes of a related field. """
-        assert isinstance(self.related, str), self.related
+        if not isinstance(self.related, str):
+            raise TypeError(f"{self}: related field must be a string, got {self.related!r}")
 
         # determine the chain of fields, and make sure they are all set up
         field_seq = []
@@ -694,7 +685,7 @@ class Field[T]:
         # A readonly related field without an inverse method should not have a
         # default value, as it does not make sense.
         if self.default and self.readonly and not self.inverse:
-            _logger.warning("Redundant default on %s", self)
+            self._setup_warning("redundant default")
 
         # copy attributes from field to self (string, help, etc.)
         for attr, prop in self.related_attrs:
@@ -879,7 +870,7 @@ class Field[T]:
             join_field=SQL.identifier(join_field),
         ))
 
-    # properties used by setup_related() to copy values from related field
+    # properties used by _setup() to copy values from related field
     _related_string = property(attrgetter('string'))
     _related_help = property(attrgetter('help'))
     _related_groups = property(attrgetter('groups'))
@@ -953,22 +944,21 @@ class Field[T]:
                     ) from None
                 if field is self and index and not self.recursive:
                     self.recursive = True
-                    warnings.warn(f"Field {self} should be declared with recursive=True", stacklevel=1)
+                    self._setup_warning("should be declared with recursive=True")
 
                 # precomputed fields can depend on non-precomputed ones, as long
                 # as they are reachable through at least one many2one field
                 if check_precompute and field.store and field.compute and not field.precompute:
-                    warnings.warn(f"Field {self} cannot be precomputed as it depends on non-precomputed field {field}", stacklevel=1)
+                    self._setup_warning(f"cannot be precomputed as it depends on non-precomputed field {field}")
                     self.precompute = False
 
                 if field_seq and not field_seq[-1]._description_searchable:
                     # the field before this one is not searchable, so there is
                     # no way to know which on records to recompute self
-                    warnings.warn(
-                        f"Field {field_seq[-1]!r} in dependency of {self} should be searchable. "
+                    self._setup_warning(
+                        f"Field {field_seq[-1]!r} in dependency should be searchable. "
                         f"This is necessary to determine which records to recompute when {field} is modified. "
                         f"You should either make the field searchable, or simplify the field dependency.",
-                        stacklevel=1,
                     )
 
                 field_seq.append(field)
@@ -1106,6 +1096,9 @@ class Field[T]:
     def _description_falsy_value_label(self, env) -> str | None:
         return env._(self.falsy_value_label) if self.falsy_value_label else None # pylint: disable=gettext-variable
 
+    def _description_group_expand(self, env) -> bool:
+        return bool(self.group_expand)
+
     def is_editable(self) -> bool:
         """ Return whether the field can be editable in a view. """
         return not self.readonly
@@ -1238,14 +1231,26 @@ class Field[T]:
 
         column = columns.get(self.name)
 
-        # create/update the column, initialize it and not null constraint.
-        # The index will be managed by registry.check_indexes().
-        self.update_db_column(model, column)
-
         # initialization of values and null handling
         has_notnull = column and column['is_nullable'] == 'NO'
+        initialize_column = (
+            (not column or (self.required and not has_notnull))
+            and (self.init_storage or self.default or self.compute)
+            and model.env.execute_query(SQL('SELECT 1 FROM %s LIMIT 1', SQL.identifier(model._table)))
+        )
 
-        if not column or (self.required and not has_notnull):
+        init_value = None
+        if initialize_column and not column and not self.init_storage and self.default:
+            value = self.default(model)
+            value = self.convert_to_write(value, model)
+            init_value = self.convert_to_column_insert(value, model)
+            initialize_column = init_value is None
+
+        # create/update the column, initialize it and not null constraint.
+        # The index will be managed by registry.check_indexes().
+        self.update_db_column(model, column, init_value)
+
+        if initialize_column:
             # either we have a new column or it becomes required
             self._init_column_data(model)
 
@@ -1275,15 +1280,28 @@ class Field[T]:
         elif not self.required and has_notnull:
             sql.drop_not_null(model.env.cr, model._table, self.name)
 
-    def update_db_column(self, model: BaseModel, column: dict[str, typing.Any]):
+    def update_db_column(
+        self,
+        model: BaseModel,
+        column: dict[str, typing.Any] | None,
+        init_value: typing.Any = None,
+    ) -> None:
         """ Create/update the column corresponding to ``self``.
 
             :param model: an instance of the field's model
             :param column: the column's configuration (dict) if it exists, or ``None``
+            :param init_value: the value used to initialize existing rows when adding the column
         """
         if not column:
             # the column does not exist, create it
-            sql.create_column(model.env.cr, model._table, self.name, self.stored_sql_column_type, self.string)
+            sql.create_column(
+                model.env.cr,
+                model._table,
+                self.name,
+                self.stored_sql_column_type,
+                init_value,
+                self.string,
+            )
             return
         if column['udt_name'] == self.column_type[0]:
             return
@@ -1296,13 +1314,6 @@ class Field[T]:
     def _init_column_data(self, model: BaseModel) -> None:
         """ Initialize null values in the column. """
         assert self.column_type and model._name == self.model_name
-        # skip the initialization when there is nothing to initialize: this
-        # method only fills in NULL values, and does nothing without
-        # init_storage, default or compute; skip empty tables as well
-        if not (self.init_storage or self.default or self.compute):
-            return
-        if not model.env.execute_query(SQL('SELECT 1 FROM %s LIMIT 1', SQL.identifier(model._table))):
-            return
         # Check if we have a custom init function
         if self.init_storage:
             _logger.debug("Table '%s': call %s for column %s", model._table, self.init_storage, self.name)
@@ -1761,11 +1772,11 @@ class Field[T]:
         ids = expand_ids(record.id, record._prefetch_ids)
         field_cache = self._get_cache(record.env)
         prefetch_ids = (id_ for id_ in ids if id_ not in field_cache)
-        return record.browse(itertools.islice(prefetch_ids, PREFETCH_MAX))
+        return record.browse(prefetch_ids)
 
     def _insert_cache(self, records: BaseModel, values: Iterable) -> None:
         """ Update the cache of the given records with the corresponding values,
-        ignoring the records that don't have a value in cache already.  This
+        ignoring the records that already have a value in cache.  This
         enables to keep the pending updates of records, and flush them later.
         """
         field_cache = self._get_cache(records.env)
@@ -1913,14 +1924,25 @@ class Field[T]:
                 self._update_cache(record, value)
             else:
                 recs = record if self.recursive else self._to_prefetch(record)
-                try:
-                    self.compute_value(recs)
-                    fallback_single = False
-                except (AccessError, MissingError):
-                    fallback_single = True
-                if fallback_single:
-                    self.compute_value(record)
-                    recs = record
+
+                # at most three iterations
+                recs0 = recs
+                while True:
+                    try:
+                        self.compute_value(recs)
+                        break
+                    except (AccessError, MissingError):
+                        if len(recs) == 1:
+                            raise
+                        if recs is recs0:  # first iteration only
+                            recs = recs.exists()._filtered_access('read')
+                            (recs0 - recs).invalidate_recordset()
+                            if record not in recs:
+                                raise
+                            if len(recs0) == len(recs):
+                                recs = record
+                        else:  # second iteration only
+                            recs = record
 
                 missing_recs_ids = tuple(self._cache_missing_ids(recs))
                 if missing_recs_ids:
@@ -1977,43 +1999,10 @@ class Field[T]:
 
         return self.convert_to_record(value, record)
 
+    @typing.final
     def __set__(self, records: BaseModel, value) -> None:
         """ set the value of field ``self`` on ``records`` """
-        protected_ids = []
-        new_ids = []
-        other_ids = []
-        for record_id in records._ids:
-            if record_id in records.env._protected.get(self, ()):
-                protected_ids.append(record_id)
-            elif not record_id:
-                new_ids.append(record_id)
-            else:
-                other_ids.append(record_id)
-
-        if protected_ids:
-            # records being computed: no business logic, no recomputation
-            protected_records = records.__class__(records.env, tuple(protected_ids), records._prefetch_ids)
-            self.write(protected_records, value)
-
-        if new_ids:
-            # new records: no business logic
-            new_records = records.__class__(records.env, tuple(new_ids), records._prefetch_ids)
-            with records.env.protecting(records.pool.field_computed.get(self, [self]), new_records):
-                if self.relational:
-                    new_records.modified([self.name], before=True)
-                self.write(new_records, value)
-                new_records.modified([self.name])
-
-            if self.inherited:
-                # special case: also assign parent records if they are new
-                parents = new_records[self.related.split('.')[0]]
-                parents.filtered(lambda r: not r.id)[self.name] = value
-
-        if other_ids:
-            # base case: full business logic
-            records = records.__class__(records.env, tuple(other_ids), records._prefetch_ids)
-            write_value = self.convert_to_write(value, records)
-            records.write({self.name: write_value})
+        records.update({self.name: value})
 
     ############################################################################
     #
@@ -2058,8 +2047,8 @@ class Field[T]:
 
         for record in records:
             if record.id in to_compute_ids:
-                ids = expand_ids(record.id, to_compute_ids)
-                recs = record.browse(itertools.islice(ids, PREFETCH_MAX))
+                ids = tuple(expand_ids(record.id, to_compute_ids))
+                recs = record.browse(ids[:IN_MAX]).with_prefetch(ids)
                 try:
                     apply_except_missing(self.compute_value, recs)
                     continue

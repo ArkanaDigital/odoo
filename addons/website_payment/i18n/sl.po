@@ -16,10 +16,10 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0beta\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-03 17:40+0000\n"
-"PO-Revision-Date: 2026-06-20 00:11+0000\n"
+"POT-Creation-Date: 2026-08-28 17:43+0000\n"
+"PO-Revision-Date: 2026-08-31 20:38+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Slovenian <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Slovenian <https://translate.odoo.com/projects/odoo-s19-4/"
 "website_payment/sl/>\n"
 "Language: sl\n"
 "MIME-Version: 1.0\n"
@@ -27,7 +27,15 @@ msgstr ""
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=4; plural=n%100==1 ? 0 : n%100==2 ? 1 : n%100==3 || "
 "n%100==4 ? 2 : 3;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: website_payment
+#: model:ir.module.module,description:base.module_website_payment
+msgid ""
+"\n"
+"This is a bridge module that adds multi-website support for payment "
+"providers.\n"
+msgstr ""
 
 #. module: website_payment
 #: model_terms:ir.ui.view,arch_db:website_payment.res_config_settings_view_form
@@ -143,6 +151,11 @@ msgid "Payment Provider"
 msgstr "Ponudnik plačil"
 
 #. module: website_payment
+#: model:ir.module.module,summary:base.module_website_payment
+msgid "Payment integration with website"
+msgstr ""
+
+#. module: website_payment
 #: model_terms:ir.ui.view,arch_db:website_payment.res_config_settings_view_form
 msgid "Payments"
 msgstr "Plačila"
@@ -179,181 +192,186 @@ msgstr ""
 msgid "Website"
 msgstr "Spletna stran"
 
-#~ msgid ""
-#~ ".\n"
-#~ "                        <br/>\n"
-#~ "                        We appreciate your support for our organization "
-#~ "as such.\n"
-#~ "                        <br/>\n"
-#~ "                        Regards."
-#~ msgstr ""
-#~ ".\n"
-#~ "                       <br/>\n"
-#~ "                        Cenimo vašo podporo naši organizaciji kot taki.\n"
-#~ "                       <br/>\n"
-#~ "                        S spoštovanjem."
+#. module: website_payment
+#: model:ir.module.module,shortdesc:base.module_website_payment
+msgid "Website Payment"
+msgstr ""
 
-#~ msgid "<b>Comment:</b>"
-#~ msgstr "<b>Komentar:</b>"
+msgid ""
+".\n"
+"                        <br/>\n"
+"                        We appreciate your support for our organization as "
+"such.\n"
+"                        <br/>\n"
+"                        Regards."
+msgstr ""
+".\n"
+"                       <br/>\n"
+"                        Cenimo vašo podporo naši organizaciji kot taki.\n"
+"                       <br/>\n"
+"                        S spoštovanjem."
 
-#~ msgid "<b>Donation Date:</b>"
-#~ msgstr "<b>Datum donacije:</b>"
+msgid "<b>Comment:</b>"
+msgstr "<b>Komentar:</b>"
 
-#~ msgid "<b>Donor Email:</b>"
-#~ msgstr "<b>Elektronska pošta donatorja:</b>"
+msgid "<b>Donation Date:</b>"
+msgstr "<b>Datum donacije:</b>"
 
-#~ msgid "<b>Donor Name:</b>"
-#~ msgstr "<b>Ime donatorja:</b>"
+msgid "<b>Donor Email:</b>"
+msgstr "<b>Elektronska pošta donatorja:</b>"
 
-#~ msgid "<b>Payment ID:</b>"
-#~ msgstr "<b>ID plačila:</b>"
+msgid "<b>Donor Name:</b>"
+msgstr "<b>Ime donatorja:</b>"
 
-#~ msgid "<b>Payment Method:</b>"
-#~ msgstr "<b>Način plačila:</b>"
+msgid "<b>Payment ID:</b>"
+msgstr "<b>ID plačila:</b>"
 
-#~ msgid "<strong>Warning</strong> The currency is missing or incorrect."
-#~ msgstr "<strong>Opozorilo</strong> Valuta manjka ali je napačna."
+msgid "<b>Payment Method:</b>"
+msgstr "<b>Način plačila:</b>"
 
-#~ msgid "A donation has been made on your website"
-#~ msgstr "Na vašem spletnem mestu je bila opravljena donacija"
+msgid "<strong>Warning</strong> The currency is missing or incorrect."
+msgstr "<strong>Opozorilo</strong> Valuta manjka ali je napačna."
 
-#~ msgid "A year of cultural awakening."
-#~ msgstr "Leto kulturnega prebujanja."
+msgid "A donation has been made on your website"
+msgstr "Na vašem spletnem mestu je bila opravljena donacija"
 
-#~ msgid "Add"
-#~ msgstr "Dodaj"
+msgid "A year of cultural awakening."
+msgstr "Leto kulturnega prebujanja."
 
-#~ msgid "Add a description here"
-#~ msgstr "Tukaj dodajte opis"
+msgid "Add"
+msgstr "Dodaj"
 
-#~ msgid "Amount"
-#~ msgstr "Znesek"
+msgid "Add a description here"
+msgstr "Tukaj dodajte opis"
 
-#~ msgid "Amount ("
-#~ msgstr "Znesek ("
+msgid "Amount"
+msgstr "Znesek"
 
-#~ msgid "Amount("
-#~ msgstr "Znesek("
+msgid "Amount ("
+msgstr "Znesek ("
 
-#~ msgid "Caring for a baby for 1 month."
-#~ msgstr "Skrb za dojenčka za 1 mesec."
+msgid "Amount("
+msgstr "Znesek("
 
-#~ msgid "Choose Your Amount"
-#~ msgstr "Izberite svoj znesek"
+msgid "Caring for a baby for 1 month."
+msgstr "Skrb za dojenčka za 1 mesec."
 
-#~ msgid "Country"
-#~ msgstr "Država"
+msgid "Choose Your Amount"
+msgstr "Izberite svoj znesek"
 
-#~ msgid "Country is required."
-#~ msgstr "Država je zahtevana."
+msgid "Country"
+msgstr "Država"
 
-#~ msgid "Custom Amount"
-#~ msgstr "Znesek po meri"
+msgid "Country is required."
+msgstr "Država je zahtevana."
 
-#~ msgid "Dear"
-#~ msgstr "Spoštovani"
+msgid "Custom Amount"
+msgstr "Znesek po meri"
 
-#~ msgid "Default Amount"
-#~ msgstr "Privzeti znesek"
+msgid "Dear"
+msgstr "Spoštovani"
 
-#~ msgid "Descriptions"
-#~ msgstr "Opisi"
+msgid "Default Amount"
+msgstr "Privzeti znesek"
 
-#~ msgid "Display Options"
-#~ msgstr "Možnosti prikaza"
+msgid "Descriptions"
+msgstr "Opisi"
 
-#~ msgid "Donate Now"
-#~ msgstr "Darujte zdaj"
+msgid "Display Options"
+msgstr "Možnosti prikaza"
 
-#~ msgid "Donation"
-#~ msgstr "Donacija"
+msgid "Donate Now"
+msgstr "Darujte zdaj"
 
-#~ msgid "Donation Button"
-#~ msgstr "Gumb za donacije"
+msgid "Donation"
+msgstr "Donacija"
 
-#~ msgid "Donation amount must be at least %.2f."
-#~ msgstr "Znesek donacije mora biti vsaj %.2f."
+msgid "Donation Button"
+msgstr "Gumb za donacije"
 
-#~ msgid "Donation confirmation"
-#~ msgstr "Potrditev donacije"
+msgid "Donation amount must be at least %.2f."
+msgstr "Znesek donacije mora biti vsaj %.2f."
 
-#~ msgid "Donation notification"
-#~ msgstr "Obvestilo o donaciji"
+msgid "Donation confirmation"
+msgstr "Potrditev donacije"
 
-#~ msgid "Email"
-#~ msgstr "E-pošta"
+msgid "Donation notification"
+msgstr "Obvestilo o donaciji"
 
-#~ msgid "Email is required."
-#~ msgstr "E-pošta je zahtevana."
+msgid "Email"
+msgstr "E-pošta"
 
-#~ msgid "Input"
-#~ msgstr "Vnos"
+msgid "Email is required."
+msgstr "E-pošta je zahtevana."
 
-#~ msgid "Is Donation"
-#~ msgstr "Je donacija"
+msgid "Input"
+msgstr "Vnos"
 
-#~ msgid "Is donation"
-#~ msgstr "Je donacija"
+msgid "Is Donation"
+msgstr "Je donacija"
 
-#~ msgid "Make a Donation"
-#~ msgstr "Opravite donacijo"
+msgid "Is donation"
+msgstr "Je donacija"
 
-#~ msgid "Maximum"
-#~ msgstr "Največ"
+msgid "Make a Donation"
+msgstr "Opravite donacijo"
 
-#~ msgid "Minimum"
-#~ msgstr "Najmanj"
+msgid "Maximum"
+msgstr "Največ"
 
-#~ msgid "Name"
-#~ msgstr "Naziv"
+msgid "Minimum"
+msgstr "Najmanj"
 
-#~ msgid "Name is required."
-#~ msgstr "Ime je zahtevano."
+msgid "Name"
+msgstr "Naziv"
 
-#~ msgid "None"
-#~ msgstr "Brez"
+msgid "Name is required."
+msgstr "Ime je zahtevano."
 
-#~ msgid "One year in elementary school."
-#~ msgstr "Eno leto v osnovni šoli."
+msgid "None"
+msgstr "Brez"
 
-#~ msgid "One year in high school."
-#~ msgstr "Eno leto v srednji šoli."
+msgid "One year in elementary school."
+msgstr "Eno leto v osnovni šoli."
 
-#~ msgid "Payment Details"
-#~ msgstr "Podrobnosti plačila"
+msgid "One year in high school."
+msgstr "Eno leto v srednji šoli."
 
-#~ msgid "Payment Transaction"
-#~ msgstr "Plačilna transakcija"
+msgid "Payment Details"
+msgstr "Podrobnosti plačila"
 
-#~ msgid "Please select or enter an amount"
-#~ msgstr "Izberite ali vnesite znesek"
+msgid "Payment Transaction"
+msgstr "Plačilna transakcija"
 
-#~ msgid "Pre-filled Options"
-#~ msgstr "Predhodno izpolnjene možnosti"
+msgid "Please select or enter an amount"
+msgstr "Izberite ali vnesite znesek"
 
-#~ msgid "Recipient Email"
-#~ msgstr "Prejemnik e-pošta"
+msgid "Pre-filled Options"
+msgstr "Predhodno izpolnjene možnosti"
 
-#~ msgid "Slider"
-#~ msgstr "Drsnik"
+msgid "Recipient Email"
+msgstr "Prejemnik e-pošta"
 
-#~ msgid "Small or large, your contribution is essential."
-#~ msgstr "Vaš prispevek je bistvenega pomena, pa naj bo majhen ali velik."
+msgid "Slider"
+msgstr "Drsnik"
 
-#~ msgid "Step"
-#~ msgstr "Korak"
+msgid "Small or large, your contribution is essential."
+msgstr "Vaš prispevek je bistvenega pomena, pa naj bo majhen ali velik."
 
-#~ msgid "Thank you for your donation of"
-#~ msgstr "Zahvaljujemo se vam za vašo donacijo"
+msgid "Step"
+msgstr "Korak"
 
-#~ msgid "There is nothing to pay."
-#~ msgstr "Ničesar ni treba plačati."
+msgid "Thank you for your donation of"
+msgstr "Zahvaljujemo se vam za vašo donacijo"
 
-#~ msgid "Write us a comment"
-#~ msgstr "Napišite nam komentar"
+msgid "There is nothing to pay."
+msgstr "Ničesar ni treba plačati."
 
-#~ msgid "Your comment"
-#~ msgstr "Vaš komentar"
+msgid "Write us a comment"
+msgstr "Napišite nam komentar"
 
-#~ msgid "made on"
-#~ msgstr "narejeno na"
+msgid "Your comment"
+msgstr "Vaš komentar"
+
+msgid "made on"
+msgstr "narejeno na"

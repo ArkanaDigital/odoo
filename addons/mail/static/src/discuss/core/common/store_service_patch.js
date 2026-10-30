@@ -1,10 +1,12 @@
-import { Store } from "@mail/core/common/store_service";
+import { Store } from "@mail/core/common/store_plugin";
 import { fields } from "@mail/model/misc";
 import { compareDatetime } from "@mail/utils/common/misc";
 
 import { localeCompare } from "@web/core/l10n/utils";
 import { patch } from "@web/core/utils/patch";
 import { debounce } from "@web/core/utils/timing";
+
+/** @import { AwaitChatHubInit } from "@mail/core/common/chat_hub_model" */
 
 /** @type {import("models").Store} */
 const storeServicePatch = {
@@ -34,6 +36,10 @@ const storeServicePatch = {
             () => this.env.services.bus_service.forceUpdateChannels(),
             0
         );
+        /** ⚠️ {@link AwaitChatHubInit} */
+        this.displayedChannels = fields.Many("discuss.channel", {
+            inverse: "storeAsDisplayedChannels",
+        });
         this.favoriteChannels = fields.Many("discuss.channel", {
             inverse: "storeAsFavoriteChannels",
         });
@@ -81,7 +87,7 @@ const storeServicePatch = {
      * @returns {number[]}
      */
     getRecentChatPartnerIds() {
-        return Object.values(this["discuss.channel"].records)
+        return [...this["discuss.channel"].records.values()]
             .filter(
                 (channel) => channel?.channel_type === "chat" && channel.correspondent?.partner_id
             )

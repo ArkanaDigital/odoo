@@ -1,7 +1,4 @@
-# -*- coding: utf-8 -*-
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
-from freezegun import freeze_time
-from unittest.mock import patch
 from datetime import datetime, timedelta
 
 from odoo.addons.l10n_latam_check.tests.common import L10nLatamCheckTest
@@ -14,6 +11,24 @@ from odoo import fields, Command
 class TestThirdChecks(L10nLatamCheckTest):
 
     _test_user_groups = None  # FIXME list needed groups
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+
+        cls.chart_template = 'ar_ri'
+        cls.company_data_3 = cls.setup_other_company(name='company_3_data', country_id=cls.env.ref('base.ar').id)
+        cls.bank_journal = cls.company_data_3['default_journal_bank']
+        cls._setup_check_payment_methods(cls.bank_journal)
+
+        # enable use electronic/deferred checks on bank journal
+        third_party_checks_journals = cls.env['account.journal'].search([
+            ('inbound_payment_method_line_ids.code', '=', 'in_third_party_checks'),
+            ('inbound_payment_method_line_ids.code', '=', 'new_third_party_checks'),
+            ('outbound_payment_method_line_ids.code', 'in', ('out_third_party_checks', 'return_third_party_checks')),
+        ])
+        cls.third_party_check_journal = third_party_checks_journals[0]
+        cls.rejected_check_journal = third_party_checks_journals[1]
 
     def create_third_party_check(self, journal=False, check_numbers=['00000001', '00000002']):
         if not journal:
@@ -230,7 +245,7 @@ class TestThirdChecks(L10nLatamCheckTest):
         second_now = first_now + timedelta(seconds=1)
 
         # Outbound creation with fixed now
-        with patch.object(self.env.cr, 'now', lambda: first_now), freeze_time(first_now):
+        with self.mock_datetime_and_now(first_now):
             outbound_payment_2 = self.env['account.payment'].create({
                 'partner_id': self.partner_a.id,
                 'payment_type': 'outbound',
@@ -241,7 +256,7 @@ class TestThirdChecks(L10nLatamCheckTest):
             })
 
         # Inbound creation with slightly later now
-        with patch.object(self.env.cr, 'now', lambda: second_now), freeze_time(second_now):
+        with self.mock_datetime_and_now(second_now):
             inbound_payment_2 = self.create_third_party_check()
             check_2 = inbound_payment_2.l10n_latam_new_check_ids[0]
 
@@ -286,12 +301,12 @@ class TestThirdChecks(L10nLatamCheckTest):
         must not turn it into the last one.
         """
         init_time = datetime(2023, 11, 6, 8, 0, 0)
-        with patch.object(self.env.cr, 'now', lambda: init_time), freeze_time(init_time):
+        with self.mock_datetime_and_now(init_time):
             init_payment = self.create_third_party_check()
         check = init_payment.l10n_latam_new_check_ids[0]
 
         transfer_time = init_time + timedelta(hours=1)
-        with patch.object(self.env.cr, 'now', lambda: transfer_time), freeze_time(transfer_time):
+        with self.mock_datetime_and_now(transfer_time):
             self.env['l10n_latam.payment.mass.transfer'].with_context(
                 active_model='l10n_latam.check', active_ids=check.ids,
             ).create({'to_journal_id': self.rejected_check_journal.id})._create_payments()
@@ -302,7 +317,7 @@ class TestThirdChecks(L10nLatamCheckTest):
 
         # editing the payment that received the check should not make it the last operation
         edition_time = transfer_time + timedelta(hours=1)
-        with patch.object(self.env.cr, 'now', lambda: edition_time), freeze_time(edition_time):
+        with self.mock_datetime_and_now(edition_time):
             init_payment.memo = 'Edited after the check was transferred'
 
         self.assertEqual(

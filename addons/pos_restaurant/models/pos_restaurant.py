@@ -29,7 +29,7 @@ class RestaurantFloor(models.Model):
     _inherit = ['pos.load.mixin']
 
     name = fields.Char('Floor Name', required=True)
-    pos_config_ids = fields.Many2many('pos.config', string='Point of Sales', domain="[('module_pos_restaurant', '=', True)]")
+    pos_config_ids = fields.Many2many('pos.config', string='Point of Sales', domain="[('module_pos_restaurant', '=', True)]", copy=False)
     table_ids = fields.One2many('restaurant.table', 'floor_id', string='Tables')
     sequence = fields.Integer('Sequence', default=1)
     active = fields.Boolean(default=True)
@@ -68,14 +68,6 @@ class RestaurantFloor(models.Model):
                     )
 
         return super().write(vals)
-
-    def copy_data(self, default=None):
-        default = dict(default or {}, pos_config_ids=[(5, 0, 0)])
-        vals_list = super().copy_data(default=default)
-        if 'name' not in default:
-            for floor, vals in zip(self, vals_list):
-                vals['name'] = _("%s (copy)", floor.name)
-        return vals_list
 
     def deactivate_floor(self, session_id):
         draft_orders = self.env['pos.order'].search([('session_id', '=', session_id), ('state', '=', 'draft'), ('table_id.floor_id', '=', self.id)])
@@ -168,16 +160,16 @@ class RestaurantTable(models.Model):
                 raise UserError(error_msg)
 
     def set_parent_id(self, parent_id, parent_side, config_id):
+        self.ensure_one()
         parent = self.env['restaurant.table'].browse(parent_id).exists()
         config = self.env['pos.config'].browse(config_id).exists()
         if parent or parent_id is None:
             old_parent = self.parent_id
             old_side = self.parent_side
-            self.parent_id = parent
-            self.parent_side = parent_side
+            # PoS users can update table links while other table fields remain read-only.
+            self.write({'parent_id': parent.id, 'parent_side': parent_side})
             if self._has_cycle('parent_id'):
-                self.parent_id = old_parent
-                self.parent_side = old_side
+                self.write({'parent_id': old_parent.id, 'parent_side': old_side})
         return {
             'restaurant.table': self._load_pos_data_read(self, config) if config else [],
         }

@@ -1,6 +1,7 @@
 import {
     addBuilderAction,
     addBuilderOption,
+    addBuilderPlugin,
     setupHTMLBuilder,
 } from "@html_builder/../tests/helpers";
 import { Builder } from "@html_builder/builder";
@@ -10,14 +11,9 @@ import { SavePlugin } from "@html_builder/core/save_plugin";
 import { beforeEach, describe, expect, test } from "@odoo/hoot";
 import { advanceTime, animationFrame, tick } from "@odoo/hoot-dom";
 import { signal, xml } from "@odoo/owl";
-import {
-    contains,
-    defineModels,
-    fields,
-    models,
-    onRpc,
-    patchWithCleanup,
-} from "@web/../tests/web_test_helpers";
+import { contains, defineModels, fields, models, onRpc } from "@web/../tests/web_test_helpers";
+import { patch } from "@web/core/utils/patch";
+import { Plugin } from "@html_editor/plugin";
 
 describe.current.tags("desktop");
 
@@ -143,8 +139,8 @@ test("Data Attribute action works with non string values", async () => {
     });
     await setupHTMLBuilder(`<section class="s_test">Test</section>`);
     await contains(":iframe .s_test").click();
-    await contains(".we-bg-options-container button:contains('Click')").click();
-    expect(".we-bg-options-container button:contains('Click')").toHaveClass("active");
+    await contains(".o_hb_bg_options_container button:contains('Click')").click();
+    expect(".o_hb_bg_options_container button:contains('Click')").toHaveClass("active");
     expect(":iframe .s_test").toHaveAttribute("data-customer-order-ids", "100,200");
 });
 
@@ -264,17 +260,23 @@ describe("isPreviewing is passed to action's apply and clean", () => {
 
 test("reload action: apply, clean save and reload are called in the right order (async)", async () => {
     let reloadDef, applyDef, cleanDef;
-    patchWithCleanup(SavePlugin.prototype, {
+    patch(SavePlugin.prototype, {
         async save() {
             expect.step("save sync");
             await super.save();
             expect.step("save async");
         },
-        async saveView() {
-            return new Promise((resolve) => setTimeout(resolve, 10));
-        },
     });
-    patchWithCleanup(Builder.prototype, {
+    addBuilderPlugin(
+        class extends Plugin {
+            static id = "delaySaveTestPlugin";
+            resources = {
+                on_ready_to_save_document_handlers: () =>
+                    new Promise((resolve) => setTimeout(resolve, 10)),
+            };
+        }
+    );
+    patch(Builder.prototype, {
         setup() {
             super.setup();
             this.editor.config.reloadEditor = async () => {

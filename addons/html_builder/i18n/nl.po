@@ -9,17 +9,32 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-24 17:42+0000\n"
-"PO-Revision-Date: 2026-06-19 03:18+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Dutch <https://translate.odoo.com/projects/odoo-master/"
+"POT-Creation-Date: 2026-09-11 17:42+0000\n"
+"PO-Revision-Date: 2026-08-31 14:59+0000\n"
+"Last-Translator: Bren Driesen <brdri@odoo.com>\n"
+"Language-Team: Dutch <https://translate.odoo.com/projects/odoo-s19-4/"
 "html_builder/nl/>\n"
 "Language: nl\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: html_builder
+#: model:ir.module.module,description:base.module_html_builder
+msgid ""
+"\n"
+"This addon contains a generic html builder application. It is designed to "
+"be\n"
+"used by the website builder and mass mailing editor.\n"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/rating_option_plugin.js:0
+msgid "%(nbActiveIcons)s out of %(nbTotalIcons)s stars"
+msgstr ""
 
 #. module: html_builder
 #. odoo-javascript
@@ -79,7 +94,7 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/button_style_option.xml:0
 msgid "Aa"
-msgstr ""
+msgstr "Aa"
 
 #. module: html_builder
 #. odoo-javascript
@@ -104,7 +119,7 @@ msgstr "Product toevoegen"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/font/text_effect_selector.xml:0
 msgid "Add Shadow"
-msgstr ""
+msgstr "Schaduw toevoegen"
 
 #. module: html_builder
 #. odoo-javascript
@@ -373,7 +388,7 @@ msgstr "Toepassen"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/font/text_effect_plugin.js:0
 msgid "Apply Text Effects"
-msgstr ""
+msgstr "Teksteffecten toepassen"
 
 #. module: html_builder
 #. odoo-javascript
@@ -607,7 +622,7 @@ msgstr "Blokcategorieën"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/snippets/snippet_viewer.xml:0
 msgid "Block Viewer"
-msgstr ""
+msgstr "Blok-viewer"
 
 #. module: html_builder
 #. odoo-javascript
@@ -645,13 +660,13 @@ msgstr "Vervagen"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/font/text_effect_selector.js:0
 msgid "Blurred (Black)"
-msgstr ""
+msgstr "Wazig (Zwart)"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/font/text_effect_selector.js:0
 msgid "Blurred (White)"
-msgstr ""
+msgstr "Wazig (Wit)"
 
 #. module: html_builder
 #. odoo-javascript
@@ -699,12 +714,36 @@ msgstr "Wazig 06"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Blurry 07"
-msgstr ""
+msgstr "Wazig 07"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Blurry 08"
+msgstr "Wazig 08"
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Blurry 09"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Blurry 10"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Blurry 11"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Blurry 12"
 msgstr ""
 
 #. module: html_builder
@@ -1211,7 +1250,7 @@ msgstr "Aangepaste binneninhoud"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/font/text_effect_selector.js:0
 msgid "Custom Shadow"
-msgstr ""
+msgstr "Aangepaste schaduw"
 
 #. module: html_builder
 #. odoo-javascript
@@ -1414,7 +1453,7 @@ msgstr "Veld slepen en sorteren"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/core/setup_editor_plugin.js:0
 msgid "Drag blocks here"
-msgstr ""
+msgstr "Sleep blokken hierheen"
 
 #. module: html_builder
 #. odoo-javascript
@@ -1455,15 +1494,13 @@ msgstr "Vroege vogel"
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/core/anchor/anchor_plugin.js:0
-#: code:addons/html_builder/static/src/core/building_blocks/color_picker_theme_tab.xml:0
-#: code:addons/html_builder/static/src/plugins/shadow_option.xml:0
 msgid "Edit"
 msgstr "Bewerken"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/button_style_option.xml:0
-msgid "Edit Color Combination"
+msgid "Edit color in Theme Tab"
 msgstr ""
 
 #. module: html_builder
@@ -1471,6 +1508,13 @@ msgstr ""
 #: code:addons/html_builder/static/src/plugins/background_option/background_image.xml:0
 msgid "Edit image"
 msgstr "Afbeelding bewerken"
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/core/building_blocks/color_picker_theme_tab.xml:0
+#: code:addons/html_builder/static/src/plugins/shadow_option.xml:0
+msgid "Edit in Theme Tab"
+msgstr ""
 
 #. module: html_builder
 #. odoo-javascript
@@ -1487,8 +1531,9 @@ msgstr "Smaragd (R)"
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/snippets/snippet_viewer.xml:0
+#, fuzzy
 msgid "Enter"
-msgstr ""
+msgstr "Enter"
 
 #. module: html_builder
 #. odoo-javascript
@@ -1537,7 +1582,7 @@ msgstr "Rapporteren"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/font/text_effect_selector.js:0
 msgid "Flat"
-msgstr ""
+msgstr "Vlak"
 
 #. module: html_builder
 #. odoo-javascript
@@ -1606,6 +1651,47 @@ msgid "Gem (R)"
 msgstr "Edelsteen (R)"
 
 #. module: html_builder
+#: model:ir.module.module,summary:base.module_html_builder
+msgid "Generic html builder"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Geometric"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Geometric 01"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Geometric 02"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Geometric 03"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Geometric 04"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Geometric 05"
+msgstr ""
+
+#. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/image/image_shapes_definition.js:0
 msgid "Geometrics"
@@ -1627,13 +1713,13 @@ msgstr "Geometrisch afgerond"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/font/text_effect_selector.js:0
 msgid "Glow"
-msgstr ""
+msgstr "Glans"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/font/text_effect_selector.xml:0
 msgid "Go back to effect selection"
-msgstr ""
+msgstr "Terug naar de selectie van effecten"
 
 #. module: html_builder
 #. odoo-javascript
@@ -1686,8 +1772,25 @@ msgstr "Raster 08"
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Grid 09"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Grid 10"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Grids"
 msgstr "Rasters"
+
+#. module: html_builder
+#: model:ir.module.module,shortdesc:base.module_html_builder
+msgid "HTML Builder"
+msgstr ""
 
 #. module: html_builder
 #. odoo-javascript
@@ -1891,11 +1994,9 @@ msgstr "Onzichtbare elementen"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/core/version_error_plugin.js:0
 msgid ""
-"It might have caused problem during the editing. Please drag the new version "
-"from the snippet panel to update it."
+"It might cause/have caused problems during the editing. Please drag the new "
+"version from the snippet panel to update it."
 msgstr ""
-"Dit kan problemen hebben veroorzaakt tijdens het bewerken. Sleep de nieuwe "
-"versie vanuit het snippet-paneel om bij te werken."
 
 #. module: html_builder
 #. odoo-javascript
@@ -1961,6 +2062,54 @@ msgstr "Lichter maken"
 
 #. module: html_builder
 #. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Line 01"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Line 02"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Line 03"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Line 04"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Line 05"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Line 06"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Line 07"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Line 08"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/image/image_shapes_definition.js:0
 msgid "Line 1"
 msgstr "Regel 1"
@@ -1976,6 +2125,12 @@ msgstr "Regel 2"
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Linear"
 msgstr "Lineair"
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Lines"
+msgstr ""
 
 #. module: html_builder
 #. odoo-javascript
@@ -2090,31 +2245,31 @@ msgstr "Diversen 08"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Miscellaneous 09"
-msgstr ""
+msgstr "Diversen 09"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Miscellaneous 10"
-msgstr ""
+msgstr "Diversen 10"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Miscellaneous 11"
-msgstr ""
+msgstr "Diversen 11"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Miscellaneous 12"
-msgstr ""
+msgstr "Diversen 12"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Miscellaneous 13"
-msgstr ""
+msgstr "Diversen 13"
 
 #. module: html_builder
 #. odoo-javascript
@@ -2168,67 +2323,68 @@ msgstr "Naam"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Nature"
-msgstr ""
+msgstr "Natuur"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Nature 01"
-msgstr ""
+msgstr "Natuur 01"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Nature 02"
-msgstr ""
+msgstr "Natuur 02"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Nature 03"
-msgstr ""
+msgstr "Natuur 03"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Nature 04"
-msgstr ""
+msgstr "Natuur 04"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Nature 05"
-msgstr ""
+msgstr "Natuur 05"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Nature 06"
-msgstr ""
+msgstr "Natuur 06"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Nature 07"
-msgstr ""
+msgstr "Natuur 07"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Nature 08"
-msgstr ""
+msgstr "Natuur 08"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/snippets/snippet_viewer.xml:0
+#, fuzzy
 msgid "Navigate around the blocks with"
-msgstr ""
+msgstr "Navigeer tussen blokken met"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/font/text_effect_selector.js:0
 msgid "No Shadow"
-msgstr ""
+msgstr "Geen schaduw"
 
 #. module: html_builder
 #. odoo-javascript
@@ -2279,7 +2435,7 @@ msgstr "Offset"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/core/save_plugin.js:0
 msgid "One or more fields were not valid"
-msgstr ""
+msgstr "Een of meer velden waren ongeldig"
 
 #. module: html_builder
 #. odoo-javascript
@@ -2334,7 +2490,7 @@ msgstr "Organische lijn"
 #: code:addons/html_builder/static/src/plugins/font/text_effect_selector.js:0
 #: code:addons/html_builder/static/src/plugins/font/text_effect_selector.xml:0
 msgid "Outline"
-msgstr ""
+msgstr "Omlijnd"
 
 #. module: html_builder
 #. odoo-javascript
@@ -2473,7 +2629,7 @@ msgstr "Bekijk deze URL in een nieuw tabblad"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/core/save_plugin.js:0
 msgid "Previous values restored."
-msgstr ""
+msgstr "Vorige waarden hersteld."
 
 #. module: html_builder
 #. odoo-javascript
@@ -2582,7 +2738,7 @@ msgstr "Afbeelding verwijderen"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/font/text_effect_selector.xml:0
 msgid "Remove shadow"
-msgstr ""
+msgstr "Schaduw verwijderen"
 
 #. module: html_builder
 #. odoo-javascript
@@ -2775,8 +2931,8 @@ msgstr "Zoek naar records..."
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/core/building_blocks/select_many2x.xml:0
-msgid "Search more..."
-msgstr "Zoek meer..."
+msgid "Search more"
+msgstr ""
 
 #. module: html_builder
 #. odoo-javascript
@@ -2802,6 +2958,12 @@ msgstr "Selecteer een blok op je pagina om het op te maken."
 #: code:addons/html_builder/static/src/plugins/image/image_filter_option.xml:0
 msgid "Sepia"
 msgstr "Sepia"
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/core/building_blocks/builder_datetimepicker.xml:0
+msgid "Set today as a relative date"
+msgstr ""
 
 #. module: html_builder
 #. odoo-javascript
@@ -2919,7 +3081,7 @@ msgstr "Sonar (R)"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/snippets/snippet_viewer.xml:0
 msgid "Space"
-msgstr ""
+msgstr "Spatie"
 
 #. module: html_builder
 #. odoo-javascript
@@ -3127,8 +3289,9 @@ msgstr "Systeemlettertypen"
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/snippets/snippet_viewer.xml:0
+#, fuzzy
 msgid "Tab"
-msgstr ""
+msgstr "Tab"
 
 #. module: html_builder
 #. odoo-javascript
@@ -3165,7 +3328,7 @@ msgstr "Tekst"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/font/text_effect_selector.xml:0
 msgid "Text Shadow"
-msgstr ""
+msgstr "Tekstschaduw"
 
 #. module: html_builder
 #. odoo-javascript
@@ -3243,9 +3406,15 @@ msgstr "Toaster"
 
 #. module: html_builder
 #. odoo-javascript
+#: code:addons/html_builder/static/src/core/building_blocks/builder_datetimepicker.js:0
+msgid "Today"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
 #: code:addons/html_builder/static/src/snippets/add_snippet_dialog.xml:0
 msgid "Toggle Mobile Preview"
-msgstr ""
+msgstr "Mobiel voorbeeld aan/uit"
 
 #. module: html_builder
 #. odoo-javascript
@@ -3283,42 +3452,54 @@ msgstr "De afbeelding transformeren"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Travel"
-msgstr ""
+msgstr "Reizen"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Travel 01"
-msgstr ""
+msgstr "Reizen 01"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Travel 02"
-msgstr ""
+msgstr "Reizen 02"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Travel 03"
-msgstr ""
+msgstr "Reizen 03"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Travel 04"
-msgstr ""
+msgstr "Reizen 04"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Travel 05"
-msgstr ""
+msgstr "Reizen 05"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
 msgid "Travel 06"
+msgstr "Reizen 06"
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Travel 07"
+msgstr ""
+
+#. module: html_builder
+#. odoo-javascript
+#: code:addons/html_builder/static/src/plugins/background_option/background_shapes_definition.js:0
+msgid "Travel 08"
 msgstr ""
 
 #. module: html_builder
@@ -3613,8 +3794,9 @@ msgstr "sluiten"
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/plugins/image/replace_media_option.xml:0
+#, fuzzy
 msgid "e.g. /page or URL"
-msgstr ""
+msgstr "bv. /pagina of URL"
 
 #. module: html_builder
 #. odoo-javascript
@@ -3716,13 +3898,14 @@ msgstr "Animatie"
 #. odoo-javascript
 #: code:addons/html_builder/static/src/snippets/snippet_viewer.xml:0
 msgid "or"
-msgstr ""
+msgstr "of"
 
 #. module: html_builder
 #. odoo-javascript
 #: code:addons/html_builder/static/src/snippets/snippet_viewer.xml:0
+#, fuzzy
 msgid "or the arrow keys. Select with"
-msgstr ""
+msgstr "of de pijltjestoetsen. Selecteer met"
 
 #~ msgid "www.example.com"
 #~ msgstr "www.example.com"

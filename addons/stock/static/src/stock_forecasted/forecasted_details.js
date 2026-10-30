@@ -1,11 +1,16 @@
 import { formatFloat } from "@web/views/fields/formatters";
 import { useService } from "@web/core/utils/hooks";
-import { Component } from "@odoo/owl";
+import { Component, t, useProps } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 
 export class ForecastedDetails extends Component {
     static template = "stock.ForecastedDetails";
-    static props = { docs: Object, openView: Function, reloadReport: Function };
+
+    props = useProps({
+        docs: t.object(),
+        openView: t.function(),
+        reloadReport: t.function(),
+    });
 
     setup() {
         this.orm = useService("orm");
@@ -44,10 +49,6 @@ export class ForecastedDetails extends Component {
 
     _onHandCondition(line){
         return !line.document_in && !line.in_transit && line.replenishment_filled && line.document_out;
-    }
-
-    _reconciledCondition(line){
-        return line.document_in && !line.in_transit && line.replenishment_filled && line.document_out;
     }
 
     _freeStockCondition(line){
@@ -177,6 +178,32 @@ export class ForecastedDetails extends Component {
             (OnHand.includes(line) && OnHand.includes(nextLine)) ||
             (NotAvailable.includes(line) && NotAvailable.includes(nextLine))
         );
+    }
+
+    displayAllocation(line) {
+        return Boolean(line.move_in && line.move_out);
+    }
+
+    displayUnassign(line) {
+        return Boolean(line.move_out && line.move_out.move_orig_ids.length);
+    }
+
+    async _allocate(line) {
+        await this.orm.call(
+            "stock.allocation.report",
+            "action_assign",
+            [[line.move_in.id], [line.move_out.id], line.quantity],
+        );
+        this.props.reloadReport();
+    }
+
+    async _unallocate(line) {
+        await this.orm.call(
+            "stock.allocation.report",
+            "action_unassign",
+            [[line.move_in.id], [line.move_out.id], line.quantity],
+        );
+        this.props.reloadReport();
     }
 
     displayReserve(line, line_index){

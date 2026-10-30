@@ -2,12 +2,14 @@ import { ActionPanel } from "@mail/discuss/core/common/action_panel";
 import { ChannelMember } from "@mail/discuss/core/common/channel_member";
 import { openChannelInvitationDialog } from "@mail/discuss/core/common/channel_invitation";
 import { SearchInput } from "@mail/core/common/search_input";
+import { computedShallowEqual } from "@mail/utils/common/signal";
 
-import { Component, computed, t, useOnChange, useProps } from "@odoo/owl";
+import { Component, t, useOnChange, useProps } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 
 import { useService } from "@web/core/utils/hooks";
 import { useSearch } from "@mail/utils/common/hooks";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 
 const SEARCH_RESULT_LIMIT = 100;
 
@@ -15,19 +17,21 @@ const SEARCH_RESULT_LIMIT = 100;
  * @typedef {Object} MemberCategory
  * @property {number} sequence sort key; lower is rendered first.
  * @property {(channel: import("models").DiscussChannel) => import("models").ChannelMember[]} getMembers
- * @property {string} label
+ * @property {TranslatedString} label
  * @property {boolean} [showCount=true] whether to append the member count to the label.
  * @property {number} [sequenceGroup] categories sharing this key are rendered inside a common container.
  * @property {string} [icon] class of an icon shown before the section label.
  * @property {string} [headerClass] extra class applied to the section header.
+ * @property {string} [groupClass] extra class applied to the `sequenceGroup` container
+ * while this category has members.
  */
 
 /**
  * A {@link MemberCategory} resolved against a search term: the definition fields
- * are carried over (minus the source-only `getMembers`/`sequence`) and enriched
+ * are carried over (minus the source-only `getMembers`) and enriched
  * with the members it matched.
  *
- * @typedef {Omit<MemberCategory, "getMembers" | "sequence"> & ResolvedMembers} ComputedMemberCategory
+ * @typedef {Omit<MemberCategory, "getMembers"> & ResolvedMembers} ComputedMemberCategory
  */
 
 /**
@@ -49,6 +53,7 @@ export class ChannelMemberList extends Component {
 
     setup() {
         super.setup();
+        this.ancestors = useAncestors();
         this.store = useService("mail.store");
         this.props = useProps({
             channel: t.instanceOf(this.store["discuss.channel"]),
@@ -62,7 +67,10 @@ export class ChannelMemberList extends Component {
                 return this.hasFilteredMembers(this.computeCategories(term));
             },
         });
-        this.categories = computed(() => this.computeCategories(this.search.searchTerm));
+        this.categories = computedShallowEqual(
+            () => this.computeCategories(this.search.searchTerm),
+            { nested: true }
+        );
         useOnChange(
             () => [this.props.channel],
             (channel) => {
@@ -107,7 +115,7 @@ export class ChannelMemberList extends Component {
         const shownMemberIds = new Set();
         return [...MEMBER_CATEGORIES]
             .sort((a, b) => a.sequence - b.sequence)
-            .map(({ getMembers, label, showCount = true, sequenceGroup, icon, headerClass }) => {
+            .map(({ getMembers, showCount = true, ...definition }) => {
                 const all = getMembers(this.props.channel).filter((m) => {
                     if (shownMemberIds.has(m.id)) {
                         return false;
@@ -120,7 +128,7 @@ export class ChannelMemberList extends Component {
                     : all;
                 const filtered = term ? matching.slice(0, Math.max(0, remaining)) : matching;
                 remaining -= filtered.length;
-                return { label, matching, filtered, showCount, sequenceGroup, icon, headerClass };
+                return { ...definition, matching, filtered, showCount };
             });
     }
 
@@ -141,5 +149,15 @@ export class ChannelMemberList extends Component {
             }
         }
         return groups;
+    }
+
+    /**
+     * @param {{ categories: ComputedMemberCategory[] }} group
+     */
+    groupClass(group) {
+        return group.categories
+            .filter((category) => category.filtered.length > 0 && category.groupClass)
+            .map((category) => category.groupClass)
+            .join(" ");
     }
 }

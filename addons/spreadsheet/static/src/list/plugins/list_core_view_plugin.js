@@ -2,17 +2,11 @@ import * as spreadsheet from "@odoo/o-spreadsheet";
 import { getFirstListFunction, getListFunctions } from "../list_helpers";
 import { Domain } from "@web/core/domain";
 import { ListDataSource } from "../list_data_source";
-import { OdooCoreViewPlugin } from "@spreadsheet/plugins";
+import { OdooEvaluationPlugin } from "@spreadsheet/plugins";
 import { isDataSourceUrl, parseDataSourceUrl } from "../../data_sources/data_source_link";
 import { computeFormatFromCurrency } from "@spreadsheet/currency/helpers";
 
-const {
-    astToFormula,
-    NotAvailableError,
-    CircularDependencyError,
-    invalidateEvaluationCommands,
-    isCoreCommand,
-} = spreadsheet;
+const { astToFormula, NotAvailableError, CircularDependencyError } = spreadsheet;
 const { isMarkdownLink, parseMarkdownLink } = spreadsheet.links;
 const { unquote, isMatrix, isEvaluationError, PositionMap } = spreadsheet.helpers;
 
@@ -20,7 +14,7 @@ const { unquote, isMatrix, isEvaluationError, PositionMap } = spreadsheet.helper
  * @typedef {import("./list_core_plugin").SpreadsheetList} SpreadsheetList
  */
 
-export class ListCoreViewPlugin extends OdooCoreViewPlugin {
+export class ListCoreViewPlugin extends OdooEvaluationPlugin {
     static getters = /** @type {const} */ ([
         "getListComputedDomain",
         "getListHeaderValue",
@@ -36,104 +30,121 @@ export class ListCoreViewPlugin extends OdooCoreViewPlugin {
         "isListUnused",
         "getListValuesAndFormats",
     ]);
+    preHandlers = {
+        START: this.onStart,
+    };
+
+    // `*coreCommands` and `*invalidateEvaluationCommands` are declared first on
+    // purpose: both overlap with the specific commands below and their handler
+    // has to run first, as it did when it was the prelude of `handle`.
+    handlers = {
+        "*coreCommands": this.clearUnusedLists,
+        "*invalidateEvaluationCommands": this.invalidateListPositionCache,
+        UPDATE_CELL: this.invalidateListPositionCache,
+        INSERT_ODOO_LIST: this.onInsertOdooList,
+        DUPLICATE_ODOO_LIST: this.onDuplicateOdooList,
+        REFRESH_ALL_DATA_SOURCES: this.onRefreshAllDataSources,
+        ADD_GLOBAL_FILTER: this.onGlobalFilterChange,
+        EDIT_GLOBAL_FILTER: this.onGlobalFilterChange,
+        REMOVE_GLOBAL_FILTER: this.onGlobalFilterChange,
+        SET_GLOBAL_FILTER_VALUE: this.onGlobalFilterChange,
+        UPDATE_ODOO_LIST: this.onListDefinitionChange,
+        UPDATE_ODOO_LIST_DOMAIN: this.onListDefinitionChange,
+        UNDO: this.onUndoRedo,
+        REDO: this.onUndoRedo,
+    };
+
     constructor(config) {
         super(config);
-        /** @type {string} */
-        this.env = config.custom.env;
 
         /** @type {Record<string, ListDataSource>} */
         this.lists = {};
 
         this.custom = config.custom;
         this._pendingAddDomains = false;
+
+        const registry = this.getters.getGlobalFieldMatchingRegistry();
+        registry.replace("list", {
+            ...registry.get("list"),
+            waitForReady: () =>
+                this.getters
+                    .getListIds()
+                    .map((listId) => this.getListDataSource(listId).loadMetadata()),
+            getFields: (listId) => this.getListDataSource(listId).getFields(),
+            getDomain: (listId) => this.getListComputedDomain(listId),
+        });
         this.listPositionCache = new PositionMap();
         this.shouldInvalidateCache = false;
     }
 
-    beforeHandle(cmd) {
-        switch (cmd.type) {
-            case "START":
-                for (const listId of this.getters.getListIds()) {
-                    this._setupList(listId, 0);
-                }
-                this._addDomains();
-                break;
+    onStart() {
+        for (const listId of this.getters.getListIds()) {
+            this._setupList(listId, 0);
         }
+        this._addDomains();
     }
 
-    /**
-     * Handle a spreadsheet command
-     * @param {Object} cmd Command
-     */
-    handle(cmd) {
-        if (isCoreCommand(cmd) || cmd.type === "UNDO" || cmd.type === "REDO") {
-            this.unusedLists = undefined;
-        }
-        if (invalidateEvaluationCommands.has(cmd.type)) {
-            this.shouldInvalidateCache = true;
-        }
-        if (cmd.type === "UPDATE_CELL" && !this.shouldInvalidateCache) {
-            this.shouldInvalidateCache = true;
-        }
-        switch (cmd.type) {
-            case "INSERT_ODOO_LIST": {
-                const { listId, linesNumber } = cmd;
-                this._setupList(listId, linesNumber);
-                break;
-            }
-            case "DUPLICATE_ODOO_LIST": {
-                this._setupList(cmd.newListId, 0);
-                break;
-            }
-            case "REFRESH_ALL_DATA_SOURCES":
-                this._refreshOdooLists();
-                break;
-            case "ADD_GLOBAL_FILTER":
-            case "EDIT_GLOBAL_FILTER":
-            case "REMOVE_GLOBAL_FILTER":
-            case "SET_GLOBAL_FILTER_VALUE":
-                this._pendingAddDomains = true;
-                break;
-            case "UPDATE_ODOO_LIST":
-            case "UPDATE_ODOO_LIST_DOMAIN": {
-                const listDefinition = this._getListModelDefinition(cmd.listId);
-                this.lists[cmd.listId].definition = listDefinition;
-                this.lists[cmd.listId].dataSource.onDefinitionChange(listDefinition);
-                this._addDomain(cmd.listId);
-                break;
-            }
-            case "UNDO":
-            case "REDO": {
-                if (
-                    cmd.commands.find((command) =>
-                        [
-                            "ADD_GLOBAL_FILTER",
-                            "EDIT_GLOBAL_FILTER",
-                            "REMOVE_GLOBAL_FILTER",
-                        ].includes(command.type)
-                    )
-                ) {
-                    this._addDomains();
-                }
+    clearUnusedLists() {
+        this.unusedLists = undefined;
+    }
 
-                const updateCommands = cmd.commands.filter(
-                    (cmd) =>
-                        cmd.type === "UPDATE_ODOO_LIST_DOMAIN" ||
-                        cmd.type === "UPDATE_ODOO_LIST" ||
-                        cmd.type === "INSERT_ODOO_LIST"
-                );
-                for (const cmd of updateCommands) {
-                    if (!this.getters.isExistingList(cmd.listId)) {
-                        continue;
-                    }
+    invalidateListPositionCache() {
+        this.shouldInvalidateCache = true;
+    }
 
-                    const listDefinition = this._getListModelDefinition(cmd.listId);
-                    this.lists[cmd.listId].definition = listDefinition;
-                    this.lists[cmd.listId].dataSource.onDefinitionChange(listDefinition);
-                    this._addDomain(cmd.listId);
-                }
-                break;
+    onInsertOdooList(cmd) {
+        const { listId, linesNumber } = cmd;
+        this._setupList(listId, linesNumber);
+    }
+
+    onDuplicateOdooList(cmd) {
+        this._setupList(cmd.newListId, 0);
+    }
+
+    onRefreshAllDataSources() {
+        this._refreshOdooLists();
+    }
+
+    onGlobalFilterChange() {
+        this._pendingAddDomains = true;
+    }
+
+    onListDefinitionChange(cmd) {
+        const listDefinition = this._getListModelDefinition(cmd.listId);
+        this.lists[cmd.listId].definition = listDefinition;
+        this.lists[cmd.listId].dataSource.onDefinitionChange(listDefinition);
+        this._addDomain(cmd.listId);
+    }
+
+    onUndoRedo(cmd) {
+        // UNDO and REDO are not core commands: the unused lists cache is
+        // cleared here instead of by the `*coreCommands` handler.
+        this.clearUnusedLists();
+        if (
+            cmd.commands.find((command) =>
+                ["ADD_GLOBAL_FILTER", "EDIT_GLOBAL_FILTER", "REMOVE_GLOBAL_FILTER"].includes(
+                    command.type
+                )
+            )
+        ) {
+            this._addDomains();
+        }
+
+        const updateCommands = cmd.commands.filter(
+            (cmd) =>
+                cmd.type === "UPDATE_ODOO_LIST_DOMAIN" ||
+                cmd.type === "UPDATE_ODOO_LIST" ||
+                cmd.type === "INSERT_ODOO_LIST"
+        );
+        for (const cmd of updateCommands) {
+            if (!this.getters.isExistingList(cmd.listId)) {
+                continue;
             }
+
+            const listDefinition = this._getListModelDefinition(cmd.listId);
+            this.lists[cmd.listId].definition = listDefinition;
+            this.lists[cmd.listId].dataSource.onDefinitionChange(listDefinition);
+            this._addDomain(cmd.listId);
         }
     }
 

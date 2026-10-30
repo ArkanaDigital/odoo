@@ -29,6 +29,7 @@ from requests import Session
 from werkzeug import urls
 
 from odoo import _, api, Command, exceptions, fields, models, modules, tools
+from odoo.addons.mail.models.mail_message import SHARE_DOMAIN
 from odoo.addons.mail.tools.discuss import Store
 from odoo.addons.mail.tools.web_push import (
     push_to_end_point, DeviceUnreachableError,
@@ -52,6 +53,9 @@ from odoo.tools.mail import (
 )
 
 if typing.TYPE_CHECKING:
+    from odoo.addons.base.models.ir_ui_view import IrUiView
+    from odoo.addons.mail.models.mail_mail import MailMail
+    from odoo.addons.mail.models.mail_message import MailMessage
     from odoo.api import ValuesType
     from odoo.models import BaseModel
 
@@ -290,7 +294,12 @@ class MailThread(models.AbstractModel):
 
     @api.model
     def _search_message_needaction(self, operator, operand):
-        return [('message_ids.needaction', operator, operand)]
+        if operator in Domain.NEGATIVE_OPERATORS:
+            return NotImplemented
+        domain = Domain('message_ids.needaction', operator, operand)
+        if operator == 'in' and False in operand:  # relation may be falsy
+            domain |= Domain('message_ids', '=', False)
+        return domain
 
     def _compute_message_has_error(self):
         res = {}
@@ -412,21 +421,17 @@ class MailThread(models.AbstractModel):
 
         return result
 
-    def unlink(self):
-        """ Override unlink to delete (scheduled) messages and followers. This cannot be
-        cascaded, because link is done through (res_model, res_id). """
-        if not self:
-            return True
+    @api.ondelete(at_uninstall=False)
+    def _delete_track_discard(self):
         # discard pending tracking
         # TDE to check: fire tracking depending on those records (e.g. _track_record) ?
         self._track_discard()
-        self.env['mail.message'].sudo().search([('model', '=', self._name), ('res_id', 'in', self.ids)]).unlink()
-        res = super(MailThread, self).unlink()
-        self.env['mail.followers'].sudo().search(
-            [('res_model', '=', self._name), ('res_id', 'in', self.ids)]
-        ).unlink()
-        self.env['mail.scheduled.message'].sudo().search([('model', '=', self._name), ('res_id', 'in', self.ids)]).unlink()
-        return res
+
+    def _delete_extra(self):
+        yield from super()._delete_extra()
+        yield self.message_follower_ids
+        yield self.env['mail.message'].search([('model', '=', self._name), ('res_id', 'in', self.ids)])
+        yield self.env['mail.scheduled.message'].search([('model', '=', self._name), ('res_id', 'in', self.ids)])
 
     @api.model
     def get_empty_list_help(self, help_message):
@@ -1713,12 +1718,26 @@ class MailThread(models.AbstractModel):
 
                 filename = part.get_filename()  # I may not properly handle all charsets
 
-                mimetype, _, content_type_params = part.get('Content-Type').partition(';')
+                content_type = part.get('Content-Type')
+                if not content_type:
+                    _logger.warning(
+                        "Message %r has no Content-Type, assuming 'application/octet-stream'",
+                        message.get('Message-ID'),
+                    )
+                    content_type = 'application/octet-stream'
+                    part['Content-Type'] = content_type
+                mimetype, _, content_type_params = content_type.partition(';')
                 if not all(mimetype.partition('/')) or mimetype in BAD_CONTENT_TYPES:
-                    _logger.warning("Message containing an unexpected Content-Type %r, assuming 'application/octet-stream'", mimetype)
+                    _logger.warning(
+                        "Message %r containing an unexpected Content-Type %r, assuming 'application/octet-stream'",
+                        message.get('Message-ID'), mimetype,
+                    )
                     part.replace_header('Content-Type', f'application/octet-stream;{content_type_params}')
                 elif mimetype.startswith('pdf'):
-                    _logger.warning("Message containing an unexpected Content-Type %r, assuming 'application/pdf'", mimetype)
+                    _logger.warning(
+                        "Message %r containing an unexpected Content-Type %r, assuming 'application/pdf'",
+                        message.get('Message-ID'), mimetype,
+                    )
                     part.replace_header('Content-Type', f'application/pdf;{content_type_params}')
 
                 if part.get_content_type().startswith('text/') and not part.get_param('charset'):
@@ -2301,7 +2320,7 @@ class MailThread(models.AbstractModel):
         # preliminary value safety check
         self._raise_for_invalid_parameters(
             set(kwargs.keys()),
-            forbidden_names={'model', 'res_id', 'subtype'}
+            forbidden_names={'model', 'res_id', 'subtype'},
         )
         if self._name == 'mail.thread' or not self.id:
             raise ValueError(_("Posting a message should be done on a business document. Use message_notify to send a notification to an user."))
@@ -2443,7 +2462,12 @@ class MailThread(models.AbstractModel):
         """ Hook to add custom behavior after having posted the message. Both
         message and computed value are given, to try to lessen query count by
         using already-computed values instead of having to rebrowse things. """
-        return
+        if poll_values := self.env.context.get("mail_create_poll_values"):
+            # sudo: mail.poll - can create a poll on an accessible thread.
+            self.env["mail.poll"].sudo().create({**poll_values, "start_message_id": message.id})
+        elif poll := self.env.context.get("mail_end_poll"):
+            # sudo: mail.poll - can close a poll on an accessible thread.
+            poll.sudo().end_message_id = message.id
 
     def _message_mail_after_hook(self, mails):
         """ Hook to add custom behavior after having sent an mass mailing.
@@ -2617,10 +2641,11 @@ class MailThread(models.AbstractModel):
     # ------------------------------------------------------------
 
     def message_mail_with_source(
-        self, source_ref, *,
-        render_values=None, message_type='notification', auto_commit=False,
+        self, source_ref: str | IrUiView, *,
+        render_values: dict | None = None, message_type: str = 'notification',
+        auto_commit: bool = False,
         **kwargs,
-    ):
+    ) -> MailMail:
         """ Send a mass mail on self, using an external source to render part
         of the content. It can be either a 'mail.template', either a view used
         to render the body using QWeb.
@@ -2634,7 +2659,7 @@ class MailThread(models.AbstractModel):
 
         * subtype_id: will be False, forced by composer in mass mode;
 
-        :param record/str source_ref: reference to a source for rendering.
+        :param str | IrUiView source_ref: reference to a source for rendering.
           It can be one of
 
           * a MailTemplate record. It will be used to render the various
@@ -2644,7 +2669,7 @@ class MailThread(models.AbstractModel):
             (body). Other fields are left to the caller and/or default values
             computation;
           * an XmlID of a MailTemplate or of an IrUiView: see above;
-        :param dict render_values: additional rendering values for qweb context;
+        :param dict | None render_values: additional rendering values for qweb context;
 
         :param str message_type: one of 'notification' or 'comment';
         :param bool auto_commit: auto commit after each batch of emails sent
@@ -2655,6 +2680,10 @@ class MailThread(models.AbstractModel):
         :return: created mail.mail records, as sudo
         """
         template, view = self._get_source_from_ref(source_ref)
+        render_values, kwargs = self._get_message_parameters_updated_for_rendering(
+            source_ref, source_template=template, source_view=view,
+            render_values=render_values, **kwargs
+        )
 
         # preliminary value safety check
         self._raise_for_invalid_parameters(
@@ -2703,10 +2732,11 @@ class MailThread(models.AbstractModel):
         return mails_su
 
     def message_post_with_source(
-        self, source_ref, *,
-        render_values=None, message_type='notification', subtype_xmlid=False, subtype_id=False,
+        self, source_ref: str | IrUiView, *,
+        render_values: dict | None = None, message_type: str = 'notification',
+        subtype_xmlid: str = False, subtype_id: int = False,
         **kwargs,
-    ):
+    ) -> MailMessage:
         """ Post a message on each record of self, using a view to render the
         body using QWeb.
 
@@ -2715,7 +2745,7 @@ class MailThread(models.AbstractModel):
         * subtype_id: if not given, fallback on ``note`` to be consistent
           with what message_post does;
 
-        :param record/str source_ref: reference to a source for rendering.
+        :param str | IrUiView source_ref: reference to a source for rendering.
           It can be one of
 
           * a MailTemplate record. It will be used to render the various
@@ -2725,7 +2755,7 @@ class MailThread(models.AbstractModel):
             (body). Other fields are left to the caller and/or default values
             computation;
           * an XmlID of a MailTemplate or of an IrUiView: see above
-        :param dict render_values: additional rendering values for qweb context;
+        :param dict | None render_values: additional rendering values for qweb context;
 
         :param str message_type: one of 'notification' or 'comment';
         :param str subtype_xmlid: optional xml id of a mail.message.subtype to
@@ -2738,6 +2768,10 @@ class MailThread(models.AbstractModel):
         :return: posted mail.message records
         """
         template, view = self._get_source_from_ref(source_ref)
+        render_values, kwargs = self._get_message_parameters_updated_for_rendering(
+            source_ref, source_template=template, source_view=view,
+            render_values=render_values, **kwargs
+        )
 
         # preliminary value safety check
         self._raise_for_invalid_parameters(
@@ -2764,12 +2798,13 @@ class MailThread(models.AbstractModel):
             subtype_id = self.env['ir.model.data']._xmlid_to_res_id('mail.mt_note')
 
         messages_all = self.env['mail.message']
-        for record in self:
+        # message_post (aka no template) does not support batch
+        for subset in [self] if template else self:
             if template:
                 composer = self.env['mail.compose.message'].with_context(
                     default_composition_mode='comment',
                     default_model=self._name,
-                    default_res_ids=record.ids,
+                    default_res_ids=subset.ids,
                     default_template_id=template.id,
                 ).create({
                     'message_type': message_type,
@@ -2779,8 +2814,8 @@ class MailThread(models.AbstractModel):
                 _mails_as_sudo, messages = composer._action_send_mail()
                 messages_all += messages
             else:
-                messages_all += record.message_post(
-                    body=bodies[record.id],
+                messages_all += subset.message_post(
+                    body=bodies[subset.id],
                     message_type=message_type,
                     subtype_id=subtype_id,
                     **kwargs
@@ -2944,10 +2979,15 @@ class MailThread(models.AbstractModel):
                 'body', 'bodies', 'incoming_email_cc', 'incoming_email_to', 'outgoing_email_to',
             }
         )
+        _template, view = self._get_source_from_ref(view_ref)
+        render_values, kwargs = self._get_message_parameters_updated_for_rendering(
+            view_ref, source_template=False, source_view=view,
+            render_values=render_values, **kwargs
+        )
 
         # with a view, render bodies in batch (template is managed by composer)
         bodies = self.env['mail.render.mixin']._render_template_qweb_view(
-            view_ref,
+            view,
             self._name,
             self.ids,
             add_context=render_values,
@@ -2966,7 +3006,8 @@ class MailThread(models.AbstractModel):
                      message_type='notification',
                      partner_ids=False,
                      attachment_ids=False,
-                     tracking_values=False):
+                     tracking_values=False,
+                     **kwargs):
         """ Shortcut allowing to post note on a document. See ``_message_log_batch``
         for more details. """
         self.ensure_one()
@@ -2978,6 +3019,7 @@ class MailThread(models.AbstractModel):
             partner_ids={self.id: partner_ids},
             attachment_ids={self.id: attachment_ids},
             tracking_values={self.id: tracking_values},
+            **kwargs,
         )
 
     def _message_log_batch(self, bodies, subject=False,
@@ -2985,7 +3027,8 @@ class MailThread(models.AbstractModel):
                            message_type='notification',
                            partner_ids=False,
                            attachment_ids=False,
-                           tracking_values=False):
+                           tracking_values=False,
+                           **kwargs):
         """ Shortcut allowing to post notes on a batch of documents. It does not
         perform any notification and pre-computes some values to have a short code
         as optimized as possible. This method is private as it does not check
@@ -3011,6 +3054,10 @@ class MailThread(models.AbstractModel):
             raise ValueError(_('Batch log cannot support tracking values that is not a per-document dict'))
         if message_type != 'tracking' and tracking_values and any(vals for vals in tracking_values.values()):
             raise ValueError(_('Posting with tracking should be done using tracking message type'))
+        # protect against undesired values from kwargs
+        self._raise_for_invalid_parameters(
+            kwargs.keys(), restricting_names=self._get_log_valid_parameters(),
+        )
 
         author_id, email_from = self._message_compute_author(author_id, email_from)
 
@@ -3031,6 +3078,8 @@ class MailThread(models.AbstractModel):
             'email_add_signature': False,  # False as no notification -> no need to compute signature
             'message_id': generate_tracking_message_id('message-notify'),  # why? this is all but a notify
             'reply_to': self.env['mail.thread']._notify_get_reply_to(default=email_from, author_id=author_id)[False],
+            # other parameters
+            **kwargs,
         }
         values_list = [dict(
             base_message_values,
@@ -3247,6 +3296,13 @@ class MailThread(models.AbstractModel):
         _message_post_after_hook, which also receives message values."""
         return {'tracking_values'}
 
+    def _get_message_parameters_updated_for_rendering(
+        self, source_ref, source_template=False, source_view=False,
+        render_values=None, **kwargs,
+    ):
+        """Ease custom behavior when posting from a source by enabling inheritance"""
+        return render_values, kwargs
+
     def _get_source_from_ref(self, source_ref):
         """ From a source_reference, return either a mail template, either
         an ir ui view.
@@ -3288,7 +3344,7 @@ class MailThread(models.AbstractModel):
             if res_model == 'mail.template':
                 template = self.env['mail.template'].browse(res_id)
             elif res_model == 'ir.ui.view':
-                view = self.env['ir.ui.view'].browse(res_id)
+                view = self.env['ir.ui.view'].sudo().browse(res_id)  # sudo: read access on 'model_ir_ui_view' restricted to admins by default
             else:
                 raise ValueError(
                     _('Invalid template or view source reference %(svalue)s, is %(model)s instead',
@@ -3302,6 +3358,12 @@ class MailThread(models.AbstractModel):
                   stype=type(source_ref),
                 ))
         return template, view
+
+    def _get_log_valid_parameters(self):
+        """ Some fields should not be given when creating a mail.message from
+        logging shortcut (in addition to some API specific check). Those fields
+        are generally dedicated to post / notify, not logs. """
+        return set()
 
     def _get_notify_valid_parameters(self):
         """ Several parameters exist for notification methods as business
@@ -3358,6 +3420,7 @@ class MailThread(models.AbstractModel):
         :param set restricting_names: set of parameters restricting given
           parameter_names, parameters not belonging to this list are rejected;
         """
+        conflicting_names = []
         if forbidden_names:
             conflicting_names = parameter_names & forbidden_names
         elif restricting_names:
@@ -3443,7 +3506,7 @@ class MailThread(models.AbstractModel):
 
         recipients_data = self._notify_get_recipients(message, **kwargs)
         # cache data fetched by manual query to avoid extra queries when reading user.partner_id
-        uid2pid = {r['uid']: r['id'] for r in recipients_data if r['id'] and r['uid']}
+        uid2pid = {uid: r['id'] for r in recipients_data if r['id'] for uid in r['uids']}
         users = self.env['res.users'].browse(uid2pid)
         users._fields['partner_id']._insert_cache(users, uid2pid.values())
 
@@ -3484,7 +3547,7 @@ class MailThread(models.AbstractModel):
           ``MailThread._notify_get_recipients()``;
         """
         inbox_pids_uids = sorted(
-            [(r["id"], r["uid"]) for r in recipients_data if r["id"] and r["notif"] == "inbox"]
+            [(r["id"], r["uids"]) for r in recipients_data if r["id"] and r["notif"] == "inbox"]
         )
         if inbox_pids_uids:
             notif_create_values = [
@@ -3499,7 +3562,7 @@ class MailThread(models.AbstractModel):
             ]
             # sudo: mail.notification - creating notifications is the purpose of notify methods
             self.env["mail.notification"].sudo().create(notif_create_values)
-            users = self.env["res.users"].browse(i[1] for i in inbox_pids_uids if i[1])
+            users = self.env["res.users"].browse(uid for _pid, uids in inbox_pids_uids for uid in uids)
             followers = Store.LazyValue(
                 lambda: (
                     self.env["mail.followers"]
@@ -4141,53 +4204,91 @@ class MailThread(models.AbstractModel):
             } for device in devices])
             self.env.ref('mail.ir_cron_web_push_notification')._trigger()
 
-    def _notify_by_web_push_prepare_payload(self, message, force_record_name=False):
-        """ Returns dictionary containing message information for a browser device.
-        This info will be delivered to a browser device via its recorded endpoint.
-        REM: It is having a limit of 4000 bytes (4kb)
+    def _notify_by_push_get_title(self, message, force_record_name=False):
+        return force_record_name or message.record_name or message.subject
 
-        :param str force_record_name: record_name to use instead of being
-          related record's display_name;
-        """
-        title = force_record_name or message.record_name
+    def _notify_by_push_get_body(self, message):
+        """ Plaintext body of the push notification, shared by all push channels.
+        Messages without text (polls, attachments) get a descriptive fallback. """
         body = message.body
         if message.message_type == 'tracking':
             body = "\n%s\n%s" % (message.subtype_id.description, body)
 
-        if message.author_id:
-            title = "%s: %s" % (message.author_id.name, title)
-            icon = "/web/image/res.partner/%d/avatar_128" % message.author_id.id
-        else:
-            icon = '/web/static/img/odoo-icon-192x192.png'
-
-        if tools.is_html_empty(body) and message.attachment_ids:
-            total_attachments = len(message.attachment_ids)
-            # sudo: ir.attachment - access voice_ids linked to an attachment, if present.
-            attachments = message.attachment_ids.sudo()
-
-            def get_attachment_label(attachment):
-                return self.env._("Voice Message") if attachment.voice_ids else attachment.name
-
-            if total_attachments == 1:
-                body = get_attachment_label(attachments[0])
-            elif total_attachments == 2:
+        if tools.is_html_empty(body):
+            # sudo - mail.poll: accessing polls of a message we just posted is acceptable.
+            if ended_poll := message.sudo().ended_poll_ids:
+                if winning_option := ended_poll.winning_option_id:
+                    body = self.env._(
+                        '%(author)s\'s poll "%(question)s" has closed. Winning answer: "%(answer)s".',
+                        author=ended_poll.start_message_id.author_id.name,
+                        question=ended_poll.poll_question,
+                        answer=winning_option.option_label,
+                    )
+                else:
+                    body = self.env._(
+                        '%(author)s\'s poll "%(question)s" has closed.',
+                        author=ended_poll.start_message_id.author_id.name,
+                        question=ended_poll.poll_question,
+                    )
+            elif started_poll := message.sudo().started_poll_ids:
                 body = self.env._(
-                    "%(file1)s and %(file2)s",
-                    file1=get_attachment_label(attachments[0]),
-                    file2=get_attachment_label(attachments[1]),
+                    '%(author)s started a poll: "%(question)s".',
+                    author=message.author_id.name,
+                    question=started_poll.poll_question,
                 )
-            else:
-                body = self.env._(
-                    "%(file1)s and %(count)d other attachments",
-                    file1=get_attachment_label(attachments[0]),
-                    count=total_attachments - 1,
-                )
+            elif message.attachment_ids:
+                attachments = message.attachment_ids
+                total_attachments = len(attachments)
+                symbol, first_name = attachments[0]._get_preview_symbol_and_name()
+                if total_attachments == 1:
+                    label = first_name
+                elif total_attachments == 2:
+                    _, second_name = attachments[1]._get_preview_symbol_and_name()
+                    label = self.env._(
+                        "%(first_attachment)s and %(second_attachment)s",
+                        first_attachment=first_name,
+                        second_attachment=second_name,
+                    )
+                else:
+                    label = self.env._(
+                        "%(first_attachment)s and %(count)d other attachments",
+                        count=total_attachments - 1,
+                        first_attachment=first_name,
+                    )
+                body = f"{symbol}\N{NO-BREAK SPACE}\N{NO-BREAK SPACE}{label}"
 
+        body = html2plaintext(body, include_references=False)
+        if prefix := self._notify_by_push_get_body_prefix(message):
+            body = f"{prefix}{body}"
+        return body
+
+    def _notify_by_push_get_body_prefix(self, message):
+        """ Author prefix for the notification body, when the title does not already name them. """
+        # sudo - mail.poll: accessing polls of a received message is acceptable.
+        if message.sudo().started_poll_ids or message.sudo().ended_poll_ids:
+            return ""
+        author = message.author_id or message.author_guest_id
+        if name := author.name or message.email_from:
+            return f"{name}: "
+        return ""
+
+    def _notify_by_push_get_icon(self, message):
+        if module := self._original_module:
+            return modules.module.get_module_icon(module)
+        return '/web/static/img/odoo-icon-192x192.png'
+
+    def _notify_by_web_push_prepare_payload(self, message, force_record_name=False):
+        """ Return a dictionary containing the message information for a browser.
+        The encrypted payload is limited to 4096 bytes: see ``_web_push_truncate_payload``.
+
+        :param str force_record_name: record name to use instead of the
+          related record's display_name;
+        """
         return {
-            'title': title,
+            'title': self._notify_by_push_get_title(message, force_record_name=force_record_name),
             'options': {
-                'body': html2plaintext(body, include_references=False),
-                'icon': icon,
+                'body': self._notify_by_push_get_body(message),
+                'icon': self._notify_by_push_get_icon(message),
                 'data': {
                     'model': message.model or '',
                     'res_id': message.res_id or '',
@@ -4240,6 +4341,7 @@ class MailThread(models.AbstractModel):
                     'type': partner usage ('customer', 'portal', 'user');
                     'uid': user ID (in case of multiple users, internal then first found
                         by ID);)
+                    'uids': IDs of all active users (internal first, then by ID);
                     'ushare': are users shared (if users, all users are shared);
                 }, {...}]
 
@@ -4308,6 +4410,7 @@ class MailThread(models.AbstractModel):
                 'share': True,
                 'type': 'customer',
                 'uid': False,
+                'uids': [],
                 'ushare': False,
             } for name, email in outgoing_email_to_lst
         ]
@@ -4788,6 +4891,8 @@ class MailThread(models.AbstractModel):
         adding_current = set(partner_ids) == set([self.env.user.partner_id.id])
         customer_ids = [] if adding_current else None
 
+        if adding_current and self.env.user._is_public():
+            return False
         if partner_ids and adding_current:
             try:
                 self.check_access('read')
@@ -5054,8 +5159,7 @@ class MailThread(models.AbstractModel):
             ('res_id', '=', self.id),
             ('message_type', '!=', 'user_notification'),
         ])
-        non_generic_messages = messages.filtered(lambda m: m.subtype_id.res_model)
-        generic_messages = messages - non_generic_messages
+        non_generic_messages, generic_messages = messages.partitioned(lambda m: m.subtype_id.res_model)
 
         # update the messages
         msg_vals = {"res_id": new_thread.id, "model": new_thread._name}
@@ -5118,8 +5222,9 @@ class MailThread(models.AbstractModel):
                 if len(children) > 0:  # body is a valid html
                     # If the last element is a div or p, add the edited span inside it to avoid the edit markup
                     # to be on its own line. Otherwise, append it to the end of the last element.
+                    target_index = -2 if not message.email_add_signature and len(children) >= 2 else -1
                     last_div_element = (
-                        children[-1] if children[-1].tag in ["div", "p"] else tree
+                        children[target_index] if children[target_index].tag in ["div", "p"] else tree
                     )
                     last_div_element.text = (last_div_element.text or '') + (' ' if last_div_element.text else '')
                     etree.SubElement(last_div_element, "span", attrib={"class": "o-mail-Message-edited", "data-o-datetime": fields.Datetime.to_string(fields.Datetime.now())})
@@ -5193,6 +5298,7 @@ class MailThread(models.AbstractModel):
 
     def _store_message_update_extra_fields(self, res: Store.FieldList):
         pass
+
     # ------------------------------------------------------
     # STORE
     # ------------------------------------------------------
@@ -5222,6 +5328,9 @@ class MailThread(models.AbstractModel):
             res.many(
                 "attachments",
                 "_store_attachment_fields",
+                dynamic_fields=lambda res, thread: res.from_method(
+                    "_store_thread_message_fields", thread=thread,
+                ),
                 value=lambda t: t._get_mail_thread_data_attachments(),
                 fields_params={"chatter_fields": kwargs.get("chatter_fields", False)},
             )
@@ -5265,8 +5374,6 @@ class MailThread(models.AbstractModel):
             res.attr("recipientsCount", lambda t: recipient_count_by_tid[t.id])
             # recipient list with limit
             self._store_message_followers_fields(res, filter_recipients=True, reset=True)
-        if "display_name" in request_list:
-            res.attr("display_name")
         pinned_domain = (
             Domain("res_id", "in", self.ids)
             & Domain("model", "=", self._name)
@@ -5316,21 +5423,13 @@ class MailThread(models.AbstractModel):
         if 'original_id' in self.env['ir.attachment']._fields:
             # If the image is SVG: We take the png version if exist otherwise we take the svg
             # If the image is not SVG: We take the original one if exist otherwise we take it
-            svg_ids = res.filtered(lambda attachment: attachment.mimetype == 'image/svg+xml')
-            non_svg_ids = res - svg_ids
+            svg_ids, non_svg_ids = res.partitioned(lambda attachment: attachment.mimetype == 'image/svg+xml')
             original_ids = res.mapped('original_id')
             res = res.filtered(lambda attachment: (attachment in svg_ids and attachment not in original_ids) or (attachment in non_svg_ids and attachment.original_id not in non_svg_ids))
         return res
 
     def _store_target(self):
         return (self, "thread")
-
-    def _store_model_name_fields(self, res: Store.FieldList):
-        res.attr(
-            "modelName",
-            lambda thread: thread.env["ir.model"]._get(thread._name).display_name,
-        )
-        res.attr("display_name")
 
     # ------------------------------------------------------
     # CONTROLLERS SECURITY HELPERS
@@ -5365,3 +5464,6 @@ class MailThread(models.AbstractModel):
         """Return a list of message types visible in a shared context.
         Override this method to customize visibility for specific models."""
         return ["auto_comment", "comment", "email", "email_outgoing"]
+
+    def _get_share_message_domain(self):
+        return SHARE_DOMAIN

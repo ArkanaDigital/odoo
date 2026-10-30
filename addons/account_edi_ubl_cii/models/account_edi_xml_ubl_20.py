@@ -468,11 +468,21 @@ class AccountEdiXmlUBL20(models.AbstractModel):
     def _add_invoice_line_item_nodes(self, line_node, vals):
         self._add_document_line_item_nodes(line_node, vals)
 
+        item = line_node['cac:Item']
         line_name = vals['base_line']['_line_name']
         if line_name:
-            line_node['cac:Item']['cbc:Description']['_text'] = line_name
-            if not line_node['cac:Item']['cbc:Name']['_text']:
-                line_node['cac:Item']['cbc:Name']['_text'] = line_name
+            item['cbc:Description']['_text'] = line_name
+            if not item['cbc:Name']['_text']:
+                item['cbc:Name']['_text'] = line_name
+
+        if (
+            self._invoice_line_item_node_require_description(vals)
+            and not item['cbc:Description']['_text']
+        ):
+            item['cbc:Description']['_text'] = item['cbc:Name']['_text']
+
+    def _invoice_line_item_node_require_description(self, vals):
+        return False
 
     def _add_invoice_line_tax_category_nodes(self, line_node, vals):
         self._add_document_line_tax_category_nodes(line_node, vals)
@@ -660,7 +670,7 @@ class AccountEdiXmlUBL20(models.AbstractModel):
                 'cbc:ElectronicMail': {'_text': partner.email},
             },
         }
-        if partner.vat and partner.vat != '/':
+        if partner.has_vat:
             party_node['cac:PartyTaxScheme'] = {
                 'cbc:RegistrationName': {'_text': commercial_partner.name},
                 'cbc:CompanyID': {'_text': commercial_partner.vat},
@@ -1147,15 +1157,20 @@ class AccountEdiXmlUBL20(models.AbstractModel):
         if qty_factor == -1:
             logs.append(_("The invoice has been converted into a credit note and the quantities have been reverted."))
         role = "AccountingCustomer" if invoice.journal_id.type == 'sale' else "AccountingSupplier"
-        partner, partner_logs = self._import_partner(invoice.company_id, **self._import_retrieve_partner_vals(tree, role))
+        # ==== partner_bank_id ====
+        bank_detail_nodes = tree.findall('.//{*}PaymentMeans/{*}PayeeFinancialAccount/{*}ID')
+        bank_details = [bank_detail_node.text for bank_detail_node in bank_detail_nodes if bank_detail_node.text]
+
+        partner_vals = self._import_retrieve_partner_vals(tree, role)
+        if bank_details:
+            partner_vals['bank_details'] = bank_details
+        partner, partner_logs = self._import_partner(invoice.company_id, **partner_vals)
         # Need to set partner before to compute bank and lines properly
         invoice.partner_id = partner.id
         invoice_values['currency_id'], currency_logs = self._import_currency(tree, './/{*}DocumentCurrencyCode')
         invoice_values['invoice_date'] = tree.findtext('./{*}IssueDate')
         invoice_values['invoice_date_due'] = self._find_value(('./cbc:DueDate', './/cbc:PaymentDueDate'), tree)
-        # ==== partner_bank_id ====
-        bank_detail_nodes = tree.findall('.//{*}PaymentMeans')
-        bank_details = [bank_detail_node.findtext('{*}PayeeFinancialAccount/{*}ID') for bank_detail_node in bank_detail_nodes if bank_detail_node.findtext('{*}PayeeFinancialAccount/{*}ID')]
+
         if bank_details:
             self._import_partner_bank(invoice, bank_details)
 

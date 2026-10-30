@@ -1,13 +1,11 @@
 import {
-    click,
-    contains,
     defineMailModels,
     openFormView,
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
-import { describe, expect, test } from "@odoo/hoot";
-import { onRpc, serverState } from "@web/../tests/web_test_helpers";
+import { describe, expect, test, waitFor } from "@odoo/hoot";
+import { contains, onRpc, serverState } from "@web/../tests/web_test_helpers";
 
 defineMailModels();
 describe.current.tags("desktop");
@@ -28,8 +26,8 @@ test("Manage messages", async () => {
     await start();
     const partnerId = pyEnv["res.partner"].create({ name: "Bob" });
     await openFormView("res.partner", partnerId);
-    await click(".o_debug_manager .dropdown-toggle");
-    await click(".dropdown-item:text('Messages')");
+    await contains(".o_debug_manager .dropdown-toggle:count(1)").click();
+    await contains(".dropdown-item:text('Messages'):count(1)").click();
     await expect.waitForSteps(["message_read"]);
-    await contains(".o_breadcrumb .active > span:text('Messages')");
+    await waitFor(".o_breadcrumb .active > span:text('Messages'):count(1)");
 });

@@ -38,7 +38,7 @@ class TestStockValuation(TestStockValuationCommon):
         self.assertEqual(len(debit_line), 1)
         self.assertEqual(debit_line.debit, 50.0)
         self.assertEqual(debit_line.credit, 0)
-        product._invalidate_cache()
+        product.invalidate_model()
 
         # Set price to 6.0
         product.standard_price = 6.0
@@ -337,7 +337,7 @@ class TestStockValuation(TestStockValuationCommon):
 
     def test_fifo_negative_1(self):
         """ Send products that you do not have. Value the first outgoing move to the standard
-        price, receive in multiple times the delivered quantity and run _fifo_vacuum to compensate.
+        price, receive in multiple times the delivered quantity and run the closing to compensate.
         """
         product = self.product_fifo
 
@@ -376,7 +376,7 @@ class TestStockValuation(TestStockValuationCommon):
         self.assertEqual(move2.remaining_qty, 0)
 
         # ---------------------------------------------------------------------
-        # The vacuum ran
+        # The closing ran
         # ---------------------------------------------------------------------
 
         closing_move = self._close()
@@ -560,7 +560,7 @@ class TestStockValuation(TestStockValuationCommon):
 
         self.assertEqual(move2.value, 220.0)  # after correction, the move should be valued at 11@20
         self.assertEqual(move2.quantity, 11.0)
-        product2._invalidate_cache()
+        product2.invalidate_model()
         product2.standard_price = 20.0
 
         closing_move = self.env['account.move'].browse(move2.company_id.action_close_stock_valuation()['res_id'])
@@ -583,7 +583,7 @@ class TestStockValuation(TestStockValuationCommon):
         self.assertEqual(move3.remaining_qty, 0.0)
         self.assertEqual(product2.standard_price, 20.0)
         self.assertEqual(product2.qty_available, 0)
-        product2._invalidate_cache()
+        product2.invalidate_model()
         product2.standard_price = 20.0
 
         closing_move = self.env['account.move'].browse(move2.company_id.action_close_stock_valuation()['res_id'])
@@ -1172,7 +1172,7 @@ class TestStockValuation(TestStockValuationCommon):
         self.assertAlmostEqual(move1.value, 50)
         self.assertAlmostEqual(product.qty_available, 5)
         self.assertAlmostEqual(product.total_value, 50)
-        product._invalidate_cache()
+        product.invalidate_model()
 
         move2 = self.env['stock.move'].create({
             'location_id': self.supplier_location.id,
@@ -1192,7 +1192,7 @@ class TestStockValuation(TestStockValuationCommon):
         self.assertAlmostEqual(move2.value, 200)
         self.assertAlmostEqual(product.qty_available, 15)
         self.assertAlmostEqual(product.total_value, 250)
-        product._invalidate_cache()
+        product.invalidate_model()
 
         self._set_quantity(move1, 15)
 
@@ -1413,7 +1413,7 @@ class TestStockValuation(TestStockValuationCommon):
 
         self.assertEqual(move2.value, -100.0)
         self.assertEqual(move2.remaining_qty, 0.0)  # unused in average move
-        product._invalidate_cache()
+        product.invalidate_model()
 
         # send 10 products again
         move3 = self._make_out_move(product, 10)
@@ -2115,6 +2115,66 @@ class TestStockValuation(TestStockValuationCommon):
         self.assertEqual(product.with_context(to_date=Datetime.to_string(date5)).qty_available, 95)
         self.assertEqual(product.with_context(to_date=Datetime.to_string(date5)).total_value, 1425)
 
+    def test_at_date_fifo_2(self):
+        """ Check the change of the cost of a fifo product will be taken into account in the value
+        at date for remaining quantities.
+        """
+        product = self.product_fifo
+
+        now = Datetime.now()
+        date1 = now - timedelta(days=8)
+        date2 = now - timedelta(days=7)
+        date3 = now - timedelta(days=6)
+        date4 = now - timedelta(days=5)
+        date5 = now - timedelta(days=4)
+
+        # receive 10@10
+        with freeze_time(date1):
+            self._make_in_move(product, 10, 10)
+        with freeze_time(date2):
+            self._make_in_move(product, 10, 15)
+
+        # Change the cost to 20
+        with freeze_time(date3):
+            product.standard_price = 20
+
+        product = product.with_context(to_date=Datetime.to_string(date1))
+        self.assertEqual(product.qty_available, 10)
+        self.assertEqual(product.total_value, 100)
+        product = product.with_context(to_date=Datetime.to_string(date2))
+        self.assertEqual(product.qty_available, 20)
+        self.assertEqual(product.total_value, 250)
+        product = product.with_context(to_date=Datetime.to_string(date3))
+        self.assertEqual(product.qty_available, 20)
+        self.assertEqual(product.total_value, 400)
+
+        with freeze_time(date4):
+            self._make_out_move(product, 8)
+
+        with freeze_time(date5):
+            self._make_in_move(product, 10, 20)
+
+        product.standard_price = 10
+
+        product = product.with_context(to_date=Datetime.to_string(date1))
+        self.assertEqual(product.qty_available, 10)
+        self.assertEqual(product.total_value, 100)
+        product = product.with_context(to_date=Datetime.to_string(date2))
+        self.assertEqual(product.qty_available, 20)
+        self.assertEqual(product.total_value, 250)
+        product = product.with_context(to_date=Datetime.to_string(date3))
+        self.assertEqual(product.qty_available, 20)
+        self.assertEqual(product.total_value, 400)
+        product = product.with_context(to_date=Datetime.to_string(date4))
+        self.assertEqual(product.qty_available, 12)
+        self.assertEqual(product.total_value, 240)
+        product = product.with_context(to_date=Datetime.to_string(date5))
+        self.assertEqual(product.qty_available, 22)
+        self.assertEqual(product.total_value, 440)
+        product = product.with_context(to_date=False)
+        self.assertEqual(product.qty_available, 22)
+        self.assertEqual(product.total_value, 220)
+
     def test_at_date_fifo_stable_after_std_price_drift(self):
         """ Historical FIFO valuation must remain stable when standard_price
         drifts due to newer operations. For moves without a purchase link
@@ -2186,7 +2246,7 @@ class TestStockValuation(TestStockValuationCommon):
         self.assertAlmostEqual(move1.value, 180.0)
         self.assertAlmostEqual(move1.remaining_qty, 12.0)
         self.assertAlmostEqual(product.total_value, 180.0)
-        product._invalidate_cache()
+        product.invalidate_model()
 
         # Sell the 12 units
         move2 = self.env['stock.move'].create({
@@ -2202,7 +2262,7 @@ class TestStockValuation(TestStockValuationCommon):
         move2.picked = True
         move2._action_done()
 
-        move1._invalidate_cache()
+        move1.invalidate_model()
         self.assertAlmostEqual(move1.remaining_qty, 0.0)
         self.assertAlmostEqual(product.total_value, 0.0)
 
@@ -2377,6 +2437,8 @@ class TestStockValuation(TestStockValuationCommon):
         """
         Ensure that qty_available, free_qty, avg_cost, and total_value are computed
         correctly for products at a historical to_date, taking the user's timezone into account.
+        A receipt in the evening of the company timezone, already the next day in UTC,
+        counts on that day.
         """
         self.env.user.tz = 'Europe/Paris'
         to_date = date(2024, 1, 10)
@@ -2423,6 +2485,50 @@ class TestStockValuation(TestStockValuationCommon):
             products.with_context(to_date="2024-01-10"),
             expected_values,
         )
+
+        self.env.company.sudo().tz = 'America/Bogota'  # UTC-5
+        with freeze_time('2024-01-11 01:00:00'):  # 2024-01-10 20:00 in Bogota
+            self._make_in_move(self.product_standard, 1)
+        with freeze_time('2024-01-12 10:00:00'):
+            self.assertRecordValues(
+                self.product_standard.with_context(to_date=to_date),
+                [{'qty_available': 11.0, 'total_value': 110.0}],
+            )
+
+    def test_valuation_report_and_closing_use_company_timezone(self):
+        """ With the company in UTC+9 and the user in Brussels, 2026-07-01 20:00 UTC
+        is July 1 for the user and July 2 for the company. The valuation report and
+        a closing at July 1 count what happened until the end of the company's
+        July 1, and a closing generated at that moment is dated July 2 and posted. """
+        self.env.company.sudo().tz = 'Asia/Tokyo'  # UTC+9
+        self.env.user.tz = 'Europe/Brussels'
+        self._use_inventory_location_accounting()
+        product = self.product_standard_auto
+        with freeze_time('2026-07-01 01:00:00'):  # 2026-07-01 10:00 for the company
+            self._make_in_move(product, 1)
+        with freeze_time('2026-07-01 20:00:00'):  # 2026-07-01 22:00 for the user, 2026-07-02 05:00 for the company
+            self._make_in_move(product, 1)
+            self.env['stock.quant'].create({
+                'product_id': self.product_standard.id,
+                'location_id': self.stock_location.id,
+                'inventory_quantity': 1,
+            }).action_apply_inventory()
+            closing_move = self._close(at_date=date(2026, 7, 1))
+            valuation_aml = closing_move.line_ids.filtered(lambda l: l.account_id == self.account_stock_valuation)
+            variation_aml = closing_move.line_ids.filtered(lambda l: l.account_id == self.account_stock_variation)
+            self.assertRecordValues(
+                valuation_aml + variation_aml,
+                [
+                    {'account_id': self.account_stock_valuation.id, 'debit': 10, 'credit': 0},
+                    {'account_id': self.account_stock_variation.id, 'debit': 0, 'credit': 10},
+                ]
+            )
+            closing = self._close()
+            self.assertEqual(closing.date, date(2026, 7, 2))
+            self.assertEqual(closing.state, 'posted')
+        with freeze_time('2026-07-02 10:00:00'):  # 2026-07-02 12:00 for the user
+            report = self.env['account.stock.valuation.report'].get_report_values(date='2026-07-01')['data']
+            self.assertEqual(report['ending_stock']['value'], 10.0)
 
     def test_stock_report_avco_warehouse_dependency(self):
         """ Create two warehouses and check that the total value and the on hand quantity
@@ -3270,17 +3376,17 @@ class TestStockValuation(TestStockValuationCommon):
         # Make dropship move, where the quantity stay in negative
         self._make_dropship_move(self.product_avco, 5, unit_cost=15)
         self.assertEqual(self.product_avco.qty_available, -10)
-        self.assertEqual(self.product_avco.standard_price, 15)
+        self.assertEqual(self.product_avco.standard_price, 10)
 
         # Make dropship move, where the quantity reach 0
         self._make_dropship_move(self.product_avco, 10, unit_cost=15)
         self.assertEqual(self.product_avco.qty_available, -10)
-        self.assertEqual(self.product_avco.standard_price, 15)
+        self.assertEqual(self.product_avco.standard_price, 10)
 
         # Make dropship move, where the quantity do not go in positive
         self._make_dropship_move(self.product_avco, 15, unit_cost=15)
         self.assertEqual(self.product_avco.qty_available, -10)
-        self.assertEqual(self.product_avco.standard_price, 15)
+        self.assertEqual(self.product_avco.standard_price, 10)
 
     def test_avco_adjusted_valuation_updates_unit_cost_correctly(self):
         """Ensure that for AVCO products, adjusting the total valuation recomputes
@@ -3324,6 +3430,43 @@ class TestStockValuation(TestStockValuationCommon):
         recs[-2:].sudo()._compute_cumulative_fields()
         self.assertEqual(recs[-1].total_quantity, 3)
         self.assertEqual(recs[-1].total_value, 30)
+
+    def test_avco_report_quantity_uses_product_uom(self):
+        """Ensure the AVCO report quantity is expressed in the product UoM."""
+        product = self.product_avco
+        product.company_id = self.company.id
+        product.uom_id = self.uom_pack_of_6
+        self._make_in_move(product, 18, uom_id=self.uom.id)
+
+        report_lines = self.env['stock.avco.report'].search([('product_id', '=', product.id)]).sorted('date, id')
+        self.assertEqual(report_lines[-1].quantity, 3)
+        self.assertEqual(report_lines[-1].added_value, 30)
+
+    def test_avco_report_for_lot_valuated_product(self):
+        """Ensure that the AVCO justification report for lot valuated
+        product is accurate at all steps.
+        """
+        self.product_avco.write({
+            'tracking': 'lot',
+            'lot_valuated': True,
+        })
+        lot1, lot2 = self.env['stock.lot'].create([{
+            'name': f'Lot{i}',
+            'product_id': self.product_avco.id,
+        } for i in range(0, 2)])
+        self._make_in_move(self.product_avco, quantity=1, unit_cost=10, lot_ids=lot1)
+        self._make_in_move(self.product_avco, quantity=1, unit_cost=20, lot_ids=lot2)
+        self._make_out_move(self.product_avco, quantity=1, lot_ids=lot2)
+        report_lines = self.env['stock.avco.report'].search([('product_id', '=', self.product_avco.id)]).sorted('date, id')[1:]
+        self.assertEqual(report_lines[-1].avco_value, self.product_avco.standard_price)
+        self.assertRecordValues(
+            report_lines,
+            [
+                {'added_value': 10, 'total_quantity': 1, 'total_value': 10, 'avco_value': 10},
+                {'added_value': 20, 'total_quantity': 2, 'total_value': 30, 'avco_value': 15},
+                {'added_value': -20, 'total_quantity': 1, 'total_value': 10, 'avco_value': 10},
+            ],
+        )
 
     def test_avco_report_after_cost_method_change(self):
         """Ensure that the AVCO justification report for a product is accurate at all steps, even if
@@ -3508,10 +3651,11 @@ class TestStockValuation(TestStockValuationCommon):
     def test_cron_post_stock_valuation_domain(self):
         """ Cron must process daily/periodic every day and add monthly/periodic
         on the last day of the month. Real-time and manual companies must be skipped.
+        The last day of the month is the one of the company timezone.
         """
         # SETUP: res.company master-data (create implies res.partner create) -> sudo
         Company = self.env['res.company'].sudo()
-        daily_periodic, monthly_periodic, daily_realtime, manual_periodic = Company.create([
+        daily_periodic, monthly_periodic, daily_realtime, manual_periodic, monthly_tokyo = Company.create([
             {
                 'name': 'Daily Periodic',
                 'inventory_period': 'daily',
@@ -3531,6 +3675,11 @@ class TestStockValuation(TestStockValuationCommon):
                 'name': 'Manual Periodic',
                 'inventory_period': 'manual',
                 'inventory_valuation': 'periodic',
+            },
+            {
+                'name': 'Monthly Tokyo',
+                'inventory_period': 'monthly',
+                'tz': 'Asia/Tokyo',  # UTC+9
             },
         ])
 
@@ -3564,6 +3713,51 @@ class TestStockValuation(TestStockValuationCommon):
                 self.assertIn(monthly_periodic.id, called_ids)
                 self.assertNotIn(daily_realtime.id, called_ids)
                 self.assertNotIn(manual_periodic.id, called_ids)
+
+            with freeze_time('2026-03-30 16:00:00'):  # 2026-03-31 01:00 in Tokyo
+                called_ids.clear()
+                Company._cron_post_stock_valuation()
+                self.assertIn(monthly_tokyo.id, called_ids)
+
+            with freeze_time('2026-03-31 16:00:00'):  # 2026-04-01 01:00 in Tokyo
+                called_ids.clear()
+                Company._cron_post_stock_valuation()
+                self.assertNotIn(monthly_tokyo.id, called_ids)
+
+    def test_continental_closing_uses_company_fiscal_year(self):
+        """ In continental perpetual valuation, the variation of an inventory
+        adjustment made in June 2026 belongs to the 2026 fiscal year: with the
+        company in UTC+9, a closing generated at 2026-12-31 20:00 UTC is already
+        on the company's 2027-01-01 and has nothing to post for 2027. """
+        self.env.company.sudo().tz = 'Asia/Tokyo'  # UTC+9
+        self.account_stock_valuation.sudo().account_stock_expense_id = self.account_expense
+        self._use_inventory_location_accounting()
+        with freeze_time('2026-06-15 10:00:00'):
+            self.env['stock.quant'].create({
+                'product_id': self.product_standard_auto.id,
+                'location_id': self.stock_location.id,
+                'inventory_quantity': 1,
+            }).action_apply_inventory()
+        with freeze_time('2026-12-31 20:00:00'):  # 2027-01-01 05:00 in Tokyo
+            with self.assertRaises(UserError):
+                self._close()
+
+    def test_closing_after_past_date_closing_uses_company_day(self):
+        """ With the company in UTC-5, an inventory adjustment at 2026-06-30 20:00
+        local time is posted by a closing at June 30, so the next closing has
+        nothing left to post. """
+        self.env.company.sudo().tz = 'America/Bogota'  # UTC-5
+        self._use_inventory_location_accounting()
+        with freeze_time('2026-07-01 01:00:00'):  # 2026-06-30 20:00 in Bogota
+            self.env['stock.quant'].create({
+                'product_id': self.product_standard.id,
+                'location_id': self.stock_location.id,
+                'inventory_quantity': 1,
+            }).action_apply_inventory()
+        with freeze_time('2026-07-03 12:00:00'):
+            self._close(at_date=date(2026, 6, 30))
+            with self.assertRaises(UserError):
+                self._close()
 
     def test_multi_company_valuation(self):
         self.category_fifo.with_company(self.branch).write({
@@ -3773,7 +3967,7 @@ class TestStockValuation(TestStockValuationCommon):
         self.assertEqual(product_b.with_context(location=valued_locations.ids).qty_available, 0)
 
         # Get report data
-        report_data = self.env['stock_account.stock.valuation.report'].with_company(self.env.company)._get_report_data()
+        report_data = self.env['account.stock.valuation.report'].with_company(self.env.company)._get_report_data()
 
         # Check that both accounts are in the report
         account_ids_in_report = report_data['accounts_by_id'].keys()
@@ -3784,3 +3978,55 @@ class TestStockValuation(TestStockValuationCommon):
         initial_balance = report_data['initial_balance']
         self.assertEqual(initial_balance['lines_by_account_id'][account_b.id]['value'], 100,
                          "Account B should show its 100 balance in the report data")
+
+    def test_multi_company_fifo_costing_isolation(self):
+        """
+        Test that an outgoing move in Company B does not use the incoming
+        move cost (get_last_in) from Company A for a FIFO product.
+        """
+        self.product_fifo.company_id = False
+        self.product_fifo.categ_id.with_company(self.other_company).property_cost_method = 'fifo'
+
+        self.product_fifo.with_company(self.other_company).standard_price = 0.0
+
+        move_in_a = self._make_in_move(
+            product=self.product_fifo,
+            quantity=10.0,
+            unit_cost=50.0,
+            company=self.company
+        )
+        self.assertEqual(move_in_a.price_unit, 50.0)
+
+        # Make sure only one company is in the allowed_company_ids
+        product = self.product_fifo.with_company(self.other_company).with_context(allowed_company_ids=[self.other_company.id])
+
+        product._update_standard_price()
+
+        # Company B should not have the cost from Company A, so the standard_price should remain 0.0
+        self.assertEqual(product.standard_price, 0.0)
+
+    def test_multi_company_fifo_stack_isolation(self):
+        """ Check that when multiple companies are selected, the fifo logic only uses moves
+        from the main company to compute the value of the outgoing move
+        """
+        self.product_fifo.categ_id.with_company(self.other_company).property_cost_method = 'fifo'
+
+        self._make_in_move(product=self.product_fifo, quantity=10.0, unit_cost=200.0, company=self.company)
+        self._make_in_move(product=self.product_fifo, quantity=10.0, unit_cost=100.0, company=self.other_company)
+
+        other_warehouse = self.env['stock.warehouse'].with_company(self.other_company).search([('company_id', '=', self.other_company.id)], limit=1)
+        out_move = self.env['stock.move'].sudo().create({
+            'product_id': self.product_fifo.id,
+            'location_id': other_warehouse.lot_stock_id.id,
+            'location_dest_id': self.customer_location.id,
+            'product_uom_qty': 1,
+            'company_id': self.other_company.id,
+        })
+        out_move_with_comp = out_move.with_company(self.other_company).with_context(allowed_company_ids=[self.other_company.id, self.company.id])
+        out_move_with_comp._action_confirm()
+        out_move_with_comp._action_assign()
+        out_move_with_comp.move_line_ids.quantity = 1.0
+        out_move_with_comp.picked = True
+        out_move_with_comp._action_done()
+
+        self.assertEqual(out_move_with_comp.value, - 100)

@@ -6,7 +6,6 @@ import { useLongPress } from "@point_of_sale/app/hooks/long_press_hook";
 import { useBarcodeReader } from "@point_of_sale/app/hooks/barcode_reader_hook";
 import { _t } from "@web/core/l10n/translation";
 import { usePos } from "@point_of_sale/app/hooks/pos_hook";
-import { user } from "@web/core/user";
 import {
     Component,
     onMounted,
@@ -18,6 +17,7 @@ import {
     signal,
     usePlugin,
 } from "@odoo/owl";
+import { SoundEffectsPlugin } from "@mail/core/common/sound_effects_plugin";
 import { PosNumberBufferPlugin } from "@point_of_sale/app/plugins/pos_number_buffer_plugin";
 import { CategorySelector } from "@point_of_sale/app/components/category_selector/category_selector";
 import { Input } from "@point_of_sale/app/components/inputs/input/input";
@@ -88,7 +88,8 @@ export class ProductScreen extends Component {
         onWillRender(() => {
             // If its a shared order it can be paid from another POS
             if (this.currentOrder?.state !== "draft" && !this.isValidatingOrder) {
-                this.pos.addNewOrder();
+                const { table_id, preset_id } = this.currentOrder ?? {};
+                this.pos.addNewOrder({ table_id, preset_id });
             }
         });
 
@@ -108,7 +109,7 @@ export class ProductScreen extends Component {
         });
 
         this.barcodeReader = useService("barcode_reader");
-        this.sound = useService("mail.sound_effects");
+        this.soundEffects = usePlugin(SoundEffectsPlugin);
 
         useBarcodeReader({
             product: this._barcodeProductAction.bind(this),
@@ -140,18 +141,14 @@ export class ProductScreen extends Component {
             ),
         });
 
-        this.canReorderProducts = false;
-        Promise.resolve(user.checkAccessRight("product.template", "write")).then((hasAccess) => {
-            this.canReorderProducts = hasAccess;
-        });
-
         useSortable({
             ref: this.productsRootRef,
             elements: ".product-sortable",
             cursor: "move",
             tolerance: 10,
             connectGroups: false,
-            enable: () => this.canReorderProducts,
+            enable: () =>
+                this.pos.accessRight.canReorderProducts && this.pos.accessRight.canSortProducts,
             preventDrag: (element) => isNaN(Number(element.dataset.productId)),
             onDragStart: () => {
                 this.longPressHandlers.onMouseUp();
@@ -241,23 +238,27 @@ export class ProductScreen extends Component {
                 value: "discount",
                 text: _t("%"),
                 disabled:
-                    !this.pos.config.manual_discount ||
-                    this.pos.cashier._role === "minimal" ||
+                    this.pos.accessRight.disableLinediscount ||
                     order?.getSelectedOrderline()?.isServiceFeeLine(),
             },
             {
                 value: "price",
                 text: _t("Price"),
                 disabled:
-                    !this.pos.cashierHasPriceControlRights() ||
-                    this.pos.cashier._role === "minimal",
+                    this.pos.accessRight.disablePriceButton ||
+                    order?.getSelectedOrderline()?.isPartOfCombo(),
             },
-            BACKSPACE,
+            {
+                ...BACKSPACE,
+                disabled:
+                    this.pos.accessRight.disableBackSpaceButton &&
+                    !order.getSelectedOrderline()?.isDirty(),
+            },
         ]).map((button) => ({
             ...button,
             disabled:
                 button.disabled ||
-                (button.value === SWITCHSIGN.value && this.pos.cashier._role === "minimal") ||
+                (button.value === SWITCHSIGN.value && !this.pos.accessRight.canSwitchSign) ||
                 (order?.getSelectedOrderline()?.isServiceFeeLine() &&
                     order?.preset_id?.service_fee_type === "percent"),
             class: `
@@ -292,7 +293,7 @@ export class ProductScreen extends Component {
         return this.currentOrder?.currencyDisplayPrice || 0;
     }
     get items() {
-        return this.env.utils.formatProductQty(
+        return this.pos.formatProductQty(
             this.currentOrder.lines?.reduce((items, line) => items + line.qty, 0) ?? 0,
             false
         );
@@ -360,11 +361,11 @@ export class ProductScreen extends Component {
     async _barcodeProductAction(code) {
         const product = await this._getProductByBarcode(code);
         if (!product) {
-            this.sound.play("scan-error");
+            this.soundEffects.play("scan-error");
             this.barcodeReader.showNotFoundNotification(code);
             return;
         }
-        this.sound.play("beep");
+        this.soundEffects.play("beep");
 
         if (!(await this.pos.canAddProductToCurrentOrder(product.product_tmpl_id))) {
             return;
@@ -394,13 +395,13 @@ export class ProductScreen extends Component {
     async _barcodePartnerAction(code) {
         const partner = await this._getPartnerByBarcode(code);
         if (partner) {
-            this.sound.play("beep");
+            this.soundEffects.play("beep");
             if (this.currentOrder.getPartner() !== partner) {
                 this.pos.setPartnerToCurrentOrder(partner);
             }
             return;
         }
-        this.sound.play("scan-error");
+        this.soundEffects.play("scan-error");
         this.barcodeReader.showNotFoundNotification(code);
     }
     _barcodeDiscountAction(code) {
@@ -421,13 +422,13 @@ export class ProductScreen extends Component {
         const product = await this._getProductByBarcode(productBarcode);
 
         if (!product) {
-            this.sound.play("scan-error");
+            this.soundEffects.play("scan-error");
             this.barcodeReader.showNotFoundNotification(
                 parsed_results.find((element) => element.type === "product")
             );
             return;
         }
-        this.sound.play("beep");
+        this.soundEffects.play("beep");
 
         if (!(await this.pos.canAddProductToCurrentOrder(product.product_tmpl_id))) {
             return;

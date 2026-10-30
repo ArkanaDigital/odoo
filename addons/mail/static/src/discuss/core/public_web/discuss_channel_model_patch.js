@@ -8,29 +8,32 @@ import { patch } from "@web/core/utils/patch";
 const discussChannelPatch = {
     setup() {
         super.setup(...arguments);
-        this.isLocallyPinned = fields.Attr(false, {
-            onUpdate() {
+        this.isLocallyPinned = false;
+        this.onChange(
+            () => [this.isLocallyPinned],
+            function onChangeIsLocallyPinned() {
                 this.onPinStateUpdated();
             },
-        });
+            { immediate: true }
+        );
         this.lastSubChannelLoaded = fields.One("discuss.channel");
         this.loadSubChannelsDone = false;
         this.messagingMenuTabs = fields.Many("MessagingMenuTab", {
             inverse: "channels",
             /** @this {import("models").DiscussChannel} */
             compute() {
-                return Object.values(this.store.MessagingMenuTab.records).filter((tab) =>
+                return [...this.store.MessagingMenuTab.records.values()].filter((tab) =>
                     tab.includesChannel(this)
                 );
             },
             eager: true,
         });
-        this.primaryMessagingMenuTab = fields.One("MessagingMenuTab", {
-            /** @this {import("models").DiscussChannel} */
-            compute() {
-                return this.messagingMenuTabs[0];
-            },
-        });
+        this.primaryMessagingMenuTab = this.computed(
+            () =>
+                // A context specific tab only exists within its context: it wins over the
+                // app wide tab claiming the same channel.
+                this.messagingMenuTabs.find((t) => !t.appWide) ?? this.messagingMenuTabs[0]
+        );
         this.messagingMenuTabsWithCounter = fields.Many("MessagingMenuTab", {
             inverse: "channelsWithCounter",
             /** @this {import("models").DiscussChannel} */
@@ -70,12 +73,9 @@ const discussChannelPatch = {
     /** @param {string} description */
     async notifyDescriptionToServer(description) {
         this.description = description;
-        return this.store.env.services.orm.call(
-            "discuss.channel",
-            "channel_change_description",
-            [[this.id]],
-            { description }
-        );
+        return this.store.orm.call("discuss.channel", "channel_change_description", [[this.id]], {
+            description,
+        });
     },
     /**
      * @param {Object} [param0={}]
@@ -184,23 +184,16 @@ const discussChannelPatch = {
             this.sub_channel_ids.forEach((c) => (c.isLocallyPinned = false));
         }
         if (!this.self_member_id?.is_pinned && !this.isLocallyPinned && this.discussAppAsThread) {
-            if (this.store.discuss.isActive) {
-                const newChannel = this.store.messagingMenu.channelTab.channels.find(
-                    (channel) => channel.self_member_id?.is_pinned
-                );
-                if (newChannel) {
-                    newChannel.setAsDiscussThread();
-                } else {
-                    this.store.discuss.thread = undefined;
-                }
-            } else {
-                this.store.discuss.thread = undefined;
+            this.store.discuss.thread = undefined;
+            const sidebarState = this.store.discuss.sidebarState;
+            if (this.store.discuss.isActive && sidebarState.activeTab) {
+                sidebarState.selectTab(sidebarState.activeTab);
             }
         }
     },
     /** @override */
     _openChannel() {
-        if (this.store.discuss.isActive && !this.store.env.services.ui.isSmall) {
+        if (this.store.discuss.isActive && !this.store.ui.isSmall()) {
             this.setAsDiscussThread();
             return true;
         }

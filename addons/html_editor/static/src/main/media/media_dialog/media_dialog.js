@@ -10,22 +10,22 @@ const DEFAULT_SEQUENCE = 50;
 const sequence = (tab) => tab.sequence ?? DEFAULT_SEQUENCE;
 
 export const mediaDialogProps = {
-    extraTabs: t.array(t.object()).optional([]),
-    visibleTabs: t.array(t.string()).optional(),
     activeTab: t.string().optional(),
-    media: t.any().optional(),
-    onlyImages: t.boolean().optional(),
-    noImages: t.boolean().optional(),
-    multiImages: t.boolean().optional(),
     addFieldImage: t.boolean().optional(),
-    useMediaLibrary: t.boolean().optional(true),
-    resModel: t.any().optional(),
-    resId: t.any().optional(),
-    onAttachmentChange: t.function().optional(),
-    pendingAttachments: t.array().optional([]),
-    save: t.function(),
     close: t.function(),
-    document: t.customValidator(t.any(), (p) => p.nodeType === Node.DOCUMENT_NODE),
+    document: t.customValidator(t.object(), (p) => p.nodeType === Node.DOCUMENT_NODE),
+    extraTabs: t.array(t.object()).optional([]),
+    media: t.any().optional(),
+    multiImages: t.boolean().optional(),
+    noImages: t.boolean().optional(),
+    onAttachmentChange: t.function().optional(),
+    onlyImages: t.boolean().optional(),
+    pendingAttachments: t.array().optional([]),
+    resId: t.any().optional(),
+    resModel: t.any().optional(),
+    save: t.function(),
+    useMediaLibrary: t.boolean().optional(true),
+    visibleTabs: t.array(t.string()).optional(),
 };
 
 export class MediaDialog extends Component {
@@ -34,6 +34,7 @@ export class MediaDialog extends Component {
         Dialog,
         Notebook,
     };
+
     props = useProps(mediaDialogProps);
 
     setup() {
@@ -100,6 +101,7 @@ export class MediaDialog extends Component {
                 ...tab.props,
                 ...additionalProps,
                 id: tab.id,
+                document: this.props.document,
                 resModel: this.props.resModel,
                 resId: this.props.resId,
                 media: this.props.media,
@@ -192,15 +194,18 @@ export class MediaDialog extends Component {
         }
     }
 
+    async preProcessSave() {}
+
     async save() {
         const tab = this.activeTab();
-        const selectedMedia = this.selectedMedia[tab];
         if (this.errorMessages[tab]) {
             this.notificationService.add(this.errorMessages[tab], {
                 type: "danger",
             });
             return;
         }
+        await this.preProcessSave();
+        const selectedMedia = this.selectedMedia[tab];
         // TODO In master: clean the save method so it performs the specific
         // adaptation before saving from the active media selector and find a
         // way to simply close the dialog if the media element remains the same.

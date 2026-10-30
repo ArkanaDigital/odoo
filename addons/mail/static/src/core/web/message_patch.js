@@ -28,7 +28,7 @@ patch(Message.prototype, {
         return {
             ...super.attClass,
             "o-needaction-message o-rounded-bubble bg-view shadow-sm border pb-1 pt-sm-2":
-                this.message.needaction && this.env.inChatter,
+                this.message.needaction && this.ancestors.inChatter,
         };
     },
     get authorAvatarAttClass() {
@@ -68,9 +68,7 @@ patch(Message.prototype, {
         }
     },
 
-    /**
-     * @returns {string}
-     */
+    /** @returns {TranslatedString} */
     formatTracking(trackingFieldInfo, trackingValue) {
         switch (trackingFieldInfo.fieldType) {
             case "boolean":
@@ -109,9 +107,7 @@ patch(Message.prototype, {
         }
     },
 
-    /**
-     * @returns {string}
-     */
+    /** @returns {TranslatedString} */
     formatTrackingOrNone(trackingFieldInfo, trackingValue) {
         const formattedValue = this.formatTracking(trackingFieldInfo, trackingValue);
         return formattedValue

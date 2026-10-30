@@ -55,6 +55,9 @@ export class AttendeeCalendarCommonRenderer extends CalendarCommonRenderer {
             } else {
                 classesToAdd.push(`o_attendee_status_${record.attendeeStatus}`);
             }
+            if (record.rawRecord.is_draft) {
+                classesToAdd.push("o_calendar_event_draft");
+            }
         }
         return classesToAdd;
     }
@@ -95,7 +98,7 @@ export class AttendeeCalendarCommonRenderer extends CalendarCommonRenderer {
             record &&
             this.env.searchModel?.context?.default_calendar_event_id === parseInt(event.id) &&
             !this.popover.isOpen &&
-            !el.classList.contains('fc-event-dragging')
+            !el.classList.contains("o_calendar_event_dragging")
         ) {
             this.openPopover(el, record);
         }

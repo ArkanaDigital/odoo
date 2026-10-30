@@ -4,14 +4,15 @@
 #
 # "Tiffany Chang (tic)" <tic@odoo.com>, 2025.
 # Alin Ilie <alin.ilie@logit-solutions.com>, 2025.
+# Weblate <noreply-mt-weblate@weblate.org>, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 19.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-06-19 17:38+0000\n"
-"PO-Revision-Date: 2026-06-21 12:57+0000\n"
+"POT-Creation-Date: 2026-09-11 17:44+0000\n"
+"PO-Revision-Date: 2026-08-31 19:16+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Romanian <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Romanian <https://translate.odoo.com/projects/odoo-s19-4/"
 "website_sale_collect/ro/>\n"
 "Language: ro\n"
 "MIME-Version: 1.0\n"
@@ -19,7 +20,15 @@ msgstr ""
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=3; plural=n==1 ? 0 : (n==0 || (n%100 > 0 && n%100 < "
 "20)) ? 1 : 2;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: website_sale_collect
+#: model:ir.module.module,description:base.module_website_sale_collect
+msgid ""
+"\n"
+"Allows customers to check in-store stock, pay on site, and pick up their "
+"orders at the shop.\n"
+msgstr ""
 
 #. module: website_sale_collect
 #. odoo-python
@@ -29,14 +38,14 @@ msgstr ""
 
 #. module: website_sale_collect
 #: model_terms:ir.ui.view,arch_db:website_sale_collect.unavailable_products_warning
-msgid "<i class=\"fa fa-fw fa-heart\"/> In wishlist"
+msgid "<i class=\"oi oi-fw oi-filled\" data-icon=\"favorite\"/> In wishlist"
 msgstr ""
 
 #. module: website_sale_collect
 #: model_terms:ir.ui.view,arch_db:website_sale_collect.unavailable_products_warning
 msgid ""
-"<i class=\"fa fa-fw fa-heart-o\" role=\"presentation\" aria-label=\"Add to "
-"wishlist\"/>\n"
+"<i class=\"oi oi-fw\" data-icon=\"favorite\" role=\"presentation\" aria-"
+"label=\"Add to wishlist\"/>\n"
 "                                    Wishlist"
 msgstr ""
 
@@ -47,16 +56,15 @@ msgstr ""
 
 #. module: website_sale_collect
 #. odoo-javascript
-#: code:addons/website_sale_collect/static/src/js/click_and_collect_availability/click_and_collect_availability.xml:0
 #: code:addons/website_sale_collect/static/src/js/location_selector/location/location.xml:0
+#, fuzzy
 msgid "Available"
-msgstr ""
+msgstr "Disponibil"
 
 #. module: website_sale_collect
-#. odoo-javascript
-#: code:addons/website_sale_collect/static/src/js/click_and_collect_availability/click_and_collect_availability.xml:0
-msgid "Change store"
-msgstr "Schimbă magazinul"
+#: model:ir.module.module,shortdesc:base.module_website_sale_collect
+msgid "Click & Collect"
+msgstr ""
 
 #. module: website_sale_collect
 #: model:ir.model,name:website_sale_collect.model_res_config_settings
@@ -82,19 +90,27 @@ msgstr "Mod personalizat"
 #. module: website_sale_collect
 #. odoo-javascript
 #: code:addons/website_sale_collect/static/src/js/click_and_collect_availability/click_and_collect_availability.xml:0
+#, fuzzy
 msgid "Delivery"
-msgstr ""
+msgstr "Livrare"
 
 #. module: website_sale_collect
 #: model:ir.model,name:website_sale_collect.model_delivery_carrier
+#, fuzzy
 msgid "Delivery Method"
-msgstr ""
+msgstr "Metodă de livrare"
 
 #. module: website_sale_collect
 #. odoo-python
 #: code:addons/website_sale_collect/models/res_config_settings.py:0
 msgid "Delivery Methods"
 msgstr "Metode de livrare"
+
+#. module: website_sale_collect
+#. odoo-javascript
+#: code:addons/website_sale_collect/static/src/js/click_and_collect_availability/click_and_collect_availability.xml:0
+msgid "Delivery available"
+msgstr ""
 
 #. module: website_sale_collect
 #: model_terms:ir.ui.view,arch_db:website_sale_collect.in_store_delivery_method
@@ -114,6 +130,18 @@ msgstr "Metoda de livrare"
 #: model:ir.model.fields,field_description:website_sale_collect.field_website__display_name
 msgid "Display Name"
 msgstr "Nume afișat"
+
+#. module: website_sale_collect
+#. odoo-javascript
+#: code:addons/website_sale_collect/static/src/js/location_selector/map_container/map_container.xml:0
+msgid "Exceptional closing from"
+msgstr ""
+
+#. module: website_sale_collect
+#. odoo-javascript
+#: code:addons/website_sale_collect/static/src/js/location_selector/map_container/map_container.xml:0
+msgid "Exceptional closing on"
+msgstr ""
 
 #. module: website_sale_collect
 #: model:ir.model.fields,field_description:website_sale_collect.field_delivery_carrier__id
@@ -137,6 +165,18 @@ msgstr "Metoda de livrare în magazin"
 #. module: website_sale_collect
 #. odoo-python
 #: code:addons/website_sale_collect/models/payment_provider.py:0
+msgid "In-store is only allowed if a sales order exists"
+msgstr ""
+
+#. module: website_sale_collect
+#. odoo-python
+#: code:addons/website_sale_collect/models/payment_provider.py:0
+msgid "In-store not allowed to pay less than the order remaining balance"
+msgstr ""
+
+#. module: website_sale_collect
+#. odoo-python
+#: code:addons/website_sale_collect/models/payment_provider.py:0
 msgid "No in-store delivery methods available"
 msgstr ""
 
@@ -144,8 +184,9 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/website_sale_collect/static/src/js/click_and_collect_availability/click_and_collect_availability.xml:0
 #: model_terms:ir.ui.view,arch_db:website_sale_collect.in_store_delivery_method
+#, fuzzy
 msgid "Not available"
-msgstr ""
+msgstr "Nu este disponibil"
 
 #. module: website_sale_collect
 #: model:ir.model.fields,field_description:website_sale_collect.field_stock_warehouse__opening_hours
@@ -155,8 +196,9 @@ msgstr "Program"
 #. module: website_sale_collect
 #. odoo-javascript
 #: code:addons/website_sale_collect/static/src/js/location_selector/location/location.xml:0
+#, fuzzy
 msgid "Out of stock"
-msgstr ""
+msgstr "Stoc epuizat"
 
 #. module: website_sale_collect
 #: model:payment.provider,name:website_sale_collect.payment_provider_on_site
@@ -190,6 +232,18 @@ msgstr "Tranzacție de plată"
 #: model:product.template,name:website_sale_collect.product_pick_up_in_store_product_template
 msgid "Pick up in store"
 msgstr "Ridicare de la sediu"
+
+#. module: website_sale_collect
+#. odoo-javascript
+#: code:addons/website_sale_collect/static/src/js/click_and_collect_availability/click_and_collect_availability.xml:0
+msgid "Pickup"
+msgstr ""
+
+#. module: website_sale_collect
+#. odoo-javascript
+#: code:addons/website_sale_collect/static/src/js/click_and_collect_availability/click_and_collect_availability.xml:0
+msgid "Pickup available"
+msgstr ""
 
 #. module: website_sale_collect
 #. odoo-python
@@ -238,13 +292,25 @@ msgstr "La fel ca detaliile de contact"
 #. module: website_sale_collect
 #. odoo-javascript
 #: code:addons/website_sale_collect/static/src/js/click_and_collect_availability/click_and_collect_availability.xml:0
-msgid "Select store"
-msgstr "Selectează sediul"
+msgid "Select a Store"
+msgstr ""
 
 #. module: website_sale_collect
 #. odoo-javascript
 #: code:addons/website_sale_collect/static/src/js/location_selector/location_selector_dialog/location_selector_dialog.xml:0
 msgid "Selected country:"
+msgstr ""
+
+#. module: website_sale_collect
+#. odoo-javascript
+#: code:addons/website_sale_collect/static/src/js/click_and_collect_availability/click_and_collect_availability.xml:0
+msgid "Shipping"
+msgstr ""
+
+#. module: website_sale_collect
+#. odoo-javascript
+#: code:addons/website_sale_collect/static/src/js/click_and_collect_availability/click_and_collect_availability.xml:0
+msgid "Shipping method"
 msgstr ""
 
 #. module: website_sale_collect
@@ -327,7 +393,7 @@ msgid "Your order will be ready on %s."
 msgstr ""
 
 #. module: website_sale_collect
-#: model_terms:payment.provider,done_msg:website_sale_collect.payment_provider_on_site
+#: model_terms:payment.provider,pending_msg:website_sale_collect.payment_provider_on_site
 msgid "Your order will be ready soon."
 msgstr ""
 
@@ -342,25 +408,45 @@ msgid "Your payment has been cancelled."
 msgstr "Plata dvs. a fost anulată."
 
 #. module: website_sale_collect
-#: model_terms:payment.provider,pending_msg:website_sale_collect.payment_provider_on_site
-msgid "Your payment has been processed but is waiting for approval."
+#: model_terms:payment.provider,done_msg:website_sale_collect.payment_provider_on_site
+msgid "Your payment has been processed."
+msgstr "Plata dvs. a fost procesată."
+
+#. module: website_sale_collect
+#. odoo-javascript
+#: code:addons/website_sale_collect/static/src/js/click_and_collect_availability/click_and_collect_availability.js:0
+msgid "from %(date)s"
 msgstr ""
 
 #. module: website_sale_collect
 #. odoo-javascript
 #: code:addons/website_sale_collect/static/src/js/click_and_collect_availability/click_and_collect_availability.xml:0
 #: code:addons/website_sale_collect/static/src/js/location_selector/location/location.xml:0
+#, fuzzy
 msgid "in stock"
+msgstr "în stoc"
+
+#. module: website_sale_collect
+#. odoo-javascript
+#: code:addons/website_sale_collect/static/src/js/location_selector/map_container/map_container.xml:0
+msgid "to"
 msgstr ""
+
+#~ msgid "Change store"
+#~ msgstr "Schimbă magazinul"
+
+#~ msgid "Select store"
+#~ msgstr "Selectează sediul"
+
+#, fuzzy
+#~ msgid "Your payment has been processed but is waiting for approval."
+#~ msgstr "Plata dvs. a fost procesată, dar așteaptă aprobarea."
 
 #~ msgid "%(available_qty)s/%(line_qty)s available at this location"
 #~ msgstr "%(available_qty)s/%(line_qty)s disponibile în această locație"
 
 #~ msgid "Sorry, we are unable to ship your order."
 #~ msgstr "Ne pare rău, nu putem expedia comanda dvs."
-
-#~ msgid "Your payment has been processed."
-#~ msgstr "Plata dvs. a fost procesată."
 
 #~ msgid "no in-store delivery methods available"
 #~ msgstr "nu sunt disponibile metode de livrare în magazin"

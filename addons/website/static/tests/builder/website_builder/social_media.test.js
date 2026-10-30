@@ -22,6 +22,8 @@ async function setupSocialMediaSnippet(socialValues = {}, options = {}) {
     // Mock RPC to fetch the current company's social media links.
     onRpc("res.company", "read", () => [{ id: 1, ...defaults }]);
     const builder = await setupWebsiteBuilderWithSnippet("s_social_media", options);
+    const snippetEl = builder.getEditableContent().querySelector(".s_social_media");
+    await builder.getEditor().shared.socialMediaOptionPlugin.prefillSocialMediaLinks(snippetEl);
     builder.getEditor().shared.history.commit();
     return builder;
 }
@@ -44,6 +46,8 @@ async function testSocialSnippetOptions(snippetName, containerTitle, iconName) {
     onRpc("res.company", "read", () => [
         { id: 1, [`social_${iconName}`]: `https://${iconName}.com/odoo` },
     ]);
+    onRpc("/website/social/facebook", () => ({}));
+    onRpc("/html_editor/link_preview_internal", () => ({}));
 
     onRpc(`${location.origin}/website/social/facebook`, () => ({
         title: "title",
@@ -60,6 +64,8 @@ async function testSocialSnippetOptions(snippetName, containerTitle, iconName) {
             color: inherit !important;
         }`,
     });
+    const snippetEl = core.getEditableContent().querySelector(`.${snippetName}`);
+    await core.getEditor().shared.socialMediaOptionPlugin.prefillSocialMediaLinks(snippetEl);
 
     expect(snippetSelector).toHaveCount(1);
     await click(`${snippetSelector} i:first-child`);
@@ -144,7 +150,7 @@ test("reorder social medias", async () => {
     await click(":iframe h4");
 
     await contains("button[data-action-id='addSocialMediaLink']").click();
-    await contains("tr:nth-child(9) input").fill("/first");
+    await contains("tr:nth-child(9) input").edit("https://www.example.com/first");
     await contains("button[data-action-id='addSocialMediaLink']").click();
 
     expect("tr:nth-child(1) input").toHaveValue("https://fb.com/odoo");
@@ -205,7 +211,7 @@ test("reorder social medias", async () => {
     expect(":iframe a:nth-of-type(7)").toHaveAttribute("href", "https://www.discord.com/your-page");
     expect(":iframe a:nth-of-type(8)").toHaveAttribute("href", "https://www.example.com/first");
 
-    await contains(".o-snippets-top-actions button[data-icon='undo']").click();
+    await contains(".o_hb_snippets_top_actions button[data-icon='undo']").click();
 
     expect("tr:nth-child(1) input[type=text]").toHaveValue("https://www.linkedin.com/your-page");
     expect("tr:nth-child(2) input[type=text]").toHaveValue("https://x.com/odoo");
@@ -247,7 +253,7 @@ test("share snippet should not be editable (except title) nor user-selectable", 
 test("Edit share icon", async () => {
     const dragAndDropSnippet = async (dataSnippet) => {
         const dragUtils = await contains(
-            `.o-snippets-menu #snippet_content .o_snippet_thumbnail[data-snippet='${dataSnippet}']`
+            `.o_hb_snippets_menu #snippet_content .o_snippet_thumbnail[data-snippet='${dataSnippet}']`
         ).drag();
         await dragUtils.moveTo(":iframe .s_text_image .oe_drop_zone");
         await dragUtils.drop(getDragHelper());
@@ -270,11 +276,39 @@ test("Social Media snippet options are correct", async () => {
 });
 
 test("Share snippet options are correct", async () => {
-    const rowSelector = (id) => `.we-bg-options-container .o_row_draggable[data-id="${id}"]`;
+    const rowSelector = (id) => `.o_hb_bg_options_container .o_row_draggable[data-id="${id}"]`;
     await testSocialSnippetOptions("s_share", "Share", "facebook");
     expect(":iframe .s_share.o_not_editable").toHaveCount(1);
     await contains(`${rowSelector(0)} .o_handle_cell`).dragAndDrop(rowSelector(1));
     expect(":iframe .s_share a:first-of-type").toHaveClass("s_share_twitter");
     await contains(".o_we_table_wrapper tr:nth-of-type(1) .o-checkbox input").click();
     expect(":iframe .s_share .s_share_twitter.d-none").toHaveCount(1);
+});
+
+test("Social Media snippets have title attribute", async () => {
+    onRpc("/website/get_suggested_links", () => ({ matching_pages: [], others: [] }));
+    await setupSocialMediaSnippet();
+
+    await click(":iframe h4");
+
+    await animationFrame();
+    expect(":iframe a[href='https://www.facebook.com/your-page']").toHaveAttribute(
+        "title",
+        "facebook.com/your-page"
+    );
+
+    await contains("button[data-action-id='addSocialMediaLink']").click();
+    await contains("tr:last-child input[type=text]").edit("ftp://localhost/test");
+    await contains("button[data-action-id='addSocialMediaLink']").click();
+    expect(":iframe a[href='ftp://localhost/test']").toHaveAttribute(
+        "title",
+        "ftp://localhost/test"
+    );
+
+    await contains("tr:last-child input[type=text]").edit("http://unsecuresite.com");
+    await contains("button[data-action-id='addSocialMediaLink']").click();
+    expect(":iframe a[href='http://unsecuresite.com']").toHaveAttribute(
+        "title",
+        "http://unsecuresite.com"
+    );
 });

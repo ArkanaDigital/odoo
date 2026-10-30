@@ -1,14 +1,13 @@
 import {
-    click,
-    contains,
+    actionPanel,
     defineMailModels,
     openDiscuss,
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
-import { describe, test } from "@odoo/hoot";
+import { describe, test, waitFor } from "@odoo/hoot";
 
-import { Command, getService, serverState } from "@web/../tests/web_test_helpers";
+import { Command, contains, getService, serverState } from "@web/../tests/web_test_helpers";
 
 describe.current.tags("desktop");
 defineMailModels();
@@ -54,25 +53,27 @@ test("call participants and invitees are grouped in their own box", async () => 
     });
     await start();
     await openDiscuss(channelId);
-    await click("[title='Join Call']");
-    await contains(".o-discuss-ChannelMemberList");
-    await contains(
-        ".o-discuss-ChannelMemberList-group h6:text('In this call - 2') + div .o-discuss-ChannelMember:text('Mitchell Admin')"
+    await contains("[title='Join Call']:count(1)").click();
+    await waitFor(`${actionPanel("Members")}:count(1)`);
+    await waitFor(
+        ".o-discuss-ChannelMemberList-group h6:text('In this call - 2') + div .o-discuss-ChannelMember:text('Mitchell Admin'):count(1)"
     );
-    await contains(
-        ".o-discuss-ChannelMemberList-group h6:text('In this call - 2') + div .o-discuss-ChannelMember:text('Alice')"
+    await waitFor(
+        ".o-discuss-ChannelMemberList-group h6:text('In this call - 2') + div .o-discuss-ChannelMember:text('Alice'):count(1)"
     );
-    await contains(
-        ".o-discuss-ChannelMemberList-group h6:text('Also invited - 1') + div .o-discuss-ChannelMember:text('Laurie')"
+    await waitFor(
+        ".o-discuss-ChannelMemberList-group h6:text('Also invited - 1') + div .o-discuss-ChannelMember:text('Laurie'):count(1)"
     );
-    await contains(
-        ".o-discuss-ChannelMemberList h6:text('Online - 1') + div .o-discuss-ChannelMember:text('Bob')"
+    await waitFor(
+        `${actionPanel(
+            "Members"
+        )} h6:text('Online - 1') + div .o-discuss-ChannelMember:text('Bob'):count(1)`
     );
-    await contains(".o-discuss-ChannelMemberList-group h6:text('In this call - 2')");
-    await contains(".o-discuss-ChannelMemberList-group h6:text('Also invited - 1')");
-    await contains(".o-discuss-ChannelMemberList-group h6", { count: 2 });
+    await waitFor(".o-discuss-ChannelMemberList-group h6:text('In this call - 2'):count(1)");
+    await waitFor(".o-discuss-ChannelMemberList-group h6:text('Also invited - 1'):count(1)");
+    await waitFor(".o-discuss-ChannelMemberList-group h6:count(2)");
     // Every member is listed exactly once across the call box and the Online section.
-    await contains(".o-discuss-ChannelMember", { count: 4 });
+    await waitFor(".o-discuss-ChannelMember:count(4)");
 });
 
 test("can see who is talking among call participants", async () => {
@@ -103,9 +104,11 @@ test("can see who is talking among call participants", async () => {
     });
     await start();
     await openDiscuss(channelId);
-    await click("[title='Join Call']");
+    await contains("[title='Join Call']:count(1)").click();
     // Talking indicator shows up while Alice is actually talking.
     const store = getService("mail.store");
     store["discuss.channel.rtc.session"].get(aliceSessionId).isTalking = true;
-    await contains(".o-discuss-ChannelMember:has(:text('Alice')) .o-discuss-TalkingAudioBars");
+    await waitFor(
+        ".o-discuss-ChannelMember:has(:text('Alice')) .o-discuss-TalkingAudioBars:count(1)"
+    );
 });

@@ -26,14 +26,12 @@ class TestWarehouseMrp(common.TestMrpCommon):
             'uom_id': cls.uom_unit.id,
             'type': 'consu',
             'is_storable': True,
-            'tracking': 'none',
         })
         cls.laptop = cls.env['product.product'].create({
             'name': 'Acoustic Bloc Screens',
             'uom_id': cls.uom_unit.id,
             'type': 'consu',
             'is_storable': True,
-            'tracking': 'none',
         })
         cls.depot_location = cls.env['stock.location'].create({
             'name': 'Depot',
@@ -172,7 +170,6 @@ class TestWarehouseMrp(common.TestMrpCommon):
 
         self.warehouse_1.manufacture_steps = "pbm"
         self.warehouse_1.resupply_wh_ids = [Command.set([warehouse_2.id])]
-        self.product_6.route_ids = [Command.set([self.route_manufacture.id, self.route_mto.id])]
         self.product_4.route_ids = [Command.set([
             self.warehouse_1.resupply_route_ids.id,
             self.route_mto.id,
@@ -296,17 +293,22 @@ class TestWarehouseMrp(common.TestMrpCommon):
         change_qty.change_prod_qty()
         self.assertEqual(len(mo_laptop.move_finished_ids.move_line_ids), 2)
         mo_laptop.action_generate_serial()
+        self.env['change.production.qty'].create({
+            'mo_id': mo_laptop.id,
+            'product_qty': 4,
+        }).change_prod_qty()
+        self.assertEqual(len(mo_laptop.move_finished_ids.move_line_ids), 3)
         mo_laptop.button_mark_done()
         self.assertEqual(mo_laptop.state, 'done')
         move_lines = mo_laptop.move_finished_ids.move_line_ids
         self.assertTrue(all(ml.lot_id == mo_laptop.lot_producing_ids for ml in move_lines))
-        self.assertEqual(sum(move_lines.mapped('quantity')), 3)
+        self.assertEqual(sum(move_lines.mapped('quantity')), 4)
 
     def test_backorder_unpacking(self):
         """ Test that movement of pack in backorder is correctly handled. """
         self.warehouse_1.manufacture_steps = 'pbm'
 
-        self.product_1.tracking = 'none'
+        self.product_1.is_storable = True
         self.env['stock.quant']._update_available_quantity(self.product_1, self.stock_location, 100)
 
         mo_form = Form(self.env['mrp.production'])
@@ -384,6 +386,19 @@ class TestWarehouseMrp(common.TestMrpCommon):
         orderpoint = self.env['stock.warehouse.orderpoint'].create({'product_id': self.laptop.id})
         self.assertEqual(routes[0].name, orderpoint.route_id_placeholder)
 
+    def test_manufacturing_putaway_after_manual_reservation(self):
+        """Test the putaway of the produced product after manually reserving
+        the components following an unreservation."""
+        self.laptop.tracking = 'lot'
+        mo = self.new_mo_laptop()
+        mo.do_unreserve()
+        mo.move_raw_ids.move_line_ids = [Command.create({
+            'product_id': self.graphics_card.id,
+            'quantity': 1,
+        })]
+        mo.button_mark_done()
+        self.assertEqual(mo.move_finished_ids.move_line_ids.location_dest_id, self.depot_location)
+
 
 class TestKitPicking(common.TestMrpCommon):
     _test_user_groups = (
@@ -404,7 +419,7 @@ class TestKitPicking(common.TestMrpCommon):
         def create_product(name):
             return cls.env['product.product'].create({
                 'name': name,
-                'tracking': 'none',
+                'is_storable': True,
             })
 
         # Create a kit 'kit_parent' :

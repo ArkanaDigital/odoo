@@ -1131,7 +1131,7 @@ describe("column resize", () => {
             {
                 config: {
                     allowTextColumnResize: false,
-                }
+                },
             }
         );
 
@@ -1150,6 +1150,256 @@ describe("column resize", () => {
         await animationFrame();
         expect(targetColumn).not.toHaveClass("o_resize_handle");
     });
+});
+
+test.tags("desktop");
+test("inner table resize is clamped by parent table boundary", async () => {
+    const { el } = await setupEditor(
+        unformat(`
+            <table class="table table-bordered o_table" style="width: 800px;">
+                <colgroup>
+                    <col style="width: 800px;">
+                </colgroup>
+                <tbody>
+                    <tr>
+                        <td>
+                            <table class="table table-bordered o_table" style="width: 500px; margin-left: 100px;">
+                                <colgroup>
+                                    <col style="width: 200px;">
+                                    <col style="width: 300px;">
+                                </colgroup>
+                                <tbody>
+                                    <tr>
+                                        <td><p><br></p></td>
+                                        <td><p><br></p></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        `)
+    );
+
+    const outerTable = el.querySelectorAll("table")[0];
+    const innerTable = el.querySelectorAll("table")[1];
+    const targetCell = innerTable.rows[0].cells[1];
+    const targetRect = targetCell.getBoundingClientRect();
+    const startX = targetRect.right;
+    const startY = targetRect.top + targetRect.height / 2;
+    const tableWidthBefore = innerTable.offsetWidth;
+
+    // Trigger resize via pointer hover
+    manuallyDispatchProgrammaticEvent(targetCell, "pointermove", {
+        clientX: startX,
+        clientY: startY,
+    });
+    await animationFrame();
+
+    manuallyDispatchProgrammaticEvent(targetCell, "pointerdown", {
+        clientX: startX,
+        clientY: startY,
+    });
+    await animationFrame();
+
+    // First resize: width should increase normally
+    manuallyDispatchProgrammaticEvent(targetCell, "pointermove", {
+        clientX: startX + 100,
+        clientY: startY,
+    });
+    await animationFrame();
+
+    const tableWidthAfterSmallResize = innerTable.offsetWidth;
+    expect(tableWidthAfterSmallResize).toBeGreaterThan(tableWidthBefore);
+
+    // Try to resize far beyond parent boundary
+    manuallyDispatchProgrammaticEvent(targetCell, "pointermove", {
+        clientX: startX + 1000,
+        clientY: startY,
+    });
+    await animationFrame();
+
+    manuallyDispatchProgrammaticEvent(targetCell, "pointerup", {
+        clientX: startX + 1000,
+        clientY: startY,
+    });
+    await animationFrame();
+
+    const tableWidthAfterClampedResize = innerTable.offsetWidth;
+    // Width should stop increasing once boundary is reached
+    expect(tableWidthAfterClampedResize).toBe(tableWidthAfterSmallResize);
+    // Inner table should remain inside parent boundary
+    expect(innerTable.offsetWidth + parseFloat(innerTable.style.marginLeft)).toBeLessThan(
+        outerTable.clientWidth
+    );
+});
+
+test.tags("desktop");
+test("text columns first column resize outward is clamped by parent table boundary", async () => {
+    const { el } = await setupEditor(
+        unformat(`
+            <table class="table table-bordered o_table" style="width: 900px;">
+                <colgroup>
+                    <col style="width: 900px;">
+                </colgroup>
+                <tbody>
+                    <tr>
+                        <td>
+                            <div class="container o_text_columns o-contenteditable-false" contenteditable="false">
+                                <div class="row" style="width: 500px; margin-left: 100px !important;">
+                                    <div class="col-4 o-contenteditable-true" contenteditable="true" style="width: 200px;">
+                                        <p o-we-hint-text="Empty column" class="o-we-hint">[]</p>
+                                    </div>
+                                    <div class="col-4 o-contenteditable-true" contenteditable="true" style="width: 300px;">
+                                        <p o-we-hint-text="Empty column" class="o-we-hint"><br></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        `)
+    );
+
+    const table = el.querySelector("table");
+    const row = el.querySelector(".o_text_columns .row");
+    const targetColumn = row.firstElementChild;
+    const targetRect = targetColumn.getBoundingClientRect();
+    const startX = targetRect.left;
+    const startY = targetRect.top + targetRect.height / 2;
+    const rowWidthBefore = row.offsetWidth;
+    const marginLeftBefore = parseFloat(row.style.marginLeft);
+
+    // Trigger resize via pointer hover.
+    manuallyDispatchProgrammaticEvent(targetColumn, "pointermove", {
+        clientX: startX,
+        clientY: startY,
+    });
+    await animationFrame();
+
+    manuallyDispatchProgrammaticEvent(targetColumn, "pointerdown", {
+        clientX: startX,
+        clientY: startY,
+    });
+    await animationFrame();
+
+    // First resize: width should increase normally.
+    manuallyDispatchProgrammaticEvent(targetColumn, "pointermove", {
+        clientX: startX - 50,
+        clientY: startY,
+    });
+    await animationFrame();
+
+    const rowWidthAfterSmallResize = row.offsetWidth;
+    expect(rowWidthAfterSmallResize).toBeGreaterThan(rowWidthBefore);
+
+    // Try to resize far beyond parent table boundary.
+    manuallyDispatchProgrammaticEvent(targetColumn, "pointermove", {
+        clientX: startX - 1200,
+        clientY: startY,
+    });
+    await animationFrame();
+
+    manuallyDispatchProgrammaticEvent(targetColumn, "pointerup", {
+        clientX: startX - 1200,
+        clientY: startY,
+    });
+    await animationFrame();
+
+    const rowWidthAfterClampedResize = row.offsetWidth;
+    const marginLeftAfter = parseFloat(row.style.marginLeft);
+    // Width should stop increasing once boundary is reached.
+    expect(rowWidthAfterClampedResize).toBe(rowWidthAfterSmallResize);
+    // Row should remain inside table boundary.
+    expect(row.offsetWidth + marginLeftAfter).toBeLessThan(table.clientWidth);
+    // Margin-left should not move beyond available space.
+    expect(marginLeftAfter).toBeLessThan(marginLeftBefore);
+});
+
+test.tags("desktop");
+test("outer table column cannot be shrunk below nested table width", async () => {
+    const { el } = await setupEditor(
+        unformat(`
+            <table class="table table-bordered o_table" style="width: 800px;">
+                <colgroup>
+                    <col style="width: 400px;">
+                    <col style="width: 400px;">
+                </colgroup>
+                <tbody>
+                    <tr>
+                        <td>
+                            <table class="table table-bordered o_table" style="width: 300px;">
+                                <colgroup>
+                                    <col style="width: 150px;">
+                                    <col style="width: 150px;">
+                                </colgroup>
+                                <tbody>
+                                    <tr>
+                                        <td><p><br></p></td>
+                                        <td><p><br></p></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </td>
+                        <td><p><br></p></td>
+                    </tr>
+                </tbody>
+            </table>
+        `)
+    );
+
+    const outerTable = el.querySelectorAll("table")[0];
+    const outerCol1 = outerTable.querySelectorAll("colgroup > col")[0];
+    const targetCell = outerTable.rows[0].cells[0];
+    const nestedTable = targetCell.querySelector("table");
+    const targetRect = targetCell.getBoundingClientRect();
+    const startX = targetRect.right;
+    const startY = targetRect.top + targetRect.height / 2;
+
+    const outerCol1WidthBefore = parseFloat(outerCol1.style.width);
+
+    // Trigger resize via pointer hover
+    manuallyDispatchProgrammaticEvent(targetCell, "pointermove", {
+        clientX: startX,
+        clientY: startY,
+    });
+    await animationFrame();
+
+    manuallyDispatchProgrammaticEvent(targetCell, "pointerdown", {
+        clientX: startX,
+        clientY: startY,
+    });
+    await animationFrame();
+
+    // First resize: slight shrink, should work normally above nested table width
+    manuallyDispatchProgrammaticEvent(targetCell, "pointermove", {
+        clientX: startX - 50,
+        clientY: startY,
+    });
+    await animationFrame();
+
+    const outerCol1WidthAfterSmallResize = parseFloat(outerCol1.style.width);
+    expect(
+        Math.abs(outerCol1WidthAfterSmallResize - (outerCol1WidthBefore - 50)) <= TOLERANCE
+    ).toBe(true);
+
+    // Second resize: try to shrink far below nested table width
+    manuallyDispatchProgrammaticEvent(targetCell, "pointermove", {
+        clientX: startX - 350,
+        clientY: startY,
+    });
+    await animationFrame();
+
+    manuallyDispatchProgrammaticEvent(targetCell, "pointerup", {
+        clientX: startX - 350,
+        clientY: startY,
+    });
+    await animationFrame();
+
+    // Column should not be shrunk below the nested table width.
+    expect(parseFloat(outerCol1.style.width)).toBeGreaterThan(nestedTable.clientWidth);
 });
 
 describe("table reset", () => {
@@ -1176,13 +1426,13 @@ describe("table reset", () => {
         expect(getContent(el)).toBe(
             unformat(`
                 <p data-selection-placeholder=""><br></p>
-                <table>
+                <div class="o_table_wrapper"><table>
                     <tbody>
                         <tr><td class="a">1[]</td></tr>
                         <tr><td class="b">2</td></tr>
                     </tbody>
-                </table>
-                <p data-selection-placeholder=""><br></p>
+                </table></div>
+                <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
             `)
         );
     });
@@ -1206,13 +1456,13 @@ describe("table reset", () => {
         expect(getContent(el)).toBe(
             unformat(`
                 <p data-selection-placeholder=""><br></p>
-                <table>
+                <div class="o_table_wrapper"><table>
                     <tbody>
                         <tr><td class="a">1[]</td></tr>
                         <tr><td class="b">2</td></tr>
                     </tbody>
-                </table>
-                <p data-selection-placeholder=""><br></p>
+                </table></div>
+                <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
             `)
         );
     });
@@ -1246,7 +1496,7 @@ describe("table reset", () => {
             expect(getContent(el)).toBe(
                 unformat(`
                     <p data-selection-placeholder=""><br></p>
-                    <table class="table table-bordered o_table">
+                    <div class="o_table_wrapper"><table class="table table-bordered o_table">
                         <tbody>
                             <tr>
                                 <td>1</td>
@@ -1258,7 +1508,7 @@ describe("table reset", () => {
                                 <td>3</td>
                             </tr>
                         </tbody>
-                    </table>
+                    </table></div>
                     <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
                 `)
             );
@@ -1292,7 +1542,7 @@ describe("table reset", () => {
             expect(getContent(el)).toBe(
                 unformat(`
                     <p data-selection-placeholder=""><br></p>
-                    <table class="table table-bordered o_table">
+                    <div class="o_table_wrapper"><table class="table table-bordered o_table">
                         <tbody>
                             <tr style="height: 50px;">
                                 <td>1</td>
@@ -1304,7 +1554,7 @@ describe("table reset", () => {
                                 <td>3</td>
                             </tr>
                         </tbody>
-                    </table>
+                    </table></div>
                     <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
                 `)
             );
@@ -1334,8 +1584,8 @@ describe("table reset", () => {
             });
             expect(getContent(el)).toBe(
                 unformat(`
-                    <p data-selection-placeholder="" style="margin: 20px 0px -21px;"><br></p>
-                    <table class="table table-bordered o_table">
+                    <p data-selection-placeholder=""><br></p>
+                    <div class="o_table_wrapper"><table class="table table-bordered o_table">
                         <tbody>
                             <tr>
                                 <td class="a">1[]</td>
@@ -1344,7 +1594,7 @@ describe("table reset", () => {
                                 <td>2</td>
                             </tr>
                         </tbody>
-                    </table>
+                    </table></div>
                     <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
                 `)
             );
@@ -1392,7 +1642,7 @@ describe("table reset", () => {
             expect(getContent(el)).toBe(
                 unformat(`
                     <p data-selection-placeholder=""><br></p>
-                    <table class="table table-bordered o_table">
+                    <div class="o_table_wrapper"><table class="table table-bordered o_table">
                         <tbody>
                             <tr>
                                 <td class="a">1</td>
@@ -1409,7 +1659,7 @@ describe("table reset", () => {
                                 <td class="j">10</td>
                             </tr>
                         </tbody>
-                    </table>
+                    </table></div>
                     <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
                 `)
             );
@@ -1466,7 +1716,7 @@ describe("table reset", () => {
             expect(getContent(el)).toBe(
                 unformat(`
                     <p data-selection-placeholder=""><br></p>
-                    <table class="table table-bordered o_table">
+                    <div class="o_table_wrapper"><table class="table table-bordered o_table">
                         <tbody>
                             <tr>
                                 <td>1</td>
@@ -1494,7 +1744,7 @@ describe("table reset", () => {
                                 <td>17</td>
                             </tr>
                         </tbody>
-                    </table>
+                    </table></div>
                     <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
                 `)
             );
@@ -1546,7 +1796,7 @@ describe("table reset", () => {
             expect(getContent(el)).toBe(
                 unformat(`
                     <p data-selection-placeholder=""><br></p>
-                    <table class="table table-bordered o_table" style="width: 700px">
+                    <div class="o_table_wrapper"><table class="table table-bordered o_table" style="width: 700px">
                         <colgroup>
                             <col style="width: 120px;">
                             <col style="width: 80px;">
@@ -1576,7 +1826,7 @@ describe("table reset", () => {
                                 <td class="n">14</td>
                             </tr>
                         </tbody>
-                    </table>
+                    </table></div>
                     <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
                 `)
             );
@@ -1616,7 +1866,7 @@ describe("table reset", () => {
             expect(getContent(el)).toBe(
                 unformat(`
                     <p data-selection-placeholder=""><br></p>
-                    <table class="table table-bordered o_table">
+                    <div class="o_table_wrapper"><table class="table table-bordered o_table">
                         <tbody>
                             <tr>
                                 <td class="a">1[]</td>
@@ -1629,7 +1879,7 @@ describe("table reset", () => {
                                 <td>6</td>
                             </tr>
                         </tbody>
-                    </table>
+                    </table></div>
                     <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
                 `)
             );
@@ -1787,13 +2037,13 @@ describe("fit to content (dblclick)", () => {
         expect(getContent(el)).toBe(
             unformat(`
                 <p data-selection-placeholder=""><br></p>
-                <table class="table table-bordered o_table">
+                <div class="o_table_wrapper"><table class="table table-bordered o_table">
                     <tbody>
                         <tr><td><p><br></p></td></tr>
                         <tr><td><p><br></p></td></tr>
                         <tr style="height: 100px;"><td><p><br></p></td></tr>
                     </tbody>
-                </table>
+                </table></div>
                 <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
             `)
         );
@@ -1840,14 +2090,14 @@ describe("fit to content (dblclick)", () => {
         expect(getContent(el)).toBe(
             unformat(`
                 <p data-selection-placeholder="" class="o-horizontal-caret"><br></p>
-                <table class="table table-bordered o_table">
+                <div class="o_table_wrapper"><table class="table table-bordered o_table">
                     <tbody>
                         <tr>
                             <td><p><br></p></td>
                             <td><p><br></p></td>
                         </tr>
                     </tbody>
-                </table>
+                </table></div>
                 <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
             `)
         );

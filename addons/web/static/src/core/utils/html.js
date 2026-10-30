@@ -93,8 +93,8 @@ export function htmlFormatList(values, options) {
 /**
  * Applies list join on content and returns a markup result built for HTML.
  *
- * @param {Iterable<string | Markup>} list
- * @param {string | Markup} [separator]
+ * @param {Iterable<TranslatedString>} list
+ * @param {TranslatedString} [separator]
  * @returns {Markup}
  */
 export function htmlJoin(list, separator = "") {
@@ -155,7 +155,7 @@ export function htmlReplaceAll(content, search, replacer) {
  * using `markup()` they are set as it is. Otherwise they are escaped.
  *
  * @param {string} str The string with placeholders (%s) to insert values into.
- * @param  {...unknown[]} substitutions Primitive values to insert in place of placeholders.
+ * @param  {...unknown} substitutions Primitive values to insert in place of placeholders.
  * @returns {string | Markup}
  */
 export function htmlSprintf(str, ...substitutions) {
@@ -201,6 +201,7 @@ export function isMarkup(content) {
  * Formats the given `text` as follow:
  *  - \*\*text\*\* => puts `text` in bold.
  *  - --text-- => puts `text` in "muted" (i.e. grayed out).
+ *  - !!text!! => puts `text` in "warning" (i.e. highlighted in orange).
  *  - \`text\` => puts `text` in a rounded badge (bg-primary).
  *  - \n => inserts a line break.
  *  - \t => inserts the equivalent of 4 spaces.
@@ -231,6 +232,8 @@ export function odoomark(text) {
         [/\*\*(.+?)\*\*/g, (_, content) => markup(`<b>${content}</b>`)],
         // Muted
         [/--(.+?)--/g, (_, content) => markup(`<span class="text-muted">${content}</span>`)],
+        // Warning
+        [/!!(.+?)!!/g, (_, content) => markup(`<span class="text-warning">${content}</span>`)],
         // Badge
         [
             /&#x60;(.+?)&#x60;/g,

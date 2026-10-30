@@ -1,11 +1,16 @@
 import { FrequentEmojiPlugin } from "@web/core/emoji_picker/frequent_emoji_plugin";
 import { Action } from "@mail/core/common/action";
-import { Component, signal, t, useListener, usePlugin, useProps } from "@odoo/owl";
+import { BaseAction } from "@mail/core/common/action_list";
+import { Component, signal, t, useListener, usePlugin, useProps, xml } from "@odoo/owl";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { useDropdownState } from "@web/core/dropdown/dropdown_hooks";
 import { emojiLoader, useLoadEmoji } from "@web/core/emoji_picker/emoji_loader";
 import { useEmojiPicker } from "@web/core/emoji_picker/emoji_picker";
+import { UIPlugin } from "@web/core/ui/ui_plugin";
 import { useService } from "@web/core/utils/hooks";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
+
+/** @typedef {import("@web/core/emoji_picker/emoji_picker").EmojiPicker} EmojiPicker */
 
 export class QuickReactionMenu extends Component {
     static template = "mail.QuickReactionMenu";
@@ -16,6 +21,7 @@ export class QuickReactionMenu extends Component {
 
     setup() {
         super.setup(...arguments);
+        this.ancestors = useAncestors();
         this.store = useService("mail.store");
         this.props = useProps({
             action: t.instanceOf(Action),
@@ -23,11 +29,11 @@ export class QuickReactionMenu extends Component {
             message: t.instanceOf(this.store["mail.message"]),
             messageActive: t.boolean().optional(),
         });
-        this.ui = useService("ui");
+        this.ui = usePlugin(UIPlugin);
         this.loadEmoji = useLoadEmoji();
         this.picker = useEmojiPicker(
             null,
-            { onSelect: this.toggleReaction.bind(this), class: "overflow-hidden rounded-2" },
+            { onSelect: this.toggleReaction.bind(this), class: "overflow-hidden" },
             {
                 position: "bottom-middle",
                 popoverClass: "o-mail-QuickReactionMenu-pickerPopover",
@@ -35,7 +41,7 @@ export class QuickReactionMenu extends Component {
         );
         this.dropdown = useDropdownState({
             onClose: () => {
-                const currentThread = this.env.getCurrentThread?.();
+                const currentThread = this.ancestors.inThread?.thread;
                 if (!currentThread || currentThread.notEq(this.props.message.thread)) {
                     return;
                 }
@@ -74,7 +80,7 @@ export class QuickReactionMenu extends Component {
 
     onClick() {
         this.loadEmoji();
-        if (this.ui.isSmall) {
+        if (this.ui.isSmall()) {
             this.props.action.onSelected();
         } else {
             this.picker.close();
@@ -86,7 +92,11 @@ export class QuickReactionMenu extends Component {
         }
     }
 
-    toggleReaction(emoji) {
+    /**
+     * @param {string} emoji
+     * @param {boolean} [resetOnSelect=true] {@link EmojiPicker.selectEmoji}
+     */
+    toggleReaction(emoji, resetOnSelect = true) {
         const reaction = this.props.message.reactions.find(
             (r) => r.content === emoji && this.props.message.effectiveSelf.in(r.personas)
         );
@@ -96,8 +106,10 @@ export class QuickReactionMenu extends Component {
             this.props.message.react(emoji);
             this.frequentEmojiService.incrementEmojiUsage(emoji);
         }
-        this.dropdown.close();
-        this.picker.close();
+        if (resetOnSelect) {
+            this.dropdown.close();
+            this.picker.close();
+        }
     }
 
     get attClass() {
@@ -148,4 +160,12 @@ export class QuickReactionMenu extends Component {
             },
         };
     }
+}
+
+/** Component of the reaction action of a message, which shows its quick reactions, @see BaseAction */
+export class QuickReactionAction extends BaseAction {
+    static components = { QuickReactionMenu };
+    static template = xml`
+        <QuickReactionMenu action="this.action" message="this.action.params.message" messageActive="this.action.owner.isActive?.()"/>
+    `;
 }

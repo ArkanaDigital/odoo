@@ -15,10 +15,10 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0+e\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-26 19:08+0000\n"
-"PO-Revision-Date: 2026-06-19 00:27+0000\n"
+"POT-Creation-Date: 2026-09-11 17:42+0000\n"
+"PO-Revision-Date: 2026-08-31 18:19+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Spanish <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Spanish <https://translate.odoo.com/projects/odoo-s19-4/"
 "website_event/es/>\n"
 "Language: es\n"
 "MIME-Version: 1.0\n"
@@ -26,7 +26,7 @@ msgstr ""
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=3; plural=(n == 1) ? 0 : ((n != 0 && n % 1000000 == "
 "0) ? 1 : 2);\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: website_event
 #: model:ir.model.fields,field_description:website_event.field_website_visitor__event_registration_count
@@ -41,7 +41,7 @@ msgstr "\". Mostrando resultados para \""
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.modal_ticket_registration
 msgid "(Max."
-msgstr ""
+msgstr "(Máx."
 
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.modal_ticket_registration
@@ -56,7 +56,7 @@ msgstr ", a las"
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.registration_template
 msgid "<b>Cancelled</b>"
-msgstr ""
+msgstr "<b>Cancelado</b>"
 
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.registration_complete
@@ -214,6 +214,8 @@ msgid ""
 "<span class=\"fw-bold text-uppercase\">AUG</span>\n"
 "                            <span class=\"fw-light lh-1\">23</span>"
 msgstr ""
+"<span class=\"fw-bold text-uppercase\">AGO</span>\n"
+"                            <span class=\"fw-light lh-1\">23</span>"
 
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.s_dynamic_snippet_events_single_badge_preview_data
@@ -316,7 +318,7 @@ msgstr "<span>Eventos en línea</span>"
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.registration_attendee_details
 msgid "<strong> You cannot order more than available seats</strong>"
-msgstr ""
+msgstr "<strong> No se pueden reservar más plazas de las disponibles</strong>"
 
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.registration_attendee_details
@@ -326,7 +328,7 @@ msgstr "<strong> Ha pedido más entradas que asientos disponibles</strong>"
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.s_event_upcoming_snippet_card_preview_data
 msgid "<strong>8:15 PM</strong>"
-msgstr ""
+msgstr "<strong>20:15 h</strong>"
 
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.dynamic_filter_template_event_event_single_card
@@ -343,13 +345,13 @@ msgstr "<strong>Ubicación</strong>"
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.s_event_upcoming_snippet_card_preview_data
 msgid "<strong>Los Angeles, CA, United States</strong>"
-msgstr ""
+msgstr "<strong>Los Ángeles, CA, Estados Unidos</strong>"
 
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.dynamic_filter_template_event_event_single_card
 #: model_terms:ir.ui.view,arch_db:website_event.s_dynamic_snippet_events_single_card_preview_data
 msgid "<strong>Time</strong>"
-msgstr ""
+msgstr "<strong>Hora</strong>"
 
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.s_event_upcoming_snippet_preview_data
@@ -478,6 +480,12 @@ msgid "All Events"
 msgstr "Todos los eventos"
 
 #. module: website_event
+#. odoo-javascript
+#: code:addons/website_event/static/src/website_builder/event_page_option_plugin.js:0
+msgid "All events"
+msgstr ""
+
+#. module: website_event
 #: model:event.question,title:website_event.event_question_allergies
 msgid "Allergies"
 msgstr "Alergias"
@@ -496,12 +504,12 @@ msgstr "Asistentes"
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.s_dynamic_snippet_events_single_offset_preview_data
 msgid "August 23, 2025"
-msgstr ""
+msgstr "23 de agosto de 2025"
 
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.s_dynamic_snippet_events_single_entry_preview_data
 msgid "August 23, 2025 at 8:15 PM"
-msgstr ""
+msgstr "23 de agosto de 2025 a las 20:15 h"
 
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.index_sidebar_quotes
@@ -723,6 +731,7 @@ msgstr ""
 #: model:ir.model.fields,field_description:website_event.field_website_event_menu__display_name
 #: model:ir.model.fields,field_description:website_event.field_website_menu__display_name
 #: model:ir.model.fields,field_description:website_event.field_website_snippet_filter__display_name
+#: model:ir.model.fields,field_description:website_event.field_website_track__display_name
 #: model:ir.model.fields,field_description:website_event.field_website_visitor__display_name
 msgid "Display Name"
 msgstr "Nombre para mostrar"
@@ -767,6 +776,11 @@ msgid "Drag blocks here to add them on all events"
 msgstr ""
 
 #. module: website_event
+#: model_terms:ir.ui.view,arch_db:website_event.snippets
+msgid "Dynamic Carousel"
+msgstr ""
+
+#. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.s_event_upcoming_snippet_card_preview_data
 msgid "Enhance your architectural business and improve professional skills."
 msgstr ""
@@ -775,6 +789,7 @@ msgstr ""
 #. module: website_event
 #: model:ir.model,name:website_event.model_event_event
 #: model:ir.model.fields,field_description:website_event.field_website_event_menu__event_id
+#: model:ir.model.fields,field_description:website_event.field_website_track__event_id
 #: model_terms:ir.ui.view,arch_db:website_event.snippets
 msgid "Event"
 msgstr "Evento"
@@ -833,7 +848,7 @@ msgstr "Inscripciones a eventos"
 #. module: website_event
 #: model:ir.model,name:website_event.model_event_slot
 msgid "Event Slot"
-msgstr ""
+msgstr "Franja horaria"
 
 #. module: website_event
 #: model:ir.model.fields,field_description:website_event.field_event_event__subtitle
@@ -854,7 +869,7 @@ msgstr "Categoría de etiqueta del evento"
 
 #. module: website_event
 #. odoo-javascript
-#: code:addons/website_event/static/src/website_builder/dynamic_snippet_events_option.xml:0
+#: code:addons/website_event/static/src/website_builder/dynamic_snippet_events_shared_option.xml:0
 msgid "Event Tags"
 msgstr "Etiquetas de eventos"
 
@@ -867,6 +882,17 @@ msgstr "Plantilla de evento"
 #: model_terms:ir.ui.view,arch_db:website_event.event_description_full
 msgid "Event Title"
 msgstr "Título del evento"
+
+#. module: website_event
+#: model:ir.model.fields,field_description:website_event.field_website_visitor__visitor_event_count
+#: model_terms:ir.ui.view,arch_db:website_event.website_visitor_view_form
+msgid "Event Views"
+msgstr ""
+
+#. module: website_event
+#: model:ir.actions.act_window,name:website_event.website_event_visitor_event_action
+msgid "Event Views History"
+msgstr ""
 
 #. module: website_event
 #: model:mail.message.subtype,description:website_event.mt_event_published
@@ -899,11 +925,13 @@ msgstr ""
 #: code:addons/website_event/models/event_event.py:0
 #: code:addons/website_event/models/website.py:0
 #: code:addons/website_event/static/src/website_builder/dynamic_snippet_events_option.xml:0
-#: code:addons/website_event/static/src/website_builder/event_searchbar_option.xml:0
+#: model:ir.model.fields,field_description:website_event.field_website_visitor__event_ids
+#: model:ir.module.module,shortdesc:base.module_website_event
 #: model:ir.ui.menu,name:website_event.menu_event_pages
 #: model:website.menu,name:website_event.menu_events
 #: model_terms:ir.ui.view,arch_db:website_event.index_topbar
 #: model_terms:ir.ui.view,arch_db:website_event.snippets
+#: model_terms:ir.ui.view,arch_db:website_event.website_event_visitor_page_view_search
 msgid "Events"
 msgstr "Eventos"
 
@@ -1040,6 +1068,7 @@ msgid ""
 "Honoring outstanding accomplishments, dedication, and impact across all "
 "fields."
 msgstr ""
+"Reconocimiento a los logros, la dedicación y el impacto en todos los campos."
 
 #. module: website_event
 #: model:event.question,title:website_event.event_question_about_us
@@ -1064,6 +1093,7 @@ msgstr "¿Cómo supo de este evento?"
 #: model:ir.model.fields,field_description:website_event.field_website_event_menu__id
 #: model:ir.model.fields,field_description:website_event.field_website_menu__id
 #: model:ir.model.fields,field_description:website_event.field_website_snippet_filter__id
+#: model:ir.model.fields,field_description:website_event.field_website_track__id
 #: model:ir.model.fields,field_description:website_event.field_website_visitor__id
 msgid "ID"
 msgstr "ID"
@@ -1208,6 +1238,8 @@ msgid ""
 "Melancholic melodies and textured soundscapes exploring memory and quiet "
 "distance."
 msgstr ""
+"Melodías melancólicas y paisajes sonoros con textura que exploran la memoria "
+"y la distancia silenciosa."
 
 #. module: website_event
 #: model:ir.model.fields,field_description:website_event.field_website_event_menu__menu_id
@@ -1247,7 +1279,7 @@ msgstr "Siguiente"
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.event_description_dates
 msgid "Next Dates"
-msgstr ""
+msgstr "Próximas fechas"
 
 #. module: website_event
 #. odoo-python
@@ -1270,6 +1302,11 @@ msgstr "¡Aún no hay elementos en el menú del sitio web!"
 msgid "No event matching your search criteria could be found."
 msgstr ""
 "No encontramos ningún evento que coincida con sus criterios de búsqueda."
+
+#. module: website_event
+#: model_terms:ir.actions.act_window,help:website_event.website_event_visitor_event_action
+msgid "No event views yet for this visitor"
+msgstr ""
 
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.events_list
@@ -1301,6 +1338,148 @@ msgstr "Eventos en línea"
 #: code:addons/website_event/models/website_snippet_filter.py:0
 msgid "OpenWood Collection Online Reveal"
 msgstr "Revelación en línea de la colección OpenWood"
+
+#. module: website_event
+#: model:ir.module.module,description:base.module_website_event
+msgid ""
+"Organize Events, Trainings & Webinars\n"
+"-------------------------------------\n"
+"\n"
+"### Schedule, Promote, Sell, Organize\n"
+"\n"
+"Organize, promote and sell events online. Whether you organize meetings, "
+"conferences, trainings or webinars, Odoo gives you all the features you need "
+"to manage your events.\n"
+"\n"
+"Create Awesome Event Pages\n"
+"--------------------------\n"
+"\n"
+"### Get rid of old WYSIWYG editors\n"
+"\n"
+"Create beautiful event pages by drag & droping well designed *'Building "
+"Blocks'*. Publish event photos, speakers, schedule, etc.\n"
+"\n"
+"Odoo's unique *'edit inline'* approach makes website creation surprisingly "
+"easy. \"Want to introduce a speaker? to change the price of a ticket? to "
+"update a banner? promote sponsors?\" just click and change.\n"
+"\n"
+"Sell Tickets Online\n"
+"-------------------\n"
+"\n"
+"### Automate the registration and payment process\n"
+"\n"
+"Sell registrations to your event with the multi-ticketing feature. Events "
+"can be free or for a fee. Attendees can pay online with a credit card or on "
+"invoice, based on your configuration.\n"
+"\n"
+"Boost your sales with early-bird prices, special conditions for members, or "
+"extra services with multiple tickets.\n"
+"\n"
+"A Clean Google Analytics Integration\n"
+"------------------------------------\n"
+"\n"
+"### Control your sales funnel with Google Analytics\n"
+"\n"
+"Get a clear visibility of your sales funnel. Odoo's Google Analytics "
+"trackers are configured by default to track all kind of events related to "
+"shopping carts, call-to-actions, etc.\n"
+"\n"
+"As Odoo marketing tools (mass mailing, campaigns, etc) are also linked with "
+"Google Analytics, you get a full view of your business.\n"
+"\n"
+"Promote Events Efficiently\n"
+"--------------------------\n"
+"\n"
+"### Mass Mailing & Social Media\n"
+"\n"
+"Use the segmentation, the social network integration and mass mailing "
+"features to promote your events to the right audience. Setup automated "
+"emails to attendees to send them last minute details.\n"
+"\n"
+"Designer-Friendly Themes\n"
+"------------------------\n"
+"\n"
+"### Designers love working on Odoo\n"
+"\n"
+"Themes are awesome and easy to design. You don't need to develop to create "
+"new pages, themes or building blocks. We use a clean HTML structure, a "
+"[bootstrap](http://getbootstrap.com/) CSS and our modularity allows to "
+"distribute your themes easily.\n"
+"\n"
+"The building block approach allows the website to stay clean after the end-"
+"users start creating new contents.\n"
+"\n"
+"Make Your Event More Visible\n"
+"----------------------------\n"
+"\n"
+"### SEO tools at your finger tips\n"
+"\n"
+"SEO tools are ready to use, with no configuration required. Odoo suggests "
+"keywords according to Google most searched terms, Google Analytics tracks "
+"your shopping cart events and sitemap are created automatically.\n"
+"\n"
+"We even do structured content automatically to promote your events and "
+"products efficiently in Google.\n"
+"\n"
+"Leverage Social Media\n"
+"---------------------\n"
+"\n"
+"### Optimize: from Ads to Conversions\n"
+"\n"
+"Create new landing pages easily with the Odoo inline editing feature. Send "
+"visitors of your different marketing campaigns to event landing pages to "
+"optimize conversions.\n"
+"\n"
+"And Much More...\n"
+"----------------\n"
+"\n"
+"### Schedule\n"
+"\n"
+"-   Calendar of Events\n"
+"-   Publish related documents\n"
+"-   Ressources allocation\n"
+"-   Automate purchases (catering...)\n"
+"-   Multiple locations and organizers\n"
+"-   Mobile Interface\n"
+"\n"
+"### Sell\n"
+"\n"
+"-   Online or offline sales\n"
+"-   Automated invoicing\n"
+"-   Cancellation policies\n"
+"-   Specific prices for members\n"
+"-   Dashboards and reporting\n"
+"\n"
+"### Organize\n"
+"\n"
+"-   Advanced Planification\n"
+"-   Print Badges\n"
+"-   Automate Follow-up Emails\n"
+"-   Min/Max capacities\n"
+"-   Manage classes and ressources\n"
+"-   Create group of attendees\n"
+"-   Automate statisfaction surveys\n"
+"\n"
+"Fully Integrated With Others Apps\n"
+"---------------------------------\n"
+"\n"
+"### Get hundreds of open source apps for free\n"
+"\n"
+"\n"
+"### eCommerce\n"
+"\n"
+"Promote products, sell online, optimize visitors' shopping experiences.\n"
+"\n"
+"\n"
+"### Blog\n"
+"\n"
+"Write news, attract new visitors, build customer loyalty.\n"
+"\n"
+"\n"
+"### Our Team\n"
+"\n"
+"Create a great \"About us\" page by presenting your team efficiently.\n"
+msgstr ""
 
 #. module: website_event
 #. odoo-javascript
@@ -1369,6 +1548,11 @@ msgstr "Público"
 #: model_terms:ir.ui.view,arch_db:website_event.event_event_view_form
 msgid "Publish"
 msgstr "Publicar"
+
+#. module: website_event
+#: model:ir.module.module,summary:base.module_website_event
+msgid "Publish events, sell tickets"
+msgstr ""
 
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.event_event_view_form
@@ -1493,7 +1677,7 @@ msgstr "Inscripciones cerradas"
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.event_card
 msgid "Registrations not open"
-msgstr ""
+msgstr "Inscripciones cerradas"
 
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.event_card
@@ -1576,7 +1760,7 @@ msgstr ""
 #: code:addons/website_event/models/event_event.py:0
 #: model_terms:ir.ui.view,arch_db:website_event.event_time
 msgid "Scheduled Events"
-msgstr ""
+msgstr "Eventos programados"
 
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.event_card
@@ -1605,7 +1789,7 @@ msgstr "Respuestas seleccionadas"
 #. odoo-javascript
 #: code:addons/website_event/static/src/interactions/website_event_slot_details.js:0
 msgid "Selected Date:"
-msgstr ""
+msgstr "Fecha seleccionada:"
 
 #. module: website_event
 #: model:ir.model.fields,field_description:website_event.field_event_event__seo_name
@@ -1619,6 +1803,7 @@ msgstr "Nombre SEO"
 #: model_terms:ir.ui.view,arch_db:website_event.s_event_upcoming_snippet_card_preview_data
 msgid "Shaping tomorrow through ideas that transform how we live today."
 msgstr ""
+"Impulsamos el mañana con ideas que transforman nuestra forma de vivir hoy."
 
 #. module: website_event
 #. odoo-javascript
@@ -1634,9 +1819,9 @@ msgstr ""
 
 #. module: website_event
 #. odoo-javascript
-#: code:addons/website_event/static/src/website_builder/dynamic_snippet_events_option.xml:0
+#: code:addons/website_event/static/src/website_builder/dynamic_snippet_events_shared_option.xml:0
 msgid "Show location"
-msgstr ""
+msgstr "Mostrar ubicación"
 
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.event_tag_category_view_form
@@ -1646,7 +1831,7 @@ msgstr "Mostrar en el sitio web"
 
 #. module: website_event
 #. odoo-javascript
-#: code:addons/website_event/static/src/website_builder/dynamic_snippet_events_option.xml:0
+#: code:addons/website_event/static/src/website_builder/dynamic_snippet_events_shared_option.xml:0
 msgid "Show time"
 msgstr "Mostrar hora"
 
@@ -1783,6 +1968,11 @@ msgid "Top Bar Filter"
 msgstr "Filtro de barra superior"
 
 #. module: website_event
+#: model:ir.model.fields,help:website_event.field_website_visitor__visitor_event_count
+msgid "Total number of views on events"
+msgstr ""
+
+#. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.event_event_view_form
 msgid "Unschedule"
 msgstr ""
@@ -1867,9 +2057,19 @@ msgid "Visible on current website"
 msgstr "Visible en el sitio web actual"
 
 #. module: website_event
+#: model:ir.model,name:website_event.model_website_track
+msgid "Visited Page"
+msgstr ""
+
+#. module: website_event
 #: model:ir.model.fields,field_description:website_event.field_event_registration__visitor_id
 msgid "Visitor"
 msgstr "Visitante"
+
+#. module: website_event
+#: model_terms:ir.ui.view,arch_db:website_event.website_event_visitor_page_view_tree
+msgid "Visitor Event Views History"
+msgstr ""
 
 #. module: website_event
 #: model_terms:ir.ui.view,arch_db:website_event.events_list
@@ -1995,7 +2195,7 @@ msgstr "Si el evento empezará hoy si aún no está en curso"
 #. module: website_event
 #: model:event.question,title:website_event.event_question_working_field
 msgid "Which field are you working in?"
-msgstr ""
+msgstr "¿En qué sector trabajas?"
 
 #. module: website_event
 #. odoo-javascript

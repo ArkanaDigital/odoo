@@ -15,13 +15,8 @@ import {
     startServer,
 } from "@mail/../tests/mail_test_helpers";
 import { expect, test } from "@odoo/hoot";
-import {
-    Command,
-    getService,
-    patchWithCleanup,
-    serverState,
-    withUser,
-} from "@web/../tests/web_test_helpers";
+import { Command, getService, serverState, withUser } from "@web/../tests/web_test_helpers";
+import { patch } from "@web/core/utils/patch";
 
 defineLivechatModels();
 
@@ -70,11 +65,11 @@ test("Last operator leaving ends the livechat", async () => {
     // simulate operator leaving
     await withUser(operatorUserId, () =>
         getService("orm").call("discuss.channel", "action_unfollow", [
-            [Object.values(getService("mail.store")["mail.thread"].records).at(-1).id],
+            [[...getService("mail.store")["mail.thread"].records.values()].at(-1).id],
         ])
     );
     await contains("span", { text: "This live chat conversation has ended." });
-    await contains(".o-mail-Composer-input", { count: 0 });
+    await contains(".o-mail-Composer-html", { count: 0 });
     await click("[title*='Close Chat Window']");
     await contains("p", { text: "Did we correctly answer your question?" }); // shows immediately feedback
 });
@@ -154,7 +149,7 @@ test("Start new session from feedback panel", async () => {
 });
 
 test("open review link on good rating", async () => {
-    patchWithCleanup(window, {
+    patch(window, {
         open: (...args) => {
             expect.step("window.open");
             expect(args[0]).toBe("https://www.odoo.com");

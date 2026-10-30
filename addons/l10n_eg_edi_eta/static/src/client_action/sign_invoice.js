@@ -36,7 +36,7 @@ async function initLNA(notification) {
     }
 }
 
-async function actionGetDrive(env, actionDescr, type) {
+async function actionGetDrive(actionDescr, type) {
     const { drive_id, sign_host: host } = actionDescr.params;
     const orm = usePlugin(ORM);
     const notification = useService("notification");
@@ -67,8 +67,12 @@ async function actionGetDrive(env, actionDescr, type) {
         });
         result = await result.json();
     } catch {
+        if (type === "sign") {
+            await sendLogOnSignFailure(orm, actionDescr.params);
+        }
         dialog.add(AlertDialog, {
             body: _t("Error trying to connect to the middleware. Is the middleware running?"),
+            confirm: () => { action.doAction("soft_reload") },
         });
         return;
     }
@@ -108,11 +112,20 @@ async function actionGetDrive(env, actionDescr, type) {
     }
 }
 
+async function sendLogOnSignFailure(orm, params) {
+    const invoices = JSON.parse(params.invoices);
+    if (!invoices) {
+        return;
+    }
+    const invoice_ids = Object.keys(invoices).map(Number);
+    await orm.call("account.move", "l10n_eg_log_on_sign_failure", [invoice_ids])
+}
+
 registry
     .category("actions")
-    .add("action_get_drive_certificate", (env, action) =>
-        actionGetDrive(env, action, "certificate")
+    .add("action_get_drive_certificate", (action) =>
+        actionGetDrive(action, "certificate")
     );
 registry
     .category("actions")
-    .add("action_post_sign_invoice", (env, action) => actionGetDrive(env, action, "sign"));
+    .add("action_post_sign_invoice", (action) => actionGetDrive(action, "sign"));

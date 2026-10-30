@@ -14,18 +14,13 @@ from odoo.tests import tagged, Form
 class TestCompanyBranch(AccountTestInvoicingCommon):
 
     _test_user_groups = None  # FIXME list needed groups
+    _test_independent_company_xmlid = 'base.test_company_with_branch'
 
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         cls.other_currency = cls.setup_other_currency('EUR')
 
-        cls.company_data['company'].write({
-            'child_ids': [
-                Command.create({'name': 'Branch A'}),
-                Command.create({'name': 'Branch B'}),
-            ],
-        })
         cls.cr.precommit.run()  # load the CoA
 
         cls.root_company = cls.company_data['company']
@@ -229,7 +224,7 @@ class TestCompanyBranch(AccountTestInvoicingCommon):
     def test_branch_should_keep_parent_company_currency(self):
         test_country = self.env['res.country'].create({
             'name': 'Gold Country',
-            'code': 'zz',
+            'code': 'ZZ',
             'currency_id': self.other_currency.id
         })
         root_company = self.env['res.company'].create({
@@ -314,6 +309,28 @@ class TestCompanyBranch(AccountTestInvoicingCommon):
            to negative value."""
         with self.assertRaises(ValidationError):
             self.root_company.fiscalyear_last_day = -1
+
+    def test_chart_template_ref_branch_user_without_parent_access(self):
+        """Branch users must resolve parent-company chart xmlids without parent company access."""
+        branch_user = self.env['res.users'].create({
+            'name': 'Branch Chart Ref User',
+            'login': 'branch_chart_ref_test',
+            'email': 'branch_chart_ref_test@example.com',
+            'company_id': self.branch_a.id,
+            'company_ids': [Command.set([self.branch_a.id])],
+            'group_ids': [Command.set([
+                self.env.ref('account.group_account_invoice').id,
+            ])],
+        })
+        # The outstanding accounts only exist on the root company
+        ChartTemplate = self.env['account.chart.template']
+        xmlid = 'account_journal_payment_debit_account_id'
+        root_account = ChartTemplate.with_company(self.root_company).ref(xmlid)
+
+        # The root company is in cache at this point, which would hide the access error
+        self.env.invalidate_all()
+        branch_account = ChartTemplate.with_user(branch_user).with_company(self.branch_a).ref(xmlid)
+        self.assertEqual(branch_account, root_account)
 
     def test_branch_user_bank_statement_foreign_currency(self):
         # Create a user that only belongs to branch a

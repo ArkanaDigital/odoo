@@ -2,9 +2,7 @@ from contextlib import closing
 
 from datetime import datetime, timedelta
 
-from freezegun import freeze_time
-
-from odoo import Command, fields
+from odoo import fields
 from odoo.addons.account.models.company import SOFT_LOCK_DATE_FIELDS
 from odoo.addons.account.tests.common import AccountTestInvoicingCommon
 from odoo.addons.mail.tests.common import MailCase
@@ -17,13 +15,14 @@ from odoo.tools.misc import format_datetime
 class TestAccountLockException(AccountTestInvoicingCommon, MailCase):
 
     _test_user_groups = None  # FIXME list needed groups
+    _test_independent_company_xmlid = 'base.test_company_with_branch'
 
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
 
-        cls.fakenow = cls.env.cr.now()
-        cls.startClassPatcher(freeze_time(cls.fakenow))
+        cls.fakenow = cls.env.cr.now().replace(microsecond=0)
+        cls.enterClassContext(cls.mock_datetime_and_now(cls.fakenow))
 
         cls.other_user = new_test_user(
             cls.env,
@@ -111,9 +110,9 @@ class TestAccountLockException(AccountTestInvoicingCommon, MailCase):
         """
 
         root_company = self.company_data['company']
-        root_company.write({'child_ids': [Command.create({'name': 'branch'})]})
         self.cr.precommit.run()  # load the CoA
-        branch = root_company.child_ids
+        self.env.user.company_ids += root_company.child_ids
+        branch, _branch = root_company.child_ids
 
         for lock_date_field, move_type in self.soft_lock_date_info:
             with self.subTest(lock_date_field=lock_date_field, move_type=move_type), closing(self.cr.savepoint()):
@@ -346,6 +345,7 @@ class TestAccountLockException(AccountTestInvoicingCommon, MailCase):
           * Every active exception gets revoked and recreated with the new company lock date
           * Non-active exceptions are not affected
         """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         self.env['account.lock_exception'].search([]).sudo().unlink()
         for lock_date_field, move_type in self.soft_lock_date_info:
             with self.subTest(lock_date_field=lock_date_field, move_type=move_type), closing(self.cr.savepoint()):
@@ -372,7 +372,7 @@ class TestAccountLockException(AccountTestInvoicingCommon, MailCase):
                 self.assertEqual(len(self._new_msgs), 1, 'Should have generated one tracking message')
                 self.assertMessageFields(self._new_msgs, {
                     'author_id': self.env.user.partner_id,
-                    'body': f'<a href="#" data-oe-model="{active_exception._name}" data-oe-id="{active_exception.id}">'
+                    'body': f'<a href="/mail/view?model={active_exception._name}&amp;res_id={active_exception.id}" data-oe-model="{active_exception._name}" data-oe-id="{active_exception.id}">'
                             f'Exception</a> for {self.env.user.name} valid until {format_datetime(self.env, self.fakenow + timedelta(hours=24))} for \'{active_exception.reason}\'.',
                     'message_type': 'tracking',
                     'model': self.env.company._name,
@@ -410,7 +410,7 @@ class TestAccountLockException(AccountTestInvoicingCommon, MailCase):
                 self.assertEqual(len(self._new_msgs), 1, 'Should have generated one tracking message')
                 self.assertMessageFields(self._new_msgs, {
                     'author_id': self.env.user.partner_id,
-                    'body': f'<a href="#" data-oe-model="{new_exception._name}" data-oe-id="{new_exception.id}">'
+                    'body': f'<a href="/mail/view?model={new_exception._name}&amp;res_id={new_exception.id}" data-oe-model="{new_exception._name}" data-oe-id="{new_exception.id}">'
                             f'Exception</a> for {self.env.user.name} valid until {format_datetime(self.env, self.fakenow + timedelta(hours=24))} for \'{new_exception.reason}\'.',
                     'message_type': 'tracking',
                     'model': self.env.company._name,

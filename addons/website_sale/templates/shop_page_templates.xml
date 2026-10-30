@@ -8,7 +8,7 @@
             _submit_classes.f="btn-{{navClass}}"
             _input_classes.f="border-0 text-bg-{{navClass}}"
             search_type.f="products"
-            action="keep(search=0)"/>
+            action="keep(**reset_filters)"/>
     </template>
 
     <template id="website_sale.product_variant_preview">
@@ -85,48 +85,12 @@
         </div>
     </template>
 
-    <template id="website_sale.pricelist_list" name="Pricelists Dropdown">
-        <t t-set="website_sale_pricelists" t-value="website_sale_pricelists or website.get_pricelist_available(show_visible=True)" />
-        <t t-set="hasPricelistDropdown" t-value="hasPricelistDropdown or (website_sale_pricelists and len(website_sale_pricelists)&gt;1)"/>
-        <t t-set="pricelist" t-value="request.pricelist"/>
-        <t t-set="pricelist_label">Pricelist</t>
-        <div t-attf-class="o_pricelist_dropdown dropdown #{_classes if hasPricelistDropdown else 'd-none'}">
-            <a
-                role="button"
-                href="#"
-                t-attf-class="dropdown-toggle btn px-2"
-                data-bs-toggle="dropdown"
-            >
-                <small class="d-none d-md-inline opacity-75"><t t-out="pricelist_label"/>:</small>
-                <span class="d-none d-md-inline" t-out="pricelist and pricelist.name or ' - '" />
-                <span class="d-md-none"><t t-out="pricelist_label"/></span>
-            </a>
-            <div class="dropdown-menu" role="menu">
-                <t t-foreach="website_sale_pricelists" t-as="pl">
-                    <t t-set="_is_active" t-value="pricelist.id == pl.id"/>
-                    <a
-                        role="menuitem"
-                        t-att-href="'/shop/change_pricelist/%s' % pl.id"
-                        t-attf-class="dropdown-item {{_is_active and 'active'}}"
-                        t-att-aria-current="_is_active and 'true' or 'false'"
-                    >
-                        <span
-                            class="switcher_pricelist"
-                            t-att-data-pl_id="pl.id"
-                            t-out="pl.name"
-                        />
-                    </a>
-                </t>
-            </div>
-        </div>
-    </template>
-
     <template id="website_sale.products_breadcrumb" name="Products Breadcrumb">
         <ol t-if="category" t-attf-class="breadcrumb #{_classes}">
             <li class="breadcrumb-item">
                 <a
                     t-att-class="'d-none d-lg-inline' if len(category.parents_and_self) &gt; 1 else ''"
-                    t-att-href="keep(shop_path)"
+                    t-att-href="keep(shop_path, **reset_filters)"
                 >
                     Products
                 </a>
@@ -141,7 +105,7 @@
                     t-attf-class="breadcrumb-item {{cat_index &lt; cat_size - 2 and 'd-none d-lg-inline'}}"
                 >
                     <a
-                        t-att-href="keep(cat.website_url)"
+                        t-att-href="keep(cat.website_url, **reset_filters)"
                         t-field="cat.name"
                     />
                 </li>
@@ -181,8 +145,6 @@
             <t t-set="opt_wsale_show_category_description" t-value="website.show_category_description"/>
             <t t-set="opt_wsale_category_align" t-value="website.align_category_content"/>
 
-            <t t-set="website_sale_pricelists" t-value="website.get_pricelist_available(show_visible=True)" />
-
             <t t-set="show_price_filter" t-value="opt_wsale_filter_price and opt_wsale_attributes"/>
             <t
                 t-set="hasLeftColumn"
@@ -196,7 +158,6 @@
             />
 
             <t t-set="isFilteringByPrice" t-if="opt_wsale_filter_price" t-value="float_round(available_min_price, 2) != float_round(min_price, 2) or float_round(available_max_price, 2) != float_round(max_price, 2)"/>
-            <t t-set="hasPricelistDropdown" t-value="website_sale_pricelists and len(website_sale_pricelists)&gt;1"/>
             <t t-set="isSortingBy" t-value="[sort for sort in website_sale_sortable if sort[0]==request.params.get('order', '')]"/>
 
             <t
@@ -206,10 +167,6 @@
             <t
                 t-set="wsale_has_filters_btn_lg"
                 t-value="opt_wsale_attributes_top"
-            />
-            <t
-                t-set="reset_attribute_value_params"
-                t-value="{attr: 0 for attr in request.session.get('attribute_value_params', {}).keys()}"
             />
 
             <div id="wrap" class="o_wsale_products_page">
@@ -273,19 +230,12 @@
                                 </div>
                                 <div t-if="has_active_filters" class="border-top py-3 border-bottom">
                                     <a
-                                        t-att-href="keep(
-                                            **reset_attribute_value_params,
-                                            tags=0,
-                                            min_price=0,
-                                            max_price=0,
-                                            on_sale=0,
-                                            in_stock=0,
-                                        )"
+                                        t-att-href="keep(**reset_filters)"
                                         t-attf-class="btn btn-{{navClass}} d-flex align-items-center py-1"
                                         title="Clear Filters"
                                     >
                                         <small class="mx-auto"><b>Clear Filters</b></small>
-                                        <i class="oi" data-icon="close_small" role="presentation"/>
+                                        <i class="oi" data-icon="close_small" role="img" aria-hidden="true"/>
                                     </a>
                                 </div>
                                 <t t-call="website_sale.sidebar_dropzone_at_bottom"/>
@@ -299,6 +249,7 @@
 
                             <header
                                 id="o_wsale_products_header"
+                                t-att-data-category-id="category.id"
                                 t-attf-class="d-flex flex-column gap-2
                                     {{_header_has_content and 'pt-4 pb-3' or opt_wsale_design_grid and 'py-3'}}
                                     {{category and 'o_wsale_products_header_is_category' or 'o_wsale_products_header_is_shop'}}
@@ -319,21 +270,23 @@
                                         <span class="badge text-bg-info fw-normal base-fs">
                                             <t t-out="search"/>
                                             <a
+                                                aria-label="Clear search for this category"
                                                 title="Clear search for this category"
-                                                t-att-href="keep(search=0)"
+                                                t-att-href="keep(search=0, **reset_filters)"
                                                 class="link-info"
                                             >
-                                                <i class="oi" data-icon="close_small" role="img"/>
+                                                <i class="oi" data-icon="close_small" role="img" aria-hidden="true"/>
                                             </a>
                                         </span>
                                         <span class="text-muted">in</span>
                                         <span class="badge text-bg-primary fw-normal base-fs">
                                             <t t-out="category.name"/>
                                             <a
+                                                aria-label="Search globally"
                                                 title="Search globally"
-                                                t-att-href="keep(shop_path, search=search)"
+                                                t-att-href="keep(shop_path, search=search, **reset_filters)"
                                             >
-                                                <i class="oi" data-icon="close_small" role="img"/>
+                                                <i class="oi" data-icon="close_small" role="img" aria-hidden="true"/>
                                             </a>
                                         </span>
                                     </t>
@@ -401,23 +354,17 @@
                                         />
                                         <div t-attf-class="{{'d-lg-none' if not show_product_controls_header else ''}} o_wsale_products_header_dropdown_wrap d-flex gap-3">
                                             <t
-                                                t-if="hasPricelistDropdown"
-                                                t-call="website_sale.pricelist_list"
-                                                _classes.f="ms-auto"
-                                            >
-                                            </t>
-                                            <t
                                                 t-if="is_view_active('website_sale.sort')"
                                                 t-call="website_sale.sort"
                                             />
                                             <button
                                                 t-if="wsale_has_filters_btn"
                                                 t-attf-class="btn btn-{{navClass}} position-relative {{not wsale_has_filters_btn_lg and 'd-lg-none'}} {{not is_view_active('website_sale.search') and 'ms-auto'}} text-nowrap"
-                                                title="Filters"
+                                                title="Set filters"
                                                 data-bs-toggle="offcanvas"
                                                 data-bs-target="#o_wsale_offcanvas"
                                             >
-                                                <i class="oi" data-icon="tune" role="img"/>
+                                                <i class="oi" data-icon="tune" role="img" aria-label="Set filters"/>
                                                 <small t-attf-class="ms-1 {{(hasPricelistDropdown and is_view_active('website_sale.search') and is_view_active('website_sale.sort')) and 'd-none d-md-inline-block'}}">Filters</small>
                                                 <span
                                                     t-if="isFilteringByPrice or attrib_set or tags"
@@ -472,7 +419,6 @@
                                                     t-value="product._get_ribbon(
                                                         price_vals=template_price_vals,
                                                         auto_assign_ribbons=auto_assign_ribbons,
-                                                        variant=product_variants[product],
                                                     )"
                                                 />
                                                 <div
@@ -525,7 +471,7 @@
                                         <p style="text-align: center;">
                                             <a
                                                 t-if="category"
-                                                t-att-href="keep(shop_path, search=search)"
+                                                t-att-href="keep(shop_path, search=search, **reset_filters)"
                                                 t-attf-title="Search {{search}} globally"
                                                 class="d-block pb-5"
                                             >
@@ -618,7 +564,7 @@
                     <!-- Prevent editing the content in website builder -->
                     <span t-else="" t-out="dict(website_sale_sortable)[website.shop_default_sort]"/>
                 </span>
-                <i t-if="_icon_classes" t-attf-class="oi {{_icon_classes}}" data-icon="swap_vert" role="img"/>
+                <i t-if="_icon_classes" t-attf-class="oi {{_icon_classes}}" data-icon="swap_vert" role="img" aria-hidden="true"/>
             </a>
             <div class="dropdown-menu dropdown-menu-end" role="menu">
                 <t t-foreach="website_sale_sortable" t-as="sortby">
@@ -830,6 +776,39 @@
         </t>
     </template>
 
+    <template id="website_sale.filter_range_attributes" name="Range attributes in Filter">
+        <t t-set="values" t-value="pavs_per_attribute[a].sorted('sequence')"/>
+        <t t-set="value_ids" t-value="[v.id for v in values]"/>
+        <t t-set="selected_pav_ids" t-value="attrib_values.get(a.id, [])"/>
+        <t t-set="max_value_idx" t-value="len(values) - 1"/>
+        <t
+            t-set="min_idx"
+            t-value="
+                value_ids.index(selected_pav_ids[0])
+                if selected_pav_ids and selected_pav_ids[0] in value_ids else 0
+            "
+        />
+        <t
+            t-set="max_idx"
+            t-value="
+                value_ids.index(selected_pav_ids[-1])
+                if selected_pav_ids and selected_pav_ids[-1] in value_ids else max_value_idx
+            "
+        />
+        <input
+            type="range"
+            multiple="multiple"
+            class="form-range o_attr_range"
+            t-att-data-attribute-slug="slug(a)"
+            t-att-data-values="json.dumps([v.name for v in values])"
+            t-att-data-value-slugs="json.dumps([slug(v) for v in values])"
+            min="0"
+            t-att-max="max_value_idx"
+            t-att-value="'%d,%d' % (min_idx, max_idx)"
+            step="1"
+        />
+    </template>
+
     <template
         id="website_sale.product_attribute_filters_form"
         name="Product Attribute Filters Form"
@@ -854,7 +833,7 @@
                     t-value="_status == 'active' or default_expand_filter_sections"
                 />
                 <div
-                    t-if="current_attribute_pavs"
+                    t-if="current_attribute_pavs and not(a.display_type == 'range' and len(current_attribute_pavs) &lt;= 1)"
                     t-attf-class="accordion-item {{'border-top-0' if isMobile else 'nav-item mb-1 rounded-0'}}"
                 >
                     <h2
@@ -911,6 +890,12 @@
                                 data-bs-toggle="buttons"
                             >
                                 <t t-call="website_sale.filter_pills_attributes"/>
+                            </div>
+                            <div
+                                t-elif="a.display_type == 'range'"
+                                t-attf-class="{{'my-2' if isMobile else 'mb-3'}}"
+                            >
+                                <t t-call="website_sale.filter_range_attributes"/>
                             </div>
                         </div>
                     </div>
@@ -1060,11 +1045,7 @@
                 <a
                     t-attf-class="btn btn-link w-100 py-1 mb-2 {{not has_active_filters and 'disabled'}}"
                     t-att-aria-disabled="'true' if not has_active_filters else 'false'"
-                    t-att-href="keep(
-                        **reset_attribute_value_params, tags=0,
-                        min_price=0, max_price=0,
-                        on_sale=0, in_stock=0,
-                    )"
+                    t-att-href="keep(**reset_filters)"
                     title="Clear Filters"
                 >
                     Clear Filters
@@ -1108,15 +1089,7 @@
                         role="presentation"
                     >
                         <a
-                            t-att-href="keep(
-                                c.website_url,
-                                **reset_attribute_value_params,
-                                tags=0,
-                                min_price=0,
-                                max_price=0,
-                                on_sale=0,
-                                in_stock=0,
-                            )"
+                            t-att-href="keep(c.website_url, **reset_filters)"
                             class="o_wsale_filmstrip_link d-block w-100 h-100 text-decoration-none"
                             draggable="false"
                             role="menuitem"
@@ -1245,14 +1218,6 @@
                 t-set="floatBar_hasSearch"
                 t-value="is_view_active('website_sale.search')"
             />
-            <t
-                t-set="website_sale_pricelists"
-                t-value="website_sale_pricelists or website.get_pricelist_available(show_visible=True)"
-            />
-            <t
-                t-set="floatBar_hasPricelist"
-                t-value="website_sale_pricelists and len(website_sale_pricelists)&gt;1"
-            />
             <div
                 id="o_wsale_floating_bar_rail"
                 class="o_not_editable position-absolute top-0 bottom-0 d-flex justify-content-end align-items-end p-0"
@@ -1272,7 +1237,6 @@
                         t-if="floatBar_hasSearch and (wsale_has_filters_btn or floatBar_hasSort or floatBar_hasPricelist)"
                         t-attf-class="align-self-stretch border-start opacity-50 {{(not floatBar_hasSort and not floatBar_hasPricelist and not wsale_has_filters_btn_lg) and 'd-lg-none'}}"
                     />
-                    <t t-if="floatBar_hasPricelist" t-call="website_sale.pricelist_list"/>
                     <t
                         t-if="floatBar_hasSort"
                         t-call="website_sale.sort"
@@ -1283,7 +1247,7 @@
                         data-bs-toggle="offcanvas"
                         data-bs-target="#o_wsale_offcanvas"
                     >
-                        <i class="oi" data-icon="tune" role="img"/>
+                        <i class="oi" data-icon="tune" role="img" aria-label="Set filters"/>
                         <span
                             t-if="isFilteringByPrice or attrib_set or tags"
                             t-attf-class="position-absolute top-0 start-100 translate-middle rounded-circle bg-danger p-1"
@@ -1318,7 +1282,7 @@
 
     <template id="website_sale.categorie_link" name="Category Link">
         <a
-            t-att-href="keep(c.website_url)"
+            t-att-href="keep(c.website_url, **reset_filters)"
             t-attf-class="{{c.id == category.id and 'text-decoration-underline'}} p-0"
             t-field="c.name"
         />
@@ -1335,7 +1299,7 @@
                 <ul class="nav d-flex flex-column mb-3">
                     <li class="nav-item mb-1">
                         <a
-                            t-att-href="keep(shop_path)"
+                            t-att-href="keep(shop_path, **reset_filters)"
                             t-attf-class="{{not category and 'text-decoration-underline'}} p-0"
                         >
                             All Products
@@ -1378,7 +1342,7 @@
             </button>
         </xpath>
 
-        <xpath expr="//div//div" position="attributes">
+        <div name="wsale_products_categories_list" position="attributes">
             <attribute
                 name="t-attf-id"
                 add="{{not isOffcanvas and 'o_wsale_categories'}}"
@@ -1389,7 +1353,7 @@
                 add="{{not isOffcanvas and 'accordion-collapse collapse show'}}"
                 separator=" "
             />
-        </xpath>
+        </div>
     </template>
 
     <template id="website_sale.option_collapse_categories_recursive" name="Collapse Category Recursive">
@@ -1626,7 +1590,7 @@
         <a
             t-if="show_on_sale_filter"
             t-att-href="keep(on_sale=0 if on_sale_active else 1)"
-            t-att-class="active_pill_class if on_sale_active else inactive_pill_class"
+            t-att-class="'o_wsale_ribbon_filter ' + (active_pill_class if on_sale_active else inactive_pill_class)"
             aria-label="Filter by on sale products"
         >
             On sale
@@ -1634,7 +1598,7 @@
         <a
             t-if="show_in_stock_filter"
             t-att-href="keep(in_stock=0 if in_stock_active else 1)"
-            t-att-class="active_pill_class if in_stock_active else inactive_pill_class"
+            t-att-class="'o_wsale_ribbon_filter ' + (active_pill_class if in_stock_active else inactive_pill_class)"
             aria-label="Filter by in stock products"
         >
             In stock

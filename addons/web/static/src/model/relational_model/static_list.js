@@ -2,7 +2,7 @@ import { markRaw } from "@odoo/owl";
 import { x2ManyCommands } from "@web/core/orm_plugin";
 import { intersection } from "@web/core/utils/arrays";
 import { omit, pick } from "@web/core/utils/objects";
-import { completeActiveFields } from "@web/model/relational_model/utils";
+import { completeActiveFields, getFieldsSpec } from "@web/model/relational_model/utils";
 import { DataPoint } from "./datapoint";
 import { fromUnityToServerValues, getBasicEvalContext, getId, patchActiveFields } from "./utils";
 import { ConnectionLostError } from "@web/core/network/rpc";
@@ -60,16 +60,12 @@ function copyRecordData(record, copyFields = []) {
                 });
                 break;
             }
-            case "many2one":
-            case "many2one_reference":
-            case "reference":
-                data[name] = value && Object.assign({}, value);
-                break;
             case "one2many":
                 // Not supported => that field is left empty
                 break;
             default:
-                data[name] = value;
+                // record.data is in client side format, it must be serialized for the server
+                data[name] = record._formatServerValue(record.fields[name].type, value);
         }
     }
     return data;
@@ -429,8 +425,8 @@ export class StaticList extends DataPoint {
         });
     }
 
-    moveRecord(dataRecordId, _dataGroupId, refId, _targetGroupId) {
-        return this.resequence(dataRecordId, refId);
+    moveRecords(recordIds, refId, _targetGroupId) {
+        return this.resequence(recordIds, refId);
     }
 
     sortBy(fieldName) {
@@ -448,7 +444,11 @@ export class StaticList extends DataPoint {
         });
     }
 
-    async resequence(movedId, targetId) {
+    /**
+     * @param {string[]} movedIds x2many lists have no selection, so records are always
+     *  moved one at a time
+     */
+    async resequence([movedId], targetId) {
         return this.model.mutex.exec(() => this._resequence(movedId, targetId));
     }
 
@@ -944,7 +944,7 @@ export class StaticList extends DataPoint {
             virtualId: params.virtualId,
             manuallyAdded: params.manuallyAdded,
         };
-        const record = new this.model.constructor.Record(this.model, config, data, options);
+        const record = this._buildRecord(config, data, options);
         this._cache[id] = record;
         if (!params.dontApplyCommands) {
             const commands = this._unknownRecordCommands[id];
@@ -954,6 +954,10 @@ export class StaticList extends DataPoint {
             }
         }
         return record;
+    }
+
+    _buildRecord(config, data, options) {
+        return new this.model.constructor.Record(this.model, config, data, options);
     }
 
     _clearCommands() {
@@ -987,27 +991,65 @@ export class StaticList extends DataPoint {
         this._savePoint = undefined;
     }
 
-    /**
-     * @fixme: this method is naive and ineffective (it triggers a lot of onchange rpcs)
-     */
     async _duplicateRecords(records, options) {
         const targetIndex = options.targetIndex ?? this.records.indexOf(records.at(-1)) + 1;
         const copyFields = options.copyFields || [];
-        let sequence = this.records[targetIndex - 1].data[this.handleField] + 1;
-        const newRecords = await Promise.all(
-            records.map(async () =>
-                this._createNewRecordDatapoint({
-                    mode: "readonly",
-                })
-            )
+        let sequence;
+        if (this.handleField) {
+            sequence = this.records[targetIndex - 1].data[this.handleField] + 1;
+        }
+
+        let parentChanges;
+        if (this.config.relationField) {
+            parentChanges = this._parent._getChanges();
+            if (!this._parent.isNew) {
+                parentChanges.id = this._parent.resId;
+            }
+        }
+
+        const recordsList = records.map((record) => {
+            const changes = { ...copyRecordData(record, copyFields) };
+            if (this.handleField) {
+                changes[this.handleField] = sequence++;
+            }
+            if (parentChanges) {
+                changes[this.config.relationField] = { ...parentChanges };
+            }
+
+            // keep ids false since we're creating new records
+            return {
+                id: false,
+                virtual_id: false,
+                values: changes,
+                field_names: [],
+            };
+        });
+
+        const fieldsSpec = getFieldsSpec(this.activeFields, this.fields, this.evalContext, {
+            withInvisible: true,
+        });
+
+        const responses = await this.model.orm.call(
+            this.resModel,
+            "onchange_batch",
+            [recordsList, fieldsSpec],
+            {
+                context: this.context,
+            }
         );
-        await Promise.all(
-            records.map((record, index) =>
-                newRecords[index]._update({
-                    ...copyRecordData(record, copyFields),
-                    [this.handleField]: sequence++,
-                })
-            )
+
+        const valuesList = responses.map(({ result: { value, warning } }) => {
+            if (warning) {
+                this.model._displayOnchangeWarning(warning);
+            }
+            return value;
+        });
+
+        const newRecords = valuesList.map((values) =>
+            this._createRecordDatapoint(values, {
+                mode: "readonly",
+                virtualId: getId("virtual"),
+            })
         );
 
         const localIncreaseLimit = this.records.length + records.length - this.limit;
@@ -1018,20 +1060,24 @@ export class StaticList extends DataPoint {
         }
 
         const commands = [];
-        // `this.records.slice(targetIndex)` is wrong
-        // we need to iterate on ALL the next records even the ones on the next pages..
-        for (const record of this.records.slice(targetIndex)) {
-            commands.push(
-                x2ManyCommands.update(record.resId || record._virtualId, {
-                    [this.handleField]: sequence++,
-                })
-            );
+        if (this.handleField) {
+            // `this.records.slice(targetIndex)` is wrong
+            // we need to iterate on ALL the next records even the ones on the next pages..
+            for (const record of this.records.slice(targetIndex)) {
+                commands.push(
+                    x2ManyCommands.update(record.resId || record._virtualId, {
+                        [this.handleField]: sequence++,
+                    })
+                );
+            }
+            await this._applyCommands(commands);
         }
-        await this._applyCommands(commands);
 
         await Promise.all(newRecords.map((record) => this._addRecord(record, { sort: false })));
 
-        await this._sort();
+        if (this.orderBy.length) {
+            await this._sort();
+        }
     }
 
     _getCommands({ withReadonly } = {}) {

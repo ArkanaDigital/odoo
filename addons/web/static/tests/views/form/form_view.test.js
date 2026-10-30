@@ -20,7 +20,6 @@ import {
     tick,
     waitFor,
 } from "@odoo/hoot";
-import { OfflinePlugin } from "@web/core/offline/offline_plugin";
 import {
     Component,
     EventBus,
@@ -62,15 +61,15 @@ import {
     toggleMenuItem,
     toggleSearchBarMenu,
 } from "@web/../tests/web_test_helpers";
-import { render } from "@web/owl2/utils";
-
 import { browser } from "@web/core/browser/browser";
 import { makeErrorFromResponse } from "@web/core/network/rpc";
+import { OfflinePlugin } from "@web/core/offline/offline_plugin";
 import { registry } from "@web/core/registry";
 import { config as transitionConfig } from "@web/core/transition";
 import { SIZES } from "@web/core/ui/ui_utils";
 import { useBus, useService } from "@web/core/utils/hooks";
 import { redirect } from "@web/core/utils/urls";
+import { render, useEnv } from "@web/owl2/utils";
 import { CharField } from "@web/views/fields/char/char_field";
 import { DateTimeField } from "@web/views/fields/datetime/datetime_field";
 import { Field } from "@web/views/fields/field";
@@ -368,6 +367,111 @@ test(`[Offline] save a form view offline (click save icon)`, async () => {
 
     await contains(".o_breadcrumb .o_back_button").click();
     expect(".o_data_cell:first").toHaveText("new foo");
+});
+
+test(`[Offline] reopen a new record saved offline with all field types`, async () => {
+    expect.errors(1); // 1x ConnectionLostError (onchange of the reopened new record)
+    let offline = false;
+    onRpc("/*", (request) => {
+        const route = new URL(request.url).pathname;
+        if (offline && route !== "/web/dataset/call_kw/partner/web_read") {
+            return new Response("", { status: 502 });
+        }
+    });
+
+    Partner._fields.txt = fields.Text();
+    Partner._fields.html_f = fields.Html();
+    Partner._fields.bin = fields.Binary();
+    Partner._fields.res_model = fields.Char();
+    Partner._fields.m2o_ref = fields.Many2oneReference({
+        model_field: "res_model",
+        relation: "partner",
+    });
+    Partner._onChanges = {
+        foo(record) {
+            if (record.foo !== "new foo") {
+                return;
+            }
+            record.txt = "some text";
+            record.html_f = "<p>some html</p>";
+            record.res_model = "partner";
+            record.float_field = 3.5;
+            record.int_field = 7;
+            record.bar = true;
+            record.state = "cd";
+            record.date = "2017-02-03";
+            record.datetime = "2017-02-03 10:00:00";
+            record.parent_id = 2;
+            record.reference = "partner,2";
+            record.type_ids = [[4, 12]];
+            record.child_ids = [[0, 0, { name: "kid" }]];
+        },
+    };
+    Partner._views = {
+        form: `
+            <form>
+                <field name="foo"/>
+                <field name="txt"/>
+                <field name="html_f"/>
+                <field name="bin"/>
+                <field name="res_model"/>
+                <field name="float_field"/>
+                <field name="int_field"/>
+                <field name="bar"/>
+                <field name="state"/>
+                <field name="date"/>
+                <field name="datetime"/>
+                <field name="parent_id"/>
+                <field name="reference"/>
+                <field name="type_ids" widget="many2many_tags"/>
+                <field name="child_ids"><list><field name="name"/></list></field>
+            </form>`,
+        list: `<list><field name="foo"/></list>`,
+        search: `<search/>`,
+    };
+    defineActions([
+        {
+            id: 1,
+            name: "Partner",
+            res_model: "partner",
+            views: [
+                [false, "list"],
+                [false, "form"],
+            ],
+        },
+    ]);
+
+    await mountWithCleanup(WebClient);
+    await getService("action").doAction(1);
+
+    await contains(".o_control_panel .o_list_button_add").click();
+    await contains(".o_field_widget[name=foo] input").edit("new foo");
+    await runAllTimers(); // execute first _syncORM triggered after a delay in the service startup
+
+    offline = true;
+    await contains(".o_form_button_save").click();
+    expect(getService(OfflinePlugin).isOffline()).toBe(true);
+
+    await contains(`.o_menu_systray .o_nav_entry [data-icon='link_off']`).click();
+    await contains(".o_offline_systray_content .dropdown-item").click();
+    await waitFor(".o_field_widget[name=txt]");
+    expect(".o_field_widget[name=foo] input").toHaveValue("new foo");
+    expect(".o_field_widget[name=txt] textarea").toHaveValue("some text");
+    expect(".o_field_widget[name=res_model] input").toHaveValue("partner");
+    expect(".o_field_widget[name=float_field] input").toHaveValue("3.50");
+    expect(".o_field_widget[name=int_field] input").toHaveValue("7");
+    expect(".o_field_widget[name=bar] input").toBeChecked();
+    expect(".o_field_widget[name=state] input").toHaveValue("CD");
+    expect(".o_field_widget[name=date] button").toHaveText("Feb 3, 2017");
+    expect(".o_field_widget[name=datetime] button").toHaveText("Feb 3, 2017, 11:00 AM");
+    expect(".o_field_widget[name=parent_id] input").toHaveValue("second record");
+    expect(".o_field_widget[name=reference]").toHaveText("second record");
+    expect(".o_field_widget[name=type_ids] .o_tag").toHaveCount(1);
+    expect(".o_field_widget[name=child_ids] .o_data_row").toHaveCount(1);
+    expect(".o_field_widget[name=child_ids] .o_data_cell").toHaveText("kid");
+    await expect.waitForErrors([
+        `Connection to "/web/dataset/call_kw/partner/onchange" couldn't be established or was interrupted`,
+    ]);
 });
 
 test(`[Offline] save a form view offline (autosave when leaving)`, async () => {
@@ -860,7 +964,6 @@ test(`form with o2m having a selection field with fieldDependencies`, async () =
 test(`form view: widget having a o2m field as fieldDependencies`, async () => {
     class MyWidget extends Component {
         static template = xml`<span>My custom widget</span>`;
-        props = useProps();
     }
     widgetsRegistry.add("my_widget", {
         component: MyWidget,
@@ -3433,7 +3536,7 @@ test(`buttons should be in .o_statusbar_buttons in form view header on mobile`, 
     });
 
     expect(`.o_statusbar_buttons > button:eq(0)`).toHaveAttribute("name", "0");
-    await contains(".o_statusbar_buttons .dropdown-toggle:has([data-icon='more_vert'])").click();
+    await contains(".o_statusbar_buttons button.dropdown-toggle-split").click();
     expect(`.o-dropdown--menu div.o_field_widget`).toHaveAttribute("name", "foo");
 });
 
@@ -3926,6 +4029,19 @@ test(`can create a record with default values`, async () => {
     expect.verifySteps(["web_save"]);
     expect(`.o_form_editable`).toHaveCount(1);
     expect(MockServer.env["partner"]).toHaveLength(n + 1);
+});
+
+test(`middle click on New button opens a new record in a new window`, async () => {
+    await mountView({
+        resModel: "partner",
+        type: "form",
+        arch: `<form><field name="foo"/></form>`,
+        resId: 1,
+        createRecord: (newWindow) => expect.step(`createRecord - newWindow: ${newWindow}`),
+    });
+
+    await contains(`.o_form_button_create`).middleClick();
+    expect.verifySteps(["createRecord - newWindow: true"]);
 });
 
 test(`default record with a one2many and an onchange on sub field`, async () => {
@@ -6327,7 +6443,7 @@ test(`deleting a record`, async () => {
 });
 
 test(`[Offline] deleting a record`, async () => {
-    onRpc("unlink", () => expect.step(`unlink`));
+    onRpc("web_unlink", () => expect.step(`web_unlink`));
     Partner._views = {
         "form,false": `<form><field name="foo"/></form>`,
         "search,false": `<search/>`,
@@ -6372,7 +6488,7 @@ test(`[Offline] deleting a record`, async () => {
     await setOffline(false);
 
     expect(getService(OfflinePlugin).isOffline()).toBe(false);
-    await expect.waitForSteps(["unlink"]);
+    await expect.waitForSteps(["web_unlink"]);
 });
 
 test.tags("desktop");
@@ -6420,7 +6536,7 @@ test(`deleting the last record`, async () => {
 
     await contains(`.modal-footer button.btn-danger`).click();
     expect(`.modal`).toHaveCount(0);
-    expect.verifySteps(["unlink", "history-back"]);
+    expect.verifySteps(["web_unlink", "history-back"]);
 });
 
 test("delete the last record (without previous action)", async () => {
@@ -6442,6 +6558,42 @@ test("delete the last record (without previous action)", async () => {
     await toggleMenuItem("Delete");
     await contains(`.modal-footer button.btn-danger`).click();
     expect.verifySteps(["__DEFAULT_ACTION__ called"]);
+});
+
+test("delete the last record (with previous action, dirty form)", async () => {
+    Partner._views = {
+        list: `<list><field name="foo"/></list>`,
+        form: `
+            <form>
+                <field name="foo"/>
+            </form>`,
+        search: `<search/>`,
+    };
+
+    onRpc("partner", "web_unlink", () => expect.step("web_unlink"));
+    onRpc("partner", "web_save", () => expect.step("web_save"));
+
+    await mountWithCleanup(WebClient);
+    await getService("action").doAction({
+        type: "ir.actions.act_window",
+        res_model: "partner",
+        views: [[false, "list"]],
+    });
+    await getService("action").doAction({
+        type: "ir.actions.act_window",
+        res_model: "partner",
+        res_id: 1,
+        views: [[false, "form"]],
+    });
+    await contains(`.o_field_widget[name=foo] input`).edit("making it dirty", {
+        confirm: false,
+    });
+    await toggleActionMenu();
+    await toggleMenuItem("Delete");
+    await contains(`.modal-footer button.btn-danger`).click();
+
+    expect.verifySteps(["web_unlink"]);
+    expect(`.o_list_view`).toHaveCount(1);
 });
 
 test(`empty required fields cannot be saved`, async () => {
@@ -8325,7 +8477,6 @@ test(`correct amount of buttons`, async () => {
     await assertFormContainsNButtonsWithSizeClass(SIZES.XXL, 7);
 });
 
-
 test(`create with false values`, async () => {
     onRpc("web_save", ({ args }) => {
         expect.step("web_save");
@@ -8665,7 +8816,7 @@ test(`support anchor tags with action type`, async () => {
         type: "form",
         arch: `
             <form>
-                <a type="action" name="42" class="btn-primary"><i class="oi" data-icon="east"/> Click me !</a>
+                <a type="action" name="42" class="btn-primary"><i class="oi" data-icon="arrow_forward"/> Click me !</a>
             </form>
         `,
         resId: 1,
@@ -9631,8 +9782,8 @@ test(`id is False in evalContext for new records`, async () => {
 
 test(`delete a duplicated record`, async () => {
     const newRecordID = 6; // ids from 1 to 5 are already taken so the new record will have id 6
-    onRpc("unlink", ({ args }) => {
-        expect.step("unlink");
+    onRpc("web_unlink", ({ args }) => {
+        expect.step("web_unlink");
         expect(args[0]).toEqual([newRecordID]);
     });
 
@@ -9655,7 +9806,7 @@ test(`delete a duplicated record`, async () => {
 
     await contains(`.modal-footer .btn-danger`).click();
     expect(`.o_field_widget`).toHaveText("first record");
-    expect.verifySteps(["unlink"]);
+    expect.verifySteps(["web_unlink"]);
 });
 
 test.tags("desktop");
@@ -9960,7 +10111,6 @@ test(`basic support for widgets`, async () => {
 
 test(`widget with class attribute`, async () => {
     class MyComponent extends Component {
-        props = useProps();
         static template = xml`<span>Hello</span>`;
     }
     widgetsRegistry.add("test_widget", { component: MyComponent });
@@ -10030,7 +10180,6 @@ test(`support header button as widgets on form statusbar on mobile`, async () =>
 test.tags("mobile");
 test("support header button as widgets in submenu on form statusbar on mobile", async () => {
     class TestUploadWidget extends Component {
-        props = useProps();
         static template = xml`
             <FileUploader onUploaded="this.onUploaded">
                 <t t-set-slot="toggler">
@@ -10055,7 +10204,7 @@ test("support header button as widgets in submenu on form statusbar on mobile", 
         </header></form>`,
     });
 
-    await contains(".o_statusbar_buttons button:has([data-icon='more_vert'])").click();
+    await contains(".o_statusbar_buttons button.dropdown-toggle-split").click();
     expect(".o-dropdown--menu button:contains(Upload Test)").toHaveCount(1);
     await contains(".o-dropdown--menu button:contains(Upload Test)").click();
     expect(".o-dropdown--menu button:contains(Upload Test)").toHaveCount(1);
@@ -11200,7 +11349,6 @@ test(`Action Button clicked with failing action on desktop`, async () => {
     expect.errors(1);
 
     class MyComponent extends Component {
-        props = useProps();
         static template = xml`<div/>`;
         setup() {
             throw new Error("test");
@@ -11243,7 +11391,6 @@ test(`Action Button clicked with failing action on mobile`, async () => {
     expect.errors(1);
 
     class MyComponent extends Component {
-        props = useProps();
         static template = xml`<div/>`;
         setup() {
             throw new Error("test");
@@ -11639,6 +11786,27 @@ test(`status indicator: discard dirty state`, async () => {
     expect(`.o_field_widget input`).toHaveValue("yop");
 });
 
+test(`status indicator: discard dirty state after retyping same value with different text`, async () => {
+    await mountView({
+        resModel: "partner",
+        type: "form",
+        arch: `<form><field name="float_field"/></form>`,
+        resId: 1,
+    });
+    expect(`.o_form_status_indicator_buttons.invisible`).toHaveCount(1);
+
+    await contains(`.o_field_widget input`).edit("1.2");
+    expect(`.o_form_status_indicator_buttons.invisible`).toHaveCount(0);
+
+    // retype a different text that parses to the same value as what was
+    // just committed: the field should no longer be considered dirty
+    await contains(`.o_field_widget input`).edit("1.200");
+
+    await contains(`.o_form_button_cancel`).click();
+    expect(`.o_form_status_indicator_buttons.invisible`).toHaveCount(1);
+    expect(`.o_field_widget input`).toHaveValue("0.44");
+});
+
 test(`status indicator: invalid state`, async () => {
     onRpc("web_save", () => {
         expect.step("save"); // not called
@@ -11796,7 +11964,7 @@ test(`setting : boolean field`, async () => {
             <form>
                 <setting help="this is bar" documentation="/applications/technical/web/settings/this_is_a_test.html">
                     <field name="bar"/>
-                    <button name="buttonName" icon="east" type="action" string="Manage Users" class="btn-link"/>
+                    <button name="buttonName" icon="arrow_forward" type="action" string="Manage Users" class="btn-link"/>
                 </setting>
             </form>
         `,
@@ -12024,7 +12192,6 @@ test(`coming to an action with an error from a form view with a dirty x2m`, asyn
     expect.errors(1);
 
     class TestClientAction extends Component {
-        props = useProps();
         static template = xml`<div></div>`;
         setup() {
             throw new Error("Something went wrong");
@@ -12033,7 +12200,6 @@ test(`coming to an action with an error from a form view with a dirty x2m`, asyn
     registry.category("actions").add("TestClientAction", TestClientAction);
 
     class MyWidget extends Component {
-        props = useProps();
         static template = xml`
             <div class="test_widget">
                 <button t-on-click="this.onClick">MyButton</button>
@@ -12106,7 +12272,6 @@ test(`coming to an action with an error from a form view with a record in creati
     expect.errors(1);
 
     class TestClientAction extends Component {
-        props = useProps();
         static template = xml`<div></div>`;
         setup() {
             throw new Error("Something went wrong");
@@ -12115,7 +12280,6 @@ test(`coming to an action with an error from a form view with a record in creati
     registry.category("actions").add("TestClientAction", TestClientAction);
 
     class MyWidget extends Component {
-        props = useProps();
         static template = xml`
                 <div class="test_widget">
                     <button t-on-click="this.onClick">MyButton</button>
@@ -12673,7 +12837,6 @@ test(`existing record with falsy display_name`, async () => {
 
 test(`field with special data`, async () => {
     class MyWidget extends Component {
-        props = useProps();
         static template = xml`<div>MyWidget</div>`;
         setup() {
             this.specialData = useSpecialData((orm, props) => {
@@ -12707,7 +12870,6 @@ test(`field with special data`, async () => {
 
 test(`field with special data (with persistent Cache)`, async () => {
     class MyWidget extends Component {
-        props = useProps();
         static template = xml`<div class="my_widget">MyWidget <t t-out="this.specialData.data.test"/></div>`;
         setup() {
             this.specialData = useSpecialData((orm, props) => {
@@ -13024,7 +13186,7 @@ test(`statusbar buttons are correctly rendered in mobile`, async () => {
 
     expect(".o_statusbar_buttons button:eq(0)").toHaveText("Confirm");
     // open the dropdown
-    await contains(".o_statusbar_buttons button:has([data-icon='more_vert'])").click();
+    await contains(".o_statusbar_buttons button.dropdown-toggle-split").click();
     await animationFrame();
     expect(".o-dropdown--menu:visible").toHaveCount(1, { message: "dropdown should be visible" });
     expect(".o-dropdown--menu button").toHaveCount(1, {
@@ -13055,11 +13217,11 @@ test(`statusbar widgets should appear in the CogMenu dropdown`, async () => {
 
     expect(".o_statusbar_buttons button:eq(0)").toHaveText("Attach document");
     // Now there should an action dropdown, because there are two visible buttons
-    expect(".o_statusbar_buttons button:has([data-icon='more_vert'])").toHaveCount(1, {
+    expect(".o_statusbar_buttons button.dropdown-toggle-split").toHaveCount(1, {
         message: "should have 'More' dropdown",
     });
 
-    await contains(".o_statusbar_buttons button:has([data-icon='more_vert'])").click();
+    await contains(".o_statusbar_buttons button.dropdown-toggle-split").click();
     expect(".o-dropdown--menu button").toHaveCount(1, {
         message: "should have 1 button in the dropdown",
     });
@@ -13067,7 +13229,7 @@ test(`statusbar widgets should appear in the CogMenu dropdown`, async () => {
     // change display_name to update buttons modifiers and make one button visible
     await contains(".o_field_widget[name=name] input").edit("first record");
     expect(".o_statusbar_buttons button:eq(0)").toHaveText("Attach document");
-    expect(".o_statusbar_buttons button:has([data-icon='more_vert'])").toHaveCount(0, {
+    expect(".o_statusbar_buttons button.dropdown-toggle-split").toHaveCount(0, {
         message: "shouldn't have 'More' dropdown",
     });
 });
@@ -13171,7 +13333,6 @@ test(`cog menu action is executed with up to date context`, async () => {
 
 test("CogMenu receives the model in env", async () => {
     class CogItem extends Component {
-        props = useProps();
         static template = xml`<button class="test-cog" t-on-click="this.onClick">Test</button>`;
         onClick() {
             expect.step([`cog clicked`, this.env.model.root.resModel, this.env.model.root.resId]);
@@ -13179,7 +13340,8 @@ test("CogMenu receives the model in env", async () => {
     }
     registry.category("cogMenu").add("test-cog", {
         Component: CogItem,
-        isDisplayed: (env) => {
+        isDisplayed() {
+            const env = useEnv();
             expect.step([`cog displayed`, env.model.root.resModel, env.model.root.resId]);
             return true;
         },
@@ -13242,7 +13404,7 @@ test(`preserve current scroll position on form view while closing dialog`, async
     });
 
     // click on back button
-    await contains(".modal .modal-header [data-icon='west']").click();
+    await contains(".modal .modal-header [data-icon='arrow_back']").click();
 
     expect(window.scrollY).toBe(265, { message: "Should have scrolled 265 px vertically" });
     expect(window.scrollX).toBe(0, { message: "Should be 0 px from left as it is" });
@@ -13286,7 +13448,7 @@ test("attach_document widget also works inside a dropdown", async () => {
         `,
     });
 
-    await contains(".o_statusbar_buttons button:has([data-icon='more_vert'])").click();
+    await contains(".o_statusbar_buttons button.dropdown-toggle-split").click();
     await contains(".o_attach_document").click();
     await manuallyDispatchProgrammaticEvent(fileInput, "change");
     await animationFrame();

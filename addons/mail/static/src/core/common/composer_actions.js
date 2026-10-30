@@ -3,13 +3,18 @@ import { CreatePollDialog } from "@mail/core/common/create_poll_dialog";
 
 import { EmojiPicker, useEmojiPickerStoreScroll } from "@web/core/emoji_picker/emoji_picker";
 
-import { Action, ACTION_TAGS, useAction, UseActions } from "@mail/core/common/action";
-import { SUGGESTION_DELIMITERS } from "@mail/core/common/suggestion_hook";
+import {
+    Action,
+    ACTION_TAGS,
+    IS_ACTION_GROUP_DESCRIPTION_SYM,
+    IS_ACTION_DEFINITION_SYM,
+    useAction,
+    UseActions,
+} from "@mail/core/common/action";
+import { SUGGESTION_DELIMITERS } from "@mail/core/common/plugin/suggestion_plugin";
 import { _t } from "@web/core/l10n/translation";
-import { usePopover } from "@web/core/popover/popover_hook";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
-import { markEventHandled } from "@web/core/utils/misc";
 
 export const composerActionsRegistry = registry.category("mail.composer/actions");
 
@@ -27,13 +32,20 @@ export const composerActionsRegistry = registry.category("mail.composer/actions"
  * @param {ComposerActionDefinition} definition
  */
 export function registerComposerAction(id, definition) {
-    composerActionsRegistry.add(id, definition);
+    composerActionsRegistry.add(
+        id,
+        Object.assign(definition, { [IS_ACTION_DEFINITION_SYM]: true })
+    );
+}
+
+export function describeComposerActionGroup(id, definition) {
+    composerActionsRegistry.add(
+        id,
+        Object.assign(definition, { [IS_ACTION_GROUP_DESCRIPTION_SYM]: true })
+    );
 }
 
 export function pickerGetAnchor({ action, owner }) {
-    if (owner.ui.isSmall) {
-        return null;
-    }
     if (action.sequenceQuick) {
         return owner.quickActionsRef();
     } else {
@@ -42,11 +54,10 @@ export function pickerGetAnchor({ action, owner }) {
 }
 
 registerComposerAction("send-message", {
-    btnClass: ({ action }) => (action.isActive ? "o-sendMessageActive o-text-white shadow-sm" : ""),
-    condition: ({ composer, owner, store }) =>
-        (store.env.services.ui.isSmall && composer.message) ||
-        (!owner.env.inChatter && !composer.message),
+    condition: ({ ancestors, composer, store }) =>
+        (store.ui.isSmall() && composer.message) || (!ancestors.inChatter && !composer.message),
     disabledCondition: ({ owner }) => owner.isSendButtonDisabled,
+    hasBtnBg: true,
     icon: "send",
     isActive: ({ owner }) => !owner.isSendButtonDisabled,
     name: ({ composer, owner }) =>
@@ -62,32 +73,22 @@ registerComposerAction("send-message", {
     tags: ({ action }) => (action.isActive ? ACTION_TAGS.PRIMARY : undefined),
 });
 registerComposerAction("add-emoji", {
-    actionPanelComponent: EmojiPicker,
-    actionPanelComponentProps: ({ action, owner }) => ({
-        onSelect: (emoji) => owner.addEmoji(emoji),
-        onClose: () => action.actionPanelClose(),
-        storeScroll: action.emojiStoreScroll,
-    }),
-    actionPanelName: _t("Emoji"),
-    actionPanelOpen(...args) {
-        const anchorEl = pickerGetAnchor(...args);
-        this.popover?.open(anchorEl, this.actionPanelComponentProps);
-    },
     disabledCondition: ({ owner }) => owner.areAllActionsDisabled,
     icon: "sentiment_satisfied",
     name: _t("Add Emojis"),
-    onSelected(params, ev) {
-        markEventHandled(ev, "Composer.onClickAddEmoji");
+    panel: {
+        component: EmojiPicker,
+        name: _t("Emoji"),
+        props: ({ action, owner }) => ({
+            onSelect: (emoji) => owner.addEmoji(emoji),
+            onClose: () => action.closePanel(),
+            storeScroll: action.emojiStoreScroll,
+        }),
     },
     setup({ store }) {
-        if (store.env.services.ui.isSmall) {
-            return;
+        if (!store.ui.isSmall()) {
+            this.emojiStoreScroll = useEmojiPickerStoreScroll();
         }
-        this.emojiStoreScroll = useEmojiPickerStoreScroll();
-        this.popover = usePopover(EmojiPicker, {
-            arrow: false,
-            onClose: () => this.actionPanelClose(),
-        });
     },
     sequenceQuick: 20,
 });
@@ -96,28 +97,27 @@ registerComposerAction("upload-files", {
     condition: ({ owner }) => owner.allowUpload,
     icon: "attach_file",
     name: _t("Attach Files"),
-    onSelected: ({ composer, owner }, ev) => {
+    onSelected: ({ composer, owner }) => {
         owner.fileUploaderRef()?.click();
-        markEventHandled(ev, "composer.clickOnAddAttachment");
         composer.autofocus++;
     },
     setup: ({ owner }) => (owner.fileUploaderRef = signal.ref()),
     sequence: 20,
 });
 registerComposerAction("open-full-composer", {
-    condition: ({ composer, owner }) =>
-        !composer.message &&
+    condition: ({ ancestors, composer, owner }) =>
         owner.props.showFullComposer &&
         composer.targetThread &&
-        composer.targetThread.model !== "discuss.channel" &&
-        !owner.env.inFrontendPortalChatter,
+        !composer.targetThread.channel &&
+        !ancestors.inFrontendPortalChatter,
     hasBtnBg: ({ composer, owner }) =>
         (composer.restoredFromFullComposer && !owner.state.isFullComposerOpen) || undefined,
     hotkey: "shift+c",
     icon: "expand_content",
     isActive: ({ composer, owner }) =>
         (composer.restoredFromFullComposer && !owner.state.isFullComposerOpen) || undefined,
-    name: _t("Open Full Composer"),
+    name: ({ composer }) =>
+        composer.message ? _t("Edit in Full Composer") : _t("Open Full Composer"),
     onSelected: ({ owner }) => owner.onClickFullComposer(),
     sequence: 30,
     tags: ({ composer, owner }) =>

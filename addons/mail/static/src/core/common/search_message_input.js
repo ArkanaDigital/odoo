@@ -1,7 +1,7 @@
 import { MessageSearchState } from "@mail/core/common/message_search_hook";
 import { Component, t, useListener, useProps } from "@odoo/owl";
-import { browser } from "@web/core/browser/browser";
 import { SearchInput } from "@mail/core/common/search_input";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { _t } from "@web/core/l10n/translation";
@@ -9,10 +9,23 @@ import { useService } from "@web/core/utils/hooks";
 
 /**
  * @typedef {Object} SearchFilter
- * @property {string} label
- * @property {string} name
- * @property {true|false|undefined} [is_notification]
+ * @property {string|undefined} id value sent as `search_filter` to `_message_fetch` (`undefined` = All)
+ * @property {TranslatedString} name
  */
+
+/**
+ * Supported message search filters for `_message_fetch`.
+ * Keep in sync with `MESSAGE_SEARCH_FILTERS` in `mail/models/mail_message.py`.
+ *
+ * @type {SearchFilter[]}
+ */
+export const MESSAGE_SEARCH_FILTERS = [
+    { id: undefined, name: _t("All") },
+    { id: "messages", name: _t("Messages") },
+    { id: "notes", name: _t("Notes") },
+    { id: "activities", name: _t("Activities") },
+    { id: "changes", name: _t("Changes") },
+];
 
 export class SearchMessageInput extends Component {
     static template = "mail.SearchMessageInput";
@@ -20,14 +33,16 @@ export class SearchMessageInput extends Component {
 
     setup() {
         super.setup();
+        this.ancestors = useAncestors();
         this.store = useService("mail.store");
+        this.MESSAGE_SEARCH_FILTERS = MESSAGE_SEARCH_FILTERS;
         this.props = useProps({
             closeSearch: t.function([]).optional(),
             messageSearch: t.instanceOf(MessageSearchState),
             thread: t.instanceOf(this.store["mail.thread"]),
         });
         useListener(
-            browser,
+            window,
             "keydown",
             (ev) => {
                 if (ev.key === "Escape") {
@@ -40,19 +55,10 @@ export class SearchMessageInput extends Component {
 
     /** @param {SearchFilter} searchFilter */
     onChangeSearchFilter(searchFilter) {
-        if (searchFilter.is_notification !== this.props.messageSearch.is_notification) {
+        if (searchFilter.id !== this.props.messageSearch.search_filter) {
             this.props.messageSearch.lastEmptyTerm = undefined;
-            this.props.messageSearch.is_notification = searchFilter.is_notification;
+            this.props.messageSearch.search_filter = searchFilter.id;
         }
-    }
-
-    /** @returns {SearchFilter[]} */
-    get searchFilters() {
-        return [
-            { label: "all", name: _t("All"), is_notification: undefined },
-            { label: "conversations", name: _t("Conversations"), is_notification: false },
-            { label: "tracked_changes", name: _t("Tracked Changes"), is_notification: true },
-        ];
     }
 
     get inputPlaceholder() {

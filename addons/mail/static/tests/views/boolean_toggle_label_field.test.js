@@ -1,6 +1,6 @@
-import { contains, mailModels } from "@mail/../tests/mail_test_helpers";
+import { contains as mailContains, mailModels } from "@mail/../tests/mail_test_helpers";
 import { expect, test } from "@odoo/hoot";
-import { click } from "@odoo/hoot-dom";
+import { click, waitFor, waitForNone } from "@odoo/hoot-dom";
 import { animationFrame } from "@odoo/hoot-mock";
 import { defineModels, fields, models, mountView, onRpc } from "@web/../tests/web_test_helpers";
 
@@ -23,12 +23,12 @@ test("use BooleanToggleLabelField in form view", async () => {
                       <div class="boolean_field_off" invisible="not boolean_field">off</div>
                </form>`,
     });
-    await contains(".o_field_mail_boolean_toggle_label .btn-secondary", { text: "btnLabel" });
+    await mailContains(".o_field_mail_boolean_toggle_label .btn-secondary", { text: "btnLabel" });
     expect(".boolean_field_on").toHaveCount(1);
     expect(".boolean_field_off").toHaveCount(0);
     await click(".o_field_mail_boolean_toggle_label button");
-    await contains(".boolean_field_off");
-    await contains(".boolean_field_on", { count: 0 });
+    await waitFor(".boolean_field_off:count(1)");
+    await waitForNone(".boolean_field_on");
 });
 
 test("BooleanToggleLabelField is disabled with a readonly attribute", async () => {
@@ -57,11 +57,11 @@ test("BooleanToggleLabelField is disabled if readonly in editable list", async (
         `,
     });
     expect(".o_field_mail_boolean_toggle_label button").not.toBeEnabled();
-    await contains(".o_field_mail_boolean_toggle_label button.btn-secondary");
-    await contains(".o_field_mail_boolean_toggle_label button.btn-primary", { count: 0 });
+    await waitFor(".o_field_mail_boolean_toggle_label button.btn-secondary:count(1)");
+    await waitForNone(".o_field_mail_boolean_toggle_label button.btn-primary");
 
     await click(`.o_field_mail_boolean_toggle_label button`);
     await animationFrame();
-    await contains(".o_field_mail_boolean_toggle_label button.btn-secondary");
-    await contains(".o_field_mail_boolean_toggle_label button.btn-primary", { count: 0 });
+    await waitFor(".o_field_mail_boolean_toggle_label button.btn-secondary:count(1)");
+    await waitForNone(".o_field_mail_boolean_toggle_label button.btn-primary");
 });

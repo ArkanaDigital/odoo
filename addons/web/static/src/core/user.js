@@ -1,4 +1,4 @@
-import { browser } from "@web/core/browser/browser";
+import { location, browser } from "@web/core/browser/browser";
 import { pyToJsLocale } from "@web/core/l10n/utils/locales";
 import { rpc } from "@web/core/network/rpc";
 import { Cache } from "@web/core/utils/cache";
@@ -39,6 +39,7 @@ export function _makeUser(session) {
         home_action_id: homeActionId,
         is_admin: isAdmin,
         is_internal_user: isInternalUser,
+        is_regular_user: isRegularUser,
         is_system: isSystem,
         is_public: isPublic,
         name,
@@ -116,9 +117,14 @@ export function _makeUser(session) {
     delete session.groups;
 
     // Generate caches for has_group and has_access calls
+    /**
+     * @param {string} group
+     * @param {import("./context").Context} context
+     * @returns {boolean | Promise<boolean>}
+     */
     const getGroupCacheValue = (group, context) => {
         if (!userId) {
-            return Promise.resolve(false);
+            return false;
         }
         const params = {
             model: "res.users",
@@ -129,28 +135,41 @@ export function _makeUser(session) {
         const cache = {
             type: "disk",
             callback: (updatedValue) => {
-                groupCache.cache[group] = Promise.resolve(updatedValue);
+                groupCache.cache[group] = updatedValue;
             },
         };
         return rpc("/web/dataset/call_kw/res.users/has_group", params, { cache });
     };
+    /**
+     * @param {string} group
+     */
     const getGroupCacheKey = (group) => group;
     const groupCache = new Cache(getGroupCacheValue, getGroupCacheKey);
     if (isInternalUser !== undefined) {
-        groupCache.cache["base.group_user"] = Promise.resolve(isInternalUser);
+        groupCache.cache["base.group_user"] = isInternalUser;
+    }
+    if (isRegularUser !== undefined) {
+        groupCache.cache["base.group_user_regular"] = isRegularUser;
     }
     if (isSystem !== undefined) {
-        groupCache.cache["base.group_system"] = Promise.resolve(isSystem);
+        groupCache.cache["base.group_system"] = isSystem;
     }
     if (isAdmin !== undefined) {
-        groupCache.cache["base.group_erp_manager"] = Promise.resolve(isAdmin);
+        groupCache.cache["base.group_erp_manager"] = isAdmin;
     }
     if (isPublic !== undefined) {
-        groupCache.cache["base.group_public"] = Promise.resolve(isPublic);
+        groupCache.cache["base.group_public"] = isPublic;
     }
     for (const group in groups) {
-        groupCache.cache[group] = Promise.resolve(!!groups[group]);
+        groupCache.cache[group] = !!groups[group];
     }
+    /**
+     * @param {string} model
+     * @param {string} operation
+     * @param {(number | false)[]} ids
+     * @param {import("./context").Context} context
+     * @returns {Promise<boolean>}
+     */
     const getAccessRightCacheValue = (model, operation, ids, context) => {
         const url = `/web/dataset/call_kw/${model}/has_access`;
         return rpc(url, {
@@ -160,6 +179,11 @@ export function _makeUser(session) {
             kwargs: { context },
         });
     };
+    /**
+     * @param {string} model
+     * @param {string} operation
+     * @param {(number | false)[]} ids
+     */
     const getAccessRightCacheKey = (model, operation, ids) =>
         JSON.stringify([model, operation, ids]);
     const accessRightCache = new Cache(getAccessRightCacheValue, getAccessRightCacheKey);
@@ -171,6 +195,7 @@ export function _makeUser(session) {
         isAdmin,
         isSystem,
         isInternalUser,
+        isRegularUser,
         partnerId,
         homeActionId,
         showEffect,
@@ -191,9 +216,17 @@ export function _makeUser(session) {
         updateContext(update) {
             Object.assign(context, update);
         },
-        hasGroup(group) {
+        /**
+         * @param {string} group
+         */
+        async hasGroup(group) {
             return groupCache.read(group, this.context);
         },
+        /**
+         * @param {string} model
+         * @param {string} operation
+         * @param {number | false | (number | false)[]} [ids]
+         */
         checkAccessRight(model, operation, ids = []) {
             return accessRightCache.read(model, operation, ensureArray(ids), this.context);
         },
@@ -253,7 +286,7 @@ export function _makeUser(session) {
             updateActiveCompanies(newCompanyIds, allowedCompanies, defaultCompany);
 
             if (options.reload) {
-                browser.location.reload();
+                location.reload();
             }
         },
     };

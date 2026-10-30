@@ -10,11 +10,10 @@ patch(PosOrder.prototype, {
         this.uiState = {
             ...this.uiState,
             lineChanges: this.uiState.lineChanges || {},
-            receiptReady: false,
         };
     },
     get unsentLines() {
-        return this.lines.filter(
+        return this.getOrderlines().filter(
             (l) =>
                 !l.isTipLine() &&
                 (!Object.keys(this.uiState.lineChanges).includes(l.uuid) ||
@@ -76,6 +75,7 @@ patch(PosOrder.prototype, {
         if (this.email && !data.email) {
             data.email = this.email;
         }
+        data.partner_id = this.raw.partner_id || false;
         return data;
     },
 });

@@ -1,8 +1,9 @@
 import { closestElement } from "@html_editor/utils/dom_traversal";
-import { URL_REGEX, cleanZWChars } from "./utils";
+import { URL_REGEX, cleanZWChars, deduceURLfromText } from "./utils";
 import { isImageUrl } from "@html_editor/utils/url";
 import { Plugin } from "@html_editor/plugin";
 import { childNodeIndex } from "@html_editor/utils/position";
+import { findInSelection } from "@html_editor/utils/selection";
 
 /**
  * @typedef {((text: string, url: string) => void | true)[]} paste_url_overrides
@@ -53,7 +54,7 @@ export class LinkPastePlugin extends Plugin {
      */
     handlePasteTextUrl(selection, text) {
         const selectionIsInsideALink = !!closestElement(selection.anchorNode, "a");
-        const url = /^https?:\/\//i.test(text) ? text : "https://" + text;
+        const url = deduceURLfromText(text);
         if (selectionIsInsideALink) {
             this.handlePasteTextUrlInsideLink(text, url);
             return;
@@ -61,10 +62,24 @@ export class LinkPastePlugin extends Plugin {
         if (this.delegateTo("paste_url_overrides", text, url)) {
             return;
         }
-        const label =
-            !selection.isCollapsed && cleanZWChars(selection.toString()).length
-                ? selection.toString()
-                : text;
+        let label;
+        const selectedText = cleanZWChars(selection.toString());
+        if (!selection.isCollapsed && selectedText.length) {
+            // If the entire link is selected and its label matches the URL,
+            // replace the existing link with the new URL.
+            const link = findInSelection(selection, "a");
+            if (link) {
+                const linkLabel = cleanZWChars(link.textContent);
+                const href = link.getAttribute("href");
+                const labelMatchesHref =
+                    linkLabel === href || linkLabel + "/" === href || linkLabel === href + "/";
+                label = labelMatchesHref ? text : selectedText;
+            } else {
+                label = selectedText;
+            }
+        } else {
+            label = text;
+        }
         this.dependencies.link.insertLink(url, label);
     }
     /**
@@ -89,12 +104,10 @@ export class LinkPastePlugin extends Plugin {
     handlePasteTextMultiUrl(selection, splitAroundUrl) {
         const selectionIsInsideALink = !!closestElement(selection.anchorNode, "a");
         for (let i = 0; i < splitAroundUrl.length; i++) {
-            const url = /^https?:\/\//gi.test(splitAroundUrl[i])
-                ? splitAroundUrl[i]
-                : "https://" + splitAroundUrl[i];
             // Even indexes will always be plain text, and odd indexes will always be URL.
             // A url cannot be transformed inside an existing link.
             if (i % 2 && !selectionIsInsideALink) {
+                const url = deduceURLfromText(splitAroundUrl[i]);
                 this.dependencies.dom.insert(
                     this.dependencies.link.createLink(url, splitAroundUrl[i])
                 );

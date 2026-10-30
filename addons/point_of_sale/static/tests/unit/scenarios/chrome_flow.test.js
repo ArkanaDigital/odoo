@@ -327,9 +327,7 @@ test("customer_display_shows_qr_popup: customer display QR code popup", async ()
     ).click();
     await animationFrame();
 
-    await contains(
-        '.dropdown-item:contains("Customer Display"), .o-dropdown-item:contains("Customer Display")'
-    ).click();
+    await contains('.o_pos_burger_menu_buttons button:contains("Customer Display")').click();
     await animationFrame();
 
     await waitFor(".modal");
@@ -337,14 +335,8 @@ test("customer_display_shows_qr_popup: customer display QR code popup", async ()
     if (Utils.isMobile()) {
         const deviceBtn = document.querySelector(".o-overlay-item .modal .modal-footer a");
         const url = deviceBtn.href;
-        if (!url || url.includes("undefined")) {
-            throw new Error(`Invalid customer display URL (contains undefined): ${url}`);
-        }
-        try {
-            new URL(url);
-        } catch {
-            throw new Error(`Invalid customer display URL: ${url}`);
-        }
+        expect(url).not.toInclude("undefined");
+        expect(new URL(url)).toBeInstanceOf(URL);
     } else {
         await waitFor('.modal .btn:contains("This Device")');
         await contains('.modal .btn:contains("Display Qr")').click();

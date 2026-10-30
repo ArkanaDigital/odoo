@@ -13,7 +13,7 @@
                     <AttendanceVideoStream
                         height="200"
                         width="250"
-                        exposeCameraCapture.bind="this.props.exposeCameraCapture"
+                        exposeCameraCapture.bind="this.kioskProps.exposeCameraCapture"
                         onStreamStateChange.bind="this.setStreamAvailable"
                     />
                 </t>
@@ -23,7 +23,7 @@
                 <span class="d-block">Scan your badge</span>
             </button>
             <a t-if="!this.isDisplayStandalone" class="o_hr_attendance_install_btn btn btn-secondary d-flex align-items-center justify-content-center fw-bolder position-relative"
-            t-att-style="this.props.fromTrialMode ? 'left: 25%;' : 'left: 115%;'"
+            t-att-style="this.kioskProps.fromTrialMode ? 'left: 25%;' : 'left: 115%;'"
             t-att-href="this.installURL" target="_blank">Install</a>
         </div>
     </xpath>
@@ -106,6 +106,7 @@
         companyImageUrl="this.companyImageUrl"
         kioskReturn.bind="this.kioskReturn"
         activeDisplay="this.state.active_display"
+        kioskModeClasses="this.state.active_display === 'greet' ? 'flex-grow-1 h-auto' : ''"
     >
         <t t-if="this.state.active_display === 'settings'">
             <t t-call="hr_attendance.PublicKiosksSettingScreen"/>
@@ -182,7 +183,10 @@
             />
         </t>
         <t t-if="this.state.active_display === 'greet'">
-            <KioskGreetings employeeData="this.employeeData" kioskReturn="() => this.kioskReturn(true)"/>
+            <KioskGreetings
+                employeeData="this.employeeData"
+                kioskReturn="() => this.kioskReturn(true)"
+                kioskContinueBreak.bind="this.continueAsBreakTime"/>
         </t>
         <t t-if="this.state.active_display === 'pin'">
             <KioskPinCode

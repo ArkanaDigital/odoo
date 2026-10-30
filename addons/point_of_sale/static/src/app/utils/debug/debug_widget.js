@@ -66,9 +66,6 @@ export class DebugWidget extends Component {
             () => [this.state.isOpen]
         );
     }
-    get isDisabled() {
-        return this.pos.cashier._role === "minimal";
-    }
     disableDebugMode() {
         const url = new URL(window.location.href);
         url.searchParams.delete("debug");
@@ -174,9 +171,6 @@ export class DebugWidget extends Component {
     }
     _onBufferUpdate({ detail: value }) {
         this.state.buffer = value;
-    }
-    get bufferRepr() {
-        return `"${this.state.buffer}"`;
     }
 
     get randomOrder() {

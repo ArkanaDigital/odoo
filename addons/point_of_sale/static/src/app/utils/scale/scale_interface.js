@@ -1,21 +1,19 @@
+import { proxy } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { formatFloat, roundDecimals } from "@web/core/utils/numbers";
-import { Reactive } from "@web/core/utils/reactive";
 
-export class ScaleInterface extends Reactive {
+export class ScaleInterface {
     /** @param {import("@point_of_sale/app/services/pos_store").PosStore} pos */
     constructor(pos) {
-        super(...arguments);
-
         this.pos = pos;
         this.env = pos.env;
         this.lastWeight = null;
         this.loading = false;
         this.weight = 0;
         this.tare = 0;
-        this.hardwareTare = false;
         this.tareRequested = false;
         this.errorCallback = null;
+        return proxy(this);
     }
 
     /**
@@ -23,6 +21,14 @@ export class ScaleInterface extends Reactive {
      * will be used and the other `ScaleInterface` implementations won't be called.
      */
     async connectToScale() {
+        return false;
+    }
+
+    /**
+     * If true, the gross weight display and tare control will be removed, leaving just
+     * the net weight displayed.
+     */
+    get hardwareTare() {
         return false;
     }
 
@@ -162,12 +168,12 @@ export class ScaleInterface extends Reactive {
     }
 
     get unitPriceString() {
-        const priceString = this.env.utils.formatCurrency(this.product.unitPrice);
+        const priceString = this.pos.formatCurrency(this.product.unitPrice);
         return `${priceString} / ${this.product.unitOfMeasure}`;
     }
 
     /** @returns {string} */
     get totalPriceString() {
-        return this.env.utils.formatCurrency(this.netWeight * this.product.unitPrice);
+        return this.pos.formatCurrency(this.netWeight * this.product.unitPrice);
     }
 }

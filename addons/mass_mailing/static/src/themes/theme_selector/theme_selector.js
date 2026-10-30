@@ -3,68 +3,60 @@ import {
     onMounted,
     onWillStart,
     onWillUnmount,
-    status,
-    useEffect,
-    proxy,
+    providePlugins,
     signal,
+    t,
+    useProps,
+    useScope,
 } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
-import { FavoritePreview } from "./favorite_preview";
-import { useThrottleForAnimation } from "@web/core/utils/timing";
-import { KeepLast } from "@web/core/utils/concurrency";
-import { _t } from "@web/core/l10n/translation";
 import { closestScrollableY } from "@web/core/utils/scrolling";
+import { useThrottleForAnimation } from "@web/core/utils/timing";
+import { TemplatePreviewField } from "../../fields/template_preview_field/template_preview_field";
+import { getStyleSheets } from "../../utils/iframe_assets";
+import { StyleSheetPlugin } from "../../views/mailing_template_kanban_view/stylesheets_plugin";
 
 export class ThemeSelector extends Component {
     static template = "mass_mailing.ThemeSelector";
-    static props = {
-        config: { type: Object },
-        styleSheetsPromise: Promise,
-        themesPromise: Promise,
-        // Reactive wrapper for favoriteThemes promise: { promise }
-        favoriteThemes: Object,
-        iframeRef: { type: Function },
-    };
     static components = {
-        FavoritePreview,
+        TemplatePreviewField,
     };
+
+    props = useProps({
+        config: t.object(),
+        iframeRef: t.signal(),
+        /** @type {import("@odoo/owl").AsyncComputed<Record<string, any>[]>} */
+        templates: t.function(),
+    });
 
     themeSelectorWrapperRef = signal.ref();
 
+    get commonThemes() {
+        return this.themeService.getCommonThemes();
+    }
+
+    get simpleThemes() {
+        return this.themeService.getSimpleThemes();
+    }
+
     setup() {
-        this.orm = useService("orm");
-        this.action = useService("action");
         this.themeService = useService("mass_mailing.themes");
-        this.config = this.props.config;
-        this.commonThemes = this.themeService.getCommonThemes();
-        this.simpleThemes = this.themeService.getSimpleThemes();
-        this.state = proxy({
-            loading: false,
-            favoriteTemplates: [],
+        const scope = useScope();
+        providePlugins([StyleSheetPlugin], {
+            styleSheetPromises: [
+                getStyleSheets(scope, this.props.iframeRef(), "mass_mailing.assets_iframe_style"),
+                getStyleSheets(
+                    scope,
+                    this.props.iframeRef(),
+                    "mass_mailing.assets_theme_selector_template_shadowdom"
+                ),
+            ],
         });
-        onWillStart(async () => {
-            const { themesPromise, favoriteThemes } = this.props;
-            const [favoriteTemplates] = await Promise.all([favoriteThemes.promise, themesPromise]);
-            Object.assign(this.state, { favoriteTemplates });
-        });
-        let favoriteThemesPromise = this.props.favoriteThemes.promise;
-        const keepLastFavoriteThemes = new KeepLast();
-        useEffect(async () => {
-            if (status(this) === "destroyed") {
-                return;
-            }
-            if (favoriteThemesPromise !== this.props.favoriteThemes.promise) {
-                favoriteThemesPromise = this.props.favoriteThemes.promise;
-                this.state.loading = true;
-                const favoriteTemplates = await keepLastFavoriteThemes.add(favoriteThemesPromise);
-                Object.assign(this.state, { favoriteTemplates });
-                this.state.loading = false;
-            }
-        });
+
+        onWillStart(() => this.themeService.load());
+        onWillStart(() => this.props.templates.currentPromise());
+
         this.throttledResize = useThrottleForAnimation(() => {
-            if (status(this) === "destroyed") {
-                return;
-            }
             const iframe = this.props.iframeRef();
             iframe.style.width = "";
             const height = Math.trunc(
@@ -99,35 +91,15 @@ export class ThemeSelector extends Component {
         });
     }
 
-    async onRemoveFavorite(ev, index) {
-        ev.stopPropagation();
-        const favorite = this.state.favoriteTemplates[index];
-        if (this.state.loading || !favorite) {
-            return;
-        }
-        await this.orm.write("mailing.mailing", [favorite.id], { favorite: false });
-        this.state.favoriteTemplates.splice(index, 1);
-        this.action.doAction({
-            type: "ir.actions.client",
-            tag: "display_notification",
-            params: {
-                message: _t("Design removed from the templates!"),
-                next: { type: "ir.actions.act_window_close" },
-                sticky: false,
-                type: "info",
-            },
-        });
-    }
-
-    onSelectFavorite(html) {
-        if (this.state.loading) {
+    onSelectTemplate(html) {
+        if (this.props.templates.loading()) {
             return;
         }
         this.props.config.setThemeHTML(html);
     }
 
     onSelectTheme(themeOptions) {
-        if (this.state.loading) {
+        if (this.props.templates.loading()) {
             return;
         }
         this.props.config.setThemeHTML(themeOptions.html);

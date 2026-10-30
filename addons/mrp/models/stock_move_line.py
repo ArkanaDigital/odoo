@@ -9,6 +9,10 @@ class StockMoveLine(models.Model):
 
     workorder_id = fields.Many2one('mrp.workorder', 'Work Order', check_company=True, index='btree_not_null')
     production_id = fields.Many2one('mrp.production', 'Production Order', check_company=True)
+    visual_lot_name = fields.Char(
+        string="Visual Pre-generated Lot",
+        compute="_compute_visual_lot_name"
+    )
 
     @api.depends('production_id')
     def _compute_picking_type_id(self):
@@ -18,6 +22,19 @@ class StockMoveLine(models.Model):
                 line.picking_type_id = production_id.picking_type_id
                 line_to_remove |= line
         return super(StockMoveLine, self - line_to_remove)._compute_picking_type_id()
+
+    def _compute_visual_lot_name(self):
+        self.visual_lot_name = False
+        final_move_lines = self - self.production_id.move_byproduct_ids.move_line_ids
+        for production, lines in final_move_lines.grouped('production_id').items():
+            lots = production.lot_producing_ids
+            if not production or not lots:
+                continue
+            if len(lots) == 1:  # If tracked by lot or only one serial number
+                lines.visual_lot_name = lots[0].name
+                continue
+            for line, lot in zip(lines, lots):
+                line.visual_lot_name = lot.name
 
     def _search_picking_type_id(self, operator, value):
         if operator in Domain.NEGATIVE_OPERATORS:
@@ -133,3 +150,10 @@ class StockMoveLine(models.Model):
             self.move_id.unbuild_id
             and not self.move_id.origin_returned_move_id.move_line_ids.lot_id
         ) or super()._exclude_requiring_lot()
+
+    def _get_outdated_candidate_sort_key(self, candidate):
+        """ Prioritise the current component production first"""
+        production = self.move_id.raw_material_production_id
+        if not production:
+            return super()._get_outdated_candidate_sort_key(candidate)
+        return (candidate.move_id.raw_material_production_id != production,) + super()._get_outdated_candidate_sort_key(candidate)

@@ -84,18 +84,18 @@ Help your customers with this chat, and analyse their feedback.
             'im_livechat/static/src/js/im_livechat_chatbot_steps_one2many.js',
             'im_livechat/static/src/views/**/*',
             ('remove', 'im_livechat/static/src/views/lazy/**/*'),
-            'im_livechat/static/src/scss/im_livechat_history.scss',
-            'im_livechat/static/src/scss/im_livechat_form.scss',
+            'im_livechat/static/src/scss/im_livechat_history.css',
+            'im_livechat/static/src/scss/im_livechat_form.css',
             'im_livechat/static/src/core/common/**/*',
             'im_livechat/static/src/core/public_web/**/*',
             'im_livechat/static/src/core/web/**/*',
-            ('remove', 'im_livechat/static/src/**/*.dark.scss'),
+            ('remove', 'im_livechat/static/src/**/*.dark.css'),
         ],
         'web.assets_backend_lazy': [
             "im_livechat/static/src/views/lazy/**/*",
         ],
         "web.assets_web_dark": [
-            'im_livechat/static/src/**/*.dark.scss',
+            'im_livechat/static/src/**/*.dark.css',
         ],
         'web.assets_unit_tests': [
             'im_livechat/static/tests/**/*',
@@ -123,9 +123,7 @@ Help your customers with this chat, and analyse their feedback.
             'im_livechat/static/tests/mock_server/**/*',
         ],
         "im_livechat.assets_livechat_support_tours": [
-            "web_tour/static/src/js/**/*",
-            "web/static/lib/hoot-dom/**/*",
-            'web_tour/static/src/tour_utils.js',
+            ('include', 'web_tour.assets'),
             "im_livechat/static/tests/tours/livechat_tour_utils.js",
             "im_livechat/static/tests/tours/support/*",
         ],
@@ -139,7 +137,7 @@ Help your customers with this chat, and analyse their feedback.
         ],
         "portal.assets_chatter_helpers": [
             "im_livechat/static/src/core/common/**/*",
-            ("remove", "im_livechat/static/src/core/common/**/*.scss"),
+            ("remove", "im_livechat/static/src/core/common/**/*.css"),
         ],
     },
     'author': 'Odoo S.A.',

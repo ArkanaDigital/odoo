@@ -1,34 +1,45 @@
-import { HtmlUpgradeManager } from "@html_editor/html_migrations/html_upgrade_manager";
+import { DYNAMIC_FIELD_PLUGINS } from "@html_editor/backend/dynamic_field/dynamic_field_plugin";
+import { HtmlViewer } from "@html_editor/components/html_viewer/html_viewer";
+import { EditorVersionPlugin } from "@html_editor/core/editor_version_plugin";
+import { isHtmlContentSupported } from "@html_editor/core/selection_plugin";
 import { stripVersion } from "@html_editor/html_migrations/html_migrations_utils";
+import { HtmlUpgradeManager } from "@html_editor/html_migrations/html_upgrade_manager";
+import { extractUnmappedAttachmentsIds } from "@html_editor/main/media/media_plugin";
 import { stripHistoryIds } from "@html_editor/others/collaboration/collaboration_odoo_plugin";
+import {
+    MAIN_EMBEDDINGS,
+    READONLY_MAIN_EMBEDDINGS,
+} from "@html_editor/others/embedded_components/embedding_sets";
 import {
     COLLABORATION_PLUGINS,
     EMBEDDED_COMPONENT_PLUGINS,
     MAIN_PLUGINS,
     NO_EMBEDDED_COMPONENTS_FALLBACK_PLUGINS,
 } from "@html_editor/plugin_sets";
-import { DYNAMIC_FIELD_PLUGINS } from "@html_editor/backend/dynamic_field/dynamic_field_plugin";
-import {
-    MAIN_EMBEDDINGS,
-    READONLY_MAIN_EMBEDDINGS,
-} from "@html_editor/others/embedded_components/embedding_sets";
 import { normalizeHTML } from "@html_editor/utils/html";
+import { withSequence } from "@html_editor/utils/resource";
+import { canRenderAsHTML, fixInvalidHTML, instanceofMarkup } from "@html_editor/utils/sanitize";
 import { Wysiwyg } from "@html_editor/wysiwyg";
-import { Component, markup, useProps, signal, status, proxy, t, useApp } from "@odoo/owl";
+import {
+    Component,
+    markup,
+    proxy,
+    signal,
+    t,
+    useApp,
+    useEffect,
+    useProps,
+    useScope,
+} from "@odoo/owl";
 import { localization } from "@web/core/l10n/localization";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
 import { Mutex } from "@web/core/utils/concurrency";
 import { useBus, useService } from "@web/core/utils/hooks";
 import { useRecordObserver } from "@web/model/relational_model/utils";
+import "@web/views/fields/html/html_field";
 import { standardFieldProps } from "@web/views/fields/standard_field_props";
 import { TranslationButton } from "@web/views/fields/translation/translation";
-import { HtmlViewer } from "@html_editor/components/html_viewer/html_viewer";
-import { EditorVersionPlugin } from "@html_editor/core/editor_version_plugin";
-import { withSequence } from "@html_editor/utils/resource";
-import { canRenderAsHTML, fixInvalidHTML, instanceofMarkup } from "@html_editor/utils/sanitize";
-import { isHtmlContentSupported } from "@html_editor/core/selection_plugin";
-import "@web/views/fields/html/html_field";
 
 const HTML_FIELD_METADATA_ATTRIBUTES = ["data-last-history-commits"];
 
@@ -78,6 +89,8 @@ export class HtmlField extends Component {
         return ["o-html-field"];
     }
 
+    scope = useScope();
+
     setup() {
         this.htmlUpgradeManager = new HtmlUpgradeManager();
         this.mutex = new Mutex();
@@ -126,8 +139,8 @@ export class HtmlField extends Component {
                 this.state.key++;
             }
         });
-        useRecordObserver((record) => {
-            const value = record.data[this.props.dynamicFieldReferenceModel || "model"];
+        useEffect(() => {
+            const value = this.props.record.data[this.props.dynamicFieldReferenceModel || "model"];
             // update Dynamic Placeholder reference model
             if (this.editor && this.editor.isReady) {
                 this.editor.trigger("on_model_changed_handlers", value);
@@ -183,7 +196,7 @@ export class HtmlField extends Component {
     }
 
     get isTranslatable() {
-        return this.props.record.fields[this.props.name].translate;
+        return this.props.record.isFieldTranslatable(this.props.name);
     }
 
     clearElementToCompare(element) {
@@ -234,7 +247,7 @@ export class HtmlField extends Component {
     }
 
     async _commitChanges({ urgent }) {
-        if (status(this) === "destroyed") {
+        if (this.scope.isDestroyed()) {
             return;
         }
         if (this.isDirty) {
@@ -246,10 +259,11 @@ export class HtmlField extends Component {
                 await this.updateValue(this.editor.getContent());
             }
             const changeId = this.lastChangeId;
+            const editable = this.editor.editable;
             const el = await this.getEditorContent();
             this.pendingAttachmentsService.addPendingAttachments(
                 this.props.record?.resId,
-                this.editor?.shared?.media?.extractUnmappedAttachmentsIds(this.editor.editable)
+                extractUnmappedAttachmentsIds(editable)
             );
             const content = el.innerHTML;
             this.clearElementToCompare(el);
@@ -289,6 +303,7 @@ export class HtmlField extends Component {
         this.state.showCodeView = this.state.forceCodeView || !this.state.showCodeView;
         if (!this.state.showCodeView && this.editor) {
             this.editor.editable.innerHTML = this.value;
+            this.editor.processThrough("html_compatibility_processors", this.editor.editable);
             this.editor.shared.history.commit();
         }
     }
@@ -331,7 +346,7 @@ export class HtmlField extends Component {
             getPendingAttachmentsIds: () => {
                 this.pendingAttachmentsService.addPendingAttachments(
                     this.props.record?.resId,
-                    this.editor?.shared?.media?.extractUnmappedAttachmentsIds(this.editor.editable)
+                    extractUnmappedAttachmentsIds(this.editor.editable)
                 );
                 return this.pendingAttachmentsService.pendingAttachmentIds[
                     this.props.record?.resId
@@ -434,6 +449,12 @@ export const htmlField = {
         if ("allowChecklist" in options) {
             editorConfig.allowChecklist = Boolean(options.allowChecklist);
         }
+        if ("allowScrollableTables" in options) {
+            editorConfig.allowScrollableTables = Boolean(options.allowScrollableTables);
+        }
+        if ("saveScrollableTables" in options) {
+            editorConfig.saveScrollableTables = Boolean(options.saveScrollableTables);
+        }
         if ("allowAttachmentCreation" in options) {
             editorConfig.allowImage = Boolean(options.allowAttachmentCreation);
             editorConfig.allowFile = Boolean(options.allowAttachmentCreation);
@@ -451,6 +472,9 @@ export const htmlField = {
         }
         if ("debounceHints" in options) {
             editorConfig.debounceHints = Boolean(options.debounceHints);
+        }
+        if ("allowWhiteboard" in options) {
+            editorConfig.allowWhiteboard = Boolean(options.allowWhiteboard);
         }
 
         const props = {

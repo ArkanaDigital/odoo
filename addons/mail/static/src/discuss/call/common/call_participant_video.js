@@ -1,4 +1,4 @@
-import { Component, signal, status, t, useEffect, useListener, useProps } from "@odoo/owl";
+import { Component, signal, t, useEffect, useListener, useProps, useScope } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 
 export class CallParticipantVideo extends Component {
@@ -6,17 +6,15 @@ export class CallParticipantVideo extends Component {
 
     root = signal.ref();
 
+    scope = useScope();
+
     setup() {
         super.setup();
         this.rtc = useService("discuss.rtc");
         this.store = useService("mail.store");
         this.props = useProps({
-            inset: t
-                .function([
-                    t.instanceOf(this.store["discuss.channel.rtc.session"]),
-                    t.selection(["camera", "screen"]),
-                ])
-                .optional(),
+            inset: t.boolean().optional(),
+            isCropped: t.boolean().optional(),
             session: t.instanceOf(this.store["discuss.channel.rtc.session"]),
             type: t.selection(["camera", "screen"]),
         });
@@ -42,7 +40,7 @@ export class CallParticipantVideo extends Component {
             await this.root()?.play?.();
             this.props.session.videoError = undefined;
         } catch (error) {
-            if (status(this) === "destroyed") {
+            if (this.scope.isDestroyed()) {
                 return;
             }
             this.props.session.videoError = error.name;

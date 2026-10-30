@@ -1,17 +1,17 @@
-import { Component } from "@odoo/owl";
+import { Component, t, useProps } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 
 class LivechatChannelCommand extends Component {
     static template = "im_livechat.LivechatChannelCommand";
-    static props = {
-        executeCommand: Function,
-        icon: String,
-        iconClass: String,
-        name: String,
-        searchValue: String,
-        slots: Object,
-    };
+    props = useProps({
+        executeCommand: t.function(),
+        icon: t.string(),
+        iconClass: t.string(),
+        name: t.string(),
+        searchValue: t.string(),
+        slots: t.object(),
+    });
 }
 
 registry.category("command_provider").add("im_livechat.channel_join_leave", {
@@ -22,12 +22,13 @@ registry.category("command_provider").add("im_livechat.channel_join_leave", {
         }
         await store.livechatChannels.fetch();
         const activeChannels = new Set(
-            Object.values(store["im_livechat.channel"].records)
+            store["im_livechat.channel"].records
+                .values()
                 .filter((c) => c.channel_ids.length > 0)
                 .map((c) => c.id)
         );
         // Show live chat channels with ongoing conversations first
-        return Object.values(store["im_livechat.channel"].records)
+        return [...store["im_livechat.channel"].records.values()]
             .sort((c1, c2) => {
                 const c1IsActive = activeChannels.has(c1.id);
                 const c2IsActive = activeChannels.has(c2.id);

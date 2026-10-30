@@ -3,6 +3,10 @@ import { Domain } from "@web/core/domain";
 import { cartesian, sections, sortBy, symmetricalDifference } from "@web/core/utils/arrays";
 import { KeepLast, Race } from "@web/core/utils/concurrency";
 import { DEFAULT_INTERVAL } from "@web/search/utils/dates";
+import {
+    getCurrencyAggregateSpecs,
+    isConvertedAggregateUsed,
+} from "@web/model/currency_aggregates";
 import { addPropertyFieldDefs, Model } from "@web/model/model";
 import { computeReportMeasures, processMeasure } from "@web/views/utils";
 
@@ -278,6 +282,7 @@ import { computeReportMeasures, processMeasure } from "@web/views/utils";
  * @property {boolean} useSampleModel
  * @property {Object} widgets
  * @property {Map} customGroupBys
+ * @property {string[]} archMeasures
  * @property {string[]} expandedRowGroupBys
  * @property {string[]} expandedColGroupBys
  * @property {Object} sortedColumn
@@ -318,6 +323,7 @@ export class PivotModel extends Model {
      * @param {string|null} params.metaData.defaultOrder
      * @param {boolean} params.metaData.disableLinking
      * @param {boolean} params.metaData.useSampleModel
+     * @param {string[]} [params.metaData.archMeasures=[]]
      * @param {Map} [params.metaData.customGroupBys={}]
      * @param {string[]} [params.metaData.expandedColGroupBys=[]]
      * @param {string[]} [params.metaData.expandedRowGroupBys=[]]
@@ -356,6 +362,7 @@ export class PivotModel extends Model {
             numbering: {},
         };
         const metaData = Object.assign({}, params.metaData, {
+            archMeasures: params.metaData.archMeasures || params.metaData.activeMeasures,
             customGroupBys: params.metaData.customGroupBys || new Map(),
             expandedRowGroupBys: params.metaData.expandedRowGroupBys || [],
             expandedColGroupBys: params.metaData.expandedColGroupBys || [],
@@ -672,7 +679,9 @@ export class PivotModel extends Model {
             metaData.expandedColGroupBys = [];
         }
 
-        const allActivesMeasures = new Set(this.metaData.activeMeasures);
+        const allActivesMeasures = new Set(
+            this.metaData.activeMeasures.concat(this.metaData.archMeasures)
+        );
         if (processedMeasures) {
             processedMeasures.forEach((e) => allActivesMeasures.add(e));
         }
@@ -783,6 +792,7 @@ export class PivotModel extends Model {
         metaData.activeMeasures = [...metaData.activeMeasures];
         metaData.colGroupBys = [...metaData.colGroupBys];
         metaData.rowGroupBys = [...metaData.rowGroupBys];
+        metaData.archMeasures = [...metaData.archMeasures];
         metaData.expandedColGroupBys = [...metaData.expandedColGroupBys];
         metaData.expandedRowGroupBys = [...metaData.expandedRowGroupBys];
         metaData.customGroupBys = new Map([...metaData.customGroupBys]);
@@ -914,7 +924,7 @@ export class PivotModel extends Model {
      * @param {Object} group
      * @param {string[]} groupBys
      * @param {Config} config
-     * @returns {string[]}
+     * @returns {TranslatedString[]}
      */
     _getGroupLabels(group, groupBys, config) {
         return groupBys.map((gb) => {
@@ -989,12 +999,8 @@ export class PivotModel extends Model {
             if (aggregator === "array_agg_distinct") {
                 return measurements;
             }
-            if (aggregator === "sum_currency") {
-                const currencies =
-                    group[metaData.fields[fieldName].currency_field + ":array_agg_distinct"];
-                if (currencies.length === 1) {
-                    return measurements;
-                }
+            if (!isConvertedAggregateUsed(group, metaData.fields[fieldName], aggregator)) {
+                return measurements;
             }
             if (metaData.measures[fieldName].type === "boolean" && measurement instanceof Boolean) {
                 measurement = measurement ? 1 : 0;
@@ -1086,8 +1092,7 @@ export class PivotModel extends Model {
             }
             acc.push(measure + ":" + field.aggregator);
             if (field.currency_field) {
-                acc.push(field.currency_field + ":array_agg_distinct");
-                acc.push(field.name + ":sum_currency");
+                acc.push(...getCurrencyAggregateSpecs(field));
             }
             return acc;
         }, []);
@@ -1445,7 +1450,7 @@ export class PivotModel extends Model {
      * @param {any} value
      * @param {string} groupBy
      * @param {Config} config
-     * @returns {string}
+     * @returns {TranslatedString}
      */
     _sanitizeLabel(value, groupBy, config) {
         const { metaData } = config;

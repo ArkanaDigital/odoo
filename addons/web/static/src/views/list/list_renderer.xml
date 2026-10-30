@@ -21,19 +21,20 @@
                             <CheckBox disabled="!_canSelectRecord" indeterminate="this.someSelected" value="this.selectAll" className="'d-flex m-0'" onChange.bind="this.toggleSelection"/>
                         </th>
                         <t t-foreach="this.columns" t-as="column" t-key="column.id">
+                            <t t-set="isNumeric" t-value="this.isNumericColumn(column)"/>
                             <th t-if="column.type === 'field'"
                                 t-att-data-name="column.name"
                                 t-att-class="this.getColumnClass(column) + ' opacity-trigger-hover w-print-auto'"
                                 t-on-pointerup="this.onColumnTitleMouseUp"
                                 t-on-click="() => this.onClickSortColumn(column)"
                                 t-on-keydown="(ev) => this.onCellKeydown(ev)"
-                                data-tooltip-delay="1000"
                                 tabindex="-1">
                                 <t t-if="column.hasLabel and column.widget !== 'handle'">
-                                <t t-set="isNumeric" t-value="this.isNumericColumn(column)"/>
+                                    <t t-set="tooltipTemplate" t-value="this.getColumnTooltipTemplate(column)"/>
                                     <div class="d-flex align-items-center"
-                                        t-att-data-tooltip-template="this.debugMode.isActive() ? 'web.FieldTooltip' : 'web.ListHeaderTooltip'"
-                                        t-att-data-tooltip-info="this.makeTooltip(column)">
+                                        t-att-data-tooltip="column.label"
+                                        t-att-data-tooltip-template="tooltipTemplate"
+                                        t-att-data-tooltip-info="tooltipTemplate and this.makeTooltip(column)">
                                         <span class="d-block min-w-0 text-truncate flex-grow-1 flex-shrink-1" t-att-class="isNumeric ? 'o_list_number_th' : ''"
                                               t-out="column.label"/>
                                         <div class="o_list_header_label_spacer"/>
@@ -47,12 +48,13 @@
                             </th>
                             <th t-elif="column.type === 'column_group'"
                                 class="align-middle cursor-default opacity-trigger-hover w-print-auto"
+                                t-att-class="{'o_list_number_th': isNumeric}"
                                 t-on-pointerup="this.onColumnTitleMouseUp"
                                 t-on-keydown="(ev) => this.onCellKeydown(ev)"
                                 tabindex="-1">
                                 <t t-if="column.hasLabel">
                                     <div class="d-flex align-items-center">
-                                        <span class="d-block min-w-0 text-truncate flex-grow-1 flex-shrink-1" t-out="column.label"/>
+                                        <span class="d-block min-w-0 text-truncate flex-grow-1 flex-shrink-1" t-att-class="isNumeric ? 'o_list_number_th' : ''" t-out="column.label"/>
                                         <div class="o_list_header_label_spacer"/>
                                     </div>
                                 </t>
@@ -133,7 +135,7 @@
                                 </button>
                             </div>
                         </td>
-                        <td t-foreach="this.getAggregateColumns()" t-as="column" t-key="column.id" t-att-class="(column.type === 'field' ? 'o_list_number': '') + (column.widget ? ' o_' + column.widget + '_cell' : '')">
+                        <td t-foreach="this.getAggregateColumns()" t-as="column" t-key="column.id" t-att-class="(this.isNumericColumn(column) ? 'o_list_number': '') + (column.widget ? ' o_' + column.widget + '_cell' : '')">
                             <t t-set="aggFieldName" t-value="this.getAggregateFieldName(column, this.aggregates)"/>
                             <span t-if="aggFieldName" t-att-data-tooltip="this.aggregates[aggFieldName].help">
                                 <t t-out="this.aggregates[aggFieldName].value"/>
@@ -239,7 +241,7 @@
     </t>
 
     <t t-name="web.ListRenderer.GroupRow">
-        <tr t-attf-class="{{group.count > 0 ? 'o_group_has_content' : ''}} o_group_header {{!group.isFolded ? 'o_group_open' : ''}} cursor-pointer {{ this.canResequenceRows and group_index > 0 ? 'o_row_draggable' : '' }} {{this.state.altKeyMode ? 'o_multi_group_expand_available' : ''}}"
+        <tr t-attf-class="{{group.count > 0 ? 'o_group_has_content' : ''}} o_group_header o_sample_data_disabled {{!group.isFolded ? 'o_group_open' : ''}} cursor-pointer {{ this.canResequenceRows and group_index > 0 ? 'o_row_draggable' : '' }} {{this.state.altKeyMode ? 'o_multi_group_expand_available' : ''}}"
             t-att-data-group-id="group.id"
             t-on-click="(ev) => this.onGroupHeaderClicked(ev, group)"
         >
@@ -285,7 +287,7 @@
                     </div>
                 </div>
             </th>
-            <td t-on-keydown="(ev) => this.onCellKeydown(ev, group)" t-foreach="this.getAggregateColumns(group)" t-as="column" t-key="column.id" t-att-class="{'o_list_number': column.type === 'field'}">
+            <td t-on-keydown="(ev) => this.onCellKeydown(ev, group)" t-foreach="this.getAggregateColumns(group)" t-as="column" t-key="column.id" t-att-class="{'o_list_number': this.isNumericColumn(column)}">
                 <t t-if="column.type === 'field' or column.type === 'column_group'">
                     <t t-set="groupAggregate" t-value="this.formatGroupAggregate(group, column)"/>
                     <t t-set="aggFieldName" t-value="this.getAggregateFieldName(column, group.aggregates)"/>
@@ -310,7 +312,7 @@
     </t>
 
     <t t-name="web.ListRenderer.RecordRow">
-        <tr class="o_data_row"
+        <tr class="o_data_row o_sample_data_disabled"
             t-att-class="this.getRowClass(record)"
             t-att-data-id="record.id"
             t-att-data-group-id="groupId"
@@ -348,12 +350,16 @@
                         t-att-class="this.getCellClass(column, record)"
                         t-att-name="column.name"
                         t-att-data-column-id="column.id"
+                        t-att-colspan="column.colspan"
                         t-custom-click="(ev, isMiddleClick) => this.onCellClicked(record, column, ev, isMiddleClick)"
                         tabindex="-1">
-                        <t t-foreach="column.fields" t-as="fieldInfo" t-key="fieldInfo.id">
-                            <t t-set="subIsInvisible" t-value="this.evalInvisible(fieldInfo.invisible, record) or !(fieldInfo.name in record.data) or (fieldInfo.optional and !this.optionalActiveFields[fieldInfo.name])"/>
-                            <div t-if="!subIsInvisible" class="o_column_group_field" t-att-class="this.getColumnGroupFieldClasses(fieldInfo, record)" t-att-data-field-name="fieldInfo.name">
-                                <t t-if="this.canUseFormatter(fieldInfo, record)" t-out="this.getFormattedValue(fieldInfo, record)"/>
+                        <t t-set="visibleFields" t-value="this.getVisibleColumnGroupFields(column, record)"/>
+                        <t t-foreach="visibleFields" t-as="fieldInfo" t-key="fieldInfo.id">
+                            <div class="o_column_group_field" t-att-class="this.getColumnGroupFieldClasses(fieldInfo, record, visibleFields.length > 1)" t-att-data-field-name="fieldInfo.name">
+                                <t t-if="this.canUseFormatter(fieldInfo, record)">
+                                    <t t-set="value" t-value="this.getFormattedValue(fieldInfo, record)"/>
+                                    <t t-out="value === '' ? '\u00a0' : value"/>
+                                </t>
                                 <Field t-else=""
                                     name="fieldInfo.name"
                                     record="record"
@@ -419,7 +425,7 @@
                         t-on-click.stop="hasDeleteButton ? (ev) => this.onRemoveCellClicked(record, ev) : () => {}"
                         tabindex="-1"
                     >
-                        <button class="oi d-print-none btn btn-link text-danger"
+                        <button class="oi d-print-none btn btn-hover-danger"
                             t-if="hasDeleteButton"
                             t-attf-data-icon="{{
                                 !useUnlink and this.activeActions.delete ? 'delete' : useUnlink and this.activeActions.unlink ? 'close' : ''
@@ -434,7 +440,7 @@
                    <button
                         t-on-click.prevent.stop="() => this.props.list.enterEditMode(record)"
                         t-if="this.props.list.model.multiEdit and record.selected and !this.uiService.isSmall"
-                        class="o_mass_edit_btn btn btn-link btn-dark p-0 w-100 text-start"
+                        class="o_mass_edit_btn btn btn-hover-dark p-0 w-100 text-start"
                         name="edit"
                         aria-label="Click to edit the row"
                         title="Click to edit the row"
@@ -447,9 +453,9 @@
         </tr>
     </t>
 
-    <t t-name="web.ListHeaderTooltip">
+    <t t-name="web.ListHeaderHelpTooltip">
         <t t-out="field.label"/>
-        <div t-if="field.help" class="mt-2" t-out="field.help"/>
+        <div class="mt-2" t-out="field.help"/>
     </t>
 
 </templates>

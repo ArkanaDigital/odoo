@@ -1,18 +1,42 @@
-import { Store } from "@mail/core/common/store_service";
+import { Store } from "@mail/core/common/store_plugin";
 import { MENU_TABS } from "@mail/core/public_web/messaging_menu/messaging_menu_model";
-import { fields } from "@mail/model/export";
-import { browser } from "@web/core/browser/browser";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { patch } from "@web/core/utils/patch";
 
-const unread_store = (() => {
-    if (!window.idbKeyval) {
-        return undefined;
+let unread_store;
+
+/**
+ * Save the unread counter in the database shared with the service worker, so that the app
+ * badge stays up to date.
+ *
+ * @param {number} counter
+ * @param {boolean} [retry=true]
+ */
+async function saveUnreadCounter(counter, retry = true) {
+    try {
+        unread_store ??= new window.idbKeyval.Store(
+            "odoo-mail-unread-db",
+            "odoo-mail-unread-store"
+        );
+    } catch {
+        // The browser does not allow the database to be opened (private mode, blocked
+        // storage): opening it again would fail the same way, and the app badge is cosmetic.
+        return;
     }
-    return new window.idbKeyval.Store("odoo-mail-unread-db", "odoo-mail-unread-store");
-})();
+    try {
+        await window.idbKeyval.set("unread", counter, unread_store);
+    } catch {
+        // The connection cached by idbKeyval was closed by the browser (site data cleared,
+        // storage eviction, database deleted from another tab): drop it so that the retry
+        // saves the counter on a new one. When that fails too the error is ignored.
+        unread_store = undefined;
+        if (retry) {
+            await saveUnreadCounter(counter, false);
+        }
+    }
+}
 
 /** @type {import("models").Store} */
 const StorePatch = {
@@ -23,15 +47,20 @@ const StorePatch = {
         this.activityCounter = 0;
         this.activity_counter_bus_id = 0;
         this.activities_to_assign_count = undefined;
-        this.messagingMenuSystrayState = fields.One("MessagingMenuUIState", {
-            compute: () => ({ id: "mail.systray", activeTab: MENU_TABS.CHATS }),
-        });
         /** @type {Object[]} */
-        this.activity_groups = fields.Attr(undefined, {
-            onUpdate() {
+        this.activity_groups = undefined;
+        this.onChange(
+            () => [this.activity_groups],
+            function onChangeActivityGroups() {
                 this.onUpdateActivityGroups();
             },
-        });
+            { immediate: true }
+        );
+        this.messagingMenuSystrayState = this.computed(
+            () =>
+                this.MessagingMenuUIState.get("mail.systray") ??
+                this.MessagingMenuUIState.insert({ id: "mail.systray", activeTab: MENU_TABS.CHAT })
+        );
     },
     initialize() {
         super.initialize(...arguments);
@@ -44,7 +73,7 @@ const StorePatch = {
         super.onStarted(...arguments);
         try {
             // useful for synchronizing activity data between multiple tabs
-            this.activityBroadcastChannel = new browser.BroadcastChannel("mail.activity.channel");
+            this.activityBroadcastChannel = new window.BroadcastChannel("mail.activity.channel");
             this.activityBroadcastChannel.onmessage =
                 this._onActivityBroadcastChannelMessage.bind(this);
         } catch {
@@ -106,8 +135,8 @@ const StorePatch = {
         );
     },
     updateAppBadge() {
-        if (unread_store) {
-            window.idbKeyval.set("unread", this.globalCounter, unread_store);
+        if (window.idbKeyval) {
+            saveUnreadCounter(this.globalCounter);
             Promise.resolve(navigator.setAppBadge?.(this.globalCounter)).catch(() => {}); // FIXME: Illegal invocation error in HOOT
         }
     },
@@ -142,15 +171,17 @@ const StorePatch = {
         await this.store.fetchStoreData("remove_all_bookmarks");
     },
     async markNeedactionMessagesAsRead() {
-        const { orm, notification } = this.env.services;
-        const readMessageIds = await orm.silent.call("mail.message", "mark_all_as_read");
-        // Everything was read: the "Unread" filter view is now empty and fully loaded.
+        const readMessageIds = await this.orm.silent.call("mail.message", "mark_all_as_read");
+        // Everything was read: any filter combination including "notification_unread" is
+        // now empty and fully loaded.
         const notificationTab = this.store.messagingMenu.notificationTab;
-        notificationTab.loadStatusByFilterId = {
-            ...notificationTab.loadStatusByFilterId,
-            notification_unread: "loaded",
-        };
-        const close = notification.add(
+        for (const key of Object.keys(notificationTab.loadStatusByFilterId)) {
+            if (key.split("__").includes("notification_unread")) {
+                notificationTab.loadStatusByFilterId[key] = "loaded";
+            }
+        }
+        notificationTab.loadStatusByFilterId.notification_unread = "loaded";
+        const close = this.notification.add(
             readMessageIds.length === 1
                 ? _t("1 item marked as read")
                 : _t("%(amount)s items marked as read", { amount: readMessageIds.length }),
@@ -161,7 +192,9 @@ const StorePatch = {
                         name: _t("Undo"),
                         icon: "undo",
                         onClick: () => {
-                            orm.silent.call("mail.message", "mark_as_unread", [readMessageIds]);
+                            this.orm.silent.call("mail.message", "mark_as_unread", [
+                                readMessageIds,
+                            ]);
                             close();
                         },
                     },
@@ -170,10 +203,11 @@ const StorePatch = {
         );
     },
     handleClickOnLink(ev, thread) {
-        const model = ev.target.dataset.oeModel;
-        const id = Number(ev.target.dataset.oeId);
+        const target = ev.composedPath()[0];
+        const model = target.dataset.oeModel;
+        const id = Number(target.dataset.oeId);
         const isLinkHandledBySuper = super.handleClickOnLink(...arguments);
-        if (!isLinkHandledBySuper && ev.target.tagName === "A" && id && model) {
+        if (!isLinkHandledBySuper && target.tagName === "A" && id && model) {
             ev.preventDefault();
             Promise.resolve(
                 this.env.services.action.doAction({
@@ -192,7 +226,7 @@ const StorePatch = {
 };
 patch(Store.prototype, StorePatch);
 
-registry.category("actions").add("mail.store_insert", function storeInsertAction(env, action) {
+registry.category("actions").add("mail.store_insert", function storeInsertAction(action) {
     const store = useService("mail.store");
     store.insert(action.params.store_values);
     return action.params.next_action;

@@ -2,7 +2,7 @@ import { Builder } from "@html_builder/builder";
 import { CORE_PLUGINS, MAIN_PLUGINS } from "@html_builder/core/core_plugins";
 import { removePlugins } from "@html_builder/utils/utils";
 import { closestElement } from "@html_editor/utils/dom_traversal";
-import { Component, onMounted, onWillStart, onWillUnmount } from "@odoo/owl";
+import { Component, onMounted, onWillStart, onWillUnmount, useProps, t } from "@odoo/owl";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
@@ -13,7 +13,6 @@ import { Plugin } from "@html_editor/plugin";
 import { revertPreview } from "@html_builder/core/utils";
 import { rpc } from "@web/core/network/rpc";
 import { redirect } from "@web/core/utils/urls";
-import { browser } from "@web/core/browser/browser";
 import {
     localStorageNoDialogKey,
     TranslatorInfoDialog,
@@ -33,10 +32,10 @@ class FakeRemovePlugin extends Plugin {
 export class WebsiteBuilder extends Component {
     static template = "website.WebsiteBuilder";
     static components = { Builder };
-    static props = {
-        translation: { type: Boolean },
-        builderProps: { type: Object },
-    };
+    props = useProps({
+        translation: t.boolean(),
+        builderProps: t.object(),
+    });
 
     setup() {
         this.websiteService = useService("website");
@@ -53,7 +52,7 @@ export class WebsiteBuilder extends Component {
                 : [];
         });
         onMounted(() => {
-            if (this.props.translation && !browser.localStorage.getItem(localStorageNoDialogKey)) {
+            if (this.props.translation && !localStorage.getItem(localStorageNoDialogKey)) {
                 this.dialog.add(TranslatorInfoDialog);
             }
             this.websiteEditService?.clearRpcCache();
@@ -213,7 +212,6 @@ export class WebsiteBuilder extends Component {
             "PowerboxPlugin",
             "SearchPowerboxPlugin",
             "MediaUrlPastePlugin",
-            "YoutubePlugin",
             "ImagePlugin",
             "AlignPlugin",
             "ListPlugin",
@@ -249,6 +247,7 @@ export class WebsiteBuilder extends Component {
             };
         };
         builderProps.config.translatedElements = this.translatedElements;
+        builderProps.config.allowVideoFile = true;
         builderProps.getThemeTab = () => this.websiteService.isDesigner && ThemeTab;
         builderProps.animateThemeTabSwitch = true;
         const installSnippetModule = builderProps.installSnippetModule;

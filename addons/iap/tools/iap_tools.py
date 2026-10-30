@@ -12,6 +12,7 @@ from odoo.tools import email_normalize, exception_to_unicode
 _logger = logging.getLogger(__name__)
 
 DEFAULT_ENDPOINT = 'https://iap.odoo.com'
+TEST_ENDPOINT = "https://iap.test.odoo.com"
 
 
 #----------------------------------------------------------
@@ -42,7 +43,7 @@ _MAIL_PROVIDERS = {
     'asterisk-tech.mn', 'in.com', 'aliceadsl.fr', 'lycos.com', 'topnet.tn', 'teleworm.us', 'kedgebs.com', 'supinfo.com', 'posteo.de',
     'yahoo.com ', 'op.pl', 'gmail.fr', 'grr.la', 'oci.fr', 'aselcis.com', 'optusnet.com.au', 'mailcatch.com', 'rambler.ru', 'protonmail.ch',
     'prisme.ch', 'bbox.fr', 'orbitalu.com', 'netcourrier.com', 'iinet.net.au', 'cegetel.net', 'proton.me', 'dbmail.com', 'club-internet.fr', 'outlook.jp',
-    'eim.ae', 'pm.me',
+    'eim.ae', 'pm.me', 'ik.me', 'etik.com', 'ikmail.com',
     # Dummy entries
     'example.com',
 }
@@ -89,6 +90,9 @@ def mail_prepare_for_domain_search(email, min_email_length=0):
 
 def iap_get_endpoint(env):
     url = env['ir.config_parameter'].sudo().get_str('iap.endpoint') or DEFAULT_ENDPOINT
+    if url not in (DEFAULT_ENDPOINT, TEST_ENDPOINT):
+        _logger.warning("Invalid IAP endpoint: %s. Using instead: %s", url, TEST_ENDPOINT)
+        return TEST_ENDPOINT
     return url
 
 
@@ -123,6 +127,8 @@ def iap_jsonrpc(url, method='call', params=None, timeout=15, raise_user_error=Fa
 
     try:
         return _iap_jsonrpc(url, method, params, timeout)
+    except InsufficientCreditError:
+        raise
     except Exception as e:
         if raise_user_error:
             raise UserError(_("An error occurred while reaching %s. Please contact Odoo support if this error persists.", url)) from e

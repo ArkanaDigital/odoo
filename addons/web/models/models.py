@@ -10,14 +10,16 @@ from zoneinfo import ZoneInfo
 
 import babel
 import babel.dates
+import psycopg2
 
 from odoo import api, models
 from odoo.fields import Command, Date, Domain
 from odoo.api import NewId
 from odoo.models import regex_order, READ_GROUP_DISPLAY_FORMAT, READ_GROUP_NUMBER_GRANULARITY, READ_GROUP_TIME_GRANULARITY, BaseModel
 from odoo.tools import DEFAULT_SERVER_DATE_FORMAT, DEFAULT_SERVER_DATETIME_FORMAT, BinaryBytes, BinaryValue, date_utils, get_lang, unique, OrderedSet
-from odoo.exceptions import AccessError, UserError
+from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tools.date_utils import all_timezones
+from odoo.tools.misc import LazyDict
 from odoo.tools.translate import LazyTranslate
 
 if typing.TYPE_CHECKING:
@@ -30,11 +32,11 @@ MAX_NUMBER_OPENED_GROUPS = 10
 PENDING_ATTACHMENTS_KEY = "pending_attachment_ids"
 
 
-class lazymapping(defaultdict):
-    def __missing__(self, key):
-        value = self.default_factory(key)
-        self[key] = value
-        return value
+class UnlinkBlockedError(ValidationError):
+    """ Raised by :meth:`~.Base.web_unlink`. Its dotted name is what makes the
+    web client show `UnlinkBlockedErrorDialog` (see
+    `@web/core/errors/error_dialogs`), which reads the ``context`` below, so
+    no delete flow has to handle this error itself. """
 
 
 class Base(models.AbstractModel):
@@ -256,6 +258,58 @@ class Base(models.AbstractModel):
             record.write(val)
 
         return self.web_read(specification)
+
+    def web_unlink(self) -> typing.Literal[True]:
+        """ Delete the records in ``self``, the way the web client's own
+        delete flows do it.
+
+        This is deliberately a separate method from :meth:`~.unlink`, called
+        only by the web client, so that the error-recovery below never runs
+        for internal ``unlink()`` calls made by other server-side code.
+
+        If deleting ``self`` in one go is blocked by a foreign key/RESTRICT
+        violation, pinpoint exactly which records of ``self`` are the actual
+        problem by retrying the deletion record by record (each attempt
+        rolled back regardless of its outcome, so nothing is ever partially
+        deleted), then raise a :class:`UnlinkBlockedError` enriched with that
+        information - the blocking model's display name, whether the records
+        can be archived instead, and which of them are actually blocked.
+        """
+        try:
+            with self.env.cr.savepoint():
+                return self.unlink()
+        except (psycopg2.errors.RestrictViolation, psycopg2.errors.ForeignKeyViolation) as e:
+            blocking_model = next(
+                (rclass._name for rclass in self.env.registry.values() if rclass._table == e.diag.table_name),
+                None,
+            )
+            if not blocking_model:
+                raise
+            blocked_ids = []
+            with self.env.cr.savepoint() as sp:
+                for record in self:
+                    try:
+                        record.unlink()
+                    except (psycopg2.errors.RestrictViolation, psycopg2.errors.ForeignKeyViolation):
+                        blocked_ids.append(record.id)
+                    finally:
+                        sp.rollback()
+            if not blocked_ids:
+                raise
+            blocking_model_name = self.env['ir.model']._get(blocking_model).name or blocking_model
+            error = UnlinkBlockedError(self.env._(
+                "The operation cannot be completed: %s",
+                self.env._("this record is used by %(model_name)s", model_name=blocking_model_name),
+            ))
+            error.context = {
+                'archivable': bool(self._active_name),
+                'model_name': blocking_model_name,
+                'res_model': self._name,
+                # the whole selection, which "Archive" acts on
+                'res_ids': self.ids,
+                'blocked_ids': blocked_ids,
+            }
+            raise error from None
 
     @api.readonly
     def web_read(self, specification: dict[str, dict]) -> list[dict]:
@@ -1656,6 +1710,9 @@ class Base(models.AbstractModel):
 
         domain_image = {}
         for group in groups:
+            if not group[field_name]:
+                # value hidden by a record rule or archived
+                continue
             id_, display_name = group_id_name(group[field_name])
             values = {
                 'id': id_,
@@ -1685,7 +1742,7 @@ class Base(models.AbstractModel):
                 }
         :param parent_name: string, indicates which key determines the parent
         """
-        local_counters = lazymapping(lambda id: values_range[id]['__count'])
+        local_counters = LazyDict(lambda id: values_range[id]['__count'])
 
         for id in values_range:
             values = values_range[id]
@@ -2116,6 +2173,34 @@ class Base(models.AbstractModel):
 
         assert False, "unreachable"
 
+    @api.model
+    def onchange_batch(self, records_list: list[dict], fields_spec: dict) -> list[dict]:
+        """Apply onchange to a batch of saved and virtual records.
+
+        ``records_list`` is a list of dictionaries with the following shape::
+
+            {
+                "id": int | False,
+                "values": dict,
+                "field_names": list[str],
+                "virtual_id": str | False,
+            }
+
+        Saved records are identified by ``id``, while virtual records are identified by
+        ``virtual_id``. Both identifiers are passed back unchanged in the corresponding result.
+        """
+        assert not self, "self must be empty"
+
+        return [
+            {
+                "id": record["id"],
+                "virtual_id": record["virtual_id"],
+                "result": self.browse(record["id"]).onchange(
+                    record["values"], record["field_names"], fields_spec
+                ),
+            }
+            for record in records_list
+        ]
 
     def onchange(self, values: dict, field_names: list[str], fields_spec: dict):
         """
@@ -2360,14 +2445,14 @@ class ResCompany(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         companies = super().create(vals_list)
-        style_fields = {'external_report_layout_id', 'font', 'primary_color', 'secondary_color'}
+        style_fields = {'external_report_layout_id', 'font', 'primary_color', 'secondary_color', 'report_tables_id'}
         if any(not style_fields.isdisjoint(values) for values in vals_list):
             self._update_asset_style()
         return companies
 
     def write(self, vals):
         res = super().write(vals)
-        style_fields = {'external_report_layout_id', 'font', 'primary_color', 'secondary_color'}
+        style_fields = {'external_report_layout_id', 'font', 'primary_color', 'secondary_color', 'report_tables_id'}
         if not style_fields.isdisjoint(vals):
             self._update_asset_style()
         return res

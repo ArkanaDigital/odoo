@@ -24,12 +24,14 @@ class ResCompany(models.Model):
         compute='_compute_account_peppol_contact_email', store=True, readonly=False,
         help='Primary contact email for Peppol connection related communications and notifications.\n'
              'In particular, this email is used by Odoo to reconnect your Peppol account in case of database change.',
+        groups='base.group_user',
     )
     account_peppol_migration_key = fields.Char(string="Migration Key", groups="base.group_system")
     account_peppol_phone_number = fields.Char(
         string='Mobile number',
         compute='_compute_account_peppol_phone_number', store=True, readonly=False,
         help='This number is used for identification purposes only.',
+        groups='base.group_user',
     )
     account_peppol_proxy_state = fields.Selection(
         selection=[
@@ -48,6 +50,7 @@ class ResCompany(models.Model):
     peppol_purchase_journal_id = fields.Many2one(
         comodel_name='account.journal',
         string='Peppol Purchase Journal',
+        groups='base.group_user',
         domain=[('type', '=', 'purchase')],
         compute='_compute_peppol_purchase_journal_id',
         store=True,
@@ -132,6 +135,16 @@ class ResCompany(models.Model):
         if not phonenumbers.is_valid_number(phone_nbr):
             raise ValidationError(error_message)
 
+    def _get_einvoicing_network_name(self):
+        """Return the user-facing name of the company's e-invoicing network or platform."""
+        self.ensure_one()
+        return self.env._("Peppol")
+
+    def _get_einvoicing_identifier_name(self):
+        """Return the user-facing name of an identifier on the network."""
+        self.ensure_one()
+        return self.env._("Peppol EAS and/or Endpoint identifier")
+
     def _peppol_is_french_company(self):
         self.ensure_one()
         return (
@@ -154,6 +167,10 @@ class ResCompany(models.Model):
         for company in self:
             if company.peppol_purchase_journal_id and company.peppol_purchase_journal_id.type != 'purchase':
                 raise ValidationError(_("A purchase journal must be used to receive Peppol documents."))
+
+    def _peppol_allows_document_reception(self):
+        self.ensure_one()
+        return True
 
     # -------------------------------------------------------------------------
     # COMPUTE METHODS
@@ -334,3 +351,8 @@ class ResCompany(models.Model):
             lambda u: u.proxy_type in self.env['account_edi_proxy_client.user']._get_peppol_proxy_types()
         )
         return peppol_user.proxy_type or 'peppol'
+
+    def _action_open_peppol_form(self):
+        self.ensure_one()
+        registration_wizard = self.env['peppol.registration'].create({'company_id': self.id})
+        return registration_wizard._action_open_peppol_form()

@@ -73,6 +73,14 @@ class AccountMoveLine(models.Model):
                 if sale_line:
                     values["so_line"] = sale_line.id
 
+        if self.sale_line_ids:
+            for values in values_list:
+                # Only revenue is linked to the invoiced sale order item: a negative amount (credit
+                # note, discount line) would be counted as a delivered quantity, see
+                # sale.order.line._get_delivered_quantity_by_analytic_domain().
+                if values["amount"] > 0.0 and values["unit_amount"] >= 0.0:
+                    values.setdefault("so_line", self.sale_line_ids[0].id)
+
         return values_list
 
     def _sale_can_be_reinvoice(self):
@@ -193,8 +201,9 @@ class AccountMoveLine(models.Model):
                     len(sale_line_values_to_create) - 1
                 )  # save the index of the value to create sale line
 
+        self.check_access('write')
         # create the sale lines in batch
-        new_sale_lines = self.env["sale.order.line"].create(sale_line_values_to_create)
+        new_sale_lines = self.env["sale.order.line"].sudo().create(sale_line_values_to_create).sudo(self.env.su)
 
         # build result map by replacing index with newly created record of sale.order.line
         result = {}

@@ -4,61 +4,92 @@
 #
 # Translators:
 # Martin Trigaux <mat@odoo.com>, 2017
-# Weblate <noreply-mt-weblate@weblate.org>, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 11.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-17 17:37+0000\n"
-"PO-Revision-Date: 2026-06-19 00:26+0000\n"
+"POT-Creation-Date: 2026-09-11 17:42+0000\n"
+"PO-Revision-Date: 2026-08-31 14:15+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Lao <https://translate.odoo.com/projects/odoo-master/calendar/"
+"Language-Team: Lao <https://translate.odoo.com/projects/odoo-s19-4/calendar/"
 "lo/>\n"
 "Language: lo\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: calendar
+#: model:ir.module.module,description:base.module_calendar
+msgid ""
+"\n"
+"This is a full-featured calendar system.\n"
+"========================================\n"
+"\n"
+"It supports:\n"
+"------------\n"
+"    - Calendar of events\n"
+"    - Recurring events\n"
+"\n"
+"If you need to manage your meetings, you should install the CRM module.\n"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_res_partner__meeting_count
 #: model:ir.model.fields,field_description:calendar.field_res_users__meeting_count
-#, fuzzy
 msgid "# Meetings"
-msgstr "# ການປະຊຸມ"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
 #: code:addons/calendar/models/calendar_event.py:0
-#, fuzzy
 msgid ""
 "%(date_start)s at %(time_start)s To\n"
 " %(date_end)s at %(time_end)s (%(timezone)s)"
 msgstr ""
-"%(date_start)s ເວລາ %(time_start)s ຫາ\n"
-" %(date_end)s ເວລາ %(time_end)s (%(timezone)s)"
+
+#. module: calendar
+#. odoo-python
+#: code:addons/calendar/models/calendar_alarm_manager.py:0
+msgid "%(date_start)s, %(time_start)s - %(date_stop)s, %(time_stop)s"
+msgstr ""
+
+#. module: calendar
+#. odoo-python
+#: code:addons/calendar/models/calendar_alarm_manager.py:0
+msgid "%(date_start)s, %(time_start)s - %(time_stop)s"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
 #: code:addons/calendar/models/calendar_event.py:0
-#, fuzzy
 msgid "%(day)s at (%(start)s To %(end)s) (%(timezone)s)"
-msgstr "%(day)s ເວລາ (%(start)s ຫາ %(end)s) (%(timezone)s)"
+msgstr ""
+
+#. module: calendar
+#. odoo-python
+#: code:addons/calendar/models/calendar_alarm_manager.py:0
+msgid "%(time_start)s - %(date_stop)s, %(time_stop)s"
+msgstr ""
+
+#. module: calendar
+#. odoo-python
+#: code:addons/calendar/models/calendar_alarm_manager.py:0
+msgid "%(time_start)s - %(time_stop)s"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
 #: code:addons/calendar/models/calendar_attendee.py:0
-#, fuzzy
 msgid "%s has accepted the invitation"
-msgstr "%s ໄດ້ຕອບຮັບຄຳເຊີນແລ້ວ"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
 #: code:addons/calendar/models/calendar_attendee.py:0
-#, fuzzy
 msgid "%s has declined the invitation"
-msgstr "%s ໄດ້ປະຕິເສດຄຳເຊີນແລ້ວ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
@@ -78,6 +109,12 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/attendee_calendar/attendee_calendar_controller.js:0
 msgid "(No Title)"
+msgstr ""
+
+#. module: calendar
+#. odoo-javascript
+#: code:addons/calendar/static/src/views/attendee_calendar/filter_section/attendee_calendar_filter_section.js:0
+msgid "+ Add guests"
 msgstr ""
 
 #. module: calendar
@@ -107,8 +144,8 @@ msgid ""
 "bottom: 28px;\">\n"
 "        Date Updated\n"
 "        <img src=\"/calendar/static/src/img/sync.png\" style=\"border:0; "
-"width: 24px; height: 24px; margin-left: 10px; text-decoration:none; vertical-"
-"align: bottom;\"/>\n"
+"width: 20px; height: 20px; margin-left: 10px; text-decoration:none; vertical-"
+"align: middle; padding-bottom: 2px;\"/>\n"
 "    </h1>\n"
 "    <p style=\"margin: 0;\">\n"
 "        <span style=\"display: block; margin-bottom: 8px;\">Hello <t t-"
@@ -266,6 +303,42 @@ msgid ""
 "        <t t-out=\"object.event_id.description\">Internal meeting for "
 "discussion for new pricing for product and services.</t>\n"
 "    </div>\n"
+"    <br/>\n"
+"    <strong>Add to calendar</strong>\n"
+"    <table style=\"width: auto; margin-top: 8px; border-spacing: 0;\">\n"
+"        <tr>\n"
+"            <td>\n"
+"                <a t-attf-href=\"/calendar/ics/{{ object.event_id.id }}/"
+"{{ object.event_id._calendar_event_ensure_token() }}\" style=\"padding-top: "
+"10px; padding-right: 8px; padding-bottom: 2px; padding-left: 8px; border-"
+"radius: 3px; background-color: #E7E9ED;\">\n"
+"                    <img src=\"/calendar/static/src/img/apple-"
+"calendar-128.png\" alt=\"iCal\" title=\"iCal\" style=\"height: 20px; "
+"vertical-align: baseline;\"/>\n"
+"                </a>\n"
+"            </td>\n"
+"            <td>\n"
+"                <a t-attf-href=\"/calendar/ics/{{ object.event_id.id }}/"
+"{{ object.event_id._calendar_event_ensure_token() }}\" style=\"padding-top: "
+"10px; padding-right: 8px; padding-bottom: 2px; padding-left: 8px; margin-"
+"left: 8px; border-radius: 3px; background-color: #E7E9ED;\">\n"
+"                    <img src=\"/calendar/static/src/img/outlook-"
+"calendar-128.png\" alt=\"Outlook\" title=\"Outlook\" style=\"height: 20px; "
+"vertical-align: baseline;\"/>\n"
+"                </a>\n"
+"            </td>\n"
+"            <td>\n"
+"                <a t-att-href=\"object.event_id.google_calendar_url\" "
+"target=\"new\" style=\"padding-top: 10px; padding-right: 8px; padding-"
+"bottom: 2px; padding-left: 8px; margin-left: 8px; border-radius: 3px; "
+"background-color: #E7E9ED;\">\n"
+"                    <img src=\"/calendar/static/src/img/google-"
+"calendar-128.png\" alt=\"Google\" title=\"Google\" style=\"height: 20px; "
+"vertical-align: baseline;\"/>\n"
+"                </a>\n"
+"            </td>\n"
+"        </tr>\n"
+"    </table>\n"
 "    <p style=\"margin: 32px 0 0;\">\n"
 "        Thank you!\n"
 "        <t t-if=\"organizer.signature\">\n"
@@ -437,6 +510,42 @@ msgid ""
 "        <t t-out=\"object.event_id.description\">Internal meeting for "
 "discussion for new pricing for product and services.</t>\n"
 "    </div>\n"
+"    <br/>\n"
+"    <strong>Add to calendar</strong>\n"
+"    <table style=\"width: auto; margin-top: 8px; border-spacing: 0;\">\n"
+"        <tr>\n"
+"            <td>\n"
+"                <a t-attf-href=\"/calendar/ics/{{ object.event_id.id }}/"
+"{{ object.event_id._calendar_event_ensure_token() }}\" style=\"padding-top: "
+"10px; padding-right: 8px; padding-bottom: 2px; padding-left: 8px; border-"
+"radius: 3px; background-color: #E7E9ED;\">\n"
+"                    <img src=\"/calendar/static/src/img/apple-"
+"calendar-128.png\" alt=\"iCal\" title=\"iCal\" style=\"height: 20px; "
+"vertical-align: baseline;\"/>\n"
+"                </a>\n"
+"            </td>\n"
+"            <td>\n"
+"                <a t-attf-href=\"/calendar/ics/{{ object.event_id.id }}/"
+"{{ object.event_id._calendar_event_ensure_token() }}\" style=\"padding-top: "
+"10px; padding-right: 8px; padding-bottom: 2px; padding-left: 8px; margin-"
+"left: 8px; border-radius: 3px; background-color: #E7E9ED;\">\n"
+"                    <img src=\"/calendar/static/src/img/outlook-"
+"calendar-128.png\" alt=\"Outlook\" title=\"Outlook\" style=\"height: 20px; "
+"vertical-align: baseline;\"/>\n"
+"                </a>\n"
+"            </td>\n"
+"            <td>\n"
+"                <a t-att-href=\"object.event_id.google_calendar_url\" "
+"target=\"new\" style=\"padding-top: 10px; padding-right: 8px; padding-"
+"bottom: 2px; padding-left: 8px; margin-left: 8px; border-radius: 3px; "
+"background-color: #E7E9ED;\">\n"
+"                    <img src=\"/calendar/static/src/img/google-"
+"calendar-128.png\" alt=\"Google\" title=\"Google\" style=\"height: 20px; "
+"vertical-align: baseline;\"/>\n"
+"                </a>\n"
+"            </td>\n"
+"        </tr>\n"
+"    </table>\n"
 "    <p style=\"margin: 32px 0 0;\">\n"
 "        Thank you!\n"
 "        <t t-if=\"object.event_id.user_id.signature\">\n"
@@ -462,8 +571,8 @@ msgid ""
 "bottom: 28px;\">\n"
 "        Event updated\n"
 "        <img src=\"/calendar/static/src/img/sync.png\" style=\"border:0; "
-"width: 24px; height: 24px; margin-left: 10px; text-decoration:none; vertical-"
-"align: bottom;\"/>\n"
+"width: 20px; height: 20px; margin-left: 10px; text-decoration:none; vertical-"
+"align: middle; padding-bottom: 2px;\"/>\n"
 "    </h1>\n"
 "    <p style=\"margin: 0;\">\n"
 "        <span style=\"display: block; margin-bottom: 8px;\">Hello,</span>\n"
@@ -576,6 +685,42 @@ msgid ""
 "        <t t-out=\"object.description\">Internal meeting for discussion for "
 "new pricing for product and services.</t>\n"
 "    </div>\n"
+"    <br/>\n"
+"    <strong>Add to calendar</strong>\n"
+"    <table style=\"width: auto; margin-top: 8px; border-spacing: 0;\">\n"
+"        <tr>\n"
+"            <td>\n"
+"                <a t-attf-href=\"/calendar/ics/{{ object.id }}/"
+"{{ object._calendar_event_ensure_token() }}\" style=\"padding-top: 10px; "
+"padding-right: 8px; padding-bottom: 2px; padding-left: 8px; border-radius: "
+"3px; background-color: #E7E9ED;\">\n"
+"                    <img src=\"/calendar/static/src/img/apple-"
+"calendar-128.png\" alt=\"iCal\" title=\"iCal\" style=\"height: 20px; "
+"vertical-align: baseline;\"/>\n"
+"                </a>\n"
+"            </td>\n"
+"            <td>\n"
+"                <a t-attf-href=\"/calendar/ics/{{ object.id }}/"
+"{{ object._calendar_event_ensure_token() }}\" style=\"padding-top: 10px; "
+"padding-right: 8px; padding-bottom: 2px; padding-left: 8px; margin-left: "
+"8px; border-radius: 3px; background-color: #E7E9ED;\">\n"
+"                    <img src=\"/calendar/static/src/img/outlook-"
+"calendar-128.png\" alt=\"Outlook\" title=\"Outlook\" style=\"height: 20px; "
+"vertical-align: baseline;\"/>\n"
+"                </a>\n"
+"            </td>\n"
+"            <td>\n"
+"                <a t-att-href=\"object.google_calendar_url\" target=\"new\" "
+"style=\"padding-top: 10px; padding-right: 8px; padding-bottom: 2px; padding-"
+"left: 8px; margin-left: 8px; border-radius: 3px; background-color: #E7E9ED;"
+"\">\n"
+"                    <img src=\"/calendar/static/src/img/google-"
+"calendar-128.png\" alt=\"Google\" title=\"Google\" style=\"height: 20px; "
+"vertical-align: baseline;\"/>\n"
+"                </a>\n"
+"            </td>\n"
+"        </tr>\n"
+"    </table>\n"
 "    <p style=\"margin: 32px 0 0;\">\n"
 "        Thank you!\n"
 "        <t t-if=\"object.user_id.signature\">\n"
@@ -599,8 +744,8 @@ msgid ""
 "bottom: 28px;\">\n"
 "        Reminder\n"
 "        <img src=\"/calendar/static/src/img/bell.png\" style=\"border:0; "
-"width: 21px; height: 24px; margin-left: 10px; text-decoration:none; vertical-"
-"align: bottom;\"/>\n"
+"width: 16px; height: 20px; margin-left: 10px; text-decoration:none; vertical-"
+"align: middle; padding-bottom: 2px;\"/>\n"
 "    </h1>\n"
 "    <p style=\"margin: 0;\">\n"
 "        Hello <t t-out=\"object.common_name or ''\">Gemini Furniture</t>,<br/"
@@ -731,6 +876,42 @@ msgid ""
 "        <t t-out=\"object.event_id.description\">Internal meeting for "
 "discussion for new pricing for product and services.</t>\n"
 "    </div>\n"
+"    <br/>\n"
+"    <strong>Add to calendar</strong>\n"
+"    <table style=\"width: auto; margin-top: 8px; border-spacing: 0;\">\n"
+"        <tr>\n"
+"            <td>\n"
+"                <a t-attf-href=\"/calendar/ics/{{ object.event_id.id }}/"
+"{{ object.event_id._calendar_event_ensure_token() }}\" style=\"padding-top: "
+"10px; padding-right: 8px; padding-bottom: 2px; padding-left: 8px; border-"
+"radius: 3px; background-color: #E7E9ED;\">\n"
+"                    <img src=\"/calendar/static/src/img/apple-"
+"calendar-128.png\" alt=\"iCal\" title=\"iCal\" style=\"height: 20px; "
+"vertical-align: baseline;\"/>\n"
+"                </a>\n"
+"            </td>\n"
+"            <td>\n"
+"                <a t-attf-href=\"/calendar/ics/{{ object.event_id.id }}/"
+"{{ object.event_id._calendar_event_ensure_token() }}\" style=\"padding-top: "
+"10px; padding-right: 8px; padding-bottom: 2px; padding-left: 8px; margin-"
+"left: 8px; border-radius: 3px; background-color: #E7E9ED;\">\n"
+"                    <img src=\"/calendar/static/src/img/outlook-"
+"calendar-128.png\" alt=\"Outlook\" title=\"Outlook\" style=\"height: 20px; "
+"vertical-align: baseline;\"/>\n"
+"                </a>\n"
+"            </td>\n"
+"            <td>\n"
+"                <a t-att-href=\"object.event_id.google_calendar_url\" "
+"target=\"new\" style=\"padding-top: 10px; padding-right: 8px; padding-"
+"bottom: 2px; padding-left: 8px; margin-left: 8px; border-radius: 3px; "
+"background-color: #E7E9ED;\">\n"
+"                    <img src=\"/calendar/static/src/img/google-"
+"calendar-128.png\" alt=\"Google\" title=\"Google\" style=\"height: 20px; "
+"vertical-align: baseline;\"/>\n"
+"                </a>\n"
+"            </td>\n"
+"        </tr>\n"
+"    </table>\n"
 "    <p style=\"margin: 32px 0 0;\">\n"
 "        Thank you!\n"
 "        <t t-if=\"object.event_id.user_id.signature\">\n"
@@ -754,8 +935,8 @@ msgid ""
 "bottom: 28px;\">\n"
 "        Event canceled\n"
 "        <img src=\"/calendar/static/src/img/times-circle.png\" "
-"style=\"border:0; width: 24px; height: 24px; margin-left: 10px; text-"
-"decoration:none; vertical-align: bottom;\"/>\n"
+"style=\"border:0; width: 20px; height: 20px; margin-left: 10px; text-"
+"decoration:none; vertical-align: middle; padding-bottom: 2px;\"/>\n"
 "    </h1>\n"
 "    <p style=\"margin: 0;\">\n"
 "        Hello,<br/>\n"
@@ -824,73 +1005,71 @@ msgid ""
 msgstr ""
 
 #. module: calendar
+#: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
+msgid "<i class=\"oi oi-filled mt-1\" data-icon=\"schedule\" title=\"Dates\"/>"
+msgstr ""
+
+#. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.mail_activity_schedule_view_form
 #: model_terms:ir.ui.view,arch_db:calendar.mail_activity_view_form_popup
-msgid "<i class=\"fa fa-calendar\" title=\"Calendar\"/>"
+msgid ""
+"<i class=\"oi oi-filled\" data-icon=\"calendar_today\" title=\"Calendar\"/>\n"
+"                    <span class=\"text-muted\">Pick a date and time</span>"
 msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
-msgid "<i class=\"fa fa-circle\" title=\"Show as\"/>"
+msgid "<i class=\"oi oi-filled\" data-icon=\"circle\" title=\"Show as\"/>"
 msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
-msgid "<i class=\"fa fa-clock-o mt-1\" title=\"Dates\"/>"
+msgid "<i class=\"oi oi-filled\" data-icon=\"label\" title=\"Booking Name\"/>"
 msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
-msgid "<i class=\"fa fa-lock\" title=\"Visibility\"/>"
+msgid "<i class=\"oi oi-filled\" data-icon=\"lock\" title=\"Visibility\"/>"
 msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
-msgid "<i class=\"fa fa-map\" title=\"Location\"/>"
+msgid "<i class=\"oi oi-filled\" data-icon=\"map\" title=\"Location\"/>"
 msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
-msgid "<i class=\"fa fa-remove\" title=\"Remove\"/>"
+msgid "<i class=\"oi oi-filled\" data-icon=\"person\" title=\"Participants\"/>"
 msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
-msgid "<i class=\"fa fa-sticky-note\" title=\"Notes\"/>"
+msgid "<i class=\"oi oi-filled\" data-icon=\"sticky_note_2\" title=\"Notes\"/>"
 msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
-msgid "<i class=\"fa fa-tag\" title=\"Booking Name\"/>"
+msgid ""
+"<i class=\"oi oi-filled\" data-icon=\"videocam\" title=\"Videocall URL\"/>"
 msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
-msgid "<i class=\"fa fa-user\" title=\"Participants\"/>"
-msgstr ""
-
-#. module: calendar
-#: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
-msgid "<i class=\"fa fa-video-camera\" title=\"Videocall URL\"/>"
+msgid "<i class=\"oi\" data-icon=\"close\" title=\"Remove\"/>"
 msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
 msgid ""
-"<i title=\"Clear meeting\" data-tooltip=\"Clear meeting\" class=\"fa fa-"
-"times\"/>"
+"<i title=\"Clear meeting\" data-tooltip=\"Clear meeting\" class=\"oi\" data-"
+"icon=\"close\"/>"
 msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
 msgid ""
-"<i title=\"Join Video Call\" data-tooltip=\"Join video call\" class=\"fa fa-"
-"sign-in\"/>"
-msgstr ""
-
-#. module: calendar
-#: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
-msgid "<span class=\"fa fa-plus me-1\"/>Video conference"
+"<i title=\"Join Video Call\" data-tooltip=\"Join video call\" class=\"oi\" "
+"data-icon=\"login\"/>"
 msgstr ""
 
 #. module: calendar
@@ -903,15 +1082,13 @@ msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.calendar_provider_config_view_form
-#, fuzzy
 msgid "<span class=\"me-1 o_form_label\">Google Calendar</span>"
-msgstr "<span class=\"me-1 o_form_label\">Google Calendar</span>"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.calendar_provider_config_view_form
-#, fuzzy
 msgid "<span class=\"me-1 o_form_label\">Outlook Calendar</span>"
-msgstr "<span class=\"me-1 o_form_label\">Outlook Calendar</span>"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
@@ -921,7 +1098,13 @@ msgstr ""
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
 msgid ""
-"<span class=\"mx-1\"><i class=\"fa fa-plus me-1\"/>Video conference</span>"
+"<span class=\"mx-1\"><i class=\"oi me-1\" data-icon=\"add\"/>Video "
+"conference</span>"
+msgstr ""
+
+#. module: calendar
+#: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
+msgid "<span class=\"oi me-1\" data-icon=\"add\"/>Video conference"
 msgstr ""
 
 #. module: calendar
@@ -950,118 +1133,109 @@ msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.res_config_settings_view_form
-#, fuzzy
 msgid ""
 "<strong>Save</strong> this page and come back here to set up the feature."
-msgstr "<strong>ບັນທຶກ</strong> ໜ້ານີ້ແລ້ວກັບມາທີ່ນີ້ເພື່ອຕັ້ງຄ່າຄຸນສົມບັດ."
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.constraint,message:calendar.constraint_calendar_filters_user_id_partner_id_unique
-#, fuzzy
 msgid "A user cannot have the same contact twice."
-msgstr "ຜູ້ໃຊ້ບໍ່ສາມາດມີຜູ້ຕິດຕໍ່ດຽວກັນສອງຄັ້ງ."
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.invitation_page_anonymous
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Accept"
-msgstr "ຍອມຮັບ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__accepted_count
-#, fuzzy
 msgid "Accepted Count"
-msgstr "ຈຳນວນທີ່ຕອບຮັບແລ້ວ"
+msgstr ""
+
+#. module: calendar
+#: model:ir.model.constraint,message:calendar.constraint_calendar_event_access_token_unique
+msgid "Access token should be unique"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_mail_activity_type__category
-#, fuzzy
 msgid "Action"
-msgstr "ດຳເນີນການ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__message_needaction
-#, fuzzy
 msgid "Action Needed"
-msgstr "ຕ້ອງມີການດຳເນີນການ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_mail_activity_type__category
-#, fuzzy
 msgid ""
 "Actions may trigger specific behavior like opening calendar view or "
 "automatically mark as done when a document is uploaded"
 msgstr ""
-"ການດຳເນີນການອາດຈະກະຕຸ້ນພຶດຕິກຳສະເພາະ ເຊັ່ນ: ການເປີດມຸມເບິ່ງປະຕິທິນ ຫຼື "
-"ໝາຍວ່າສຳເລັດໂດຍອັດຕະໂນມັດເມື່ອມີການອັບໂຫຼດເອກະສານ"
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__active
 #: model:ir.model.fields,field_description:calendar.field_calendar_filters__active
-#, fuzzy
 msgid "Active"
-msgstr "ເປີດໃຊ້ງານ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/attendee_calendar/activity/attendee_calendar_activity_list_popover.xml:0
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__activity_ids
-#, fuzzy
 msgid "Activities"
-msgstr "ກິດຈະກຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_mail_activity
-#, fuzzy
 msgid "Activity"
-msgstr "ກິດຈະກຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__activity_exception_decoration
-#, fuzzy
 msgid "Activity Exception Decoration"
-msgstr "ການຕົບແຕ່ງກິດຈະກຳທີ່ຍົກເວັ້ນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_mail_activity_mixin
-#, fuzzy
 msgid "Activity Mixin"
-msgstr "Activity Mixin"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__activity_plans_ids
-#, fuzzy
 msgid "Activity Plans"
-msgstr "ແຜນກິດຈະກຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__activity_state
-#, fuzzy
 msgid "Activity State"
-msgstr "ສະຖານະກິດຈະກຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_mail_activity_type
-#, fuzzy
 msgid "Activity Type"
-msgstr "ປະເພດກິດຈະກຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__activity_type_icon
-#, fuzzy
 msgid "Activity Type Icon"
-msgstr "ໄອຄອນປະເພດກິດຈະກຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_mail_activity_schedule
-#, fuzzy
 msgid "Activity schedule plan Wizard"
-msgstr "ຕົວຊ່ວຍວາງແຜນກຳນົດເວລາກິດຈະກຳ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
 msgid "Add Title"
+msgstr ""
+
+#. module: calendar
+#: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
+msgid "Add attendees..."
 msgstr ""
 
 #. module: calendar
@@ -1076,24 +1250,21 @@ msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_alarm__body
-#, fuzzy
 msgid "Additional Message"
-msgstr "ຂໍ້ຄວາມເພີ່ມເຕີມ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_alarm__body
-#, fuzzy
 msgid ""
 "Additional message that would be sent with the notification for the reminder"
-msgstr "ຂໍ້ຄວາມເພີ່ມເຕີມທີ່ຈະສົ່ງໄປພ້ອມກັບການແຈ້ງເຕືອນ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/core/web/activity_menu_patch.xml:0
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "All Day"
-msgstr "ໝົດມື້"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__allday
@@ -1103,55 +1274,47 @@ msgstr ""
 #. module: calendar
 #. odoo-python
 #: code:addons/calendar/models/calendar_event.py:0
-#, fuzzy
 msgid "All Day, %(day)s"
-msgstr "ໝົດມື້, %(day)s"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
-#, fuzzy
 msgid "All day"
-msgstr "ໝົດມື້"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/ask_recurrence_update_policy_dialog.js:0
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__recurrence_update__all_events
-#, fuzzy
 msgid "All events"
-msgstr "ເຫດການທັງໝົດ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "Archived"
-msgstr "ຈັດເກັບແລ້ວ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__message_attachment_count
-#, fuzzy
 msgid "Attachment Count"
-msgstr "ຈຳນວນສິ່ງທີ່ແນບມາ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_attendee__partner_id
-#, fuzzy
 msgid "Attendee"
-msgstr "ຜູ້ເຂົ້າຮ່ວມ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__partner_ids
 #: model_terms:ir.ui.view,arch_db:calendar.invitation_page_anonymous
-#, fuzzy
 msgid "Attendees"
-msgstr "ຜູ້ເຂົ້າຮ່ວມ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__attendees_count
-#, fuzzy
 msgid "Attendees Count"
-msgstr "ຈຳນວນຜູ້ເຂົ້າຮ່ວມ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__current_status
@@ -1161,15 +1324,13 @@ msgstr ""
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_attendee__availability__free
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__show_as__free
-#, fuzzy
 msgid "Available"
-msgstr "ຫວ່າງ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_attendee__availability
-#, fuzzy
 msgid "Available/Busy"
-msgstr "ຫວ່າງ/ບໍ່ຫວ່າງ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
@@ -1178,21 +1339,18 @@ msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__awaiting_count
-#, fuzzy
 msgid "Awaiting Count"
-msgstr "ຈຳນວນທີ່ກຳລັງລໍຖ້າ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__base_event_id
-#, fuzzy
 msgid "Base Event"
-msgstr "ເຫດການຫຼັກ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_popover_delete_wizard__body_has_template_value
-#, fuzzy
 msgid "Body content is the same as the template"
-msgstr "ເນື້ອໃນຂໍ້ຄວາມຄືກັນກັບແບບຟອມ"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
@@ -1200,47 +1358,41 @@ msgstr "ເນື້ອໃນຂໍ້ຄວາມຄືກັນກັບແບ
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_attendee__availability__busy
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__show_as__busy
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "Busy"
-msgstr "ບໍ່ວ່າງ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__byday
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__byday
-#, fuzzy
 msgid "By day"
-msgstr "ຕາມມື້"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/attendee_calendar/attendee_calendar_model.js:0
-#, fuzzy
 msgid "Bye-bye, record!"
-msgstr "ລຶບບັນທຶກແລ້ວ!"
+msgstr ""
 
 #. module: calendar
+#: model:ir.module.module,shortdesc:base.module_calendar
 #: model:ir.ui.menu,name:calendar.calendar_event_menu
 #: model:ir.ui.menu,name:calendar.mail_menu_calendar
 #: model:ir.ui.menu,name:calendar.menu_calendar_configuration
 #: model_terms:ir.ui.view,arch_db:calendar.res_config_settings_view_form
-#, fuzzy
 msgid "Calendar"
-msgstr "ປະຕິທິນ"
+msgstr ""
 
 #. module: calendar
-#: model:ir.actions.act_window,name:calendar.action_calendar_alarm
-#: model:ir.ui.menu,name:calendar.menu_calendar_alarm
 #: model_terms:ir.ui.view,arch_db:calendar.calendar_alarm_view_form
+#: model_terms:ir.ui.view,arch_db:calendar.calendar_alarm_view_kanban
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_alarm_tree
-#, fuzzy
 msgid "Calendar Alarm"
-msgstr "ການແຈ້ງເຕືອນປະຕິທິນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_calendar_attendee
-#, fuzzy
 msgid "Calendar Attendee Information"
-msgstr "ຂໍ້ມູນຜູ້ເຂົ້າຮ່ວມປະຕິທິນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_res_users__calendar_default_privacy
@@ -1253,9 +1405,8 @@ msgstr ""
 #: model:ir.model.fields,field_description:calendar.field_calendar_popover_delete_wizard__calendar_event_id
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__calendar_event_ids
 #: model:ir.model.fields,field_description:calendar.field_discuss_channel__calendar_event_ids
-#, fuzzy
 msgid "Calendar Event"
-msgstr "ກິດຈະກຳປະຕິທິນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_calendar_filters
@@ -1264,27 +1415,23 @@ msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.invitation_page_anonymous
-#, fuzzy
 msgid "Calendar Invitation"
-msgstr "ຄຳເຊີນປະຕິທິນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_mail_activity__calendar_event_id
-#, fuzzy
 msgid "Calendar Meeting"
-msgstr "ການປະຊຸມປະຕິທິນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_calendar_popover_delete_wizard
-#, fuzzy
 msgid "Calendar Popover Delete Wizard"
-msgstr "ຕົວຊ່ວຍການລຶບ Popover ປະຕິທິນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_calendar_provider_config
-#, fuzzy
 msgid "Calendar Provider Configuration Wizard"
-msgstr "ຕົວຊ່ວຍການຕັ້ງຄ່າຜູ້ໃຫ້ບໍລິການປະຕິທິນ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.res_config_settings_view_form
@@ -1298,9 +1445,8 @@ msgstr ""
 
 #. module: calendar
 #: model:mail.template,name:calendar.calendar_template_meeting_changedate
-#, fuzzy
 msgid "Calendar: Date Updated"
-msgstr "ປະຕິທິນ: ອັບເດດວັນທີແລ້ວ"
+msgstr ""
 
 #. module: calendar
 #: model:mail.template,name:calendar.calendar_template_delete_event
@@ -1309,142 +1455,114 @@ msgstr ""
 
 #. module: calendar
 #: model:ir.actions.server,name:calendar.ir_cron_scheduler_alarm_ir_actions_server
-#, fuzzy
 msgid "Calendar: Event Reminder"
-msgstr "ປະຕິທິນ: ແຈ້ງເຕືອນເຫດການ"
+msgstr ""
 
 #. module: calendar
 #: model:mail.template,name:calendar.calendar_template_meeting_update
-#, fuzzy
 msgid "Calendar: Event Update"
-msgstr "ປະຕິທິນ: ອັບເດດເຫດການ"
+msgstr ""
 
 #. module: calendar
 #: model:mail.template,name:calendar.calendar_template_meeting_invitation
-#, fuzzy
 msgid "Calendar: Meeting Invitation"
-msgstr "ປະຕິທິນ: ຄຳເຊີນປະຊຸມ"
+msgstr ""
 
 #. module: calendar
 #: model:mail.template,name:calendar.calendar_template_meeting_reminder
-#, fuzzy
 msgid "Calendar: Reminder"
-msgstr "ປະຕິທິນ: ການແຈ້ງເຕືອນ"
-
-#. module: calendar
-#: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_calendar
-msgid "Calendars"
 msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_popover_delete_wizard__can_edit_body
-#, fuzzy
 msgid "Can Edit Body"
-msgstr "ສາມາດແກ້ໄຂເນື້ອໃນໄດ້"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__is_organizer_alone
-#, fuzzy
 msgid ""
 "Check if the organizer is alone in the event, i.e. if the organizer is the "
 "only one that hasn't declined\n"
 "        the event (only if the organizer is not the only attendee)"
 msgstr ""
-"ກວດເບິ່ງວ່າຜູ້ຈັດການປະຊຸມຢູ່ຄົນດຽວໃນເຫດການນີ້ຫຼືບໍ່, ກໍ່ຄື ຜູ້ຈັດການປະຊຸມເປັນຄົນດຽວທີ່ຍັງບໍ່ທັນໄດ້ປະຕິເສດ\n"
-"        ເຫດການ (ສະເພາະໃນກໍລະນີທີ່ຜູ້ຈັດການປະຊຸມບໍ່ແມ່ນຜູ້ເຂົ້າຮ່ວມພຽງຄົນດຽວ)"
-
-#. module: calendar
-#: model:ir.model.fields,field_description:calendar.field_calendar_filters__partner_checked
-#, fuzzy
-msgid "Checked"
-msgstr "ກວດສອບແລ້ວ"
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_provider_config__external_calendar_provider
-#, fuzzy
 msgid "Choose an external calendar to configure"
-msgstr "ເລືອກປະຕິທິນພາຍນອກເພື່ອຕັ້ງຄ່າ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__recurrence_update
-#, fuzzy
 msgid ""
 "Choose what to do with other events in the recurrence. Updating All Events "
 "is not allowed when dates or time is modified"
 msgstr ""
-"ເລືອກສິ່ງທີ່ຈະເຮັດກັບເຫດການອື່ນໆໃນການເກີດຊ້ຳ. ບໍ່ອະນຸຍາດໃຫ້ອັບເດດເຫດການທັງໝົດເມື່ອມີການແກ້ໄຂວັນທີ ຫຼື "
-"ເວລາ"
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.calendar_provider_config_view_form
-#, fuzzy
 msgid "Client ID"
-msgstr "Client ID"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.calendar_provider_config_view_form
-#, fuzzy
 msgid "Client Secret"
-msgstr "Client Secret"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event_type__color
-#, fuzzy
 msgid "Color"
-msgstr "ສີ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_attendee__common_name
-#, fuzzy
 msgid "Common name"
-msgstr "ຊື່ທົ່ວໄປ"
+msgstr ""
+
+#. module: calendar
+#: model_terms:ir.ui.view,arch_db:calendar.res_partner_view_form_simplified
+msgid "Company"
+msgstr ""
 
 #. module: calendar
 #: model:ir.ui.menu,name:calendar.calendar_menu_config
-#, fuzzy
 msgid "Configuration"
-msgstr "ການກໍານົດຄ່າ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/ask_recurrence_update_policy_dialog.xml:0
-#, fuzzy
 msgid "Confirm"
-msgstr "ຢືນຢັນ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/components/calendar_provider_config/calendar_connect_provider.xml:0
-#, fuzzy
 msgid "Connect"
-msgstr "ເຊື່ອມຕໍ່"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/attendee_calendar/attendee_calendar_controller.js:0
-#, fuzzy
 msgid "Connect your Calendar"
-msgstr "ເຊື່ອມຕໍ່ປະຕິທິນຂອງທ່ານ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_res_partner
-#, fuzzy
+#: model_terms:ir.ui.view,arch_db:calendar.res_partner_view_form_simplified
 msgid "Contact"
-msgstr "ຜູ້ຕິດຕໍ່"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
 #: code:addons/calendar/models/calendar_event.py:0
-#, fuzzy
 msgid "Contact Attendees"
-msgstr "ຕິດຕໍ່ຜູ້ເຂົ້າຮ່ວມ"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
 #: code:addons/calendar/models/calendar_event.py:0
-#, fuzzy
 msgid "Contact Details"
-msgstr "ລາຍລະອຽດຜູ້ຕິດຕໍ່"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
@@ -1454,21 +1572,18 @@ msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_popover_delete_wizard__body
-#, fuzzy
 msgid "Contents"
-msgstr "ເນື້ອຫາ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__count
-#, fuzzy
 msgid "Count"
-msgstr "ນັບ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model,website_form_label:calendar.model_res_partner
-#, fuzzy
 msgid "Create a Customer"
-msgstr "ສ້າງລູກຄ້າ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_alarm__create_uid
@@ -1479,9 +1594,8 @@ msgstr "ສ້າງລູກຄ້າ"
 #: model:ir.model.fields,field_description:calendar.field_calendar_popover_delete_wizard__create_uid
 #: model:ir.model.fields,field_description:calendar.field_calendar_provider_config__create_uid
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__create_uid
-#, fuzzy
 msgid "Created by"
-msgstr "ສ້າງໂດຍ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_alarm__create_date
@@ -1492,9 +1606,8 @@ msgstr "ສ້າງໂດຍ"
 #: model:ir.model.fields,field_description:calendar.field_calendar_popover_delete_wizard__create_date
 #: model:ir.model.fields,field_description:calendar.field_calendar_provider_config__create_date
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__create_date
-#, fuzzy
 msgid "Created on"
-msgstr "ສ້າງເມື່ອ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__current_attendee
@@ -1504,76 +1617,65 @@ msgstr ""
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__rrule_type_ui__custom
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__videocall_source__custom
-#, fuzzy
 msgid "Custom"
-msgstr "ກຳນົດເອງ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__rrule_type_ui__daily
-#, fuzzy
 msgid "Daily"
-msgstr "ລາຍວັນ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.invitation_page_anonymous
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "Date"
-msgstr "ວັນທີ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__day
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__month_by__date
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__month_by__date
-#, fuzzy
 msgid "Date of month"
-msgstr "ວັນທີຂອງເດືອນ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
-#, fuzzy
 msgid "Dates"
-msgstr "ວັນທີ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__day
-#, fuzzy
 msgid "Day"
-msgstr "ວັນ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Day of Month"
-msgstr "ມື້ຂອງເດືອນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__month_by__day
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__month_by__day
-#, fuzzy
 msgid "Day of month"
-msgstr "ມື້ຂອງເດືອນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_alarm__interval__days
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__rrule_type__daily
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__rrule_type__daily
-#, fuzzy
 msgid "Days"
-msgstr "ວັນ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.invitation_page_anonymous
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Decline"
-msgstr "ຫຼຸດລົງ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__declined_count
-#, fuzzy
 msgid "Declined Count"
-msgstr "ຈຳນວນທີ່ປະຕິເສດ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
@@ -1590,36 +1692,31 @@ msgstr ""
 #: code:addons/calendar/static/src/views/attendee_calendar/attendee_calendar_model.js:0
 #: model:ir.model.fields,field_description:calendar.field_calendar_popover_delete_wizard__delete
 #: model_terms:ir.ui.view,arch_db:calendar.view_event_delete_wizard_form
-#, fuzzy
 msgid "Delete"
-msgstr "ລຶບ"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
 #: code:addons/calendar/models/calendar_event.py:0
 #: model_terms:ir.ui.view,arch_db:calendar.calendar_popover_delete_view
 #: model_terms:ir.ui.view,arch_db:calendar.view_event_delete_wizard_form
-#, fuzzy
 msgid "Delete Event"
-msgstr "ລຶບເຫດການ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_popover_delete_wizard__delete__all
-#, fuzzy
 msgid "Delete all the events"
-msgstr "ລຶບເຫດການທັງໝົດ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_popover_delete_wizard__delete__next
-#, fuzzy
 msgid "Delete this and following events"
-msgstr "ລຶບເຫດການນີ້ ແລະ ເຫດການຕໍ່ໄປ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_popover_delete_wizard__delete__one
-#, fuzzy
 msgid "Delete this event"
-msgstr "ລຶບເຫດການນີ້"
+msgstr ""
 
 #. module: calendar
 #: model:mail.template,subject:calendar.calendar_template_delete_event
@@ -1635,33 +1732,28 @@ msgstr "ຄຳອະທິບາຍ"
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/js/services/calendar_notification_service.js:0
-#, fuzzy
 msgid "Details"
-msgstr "ລາຍລະອຽດ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__videocall_source__discuss
-#, fuzzy
 msgid "Discuss"
-msgstr "ສົນທະນາ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__videocall_channel_id
-#, fuzzy
 msgid "Discuss Channel"
-msgstr "ຊ່ອງທາງສົນທະນາ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_discuss_channel
-#, fuzzy
 msgid "Discussion Channel"
-msgstr "ຊ່ອງທາງການສົນທະນາ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__display_description
-#, fuzzy
 msgid "Display Description"
-msgstr "ສະແດງຄຳອະທິບາຍ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_alarm__display_name
@@ -1682,52 +1774,45 @@ msgstr "ສະແດງຄຳອະທິບາຍ"
 #: model:ir.model.fields,field_description:calendar.field_res_partner__display_name
 #: model:ir.model.fields,field_description:calendar.field_res_users__display_name
 #: model:ir.model.fields,field_description:calendar.field_res_users_settings__display_name
-#, fuzzy
 msgid "Display Name"
-msgstr "ຊື່ທີ່ສະແດງ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__res_id
-#, fuzzy
 msgid "Document ID"
-msgstr "ລະຫັດເອກະສານ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__res_model_id
-#, fuzzy
 msgid "Document Model"
-msgstr "ແບບຈໍາລອງເອກະສານ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__res_model
-#, fuzzy
 msgid "Document Model Name"
-msgstr "ຊື່ໂມເດວເອກະສານ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__dtstart
-#, fuzzy
 msgid "Dtstart"
-msgstr "Dtstart"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__duration
+#: model_terms:ir.ui.view,arch_db:calendar.view_calendar_alarm_tree
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Duration"
-msgstr "ໄລຍະເວລາ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_alarm__duration_minutes
-#, fuzzy
 msgid "Duration in minutes"
-msgstr "ໄລຍະເວລາເປັນນາທີ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "EMAIL"
-msgstr "ອີເມລ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
@@ -1737,9 +1822,8 @@ msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Edit recurring event"
-msgstr "ແກ້ໄຂເຫດການທີ່ເກີດຊ້ຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__effective_privacy
@@ -1749,65 +1833,55 @@ msgstr ""
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_attendee__email
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_alarm__alarm_type__email
-#, fuzzy
 msgid "Email"
-msgstr "ອີເມວ"
+msgstr ""
 
 #. module: calendar
 #: model:calendar.alarm,name:calendar.alarm_mail_1
-#, fuzzy
 msgid "Email - 3 Hours"
-msgstr "ອີເມລ - 3 ຊົ່ວໂມງ"
+msgstr ""
 
 #. module: calendar
 #: model:calendar.alarm,name:calendar.alarm_mail_2
-#, fuzzy
 msgid "Email - 6 Hours"
-msgstr "ອີເມລ - 6 ຊົ່ວໂມງ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_alarm__mail_template_id
-#, fuzzy
 msgid "Email Template"
-msgstr "ແມ່ແບບອີເມລ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_filters__partner_id
-#, fuzzy
 msgid "Employee"
-msgstr "ພະນັກງານ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__stop_date
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_tree
-#, fuzzy
 msgid "End Date"
-msgstr "ວັນທີສິ້ນສຸດ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__end_type
-#, fuzzy
 msgid "End Type"
-msgstr "ປະເພດການສິ້ນສຸດ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__end_type__end_date
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__end_type__end_date
-#, fuzzy
 msgid "End date"
-msgstr "ວັນທີສິ້ນສຸດ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_calendar_alarm
-#, fuzzy
 msgid "Event Alarm"
-msgstr "ການແຈ້ງເຕືອນເຫດການ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_calendar_alarm_manager
-#, fuzzy
 msgid "Event Alarm Manager"
-msgstr "ຕົວຈັດການການເຕືອນກິດຈະກຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.actions.act_window,name:calendar.action_event_delete_wizard
@@ -1816,21 +1890,33 @@ msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_calendar_event_type
-#, fuzzy
 msgid "Event Meeting Type"
-msgstr "ປະເພດການປະຊຸມເຫດການ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_calendar_recurrence
-#, fuzzy
 msgid "Event Recurrence Rule"
-msgstr "ກົດລະບຽບການເກີດຊ້ຳຂອງກິດຈະກຳ"
+msgstr ""
+
+#. module: calendar
+#: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_type_tree
+msgid "Event Tag"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__display_time
-#, fuzzy
 msgid "Event Time"
-msgstr "ເວລາເຫດການ"
+msgstr ""
+
+#. module: calendar
+#: model:mail.message.subtype,name:calendar.mt_calendar_event_updated
+msgid "Event Updates"
+msgstr ""
+
+#. module: calendar
+#: model:mail.message.subtype,description:calendar.mt_calendar_event_updated
+msgid "Event updated"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
@@ -1934,80 +2020,63 @@ msgstr ""
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__byday__1
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__byday__1
-#, fuzzy
 msgid "First"
-msgstr "ທີໜຶ່ງ"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
 #: code:addons/calendar/models/calendar_event.py:0
-#, fuzzy
 msgid "First you have to specify the date of the invitation."
-msgstr "ກ່ອນອື່ນທ່ານຕ້ອງລະບຸວັນທີຂອງການເຊື້ອເຊີນ."
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__follow_recurrence
-#, fuzzy
 msgid "Follow Recurrence"
-msgstr "ຕິດຕາມການເກີດຊ້ຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__message_follower_ids
-#, fuzzy
 msgid "Followers"
-msgstr "ຜູ້ຕິດຕາມ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__message_partner_ids
-#, fuzzy
 msgid "Followers (Partners)"
-msgstr "ຜູ້ຕິດຕາມ (ຄູ່ຄ້າ)"
-
-#. module: calendar
-#: model:ir.model.fields,help:calendar.field_calendar_event__activity_type_icon
-#, fuzzy
-msgid "Font awesome icon e.g. fa-tasks"
-msgstr "ໄອຄອນ Font awesome ເຊັ່ນ fa-tasks"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__end_type__forever
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__end_type__forever
-#, fuzzy
 msgid "Forever"
-msgstr "ຕະຫຼອດໄປ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__byday__4
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__byday__4
-#, fuzzy
 msgid "Fourth"
-msgstr "ທີສີ່"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "Free"
-msgstr "ຟຣີ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__fri
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__fri
-#, fuzzy
 msgid "Fri"
-msgstr "ວັນສຸກ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__weekday__fri
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__weekday__fri
-#, fuzzy
 msgid "Friday"
-msgstr "ວັນສຸກ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "Future Activities"
-msgstr "ກິດຈະກຳໃນອະນາຄົດ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
@@ -2018,33 +2087,33 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/attendee_calendar/attendee_calendar_controller.xml:0
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_provider_config__external_calendar_provider__google
-#, fuzzy
 msgid "Google"
-msgstr "Google"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.res_config_settings_view_form
-#, fuzzy
 msgid "Google Calendar"
-msgstr "Google Calendar"
+msgstr ""
+
+#. module: calendar
+#: model:ir.model.fields,field_description:calendar.field_calendar_event__google_calendar_url
+msgid "Google Calendar URL"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.calendar_provider_config_view_form
-#, fuzzy
 msgid "Google Calendar icon"
-msgstr "ໄອຄອນ Google Calendar"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_provider_config__cal_client_id
-#, fuzzy
 msgid "Google Client_id"
-msgstr "Google Client_id"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_provider_config__cal_client_secret
-#, fuzzy
 msgid "Google Client_key"
-msgstr "Google Client_key"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_provider_config__cal_sync_paused
@@ -2053,21 +2122,23 @@ msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_ir_http
-#, fuzzy
 msgid "HTTP Routing"
-msgstr "ການກຳນົດເສັ້ນທາງ HTTP"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__has_message
-#, fuzzy
 msgid "Has Message"
-msgstr "ມີຂໍ້ຄວາມ"
+msgstr ""
+
+#. module: calendar
+#: model:ir.model.fields,field_description:calendar.field_res_users_settings__calendar_hide_my
+msgid "Hide My Calendar from Calendar"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_alarm__interval__hours
-#, fuzzy
 msgid "Hours"
-msgstr "ຊົ່ວໂມງ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_alarm__id
@@ -2088,47 +2159,38 @@ msgstr "ຊົ່ວໂມງ"
 #: model:ir.model.fields,field_description:calendar.field_res_partner__id
 #: model:ir.model.fields,field_description:calendar.field_res_users__id
 #: model:ir.model.fields,field_description:calendar.field_res_users_settings__id
-#, fuzzy
 msgid "ID"
-msgstr "ລະຫັດ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__activity_exception_icon
-#, fuzzy
 msgid "Icon"
-msgstr "ໄອຄອນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__activity_exception_icon
-#, fuzzy
 msgid "Icon to indicate an exception activity."
-msgstr "ໄອຄອນເພື່ອບົ່ງບອກເຖິງກິດຈະກຳທີ່ຍົກເວັ້ນ."
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__message_needaction
-#, fuzzy
 msgid "If checked, new messages require your attention."
-msgstr "ຖ້າໝາຍເອົາ, ຂໍ້ຄວາມໃໝ່ຈະຕ້ອງການຄວາມສົນໃຈຈາກທ່ານ."
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__message_has_error
-#, fuzzy
 msgid "If checked, some messages have a delivery error."
-msgstr "ຖ້າໝາຍເອົາ, ບາງຂໍ້ຄວາມມີຂໍ້ຜິດພາດໃນການສົ່ງ."
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__active
-#, fuzzy
 msgid ""
 "If the active field is set to false, it will allow you to hide the event "
 "alarm information without removing it."
 msgstr ""
-"ຫາກຊ່ອງການເປີດໃຊ້ງານຖືກຕັ້ງເປັນ False, "
-"ມັນຈະຊ່ວຍໃຫ້ທ່ານສາມາດເຊື່ອງຂໍ້ມູນການເຕືອນກິດຈະກຳໄດ້ໂດຍບໍ່ຕ້ອງລຶບມັນອອກ."
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__show_as
-#, fuzzy
 msgid ""
 "If the time is shown as 'busy', this event will be visible to other people "
 "with either the full         information or simply 'busy' written depending "
@@ -2137,9 +2199,6 @@ msgid ""
 " If the event is shown as 'free', other users know         that you are "
 "available during that period of time."
 msgstr ""
-"ຖ້າເວລາຖືກສະແດງເປັນ 'ບໍ່ວ່າງ', ເຫດການນີ້ຈະປາກົດໃຫ້ຄົນອື່ນເຫັນ ໂດຍມີຂໍ້ມູນຄົບຖ້ວນ ຫຼື ພຽງແຕ່ 'ບໍ່ວ່າງ' "
-"ຂຶ້ນກັບຄວາມເປັນສ່ວນຕົວຂອງມັນ. ໃຊ້ຕົວເລືອກນີ້ເພື່ອໃຫ້ຄົນອື່ນຮູ້ວ່າທ່ານບໍ່ວ່າງໃນຊ່ວງເວລານັ້ນ. \n"
-" ຖ້າເຫດການຖືກສະແດງເປັນ 'ວ່າງ', ຜູ້ໃຊ້ອື່ນຈະຮູ້ວ່າທ່ານວ່າງໃນຊ່ວງເວລານັ້ນ."
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__res_users__calendar_default_privacy__confidential
@@ -2148,95 +2207,86 @@ msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__interval
-#, fuzzy
 msgid "Interval"
-msgstr "ຊ່ວງເວລາ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__invalid_email_partner_ids
-#, fuzzy
 msgid "Invalid Email Partner"
-msgstr "ຄູ່ຄ້າອີເມລບໍ່ຖືກຕ້ອງ"
+msgstr ""
 
 #. module: calendar
 #: model:mail.message.subtype,name:calendar.subtype_invitation
-#, fuzzy
-msgid "Invitation"
-msgstr "ການເຊື້ອເຊີນ"
+msgid "Invitation Status"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_attendee__access_token
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__access_token
-#, fuzzy
 msgid "Invitation Token"
-msgstr "ໂທເຄັນການເຊີນ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Invitation details"
-msgstr "ລາຍລະອຽດການເຊີນ"
+msgstr ""
 
 #. module: calendar
 #: model:mail.template,description:calendar.calendar_template_meeting_invitation
-#, fuzzy
 msgid "Invitation email to new attendees"
-msgstr "ອີເມລເຊີນຜູ້ເຂົ້າຮ່ວມໃໝ່"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.invitation_page_anonymous
-#, fuzzy
 msgid "Invitation for"
-msgstr "ການເຊີນສຳລັບ"
+msgstr ""
 
 #. module: calendar
 #: model:mail.template,subject:calendar.calendar_template_meeting_invitation
-#, fuzzy
 msgid "Invitation to {{ object.event_id.name }}"
-msgstr "ຄຳເຊີນເຂົ້າຮ່ວມ {{ object.event_id.name }}"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Invitations"
-msgstr "ການເຊີນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_popover_delete_wizard__is_mail_template_editor
-#, fuzzy
 msgid "Is Editor"
-msgstr "ແມ່ນຜູ້ແກ້ໄຂ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__message_is_follower
-#, fuzzy
 msgid "Is Follower"
-msgstr "ແມ່ນຜູ້ຕິດຕາມ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__is_highlighted
-#, fuzzy
 msgid "Is the Event Highlighted"
-msgstr "ແມ່ນເຫດການທີ່ຖືກເນັ້ນບໍ່"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__is_organizer_alone
-#, fuzzy
 msgid "Is the Organizer Alone"
-msgstr "ແມ່ນຜູ້ຈັດການພຽງຜູ້ດຽວບໍ່"
+msgstr ""
+
+#. module: calendar
+#. odoo-javascript
+#: code:addons/calendar/static/src/core/web/activity_patch.xml:0
+msgid "Join Meeting"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_popover_delete_wizard__lang
-#, fuzzy
 msgid "Language"
-msgstr "ພາສາ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__byday__-1
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__byday__-1
-#, fuzzy
 msgid "Last"
-msgstr "ສຸດທ້າຍ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_alarm__write_uid
@@ -2247,9 +2297,8 @@ msgstr "ສຸດທ້າຍ"
 #: model:ir.model.fields,field_description:calendar.field_calendar_popover_delete_wizard__write_uid
 #: model:ir.model.fields,field_description:calendar.field_calendar_provider_config__write_uid
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__write_uid
-#, fuzzy
 msgid "Last Updated by"
-msgstr "ແກ້ໄຂຫຼ້າສຸດໂດຍ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_alarm__write_date
@@ -2260,82 +2309,85 @@ msgstr "ແກ້ໄຂຫຼ້າສຸດໂດຍ"
 #: model:ir.model.fields,field_description:calendar.field_calendar_popover_delete_wizard__write_date
 #: model:ir.model.fields,field_description:calendar.field_calendar_provider_config__write_date
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__write_date
-#, fuzzy
 msgid "Last Updated on"
-msgstr "ແກ້ໄຂຫຼ້າສຸດເມື່ອ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_res_partner__calendar_last_notif_ack
 #: model:ir.model.fields,field_description:calendar.field_res_users__calendar_last_notif_ack
-#, fuzzy
 msgid "Last notification marked as read from base Calendar"
-msgstr "ການແຈ້ງເຕືອນລ່າສຸດຖືກໝາຍວ່າອ່ານແລ້ວຈາກປະຕິທິນຫຼັກ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "Late Activities"
-msgstr "ກິດຈະກຳທີ່ຊ້າກວ່າກຳນົດ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__rrule_type
 #: model:ir.model.fields,help:calendar.field_calendar_event__rrule_type_ui
-#, fuzzy
 msgid "Let the event automatically repeat at that interval"
-msgstr "ໃຫ້ເຫດການເຮັດຊ້ຳໂດຍອັດຕະໂນມັດຕາມຊ່ວງເວລານັ້ນ"
+msgstr ""
+
+#. module: calendar
+#: model:ir.model.fields,help:calendar.field_calendar_event__google_calendar_url
+msgid "Link to manually add the meeting to Google Calendar"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__res_record
-#, fuzzy
 msgid "Linked to"
-msgstr "ເຊື່ອມຕໍ່ກັບ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__location
 #: model_terms:ir.ui.view,arch_db:calendar.invitation_page_anonymous
-#, fuzzy
 msgid "Location"
-msgstr "ສະຖານທີ່"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.invitation_page_anonymous
-#, fuzzy
 msgid "Logo"
-msgstr "ໂລໂກ້"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_popover_delete_wizard__template_id
-#, fuzzy
 msgid "Mail Template"
-msgstr "ແບບຟອມອີເມວ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_attendee__mail_tz
-#, fuzzy
 msgid "Mail Tz"
-msgstr "ເຂດເວລາເມລ"
+msgstr ""
+
+#. module: calendar
+#: model:ir.model.fields,help:calendar.field_calendar_event__activity_type_icon
+msgid "Material Symbols icon e.g. checklist"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/attendee_calendar/common/attendee_calendar_common_popover.xml:0
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_attendee__state__tentative
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Maybe"
-msgstr "ອາດຈະ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_filters__user_id
-#, fuzzy
 msgid "Me"
-msgstr "ຂ້ອຍ"
+msgstr ""
+
+#. module: calendar
+#: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_calendar
+msgid "Meet with"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__mail_activity_type__category__meeting
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "Meeting"
-msgstr "ການປະຊຸມ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__meeting_activity_ids
@@ -2343,30 +2395,25 @@ msgid "Meeting Activities"
 msgstr ""
 
 #. module: calendar
-#: model:ir.model.fields,field_description:calendar.field_calendar_event__name
-#, fuzzy
-msgid "Meeting Subject"
-msgstr "ຫົວຂໍ້ການປະຊຸມ"
+#: model:ir.model.fields,field_description:calendar.field_res_partner__meeting_display_label
+#: model:ir.model.fields,field_description:calendar.field_res_users__meeting_display_label
+msgid "Meeting Display Label"
+msgstr ""
 
 #. module: calendar
-#: model:ir.actions.act_window,name:calendar.action_calendar_event_type
-#: model:ir.ui.menu,name:calendar.menu_calendar_event_type
-#: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_type_tree
-#, fuzzy
-msgid "Meeting Types"
-msgstr "ປະເພດການປະຊຸມ"
+#: model:ir.model.fields,field_description:calendar.field_calendar_event__name
+msgid "Meeting Subject"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__videocall_location
-#, fuzzy
 msgid "Meeting URL"
-msgstr "URL ການປະຊຸມ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_attendee__event_id
-#, fuzzy
 msgid "Meeting linked"
-msgstr "ເຊື່ອມໂຍງການປະຊຸມ"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
@@ -2378,121 +2425,113 @@ msgstr "ເຊື່ອມໂຍງການປະຊຸມ"
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_tree
-#: model_terms:ir.ui.view,arch_db:calendar.view_partners_form
-#, fuzzy
 msgid "Meetings"
-msgstr "ການປະຊຸມ"
+msgstr ""
+
+#. module: calendar
+#: model_terms:ir.ui.view,arch_db:calendar.calendar_alarm_view_form
+msgid "Message"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__message_has_error
-#, fuzzy
 msgid "Message Delivery error"
-msgstr "ຂໍ້ຜິດພາດໃນການສົ່ງຂໍ້ຄວາມ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__message_ids
-#, fuzzy
 msgid "Messages"
-msgstr "ຂໍ້ຄວາມ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.calendar_provider_config_view_form
-#, fuzzy
 msgid "Microsoft Outlook icon"
-msgstr "ໄອຄອນ Microsoft Outlook"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_alarm__interval__minutes
-#, fuzzy
 msgid "Minutes"
-msgstr "ນາທີ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__res_model_name
-#, fuzzy
 msgid "Model Description"
-msgstr "ຄຳອະທິບາຍໂມເດວ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__mon
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__mon
-#, fuzzy
 msgid "Mon"
-msgstr "ຈັນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__weekday__mon
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__weekday__mon
-#, fuzzy
 msgid "Monday"
-msgstr "ວັນຈັນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__month_by
-#, fuzzy
 msgid "Month By"
-msgstr "ຕາມເດືອນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__rrule_type_ui__monthly
-#, fuzzy
 msgid "Monthly"
-msgstr "ລາຍເດືອນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__rrule_type__monthly
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__rrule_type__monthly
-#, fuzzy
 msgid "Months"
-msgstr "ເດືອນ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/calendar_form/calendar_quick_create.xml:0
-#, fuzzy
 msgid "More Options"
-msgstr "ຕົວເລືອກເພີ່ມເຕີມ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/attendee_calendar/side_panel/attendee_calendar_side_panel.js:0
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "My Activities"
-msgstr "ກິດຈະກຳຂອງຂ້ອຍ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__my_activity_date_deadline
-#, fuzzy
 msgid "My Activity Deadline"
-msgstr "ກຳນົດເວລາສິ້ນສຸດກິດຈະກຳຂອງຂ້ອຍ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "My Meetings"
-msgstr "ການປະຊຸມຂອງຂ້ອຍ"
+msgstr ""
+
+#. module: calendar
+#. odoo-javascript
+#: code:addons/calendar/static/src/views/attendee_calendar/side_panel/attendee_calendar_side_panel.xml:0
+msgid "My calendars"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_alarm__name
 #: model:ir.model.fields,field_description:calendar.field_calendar_event_type__name
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__name
-#, fuzzy
 msgid "Name"
-msgstr "ຊື່"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_attendee__state__needsaction
-#, fuzzy
 msgid "Needs Action"
-msgstr "ຕ້ອງການການດຳເນີນການ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/attendee_calendar/attendee_calendar_controller.xml:0
-#, fuzzy
 msgid "New"
-msgstr "ໃໝ່"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__activity_calendar_event_id
@@ -2501,49 +2540,56 @@ msgstr "ໃໝ່"
 #: model:ir.model.fields,field_description:calendar.field_mail_activity_mixin__activity_calendar_event_id
 #: model:ir.model.fields,field_description:calendar.field_res_partner__activity_calendar_event_id
 #: model:ir.model.fields,field_description:calendar.field_res_users__activity_calendar_event_id
-#, fuzzy
 msgid "Next Activity Calendar Event"
-msgstr "ກິດຈະກຳໃນປະຕິທິນຄັ້ງຕໍ່ໄປ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__activity_date_deadline
-#, fuzzy
 msgid "Next Activity Deadline"
-msgstr "ກຳນົດເວລາສິ້ນສຸດກິດຈະກຳຄັ້ງຕໍ່ໄປ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__activity_summary
-#, fuzzy
 msgid "Next Activity Summary"
-msgstr "ສະຫຼຸບກິດຈະກຳຄັ້ງຕໍ່ໄປ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__activity_type_id
-#, fuzzy
 msgid "Next Activity Type"
-msgstr "ປະເພດກິດຈະກຳຄັ້ງຕໍ່ໄປ"
+msgstr ""
+
+#. module: calendar
+#. odoo-python
+#: code:addons/calendar/models/res_partner.py:0
+#: model:ir.model.fields,field_description:calendar.field_res_partner__meeting_next_date
+#: model:ir.model.fields,field_description:calendar.field_res_users__meeting_next_date
+msgid "Next Meeting"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/attendee_calendar/activity/attendee_calendar_activity_list_popover_item.xml:0
-#, fuzzy
 msgid "Next Week"
-msgstr "ອາທິດໜ້າ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/attendee_calendar/common/attendee_calendar_common_popover.xml:0
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_attendee__state__declined
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "No"
-msgstr "ບໍ່"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.invitation_page_anonymous
-#, fuzzy
 msgid "No I'm not going."
-msgstr "ບໍ່, ຂ້ອຍຈະບໍ່ໄປ."
+msgstr ""
+
+#. module: calendar
+#. odoo-python
+#: code:addons/calendar/models/res_partner.py:0
+msgid "No Meetings"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
@@ -2553,176 +2599,154 @@ msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.invitation_page_anonymous
-#, fuzzy
 msgid "No feedback yet"
-msgstr "ຍັງບໍ່ມີຄຳຕິຊົມເທື່ອ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.actions.act_window,help:calendar.action_calendar_event
-#, fuzzy
 msgid "No meetings found. Let's schedule one!"
-msgstr "ບໍ່ພົບການປະຊຸມ. ມາຈັດຕາຕະລາງກັນເລີຍ!"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/attendee_calendar/attendee_calendar_model.js:0
-#, fuzzy
 msgid "No, keep it"
-msgstr "ບໍ່, ເກັບມັນໄວ້"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__notes
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
-#, fuzzy
 msgid "Notes"
-msgstr "ໝາຍເຫດຕ່າງໆ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_alarm__alarm_type__notification
-#, fuzzy
 msgid "Notification"
-msgstr "ການແຈ້ງເຕືອນ"
+msgstr ""
 
 #. module: calendar
 #: model:calendar.alarm,name:calendar.alarm_notif_5
-#, fuzzy
 msgid "Notification - 1 Days"
-msgstr "ການແຈ້ງເຕືອນ - 1 ມື້"
+msgstr ""
 
 #. module: calendar
 #: model:calendar.alarm,name:calendar.alarm_notif_3
-#, fuzzy
 msgid "Notification - 1 Hours"
-msgstr "ການແຈ້ງເຕືອນ - 1 ຊົ່ວໂມງ"
+msgstr ""
 
 #. module: calendar
 #: model:calendar.alarm,name:calendar.alarm_notif_1
-#, fuzzy
 msgid "Notification - 15 Minutes"
-msgstr "ການແຈ້ງເຕືອນ - 15 ນາທີ"
+msgstr ""
 
 #. module: calendar
 #: model:calendar.alarm,name:calendar.alarm_notif_4
-#, fuzzy
 msgid "Notification - 2 Hours"
-msgstr "ການແຈ້ງເຕືອນ - 2 ຊົ່ວໂມງ"
+msgstr ""
 
 #. module: calendar
 #: model:calendar.alarm,name:calendar.alarm_notif_2
-#, fuzzy
 msgid "Notification - 30 Minutes"
-msgstr "ການແຈ້ງເຕືອນ - 30 ນາທີ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__alarm_ids
-#, fuzzy
 msgid "Notifications sent to all attendees to remind of the meeting."
-msgstr "ແຈ້ງເຕືອນສົ່ງຫາຜູ້ເຂົ້າຮ່ວມທຸກຄົນເພື່ອເຕືອນກ່ຽວກັບການປະຊຸມ."
+msgstr ""
 
 #. module: calendar
 #. odoo-python
 #: code:addons/calendar/models/calendar_alarm.py:0
 #: model:ir.model.fields,field_description:calendar.field_calendar_alarm__notify_responsible
-#, fuzzy
 msgid "Notify Responsible"
-msgstr "ແຈ້ງເຕືອນຜູ້ຮັບຜິດຊອບ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__message_needaction_counter
-#, fuzzy
 msgid "Number of Actions"
-msgstr "ຈຳນວນການດຳເນີນການ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__count
-#, fuzzy
 msgid "Number of Repetitions"
-msgstr "ຈຳນວນການເຮັດຊ້ຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__message_has_error_counter
-#, fuzzy
 msgid "Number of errors"
-msgstr "ຈຳນວນຂໍ້ຜິດພາດ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__message_needaction_counter
-#, fuzzy
 msgid "Number of messages requiring action"
-msgstr "ຈຳນວນຂໍ້ຄວາມທີ່ຕ້ອງການການດຳເນີນການ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__message_has_error_counter
-#, fuzzy
 msgid "Number of messages with delivery error"
-msgstr "ຈຳນວນຂໍ້ຄວາມທີ່ມີຂໍ້ຜິດພາດໃນການສົ່ງ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__end_type__count
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__end_type__count
-#, fuzzy
 msgid "Number of repetitions"
-msgstr "ຈຳນວນການເຮັດຊ້ຳ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/js/services/calendar_notification_service.js:0
-#, fuzzy
 msgid "OK"
-msgstr "ຕົກລົງ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
+#. odoo-python
+#: code:addons/calendar/models/calendar_alarm_manager.py:0
 #: code:addons/calendar/static/src/core/web/activity_patch.xml:0
-#, fuzzy
 msgid "Online"
-msgstr "ອອນລາຍ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Online Meeting"
-msgstr "ການປະຊຸມອອນໄລນ໌"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "Only Internal Users"
-msgstr "ສະເພາະຜູ້ໃຊ້ພາຍໃນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__effective_privacy__confidential
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__privacy__confidential
 #: model:ir.model.fields.selection,name:calendar.selection__res_users_settings__calendar_default_privacy__confidential
-#, fuzzy
 msgid "Only internal users"
-msgstr "ສະເພາະຜູ້ໃຊ້ພາຍໃນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__month_by
-#, fuzzy
 msgid "Option"
-msgstr "ທາງເລືອກ"
+msgstr ""
+
+#. module: calendar
+#: model_terms:ir.ui.view,arch_db:calendar.calendar_alarm_view_form
+msgid "Optional message"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_popover_delete_wizard__lang
-#, fuzzy
 msgid ""
 "Optional translation language (ISO code) to select when sending out an "
 "email. If not set, the main partner's language will be used. This should "
 "usually be a placeholder expression that provides the appropriate language, "
 "e.g. {{ object.partner_id.lang }}."
 msgstr ""
-"ພາສາແປທີ່ເລືອກໄດ້ (ລະຫັດ ISO) ເພື່ອເລືອກເມື່ອສົ່ງອີເມວ. ຖ້າບໍ່ໄດ້ກຳນົດ, ຈະໃຊ້ພາສາຫຼັກຂອງຄູ່ຄ້າ. "
-"ໂດຍປົກກະຕິຄວນເປັນຮູບແບບ Placeholder ທີ່ໃຫ້ພາສາທີ່ເໝາະສົມ, ເຊັ່ນ: "
-"{{ object.partner_id.lang }}."
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Options"
-msgstr "ຕົວເລືອກ"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
@@ -2733,35 +2757,30 @@ msgstr ""
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__user_id
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_calendar
-#, fuzzy
 msgid "Organizer"
-msgstr "ຜູ້ຈັດງານ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/attendee_calendar/attendee_calendar_controller.xml:0
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_provider_config__external_calendar_provider__microsoft
-#, fuzzy
 msgid "Outlook"
-msgstr "Outlook"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.res_config_settings_view_form
-#, fuzzy
 msgid "Outlook Calendar"
-msgstr "Outlook Calendar"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_provider_config__microsoft_outlook_client_identifier
-#, fuzzy
 msgid "Outlook Client Id"
-msgstr "Outlook Client Id"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_provider_config__microsoft_outlook_client_secret
-#, fuzzy
 msgid "Outlook Client Secret"
-msgstr "Outlook Client Secret"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_provider_config__microsoft_outlook_sync_paused
@@ -2770,41 +2789,35 @@ msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__attendee_ids
-#, fuzzy
 msgid "Participant"
-msgstr "ຜູ້ເຂົ້າຮ່ວມ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
-#, fuzzy
 msgid "Participants"
-msgstr "ຜູ້ເຂົ້າຮ່ວມ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__partner_id
-#, fuzzy
 msgid "Partner-related data of the user"
-msgstr "ຂໍ້ມູນທີ່ກ່ຽວຂ້ອງກັບຄູ່ຄ້າຂອງຜູ້ໃຊ້"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__privacy
-#, fuzzy
 msgid "People to whom this event will be visible."
-msgstr "ບຸກຄົນທີ່ສາມາດເຫັນເຫດການນີ້ໄດ້."
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_attendee__phone
-#, fuzzy
 msgid "Phone"
-msgstr "ເບີໂທລະສັບ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__privacy
 #: model_terms:ir.ui.view,arch_db:calendar.res_users_form_view
 #: model_terms:ir.ui.view,arch_db:calendar.res_users_form_view_calendar_default_privacy
-#, fuzzy
 msgid "Privacy"
-msgstr "ຄວາມເປັນສ່ວນຕົວ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__privacy_placeholder
@@ -2816,9 +2829,8 @@ msgstr ""
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__privacy__private
 #: model:ir.model.fields.selection,name:calendar.selection__res_users_settings__calendar_default_privacy__private
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "Private"
-msgstr "ສ່ວນຕົວ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__res_users__calendar_default_privacy__private
@@ -2830,9 +2842,8 @@ msgstr ""
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__privacy__public
 #: model:ir.model.fields.selection,name:calendar.selection__res_users_settings__calendar_default_privacy__public
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "Public"
-msgstr "ສາທາລະນະ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__res_users__calendar_default_privacy__public
@@ -2841,72 +2852,68 @@ msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_popover_delete_wizard__recipient_ids
-#, fuzzy
 msgid "Recipients"
-msgstr "ຜູ້ຮັບ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__rrule_type
-#, fuzzy
 msgid "Recurrence"
-msgstr "ການເຮັດຊ້ຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_attendee__recurrence_id
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__recurrence_id
-#, fuzzy
 msgid "Recurrence Rule"
-msgstr "ກົດການເກີດຊ້ຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__end_type
-#, fuzzy
 msgid "Recurrence Termination"
-msgstr "ການສິ້ນສຸດການເກີດຊ້ຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__recurrence_update
-#, fuzzy
 msgid "Recurrence Update"
-msgstr "ອັບເດດການເຮັດຊ້ຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__recurrency
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "Recurrent"
-msgstr "ທີ່ເຮັດຊ້ຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__rrule
-#, fuzzy
 msgid "Recurrent Rule"
-msgstr "ກົດການເກີດຊ້ຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_alarm__duration
-#, fuzzy
 msgid "Remind Before"
-msgstr "ເຕືອນກ່ອນ"
+msgstr ""
 
 #. module: calendar
+#: model_terms:ir.ui.view,arch_db:calendar.calendar_alarm_view_form
+msgid "Reminder"
+msgstr ""
+
+#. module: calendar
+#: model:ir.actions.act_window,name:calendar.action_calendar_alarm
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__alarm_ids
 #: model:ir.ui.menu,name:calendar.calendar_submenu_reminders
-#, fuzzy
+#: model:ir.ui.menu,name:calendar.menu_calendar_alarm
 msgid "Reminders"
-msgstr "ການເຕືອນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_popover_delete_wizard__render_model
-#, fuzzy
 msgid "Rendering Model"
-msgstr "ຮູບແບບການສະແດງຜົນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__rrule_type_ui
-#, fuzzy
 msgid "Repeat"
-msgstr "ເຮັດຊ້ຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__interval
@@ -2915,46 +2922,39 @@ msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__until
-#, fuzzy
 msgid "Repeat Until"
-msgstr "ເຮັດຊ້ຳຈົນເຖິງ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Repeat every"
-msgstr "ເຮັດຊ້ຳທຸກໆ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__interval
-#, fuzzy
 msgid "Repeat every (Days/Week/Month/Year)"
-msgstr "ເຮັດຊ້ຳທຸກໆ (ມື້/ອາທິດ/ເດືອນ/ປີ)"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__count
-#, fuzzy
 msgid "Repeat x times"
-msgstr "ເຮັດຊ້ຳ x ຄັ້ງ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/attendee_calendar/activity/attendee_calendar_activity_list_popover_item.xml:0
-#, fuzzy
 msgid "Reschedule"
-msgstr "ກຳນົດເວລາໃໝ່"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "Responsible"
-msgstr "ຜູ້ຮັບຜິດຊອບ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__activity_user_id
-#, fuzzy
 msgid "Responsible User"
-msgstr "ຜູ້ໃຊ້ທີ່ຮັບຜິດຊອບ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form_quick_create
@@ -2963,48 +2963,47 @@ msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__rrule
-#, fuzzy
 msgid "Rrule"
-msgstr "ກົດການເກີດຊ້ຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__rrule_type
-#, fuzzy
 msgid "Rrule Type"
-msgstr "ປະເພດກົດການເກີດຊ້ຳ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__sat
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__sat
-#, fuzzy
 msgid "Sat"
-msgstr "ເສົາ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__weekday__sat
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__weekday__sat
-#, fuzzy
 msgid "Saturday"
-msgstr "ວັນເສົາ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.mail_activity_schedule_view_form
 #: model_terms:ir.ui.view,arch_db:calendar.mail_activity_view_form_popup
-#, fuzzy
-msgid "Schedule"
-msgstr "ກຳນົດເວລາ"
+msgid "Schedule Meeting"
+msgstr ""
 
 #. module: calendar
-#: model_terms:ir.ui.view,arch_db:calendar.mail_activity_schedule_view_form
-#: model_terms:ir.ui.view,arch_db:calendar.mail_activity_view_form_popup
-msgid "Schedule a meeting"
+#: model:ir.module.module,summary:base.module_calendar
+msgid "Schedule employees' meetings"
+msgstr ""
+
+#. module: calendar
+#. odoo-javascript
+#: code:addons/calendar/static/src/core/web/messaging_menu_model_patch.js:0
+msgid "Schedule for later"
 msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__partner_id
-#, fuzzy
 msgid "Scheduled by"
-msgstr "ຈັດຕາຕະລາງໂດຍ"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
@@ -3016,40 +3015,29 @@ msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "Search Meetings"
-msgstr "ຄົ້ນຫາການປະຊຸມ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__byday__2
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__byday__2
-#, fuzzy
 msgid "Second"
-msgstr "ວິນາທີ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
-msgid "Select attendees..."
-msgstr "ເລືອກຜູ້ເຂົ້າຮ່ວມ..."
-
-#. module: calendar
-#: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Send Email to attendees"
-msgstr "ສົ່ງອີເມລຫາຜູ້ເຂົ້າຮ່ວມ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Send Invitations"
-msgstr "ສົ່ງການເຊີນ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_tree
-#, fuzzy
 msgid "Send Mail"
-msgstr "ສົ່ງອີເມວ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_event_delete_wizard_form
@@ -3058,21 +3046,18 @@ msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Send email"
-msgstr "ສົ່ງອີເມລ"
+msgstr ""
 
 #. module: calendar
 #: model:mail.template,description:calendar.calendar_template_meeting_reminder
-#, fuzzy
 msgid "Sent to all attendees if a reminder is set"
-msgstr "ສົ່ງໃຫ້ຜູ້ເຂົ້າຮ່ວມທັງໝົດຫາກມີການຕັ້ງຄ່າການແຈ້ງເຕືອນ"
+msgstr ""
 
 #. module: calendar
 #: model:mail.template,description:calendar.calendar_template_meeting_changedate
-#, fuzzy
 msgid "Sent to all attendees if the schedule change"
-msgstr "ສົ່ງຫາຜູ້ເຂົ້າຮ່ວມທັງໝົດຖ້າຕາຕະລາງມີການປ່ຽນແປງ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
@@ -3085,9 +3070,8 @@ msgstr ""
 #. module: calendar
 #: model:ir.actions.act_window,name:calendar.calendar_settings_action
 #: model:ir.ui.menu,name:calendar.menu_calendar_settings
-#, fuzzy
 msgid "Settings"
-msgstr "ການຕັ້ງຄ່າ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__should_show_status
@@ -3101,41 +3085,29 @@ msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "Show all opportunities for which the next action date is before today"
-msgstr "ສະແດງທຸກໂອກາດທີ່ວັນທີດຳເນີນການຖັດໄປແມ່ນກ່ອນມື້ນີ້"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__show_as
-#, fuzzy
 msgid "Show as"
-msgstr "ສະແດງເປັນ"
-
-#. module: calendar
-#. odoo-javascript
-#: code:addons/calendar/static/src/js/services/calendar_notification_service.js:0
-#, fuzzy
-msgid "Snooze"
-msgstr "ເລື່ອນເວລາ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__start
-#, fuzzy
 msgid "Start"
-msgstr "ເລີ່ມຕົ້ນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__start_date
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_tree
-#, fuzzy
 msgid "Start Date"
-msgstr "ວັນທີເລີ່ມຕົ້ນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__start
-#, fuzzy
 msgid "Start date of an event, without time for full days events"
-msgstr "ວັນທີເລີ່ມຕົ້ນຂອງເຫດການ, ໂດຍບໍ່ລວມເວລາສຳລັບເຫດການທີ່ໝົດມື້"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_attendee__state
@@ -3145,29 +3117,22 @@ msgstr "ສະພາບ"
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__activity_state
-#, fuzzy
 msgid ""
 "Status based on activities\n"
 "Overdue: Due date is already passed\n"
 "Today: Activity date is today\n"
 "Planned: Future activities."
 msgstr ""
-"ສະຖານະອີງຕາມກິດຈະກຳ\n"
-"ເກີນກຳນົດ: ວັນຄົບກຳນົດໄດ້ຜ່ານໄປແລ້ວ\n"
-"ມື້ນີ້: ວັນທີກິດຈະກຳແມ່ນມື້ນີ້\n"
-"ວາງແຜນໄວ້: ກິດຈະກຳໃນອະນາຄົດ."
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Status:"
-msgstr "ສະຖານະ:"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__stop
-#, fuzzy
 msgid "Stop"
-msgstr "ຢຸດ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
@@ -3177,37 +3142,32 @@ msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__stop
-#, fuzzy
 msgid "Stop date of an event, without time for full days events"
-msgstr "ວັນທີສິ້ນສຸດຂອງເຫດການ, ໂດຍບໍ່ລວມເວລາສຳລັບເຫດການທີ່ໝົດມື້"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_popover_delete_wizard__subject
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_tree
 #: model_terms:ir.ui.view,arch_db:calendar.view_event_delete_wizard_form
-#, fuzzy
 msgid "Subject"
-msgstr "ຫົວຂໍ້"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.calendar_popover_delete_view
-#, fuzzy
 msgid "Submit"
-msgstr "ສົ່ງຂໍ້ມູນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__sun
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__sun
-#, fuzzy
 msgid "Sun"
-msgstr "ຕາເວັນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__weekday__sun
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__weekday__sun
-#, fuzzy
 msgid "Sunday"
-msgstr "ວັນອາທິດ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
@@ -3230,16 +3190,14 @@ msgstr ""
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.calendar_provider_config_view_form
 #: model_terms:ir.ui.view,arch_db:calendar.res_config_settings_view_form
-#, fuzzy
 msgid "Synchronize your calendar with Google Calendar"
-msgstr "ຊິງໂຄໄນປະຕິທິນຂອງທ່ານກັບ Google Calendar"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.calendar_provider_config_view_form
 #: model_terms:ir.ui.view,arch_db:calendar.res_config_settings_view_form
-#, fuzzy
 msgid "Synchronize your calendar with Outlook"
-msgstr "ຊິງໂຄໄນປະຕິທິນຂອງທ່ານກັບ Outlook"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
@@ -3249,39 +3207,37 @@ msgstr ""
 
 #. module: calendar
 #: model:ir.model.constraint,message:calendar.constraint_calendar_event_type_name_uniq
-#, fuzzy
 msgid "Tag name already exists!"
-msgstr "ຊື່ແທັກນີ້ມີຢູ່ແລ້ວ!"
+msgstr ""
 
 #. module: calendar
+#: model:ir.actions.act_window,name:calendar.action_calendar_event_type
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__categ_ids
-#, fuzzy
+#: model:ir.ui.menu,name:calendar.calendar_submenu_event_type
+#: model:ir.ui.menu,name:calendar.menu_calendar_event_type
+#: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_type_tree
 msgid "Tags"
-msgstr "ແທັກ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_alarm__mail_template_id
-#, fuzzy
 msgid "Template used to render mail reminder content."
-msgstr "ແມ່ແບບທີ່ໃຊ້ເພື່ອສະແດງເນື້ອຫາການເຕືອນທາງເມລ."
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.invitation_page_anonymous
-#, fuzzy
 msgid "Tentative"
-msgstr "ຍັງບໍ່ແນ່ນອນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__tentative_count
-#, fuzzy
 msgid "Tentative Count"
-msgstr "ຈຳນວນທີ່ຍັງບໍ່ແນ່ນອນ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "The"
-msgstr "ທີ່"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
@@ -3291,20 +3247,16 @@ msgstr ""
 
 #. module: calendar
 #: model_terms:ir.actions.act_window,help:calendar.action_calendar_event
-#, fuzzy
 msgid ""
 "The calendar is shared between employees and fully integrated with\n"
 "            other applications such as the employee leaves or the business\n"
 "            opportunities."
 msgstr ""
-"ປະຕິທິນຖືກແບ່ງປັນລະຫວ່າງພະນັກງານ ແລະ ເຊື່ອມໂຍງກັບແອັບພລິເຄຊັນອື່ນໆຢ່າງຄົບຖ້ວນ ເຊັ່ນ: "
-"ການລາຂອງພະນັກງານ ຫຼື ໂອກາດທາງທຸລະກິດ."
 
 #. module: calendar
 #: model:ir.model.constraint,message:calendar.constraint_calendar_recurrence_month_day
-#, fuzzy
 msgid "The day must be between 1 and 31"
-msgstr "ວັນທີຕ້ອງຢູ່ລະຫວ່າງ 1 ຫາ 31"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
@@ -3325,100 +3277,86 @@ msgstr ""
 #. module: calendar
 #. odoo-python
 #: code:addons/calendar/models/calendar_recurrence.py:0
-#, fuzzy
 msgid "The interval cannot be negative."
-msgstr "ຊ່ວງເວລາບໍ່ສາມາດເປັນຄ່າລົບໄດ້."
+msgstr ""
 
 #. module: calendar
 #. odoo-python
 #: code:addons/calendar/models/calendar_recurrence.py:0
-#, fuzzy
 msgid "The number of repetitions cannot be negative."
-msgstr "ຈຳນວນການເຮັດຊ້ຳບໍ່ສາມາດເປັນຄ່າລົບໄດ້."
+msgstr ""
 
 #. module: calendar
 #. odoo-python
 #: code:addons/calendar/models/calendar_event.py:0
-#, fuzzy
 msgid "There are no attendees on these events"
-msgstr "ບໍ່ມີຜູ້ເຂົ້າຮ່ວມໃນກິດຈະກຳເຫຼົ່ານີ້"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__byday__3
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__byday__3
-#, fuzzy
 msgid "Third"
-msgstr "ທີສາມ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/ask_recurrence_update_policy_dialog.js:0
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__recurrence_update__future_events
-#, fuzzy
 msgid "This and following events"
-msgstr "ເຫດການນີ້ ແລະ ເຫດການຕໍ່ໄປ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/ask_recurrence_update_policy_dialog.js:0
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__recurrence_update__self_only
-#, fuzzy
 msgid "This event"
-msgstr "ເຫດການນີ້"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__thu
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__thu
-#, fuzzy
 msgid "Thu"
-msgstr "ພະຫັດ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__weekday__thu
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__weekday__thu
-#, fuzzy
 msgid "Thursday"
-msgstr "ວັນພະຫັດ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__event_tz
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__event_tz
-#, fuzzy
 msgid "Timezone"
-msgstr "ເຂດເວລາ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_attendee__mail_tz
-#, fuzzy
 msgid "Timezone used for displaying time in the mail template"
-msgstr "ເຂດເວລາທີ່ໃຊ້ສຳລັບສະແດງເວລາໃນແມ່ແບບເມລ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/core/web/activity_patch.xml:0
 #: code:addons/calendar/static/src/views/attendee_calendar/activity/attendee_calendar_activity_list_popover_item.xml:0
-#, fuzzy
 msgid "Today"
-msgstr "ມື້ນີ້"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_search
-#, fuzzy
 msgid "Today Activities"
-msgstr "ກິດຈະກຳມື້ນີ້"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/attendee_calendar/activity/attendee_calendar_activity_list_popover_item.xml:0
-#, fuzzy
 msgid "Tomorrow"
-msgstr "ມື້ອື່ນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__trigger_id
-#, fuzzy
 msgid "Trigger"
-msgstr "ຕົວມາກະຕຸ້ນ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
@@ -3429,28 +3367,25 @@ msgstr ""
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__tue
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__tue
-#, fuzzy
 msgid "Tue"
-msgstr "ອັງຄານ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__weekday__tue
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__weekday__tue
-#, fuzzy
 msgid "Tuesday"
-msgstr "ວັນອັງຄານ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_alarm__alarm_type
-#, fuzzy
+#: model_terms:ir.ui.view,arch_db:calendar.calendar_alarm_view_search
 msgid "Type"
-msgstr "ປະເພດ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__activity_exception_decoration
-#, fuzzy
 msgid "Type of the exception activity on record."
-msgstr "ປະເພດຂອງກິດຈະກຳທີ່ຍົກເວັ້ນໃນຂໍ້ມູນ."
+msgstr ""
 
 #. module: calendar
 #. odoo-python
@@ -3461,9 +3396,8 @@ msgstr ""
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/fields/many2many_attendee.xml:0
-#, fuzzy
 msgid "Unavailable"
-msgstr "ບໍ່ຫວ່າງ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__unavailable_partner_ids
@@ -3472,22 +3406,19 @@ msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Uncertain"
-msgstr "ບໍ່ແນ່ນອນ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_alarm__interval
-#, fuzzy
 msgid "Unit"
-msgstr "ຫົວໜ່ວຍ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__until
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Until"
-msgstr "ຈົນກ່ວາ"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
@@ -3503,21 +3434,18 @@ msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_res_users
-#, fuzzy
 msgid "User"
-msgstr "ຜູ້ໃຊ້"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__user_can_edit
-#, fuzzy
 msgid "User Can Edit"
-msgstr "ຜູ້ໃຊ້ສາມາດແກ້ໄຂໄດ້"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model,name:calendar.model_res_users_settings
-#, fuzzy
 msgid "User Settings"
-msgstr "ການຕັ້ງຄ່າຜູ້ໃຊ້"
+msgstr ""
 
 #. module: calendar
 #. odoo-python
@@ -3527,22 +3455,19 @@ msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Video Link"
-msgstr "ລິ້ງວິດີໂອ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__videocall_source
-#, fuzzy
 msgid "Videocall Source"
-msgstr "ແຫຼ່ງທີ່ມາຂອງການໂທວິດີໂອ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/core/web/activity_patch.xml:0
-#, fuzzy
 msgid "View"
-msgstr "ມຸມມອງ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
@@ -3554,36 +3479,36 @@ msgstr ""
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__wed
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__wed
-#, fuzzy
 msgid "Wed"
-msgstr "ພຸດ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__weekday__wed
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__weekday__wed
-#, fuzzy
 msgid "Wednesday"
-msgstr "ວັນພຸດ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,field_description:calendar.field_calendar_event__weekday
 #: model:ir.model.fields,field_description:calendar.field_calendar_recurrence__weekday
-#, fuzzy
 msgid "Weekday"
-msgstr "ວັນທຳມະດາ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__rrule_type_ui__weekly
-#, fuzzy
 msgid "Weekly"
-msgstr "ລາຍອາທິດ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__rrule_type__weekly
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__rrule_type__weekly
-#, fuzzy
 msgid "Weeks"
-msgstr "ອາທິດ"
+msgstr ""
+
+#. module: calendar
+#: model:ir.model.fields,help:calendar.field_calendar_alarm__notify_responsible
+msgid "When activated, the event organizer will also receive this reminder."
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields,help:calendar.field_calendar_event__description
@@ -3601,31 +3526,27 @@ msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__rrule_type_ui__yearly
-#, fuzzy
 msgid "Yearly"
-msgstr "ລາຍປີ"
+msgstr ""
 
 #. module: calendar
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_event__rrule_type__yearly
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_recurrence__rrule_type__yearly
-#, fuzzy
 msgid "Years"
-msgstr "ປີ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/attendee_calendar/common/attendee_calendar_common_popover.xml:0
 #: model:ir.model.fields.selection,name:calendar.selection__calendar_attendee__state__accepted
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "Yes"
-msgstr "ແມ່ນ/ໂດຍ"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.invitation_page_anonymous
-#, fuzzy
 msgid "Yes I'm going."
-msgstr "ແມ່ນແລ້ວ, ຂ້ອຍຈະໄປ."
+msgstr ""
 
 #. module: calendar
 #. odoo-python
@@ -3638,23 +3559,20 @@ msgstr ""
 #. module: calendar
 #. odoo-python
 #: code:addons/calendar/models/calendar_event.py:0
-#, fuzzy
 msgid "You can't update a recurrence without base event."
-msgstr "ທ່ານບໍ່ສາມາດອັບເດດການເກີດຊ້ຳໂດຍບໍ່ມີເຫດການຫຼັກ."
+msgstr ""
 
 #. module: calendar
 #. odoo-python
 #: code:addons/calendar/models/calendar_attendee.py:0
-#, fuzzy
 msgid "You cannot duplicate a calendar attendee."
-msgstr "ທ່ານບໍ່ສາມາດສ້າງສຳເນົາຜູ້ເຂົ້າຮ່ວມປະຕິທິນໄດ້."
+msgstr ""
 
 #. module: calendar
 #. odoo-python
 #: code:addons/calendar/models/calendar_recurrence.py:0
-#, fuzzy
 msgid "You have to choose at least one day in the week"
-msgstr "ທ່ານຕ້ອງເລືອກຢ່າງໜ້ອຍໜຶ່ງວັນໃນອາທິດ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
@@ -3665,29 +3583,50 @@ msgstr ""
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/fields/many2many_attendee_expandable.xml:0
-#, fuzzy
 msgid "accepted"
-msgstr "ຍອມຮັບແລ້ວ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/fields/many2many_attendee_expandable.xml:0
-#, fuzzy
 msgid "attendees"
-msgstr "ຜູ້ເຂົ້າຮ່ວມ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/fields/many2many_attendee_expandable.xml:0
-#, fuzzy
 msgid "declined"
-msgstr "ປະຕິເສດແລ້ວ"
+msgstr ""
+
+#. module: calendar
+#: model_terms:ir.ui.view,arch_db:calendar.res_partner_view_form_simplified
+msgid "e.g. (555) 555-0199"
+msgstr ""
+
+#. module: calendar
+#: model_terms:ir.ui.view,arch_db:calendar.res_partner_view_form_simplified
+msgid "e.g. Acme Corporation"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "e.g. Business Lunch"
-msgstr "ຕົວຢ່າງ: ກິນເຂົ້າທ່ຽງທຸລະກິດ"
+msgstr ""
+
+#. module: calendar
+#: model_terms:ir.ui.view,arch_db:calendar.res_partner_view_form_simplified
+msgid "e.g. Lumber Inc or Brandon Freeman"
+msgstr ""
+
+#. module: calendar
+#: model_terms:ir.ui.view,arch_db:calendar.res_partner_view_form_simplified
+msgid "e.g. Sales Director"
+msgstr ""
+
+#. module: calendar
+#: model_terms:ir.ui.view,arch_db:calendar.res_partner_view_form_simplified
+msgid "e.g. john.doe@email.com"
+msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
@@ -3696,16 +3635,14 @@ msgstr ""
 
 #. module: calendar
 #: model_terms:ir.ui.view,arch_db:calendar.view_calendar_event_form
-#, fuzzy
 msgid "guests"
-msgstr "ແຂກ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/attendee_calendar/activity/attendee_calendar_activity_list_popover.xml:0
-#, fuzzy
 msgid "more"
-msgstr "ເພີ່ມເຕີມ"
+msgstr ""
 
 #. module: calendar
 #. odoo-javascript
@@ -3716,24 +3653,20 @@ msgstr ""
 #. module: calendar
 #. odoo-javascript
 #: code:addons/calendar/static/src/views/fields/many2many_attendee_expandable.xml:0
-#, fuzzy
 msgid "uncertain"
-msgstr "ບໍ່ແນ່ນອນ"
+msgstr ""
 
 #. module: calendar
 #: model:mail.template,subject:calendar.calendar_template_meeting_reminder
-#, fuzzy
 msgid "{{ object.event_id.name }} - Reminder"
-msgstr "{{ object.event_id.name }} - ການເຕືອນ"
+msgstr ""
 
 #. module: calendar
 #: model:mail.template,subject:calendar.calendar_template_meeting_changedate
-#, fuzzy
 msgid "{{ object.event_id.name }}: Date updated"
-msgstr "{{ object.event_id.name }}: ອັບເດດວັນທີແລ້ວ"
+msgstr ""
 
 #. module: calendar
 #: model:mail.template,subject:calendar.calendar_template_meeting_update
-#, fuzzy
 msgid "{{object.name}}: Event update"
-msgstr "{{object.name}}: ອັບເດດເຫດການ"
+msgstr ""

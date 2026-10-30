@@ -13,7 +13,7 @@ export const callPipService = {
      */
     start(env, services) {
         const popoutService = services["mail.popout"];
-        const popout = popoutService.createManager(Symbol("discuss.native.pip"));
+        const popout = popoutService.createManager("discuss.native.pip");
         let pipWindow = null;
         const state = proxy({ active: false });
         popout.addHooks(
@@ -24,6 +24,7 @@ export const callPipService = {
             }
         );
         function closePip() {
+            popout.reset();
             state.active = false;
             pipWindow?.close();
         }

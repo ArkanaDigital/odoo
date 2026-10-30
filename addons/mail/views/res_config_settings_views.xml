@@ -2,6 +2,31 @@
 <odoo>
     <data>
 
+        <record id="res_config_settings_view_form_sfu_client_source" model="ir.ui.view">
+            <field name="name">res.config.settings.view.form.sfu.client.source</field>
+            <field name="model">res.config.settings</field>
+            <field name="arch" type="xml">
+                <form string="SFU Client Bundle">
+                    <field
+                        name="sfu_client_source"
+                        widget="code"
+                        options="{'mode': 'javascript'}"
+                        nolabel="1"
+                        required="1"
+                    />
+                    <footer>
+                        <button
+                            name="action_save_sfu_client_asset"
+                            type="object"
+                            string="Save"
+                            class="btn-primary"
+                        />
+                        <button string="Discard" special="cancel" class="btn-secondary"/>
+                    </footer>
+                </form>
+            </field>
+        </record>
+
         <record id="res_config_settings_view_form" model="ir.ui.view">
             <field name="name">res.config.settings.view.form.inherit.mail</field>
             <field name="model">res.config.settings</field>
@@ -90,7 +115,7 @@
                             <setting
                                 string="Custom ICE Servers"
                                 help="Use your own servers for calls to manage heavy traffic and ensure reliability if Twilio is unavailable"
-                                documentation="https://www.odoo.com/documentation/latest/applications/productivity/discuss/ice_servers.html#define-a-list-of-custom-ice-servers"
+                                documentation="/applications/productivity/discuss/ice_servers.html#define-a-list-of-custom-ice-servers"
                                 invisible="not use_call_server"
                             >
                                 <div class="content-group">
@@ -111,9 +136,27 @@
                                 </div>
                             </setting>
                             <setting
+                                string="Custom SFU Bundle"
+                                help="Replace the default SFU client bundle, it should be compatible with the SFU server you are using"
+                                groups="base.group_no_one"
+                                invisible="not use_call_server or not use_sfu_server"
+                            >
+                                <field name="use_custom_sfu_client"/>
+                                <div class="content-group" invisible="not use_custom_sfu_client">
+                                    <button
+                                        name="action_open_sfu_client_source"
+                                        type="object"
+                                        string="Edit Client Bundle"
+                                        icon="east"
+                                        class="btn-link"
+                                        noSaveDialog="true"
+                                    />
+                                </div>
+                            </setting>
+                            <setting
                                 string="Custom ICE Server with Twilio"
                                 help="Set up your own server for small group calls using peer-to-peer connections"
-                                documentation="https://www.odoo.com/documentation/latest/applications/productivity/discuss/ice_servers.html"
+                                documentation="/applications/productivity/discuss/ice_servers.html"
                                 invisible="not use_call_server"
                             >
                                 <field name="use_twilio_rtc_servers"/>

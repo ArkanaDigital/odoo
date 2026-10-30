@@ -1,14 +1,58 @@
 from unittest import mock
 
+from odoo import api
 from odoo.exceptions import UserError
 from odoo.tests import tagged
 from odoo.addons.mail.tests.common import MailCase
+
+from odoo.addons.l10n_fr_pdp.models.account_edi_xml_ubl_21_fr import CPRO_INVOICE_IDENTIFIER
 
 from .common import TestL10nFrPdpCommon, mock_pdp_annuaire_lookup, mock_pdp_peppol_lookup_not_found, mock_pdp_peppol_lookup_success
 
 
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestL10nFrPdpPartner(TestL10nFrPdpCommon, MailCase):
+
+    def test_compact_identifiers_in_test_mode(self):
+        partner = self.env['res.partner'].create({
+            'name': 'French partner',
+            'country_id': self.env.ref('base.fr').id,
+            'l10n_fr_siret': '397 471 822 00114',
+        })
+        self.assertEqual(partner.additional_identifiers['FR_SIRET'], '39747182200114')
+
+        partner.write({
+            'l10n_fr_siret': '397 471 822 00110',
+            'l10n_fr_siren': '397 471 822',
+        })
+        self.assertEqual(partner.additional_identifiers['FR_SIRET'], '39747182200110')
+        self.assertEqual(partner.additional_identifiers['FR_SIREN'], '397471822')
+
+    def test_preserve_test_demo_identifiers(self):
+        cases = (
+            ('FR_SIREN', '397.471.822', '397471822'),
+            ('FR_SIRET', '397.471.822.00110', '39747182200110'),
+            ('FR_SIREN', '397 47A 822', '397 47A 822'),
+            ('FR_SIREN', '397 471 82', '397 471 82'),
+            ('FR_SIRET', '397 471 822 0011A', '397 471 822 0011A'),
+            ('FR_SIRET', '397 471 822 0011', '397 471 822 0011'),
+            ('FR_CTC', '397 471 822_00110', '397 471 822_00110'),
+        )
+        partner_model = self.env['res.partner']
+
+        for edi_mode in ('test', 'demo'):
+            with mock.patch.object(
+                self.env.registry['res.company'],
+                '_get_peppol_edi_mode',
+                return_value=edi_mode,
+            ):
+                for key, value, expected in cases:
+                    with self.subTest(edi_mode=edi_mode, key=key, value=value):
+                        result = partner_model._validate_identifier(
+                            key, value, validation='error',
+                        )
+                        self.assertTrue(result['valid'])
+                        self.assertEqual(result['value'], expected)
 
     def test_pdp_identifier_derivation(self):
         # SIREN is derived from the FR SIRET/SIREN identifier and `routing_identifier` computed from SIREN
@@ -44,7 +88,11 @@ class TestL10nFrPdpPartner(TestL10nFrPdpCommon, MailCase):
             'vat': 'FR23334175221',
             'invoice_edi_format': 'ubl_21_fr',
         })
-        self.assertFalse(partner_pdp.l10n_fr_is_pdp)
+        self.assertTrue(partner_pdp.l10n_fr_is_pdp)
+        self.assertEqual(partner_pdp._l10n_fr_pdp_get_siren(), '334175221')
+        self.assertEqual(partner_pdp.routing_identifier, '0225:334175221')
+        contact = self.env['res.partner'].create({'name': 'French contact', 'parent_id': partner_pdp.id})
+        self.assertEqual(contact._l10n_fr_pdp_get_siren(), '334175221')
         # Setting the endpoint explicitly routes the partner via PDP (EAS 0225).
         partner_pdp.routing_identifier = '0225:968515759_96851575905808'
         self.assertTrue(partner_pdp.l10n_fr_is_pdp)
@@ -59,8 +107,86 @@ class TestL10nFrPdpPartner(TestL10nFrPdpCommon, MailCase):
         partner.invoice_sending_method = 'email'
         partner.invoice_edi_format = 'ubl_bis3'
 
+    def test_einvoicing_terminology_by_company(self):
+        self.assertEqual(self.env.company._get_einvoicing_network_name(), "the Approved Platform")
+        self.assertEqual(
+            self.env.company._get_einvoicing_identifier_name(),
+            "French e-invoicing identifier",
+        )
+        partner_fields = self.env['res.partner'].fields_get(['invoice_sending_method'])
+        sending_methods = dict(partner_fields['invoice_sending_method']['selection'])
+        self.assertEqual(sending_methods['peppol'], "by the Approved Platform")
+
+        move = self._create_invoice(partner_id=self.belgian_partner.id)
+        wizard = self.env['account.move.send.wizard'].new({'move_id': move})
+        self.assertEqual(wizard._get_peppol_checkbox_label("by Peppol"), "by the Approved Platform")
+        self.assertEqual(
+            wizard._get_peppol_checkbox_addendum_disable_reason(),
+            " (Customer not available for French E-Invoicing)",
+        )
+        move.peppol_move_state = 'done'
+        self.assertEqual(
+            wizard._get_peppol_checkbox_addendum_disable_reason(),
+            " (Previously sent)",
+        )
+        with self.assertRaisesRegex(UserError, "sent via the Approved Platform"):
+            move.action_cancel_peppol_documents()
+        self.assertEqual(
+            self.env['account.move.send']._get_peppol_partner_want_peppol_message(self.belgian_partner, move),
+            f"{self.belgian_partner.display_name} has requested electronic invoices reception via French E-Invoicing.",
+        )
+        french_move = self._create_invoice(partner_id=self.partner_a.id)
+        self.assertEqual(
+            self.env['account.move.send']._get_peppol_partner_want_peppol_message(self.partner_a, french_move),
+            f"{self.partner_a.display_name} has requested electronic invoices reception via French E-Invoicing.",
+        )
+
+        company_lu = self.env['res.company'].create({
+            'name': 'Luxembourg company',
+            'country_id': self.env.ref('base.lu').id,
+        })
+        company_lu.partner_id.write({
+            'routing_identifier': '0009:96851575905899',
+        })
+        self.assertTrue(company_lu._peppol_is_french_company())
+        self.assertEqual(company_lu._get_einvoicing_network_name(), "Peppol")
+        self.assertEqual(
+            company_lu._get_einvoicing_identifier_name(),
+            "Peppol EAS and/or Endpoint identifier",
+        )
+        partner_fields = self.env['res.partner'].with_company(company_lu).fields_get(['invoice_sending_method'])
+        sending_methods = dict(partner_fields['invoice_sending_method']['selection'])
+        self.assertEqual(sending_methods['peppol'], "by Peppol")
+
+        company_fr_peppol = self.env['res.company'].create({
+            'name': 'French company registered on Peppol',
+            'country_id': self.env.ref('base.fr').id,
+            'account_peppol_proxy_state': 'receiver',
+        })
+        self.assertEqual(company_fr_peppol._get_peppol_proxy_type(), 'peppol')
+        self.assertEqual(company_fr_peppol._get_einvoicing_network_name(), "the Approved Platform")
+        partner_fields = self.env['res.partner'].with_company(company_fr_peppol).fields_get(['invoice_sending_method'])
+        sending_methods = dict(partner_fields['invoice_sending_method']['selection'])
+        self.assertEqual(sending_methods['peppol'], "by the Approved Platform")
+
+    def test_einvoicing_terminology_without_company(self):
+        # Mail tracking can request fields_get without a current company.
+        with mock.patch.object(api.Environment, 'company', property(lambda env: env['res.company'])):
+            partner_model = self.env['res.partner']
+            partner_model.fields_get(attributes=())
+            partner_fields = partner_model.fields_get(['invoice_sending_method'])
+        sending_methods = dict(partner_fields['invoice_sending_method']['selection'])
+        self.assertEqual(sending_methods['peppol'], "by Peppol")
+
+    def test_einvoicing_terminology_fields_get_without_selection(self):
+        # Mail tracking calls fields_get without attributes during module installs, when
+        # the res.company columns of the installed module may not exist yet
+        with mock.patch.object(self.registry['res.company'], '_l10n_fr_pdp_uses_french_terminology') as mock_terminology:
+            self.env['res.partner'].fields_get(['invoice_sending_method'], attributes=())
+        mock_terminology.assert_not_called()
+
     def test_validate_partner_be_invalid_format(self):
-        partner = self.partner_b
+        partner = self.belgian_partner
         with mock_pdp_peppol_lookup_not_found(['0208:0239843188']):  # not on Peppol
             partner.button_account_peppol_check_partner_endpoint()
         self.assertRecordValues(partner, [{
@@ -84,7 +210,7 @@ class TestL10nFrPdpPartner(TestL10nFrPdpCommon, MailCase):
         }])
 
     def test_validate_partner_be(self):
-        partner = self.partner_b
+        partner = self.belgian_partner
         self.assertFalse(partner.l10n_fr_is_pdp)
         with mock_pdp_peppol_lookup_not_found(['0208:0239843188']):  # not on Peppol
             partner.button_account_peppol_check_partner_endpoint()
@@ -144,6 +270,7 @@ class TestL10nFrPdpPartner(TestL10nFrPdpCommon, MailCase):
         }])
 
     def test_track_pdp_verification_display_state(self):
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         partner = self.partner_a
         messages_before = partner.message_ids
 
@@ -160,3 +287,31 @@ class TestL10nFrPdpPartner(TestL10nFrPdpCommon, MailCase):
                 'Partner is not in the annuaire',
             )],
         })
+
+    def test_validate_partner_fr_b2g(self):
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
+        partner = self.partner_a
+        self.assertTrue(partner.l10n_fr_is_pdp)
+        with mock_pdp_annuaire_lookup():  # not in the annuaire
+            partner.button_account_peppol_check_partner_endpoint()
+        self.assertRecordValues(partner, [{
+            'peppol_verification_state': 'not_valid',
+            'pdp_verification_display_state': 'pdp_not_valid',
+            'invoice_edi_format': 'ubl_21_fr',
+        }])
+
+        partner.invoice_sending_method = False
+        with (
+            mock.patch.object(self.env.registry['res.company'], 'search', lambda *args, **kwargs: self.env.company),
+            mock_pdp_annuaire_lookup('968515759_96851575905808', b2g=True),
+            mock_pdp_peppol_lookup_success(['0225:968515759_96851575905808']),
+        ):
+            partner.button_account_peppol_check_partner_endpoint()
+
+        self.assertRecordValues(partner, [{
+            'peppol_verification_state': 'valid',
+            'pdp_verification_display_state': 'pdp_valid',
+            'invoice_sending_method': False,
+            'peppol_supported_documents': [CPRO_INVOICE_IDENTIFIER],
+        }])
+        self.assertTrue(self.env['account.edi.xml.ubl_21_fr']._pdp_is_b2g(partner))

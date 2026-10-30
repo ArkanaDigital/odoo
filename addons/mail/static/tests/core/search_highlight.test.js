@@ -1,8 +1,7 @@
 import { HIGHLIGHT_CLASS, searchHighlight } from "@mail/core/common/message_search_hook";
 import {
+    actionPanel,
     SIZES,
-    click,
-    contains,
     defineMailModels,
     insertText,
     openDiscuss,
@@ -12,10 +11,10 @@ import {
     startServer,
 } from "@mail/../tests/mail_test_helpers";
 
-import { describe, expect, test } from "@odoo/hoot";
+import { describe, expect, test, waitFor, waitForNone } from "@odoo/hoot";
 import { markup } from "@odoo/owl";
 
-import { serverState } from "@web/../tests/web_test_helpers";
+import { contains, serverState } from "@web/../tests/web_test_helpers";
 
 describe.current.tags("desktop");
 defineMailModels();
@@ -131,14 +130,14 @@ test("Display highlighted search in chatter", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await click("[title='Search Messages']");
-    await contains(".o-mail-SearchMessageInput");
+    await contains("[title='Search Messages']:count(1)").click();
+    await waitFor(".o-mail-SearchMessageInput:count(1)");
     await insertText(".o-mail-SearchInput input", "Groot");
-    await contains(
-        `.o-mail-SearchMessageResult .o-mail-Message-author .${HIGHLIGHT_CLASS}:text('Groot')`
+    await waitFor(
+        `.o-mail-SearchMessageResult .o-mail-Message-author .${HIGHLIGHT_CLASS}:text('Groot'):count(1)`
     );
-    await contains(
-        `.o-mail-SearchMessageResult .o-mail-Message-body .${HIGHLIGHT_CLASS}:text('Groot')`
+    await waitFor(
+        `.o-mail-SearchMessageResult .o-mail-Message-body .${HIGHLIGHT_CLASS}:text('Groot'):count(1)`
     );
 });
 
@@ -153,12 +152,10 @@ test("Display multiple highlighted search in chatter", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await click("[title='Search Messages']");
-    await contains(".o-mail-SearchMessageInput");
+    await contains("[title='Search Messages']:count(1)").click();
+    await waitFor(".o-mail-SearchMessageInput:count(1)");
     await insertText(".o-mail-SearchInput input", "not empty");
-    await contains(`.o-mail-SearchMessageResult .o-mail-Message span.${HIGHLIGHT_CLASS}`, {
-        count: 2,
-    });
+    await waitFor(`.o-mail-SearchMessageResult .o-mail-Message span.${HIGHLIGHT_CLASS}:count(2)`);
 });
 
 test("Display highlighted search in Discuss", async () => {
@@ -174,11 +171,13 @@ test("Display highlighted search in Discuss", async () => {
     });
     await start();
     await openDiscuss(channelId);
-    await contains(".o-mail-Message");
-    await click("button[title='Search Messages']");
-    await contains(".o-mail-SearchMessageInput");
-    await insertText(".o-mail-SearchInput input", "empty");
-    await contains(`.o-mail-SearchMessagesPanel .o-mail-Message span.${HIGHLIGHT_CLASS}`);
+    await waitFor(".o-mail-Message:count(1)");
+    await contains("button[title='Search Messages']:count(1)").click();
+    await waitFor(".o-mail-SearchMessageInput:count(1)");
+    await insertText(".o-mail-SearchMessageInput .o-mail-SearchInput input", "empty");
+    await waitFor(
+        `${actionPanel("Search Messages")} .o-mail-Message span.${HIGHLIGHT_CLASS}:count(1)`
+    );
 });
 
 test("Display multiple highlighted search in Discuss", async () => {
@@ -194,13 +193,13 @@ test("Display multiple highlighted search in Discuss", async () => {
     });
     await start();
     await openDiscuss(channelId);
-    await contains(".o-mail-Message");
-    await click("button[title='Search Messages']");
-    await contains(".o-mail-SearchMessageInput");
-    await insertText(".o-mail-SearchInput input", "not empty");
-    await contains(`.o-mail-SearchMessagesPanel .o-mail-Message span.${HIGHLIGHT_CLASS}`, {
-        count: 2,
-    });
+    await waitFor(".o-mail-Message:count(1)");
+    await contains("button[title='Search Messages']:count(1)").click();
+    await waitFor(".o-mail-SearchMessageInput:count(1)");
+    await insertText(".o-mail-SearchMessageInput .o-mail-SearchInput input", "not empty");
+    await waitFor(
+        `${actionPanel("Search Messages")} .o-mail-Message span.${HIGHLIGHT_CLASS}:count(2)`
+    );
 });
 
 test("Search update keeps embedded code block rendering in Discuss", async () => {
@@ -216,15 +215,27 @@ test("Search update keeps embedded code block rendering in Discuss", async () =>
     });
     await start();
     await openDiscuss(channelId);
-    await contains(".o-mail-Message");
-    await click("button[title='Search Messages']");
-    await contains(".o-mail-SearchMessageInput");
-    await insertText(".o-mail-SearchInput input", "prefix");
-    await contains(`.o-mail-SearchMessagesPanel .o-mail-Message span.${HIGHLIGHT_CLASS}:text('prefix')`);
-    await contains(".o-mail-SearchMessagesPanel pre[data-embedded='readonlySyntaxHighlighting']");
-    await insertText(".o-mail-SearchInput input", " suffix");
-    await contains(`.o-mail-SearchMessagesPanel .o-mail-Message span.${HIGHLIGHT_CLASS}:text('suffix')`);
-    await contains(".o-mail-SearchMessagesPanel pre[data-embedded='readonlySyntaxHighlighting']");
+    await waitFor(".o-mail-Message:count(1)");
+    await contains("button[title='Search Messages']:count(1)").click();
+    await waitFor(".o-mail-SearchMessageInput:count(1)");
+    await insertText(".o-mail-SearchMessageInput .o-mail-SearchInput input", "prefix");
+    await waitFor(
+        `${actionPanel(
+            "Search Messages"
+        )} .o-mail-Message span.${HIGHLIGHT_CLASS}:text('prefix'):count(1)`
+    );
+    await waitFor(
+        `${actionPanel("Search Messages")} pre[data-embedded='readonlySyntaxHighlighting']:count(1)`
+    );
+    await insertText(".o-mail-SearchMessageInput .o-mail-SearchInput input", " suffix");
+    await waitFor(
+        `${actionPanel(
+            "Search Messages"
+        )} .o-mail-Message span.${HIGHLIGHT_CLASS}:text('suffix'):count(1)`
+    );
+    await waitFor(
+        `${actionPanel("Search Messages")} pre[data-embedded='readonlySyntaxHighlighting']:count(1)`
+    );
 });
 
 test("Display highlighted with escaped character must ignore them", async () => {
@@ -238,11 +249,25 @@ test("Display highlighted with escaped character must ignore them", async () => 
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await click("[title='Search Messages']");
-    await contains(".o-mail-SearchMessageInput");
+    await contains("[title='Search Messages']:count(1)").click();
+    await waitFor(".o-mail-SearchMessageInput:count(1)");
     await insertText(".o-mail-SearchInput input", "test hello");
-    await contains(`.o-mail-SearchMessageResult .o-mail-Message span.${HIGHLIGHT_CLASS}`, {
-        count: 2,
-    });
-    await contains(`.o-mail-Message-body:has(:text("<strong>test</strong> hello"))`);
+    await waitFor(`.o-mail-SearchMessageResult .o-mail-Message span.${HIGHLIGHT_CLASS}:count(2)`);
+    await waitFor(`.o-mail-Message-body:has(:text("<strong>test</strong> hello")):count(1)`);
+});
+
+test("Display highlighted search in threads panel", async () => {
+    const pyEnv = await startServer();
+    const channelId = pyEnv["discuss.channel"].create({ name: "General" });
+    pyEnv["discuss.channel"].create({ name: "Winter is coming", parent_channel_id: channelId });
+    await start();
+    await openDiscuss(channelId);
+    await contains("button[title='Threads']:count(1)").click();
+    await waitFor(".o-mail-SubChannelPreview-name:text('Winter is coming'):count(1)");
+    await insertText(`${actionPanel("Threads")} .o-mail-SearchInput input`, "winter coming");
+    await waitFor(`.o-mail-SubChannelPreview-name span.${HIGHLIGHT_CLASS}:text('Winter'):count(1)`);
+    await waitFor(`.o-mail-SubChannelPreview-name span.${HIGHLIGHT_CLASS}:text('coming'):count(1)`);
+    await insertText(`${actionPanel("Threads")} .o-mail-SearchInput input`, "", { replace: true });
+    await waitFor(".o-mail-SubChannelPreview-name:text('Winter is coming'):count(1)");
+    await waitForNone(`.o-mail-SubChannelPreview-name span.${HIGHLIGHT_CLASS}`);
 });

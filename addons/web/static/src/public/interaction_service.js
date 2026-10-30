@@ -5,6 +5,8 @@ import { Colibri } from "./colibri";
 import { Interaction } from "./interaction";
 import lazyloader from "./lazyloader";
 import { BUTTON_HANDLER_SELECTOR, PairSet } from "./utils";
+import { useRootCreator } from "@web/core/utils/hooks";
+import { useEnv } from "@web/owl2/utils";
 
 /**
  * Website Core
@@ -38,9 +40,9 @@ class InteractionService {
     /**
      *
      * @param {HTMLElement} el
-     * @param {Object} env
      */
-    constructor(el, env) {
+    constructor(el) {
+        this.createRoot = useRootCreator();
         this.scope = useScope();
         this.Interactions = [];
         this.el = el;
@@ -48,7 +50,7 @@ class InteractionService {
         this.initialSetupDone = false;
         // relation el <--> Interaction
         this.activeInteractions = new PairSet();
-        this.env = env;
+        this.env = useEnv();
         this.interactions = [];
         this.roots = [];
         this.owlApp = useApp();
@@ -81,21 +83,53 @@ class InteractionService {
     }
 
     prepareRoot(el, C, props, position = "beforeend") {
-        const root = this.owlApp.createRoot(C, { props, env: this.env });
-        const rootEl = document.createElement("owl-root");
+        const rootEl = el.ownerDocument.createElement("owl-root");
         rootEl.setAttribute("contenteditable", "false");
         rootEl.dataset.oeProtected = "true";
         rootEl.style.display = "contents";
+        const {
+            promise: mountPromise,
+            resolve: resolveMount,
+            reject: rejectMount,
+        } = Promise.withResolvers();
+        let mounted = false;
+        const destroy = () => {
+            root.destroy();
+            rootEl.remove();
+        };
+        const onError = (error) => {
+            // Never rethrow: Owl would then destroy the whole app (and every
+            // other root). Only destroy the failing root, and report the error
+            // through the mount promise (if the component is still being
+            // mounted), or as an unhandled rejection.
+            destroy();
+            if (mounted) {
+                Promise.reject(error);
+            } else {
+                rejectMount(error);
+            }
+        };
+        const root = this.createRoot(C, { props, onError });
         el.insertAdjacentElement(position, rootEl);
         return {
             C,
             root,
             el: rootEl,
-            mount: () => root.mount(rootEl),
-            destroy: () => {
-                root.destroy();
-                rootEl.remove();
+            mount: () => {
+                root.mount(rootEl).then(
+                    (component) => {
+                        mounted = true;
+                        resolveMount(component);
+                    },
+                    (error) => {
+                        // Error thrown before onError registration (e.g. in setup)
+                        destroy();
+                        rejectMount(error);
+                    }
+                );
+                return mountPromise;
             },
+            destroy,
         };
     }
 
@@ -128,15 +162,28 @@ class InteractionService {
                     ? [el, ...el.querySelectorAll(I.selector)]
                     : el.querySelectorAll(I.selector);
                 if (I.selectorHas) {
-                    targets = [...targets].filter((el) => !!el.querySelector(I.selectorHas));
+                    if (!Array.isArray(I.selectorHas)) {
+                        I.selectorHas = [I.selectorHas];
+                    }
+                    targets = [...targets].filter((el) =>
+                        I.selectorHas.every((sel) => !!el.querySelector(`:scope ${sel}`))
+                    );
                 }
                 if (I.selectorNotHas) {
-                    targets = [...targets].filter((el) => !el.querySelector(I.selectorNotHas));
+                    if (!Array.isArray(I.selectorNotHas)) {
+                        I.selectorNotHas = [I.selectorNotHas];
+                    }
+                    targets = [...targets].filter(
+                        (el) =>
+                            !I.selectorNotHas.every((sel) => !!el.querySelector(`:scope ${sel}`))
+                    );
                 }
             } catch {
-                const selectorHasError = I.selectorHas ? ` or selectorHas: '${I.selectorHas}'` : "";
+                const selectorHasError = I.selectorHas
+                    ? ` or selectorHas: '${I.selectorHas.join("', '")}'`
+                    : "";
                 const selectorNotHasError = I.selectorNotHas
-                    ? ` or selectorNotHas: '${I.selectorNotHas}'`
+                    ? ` or selectorNotHas: '${I.selectorNotHas.join("', '")}'`
                     : "";
                 const error = new Error(
                     `Could not start interaction ${I.name} (invalid selector: '${I.selector}'${selectorHasError}${selectorNotHasError})`
@@ -185,11 +232,17 @@ class InteractionService {
         if (!interaction.el) {
             return true;
         }
+        const selectorHasArray = Array.isArray(selectorHas) ? selectorHas : [selectorHas];
+        const selectorNotHasArray = Array.isArray(selectorNotHas)
+            ? selectorNotHas
+            : [selectorNotHas];
         return (
             el === interaction.el ||
             el.contains(interaction.el) ||
-            (selectorHas && !interaction.el.querySelector(selectorHas)) ||
-            (selectorNotHas && !!interaction.el.querySelector(selectorNotHas))
+            (selectorHas &&
+                selectorHasArray.some((sel) => !interaction.el.querySelector(`:scope ${sel}`))) ||
+            (selectorNotHas &&
+                selectorNotHasArray.some((sel) => !!interaction.el.querySelector(`:scope ${sel}`)))
         );
     }
 
@@ -344,11 +397,11 @@ class InteractionService {
 }
 
 export const publicInteractionService = {
-    async start(env) {
+    async start() {
         // fallback if #wrapwrap is not present in the dom
         const el = document.querySelector("#wrapwrap") || document.querySelector("body");
         const Interactions = registry.category("public.interactions").getAll();
-        const service = new InteractionService(el, env);
+        const service = new InteractionService(el);
         service.activate(Interactions);
         return service;
     },

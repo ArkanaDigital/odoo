@@ -14,7 +14,6 @@ from odoo.tools import float_round
 from odoo.addons.website_sale.models.website import (
     FISCAL_POSITION_SESSION_CACHE_KEY,
     PRICELIST_SELECTED_SESSION_CACHE_KEY,
-    PRICELIST_SESSION_CACHE_KEY,
 )
 
 
@@ -86,7 +85,7 @@ class SaleOrder(models.Model):
         self.amount_delivery = 0.0
         for order in self.filtered("website_id"):
             delivery_lines = order.order_line.filtered("is_delivery")
-            if order.website_id.show_line_subtotals_tax_selection == "tax_excluded":
+            if order.website_id.tax_display == "tax_excluded":
                 order.amount_delivery = sum(delivery_lines.mapped("price_subtotal"))
             else:
                 order.amount_delivery = sum(delivery_lines.mapped("price_total"))
@@ -156,24 +155,24 @@ class SaleOrder(models.Model):
     def _search_abandoned_cart(self, operator, _value):
         if operator != "in":
             return NotImplemented
-        website_ids = self.env["website"].search_read(
-            fields=["id", "cart_abandoned_delay", "partner_id"]
+        website_ids = self.env["website"].search_fetch(
+            [], field_names=["cart_abandoned_delay", "partner_id"]
         )
         return Domain.AND((
             Domain("state", "=", "draft"),
             Domain("order_line", "!=", False),
             Domain.OR(
                 [
-                    ("website_id", "=", website_id["id"]),
+                    ("website_id", "=", website_id.id),
                     (
                         "date_order",
                         "<=",
                         fields.Datetime.to_string(
                             fields.Datetime.now()
-                            - relativedelta(hours=website_id["cart_abandoned_delay"] or 1.0)
+                            - relativedelta(hours=website_id.cart_abandoned_delay or 1.0)
                         ),
                     ),
-                    ("partner_id", "!=", website_id["partner_id"][0]),
+                    ("partner_id", "!=", website_id.partner_id.id),
                 ]
                 for website_id in website_ids
             ),
@@ -505,9 +504,7 @@ class SaleOrder(models.Model):
             # we need to recompute the prices to match the new pricelist if it changed
             self._recompute_prices()
 
-            new_pricelist = self.pricelist_id
-            request.session[PRICELIST_SESSION_CACHE_KEY] = new_pricelist.id
-            request.pricelist = new_pricelist
+            self.env.website.sudo().pricelist_id = self.pricelist_id
 
         if self.carrier_id and "partner_shipping_id" in fnames and self._has_deliverable_products():
             # Update the delivery method on shipping address change.
@@ -527,6 +524,8 @@ class SaleOrder(models.Model):
         """
         self.ensure_one()
         self = self.with_company(self.company_id)
+
+        self._check_not_partially_paid()  # Prevent modifying the cart if it's partially paid
 
         product = self.env["product.product"].browse(product_id)
         if not uom_id or not product._has_multiple_uoms():
@@ -724,10 +723,8 @@ class SaleOrder(models.Model):
             available_qty = float_round(available_qty, precision_digits=0, rounding_method="DOWN")
 
             if product.minimum_quantity:
-                min_qty = float_round(
-                    product_uom._compute_quantity(product.minimum_quantity, uom, round=False),
-                    precision_digits=0,
-                    rounding_method="UP",
+                min_qty = self._get_remaining_minimum_qty(
+                    product, exclude_line=self._get_common_product_lines(product.id), uom=uom
                 )
                 if available_qty < min_qty:
                     if order_line:
@@ -973,12 +970,19 @@ class SaleOrder(models.Model):
         if request:
             request.session["website_sale_cart_quantity"] = self.cart_quantity
 
-    def _verify_cart(self):
-        """Check cart content and clear outdated/invalid lines."""
-        self.ensure_one()
+    def _cleanup_cart(self, *, force_update_checks=False):
+        """Check the cart content and clear the lines that are no longer valid.
 
-        # Remove lines with inactive products
-        self.order_line.filtered(lambda sol: sol.product_id and not sol.product_id.active).unlink()
+        :param bool force_update_checks: Whether to run the post-update checks even if no line
+            was removed, e.g. on a revived cart.
+        :rtype: None
+        """
+        self.ensure_one()
+        invalid_lines = self.order_line.filtered(lambda sol: sol._is_invalid_line())
+        invalid_lines.unlink()
+
+        if invalid_lines or force_update_checks:
+            self._verify_cart_after_update()
 
     def _cart_accessories(self):
         """Suggest accessories based on 'Accessory Products' of products in cart."""
@@ -1133,6 +1137,14 @@ class SaleOrder(models.Model):
         """
         return bool(self.order_line.product_id) and not self.only_services
 
+    def _get_checkout_delivery_address(self):
+        """Return the address to select in the delivery address list of the checkout.
+
+        :return: The delivery address to select.
+        :rtype: res.partner
+        """
+        return self.partner_shipping_id
+
     def _get_preferred_delivery_method(self, available_delivery_methods):
         """Get the preferred delivery method based on available delivery methods for the order.
 
@@ -1174,14 +1186,28 @@ class SaleOrder(models.Model):
         rate = rate or delivery_method.rate_shipment(self)
         if rate.get("success"):
             self.set_delivery_line(delivery_method, rate["price"])
+            self._set_estimated_commitment_date()
 
-            if delivery_method.enable_delivery_estimate and (
-                estimated_delivery_date := delivery_method._get_estimate_delivery_days()
+    def _set_estimated_commitment_date(self):
+        """Set the commitment date to the first date that the delivery method can deliver on.
+
+        A date already set is kept if the delivery method still offers it. The commitment date is
+        left untouched when the delivery method has no estimated delivery, and reset when it has one
+        but gives no estimation.
+
+        :return: None
+        """
+        self.ensure_one()
+        if self.carrier_id.delivery_estimate_mode == "none":
+            return
+        if delivery_estimate_dates := self.carrier_id._get_delivery_estimate_dates(order=self):
+            if (
+                not self.commitment_date
+                or self.commitment_date.date().isoformat() not in delivery_estimate_dates
             ):
-                self.commitment_date = estimated_delivery_date[0]
-            else:
-                # reset `commitment_date` if it doesn't have an estimated delivery date set
-                self.commitment_date = None
+                self.commitment_date = delivery_estimate_dates[0]
+        else:
+            self.commitment_date = None
 
     def _get_delivery_methods(self):
         # searching on website_published will also search for available website (_search method on
@@ -1279,8 +1305,23 @@ class SaleOrder(models.Model):
         """
         self.ensure_one()
 
+        # Check that the cart does not contain products forbidden to be sold on the website.
+        if prevented_sale_lines := self._get_prevented_sale_lines():
+            # During checkout, the pricelist might change once the customer fills in their address.
+            prevented_sale_lines._add_danger_alert(
+                self.env._("This product is not available for purchase in your country.")
+            )
+            self._add_blocking_alert(
+                self.env._(
+                    "Some products in your cart are not available for purchase in your country."
+                    " Please remove them or contact us."
+                )
+            )
+            return False
+
         if not self._has_deliverable_products():
-            return bool(self.order_line)  # Empty cart => block the customer
+            # Empty cart => block the customer
+            return any(line for line in self.order_line if not line.is_delivery)
 
         # Uses list comprehension to ensure all products are checked and potential alerts are saved.
         if not all([sol._check_availability() for sol in self.order_line]):  # noqa: C419
@@ -1338,11 +1379,28 @@ class SaleOrder(models.Model):
 
         return True
 
+    def _get_prevented_sale_lines(self):
+        """Return the cart lines the website forbids to sell.
+
+        :rtype: sale.order.line
+        """
+        self.ensure_one()
+        if not self.website_id.prevent_sale:
+            return self.env["sale.order.line"]
+
+        def online_sale_prevented(line):
+            try:
+                return line._is_sellable() and line._check_validity() is not None
+            except UserError:
+                return True
+
+        return self.order_line.filtered(online_sale_prevented)
+
     def _is_commitment_date_valid(self):
         """Whether the commitment date is still up to date with the carrier constraints."""
         self.ensure_one()
         allowed_commitment_dates = (
-            self.commitment_date and self.carrier_id._get_estimate_delivery_days()
+            self.commitment_date and self.carrier_id._get_delivery_estimate_dates(order=self)
         ) or []
         if (
             not allowed_commitment_dates  # No allowed date means any date is acceptable.
@@ -1377,6 +1435,8 @@ class SaleOrder(models.Model):
         initial_amount = self.amount_total
         self._recompute_taxes()
         self._recompute_prices()
+        if self.carrier_id:
+            self.with_context(keep_pickup_location=True)._set_delivery_method(self.carrier_id)
         if self.currency_id.compare_amounts(self.amount_total, initial_amount):
             self._add_warning_alert(self.env._("Prices have changed. Please review your cart."))
             return True

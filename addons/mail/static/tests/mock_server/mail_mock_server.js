@@ -198,7 +198,10 @@ async function load_attachments(request) {
     return {
         count: attachmentIds.length,
         store_data: new Store()
-            .add(IrAttachment.browse(attachmentIds), "_store_attachment_fields")
+            .add(IrAttachment.browse(attachmentIds), (r) => {
+                r.from_method("_store_attachment_fields");
+                r.from_method("_store_thread_message_fields");
+            })
             .as_dict(),
     };
 }
@@ -737,7 +740,9 @@ async function mail_message_update_content(request) {
                 res.one("parent_id", "_store_message_fields", {
                     value: MailMessage.browse(message.parent_id),
                 });
-                res.many("partner_ids", ["avatar_128", "name"], {
+                res.many("partner_ids", (r) => r.from_method("_store_avatar_fields"), {
+                    dynamic_fields: "_store_partner_name_dynamic_fields",
+                    sort: "id",
                     value: this.env["res.partner"].browse(message.partner_ids),
                 });
                 res.attr("pinned_at", message.pinned_at);
@@ -811,6 +816,36 @@ async function read_subscription_data(request) {
     };
 }
 
+registerRoute("/mail/rtc/session/notify_call_members", session_call_notify);
+/** @type {RouteCallback} */
+async function session_call_notify(request) {
+    /** @type {import("mock_models").DiscussChannelRtcSession} */
+    const DiscussChannelRtcSession = this.env["discuss.channel.rtc.session"];
+    /** @type {import("mock_models").ResPartner} */
+    const ResPartner = this.env["res.partner"];
+
+    const { peer_notifications } = await parseRequestParams(request);
+    const [partner, guest] = ResPartner._get_current_persona();
+    const notificationsBySessionId = new Map();
+    for (const [senderSessionId, targetSessionIds, content] of peer_notifications) {
+        const [session] = DiscussChannelRtcSession.browse(senderSessionId);
+        if (
+            !session ||
+            (session.guest_id && session.guest_id !== guest?.id) ||
+            (session.partner_id && session.partner_id !== partner?.id)
+        ) {
+            continue;
+        }
+        if (!notificationsBySessionId.has(session.id)) {
+            notificationsBySessionId.set(session.id, []);
+        }
+        notificationsBySessionId.get(session.id).push([targetSessionIds, content]);
+    }
+    for (const [sessionId, notifications] of notificationsBySessionId) {
+        DiscussChannelRtcSession._notify_peers(sessionId, notifications);
+    }
+}
+
 registerRoute("/mail/rtc/session/update_and_broadcast", session_update_and_broadcast);
 /** @type {RouteCallback} */
 async function session_update_and_broadcast(request) {
@@ -821,10 +856,13 @@ async function session_update_and_broadcast(request) {
 
     const { session_id, values } = await parseRequestParams(request);
     const [session] = DiscussChannelRtcSession.search_read([["id", "=", session_id]]);
+    if (!session) {
+        return;
+    }
     const [currentChannelMember] = DiscussChannelMember.search_read([
         ["id", "=", session.channel_member_id[0]],
     ]);
-    if (session && currentChannelMember.partner_id[0] === serverState.partnerId) {
+    if (currentChannelMember.partner_id[0] === serverState.partnerId) {
         DiscussChannelRtcSession._update_and_broadcast(session.id, values);
     }
 }
@@ -993,6 +1031,7 @@ function processRequest(fetchParams) {
                 .filter(Boolean)
                 .map((message) => message.id);
             store.add(MailMessage.browse(lastMessageIds), "_store_message_fields");
+            store.add(DiscussChannel.browse(channelIds), { last_message_fetched: true });
         }
         if (store.add_channels_last_needaction) {
             const lastNeedactionMessageIds = channelIds
@@ -1012,15 +1051,10 @@ function processRequest(fetchParams) {
     return store;
 }
 
-export function _resolve_messages(
-    store,
-    fetch_params,
-    { add_to_store = true, filter = () => true } = {}
-) {
+export function _resolve_messages(store, fetch_params, { add_to_store = true } = {}) {
     /** @type {import("mock_models").MailMessage} */
     const MailMessage = this.env["mail.message"];
     const res = MailMessage._message_fetch(makeKwArgs(fetch_params));
-    res.messages = res.messages.filter(filter.bind(this));
     const messageIds = res.messages.map((message) => message.id);
     if (add_to_store) {
         for (const messageId of messageIds) {

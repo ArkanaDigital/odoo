@@ -3,23 +3,23 @@ import { cookie } from "@web/core/browser/cookie";
 
 export class IframeInput extends Component {
     static template = "html_editor.IframeInput";
-    static props = {
+    props = useProps({
         // data / value
-        value: { type: [String, Number] },
-        inputAttrs: { type: Object, optional: true },
+        value: t.or([t.string(), t.number()]),
+        inputAttrs: t.object().optional(),
 
         // styling
-        iframeClass: { type: String, optional: true },
-        inputStyle: { type: String, optional: true },
+        iframeClass: t.string().optional(),
+        inputStyle: t.string().optional(),
 
         // events (handlers)
-        onBlur: { type: Function, optional: true },
-        onChange: { type: Function, optional: true },
-        onClick: { type: Function, optional: true },
-        onFocus: { type: Function, optional: true },
-        onInput: { type: Function, optional: true },
-        onKeydown: { type: Function, optional: true },
-    };
+        onBlur: t.function().optional(),
+        onChange: t.function().optional(),
+        onClick: t.function().optional(),
+        onFocus: t.function().optional(),
+        onInput: t.function().optional(),
+        onKeydown: t.function().optional(),
+    });
 
     // Refs (DOM access): the iframe is bound with `t-ref`, while the input,
     // created programmatically inside the iframe, is set imperatively.
@@ -42,6 +42,9 @@ export class IframeInput extends Component {
                 }
 
                 const isDarkMode = cookie.get("color_scheme") === "dark";
+                const inputColor = getComputedStyle(this.iframeEl)
+                    .getPropertyValue("--o-iframe-input-color")
+                    .trim();
                 const styleEl = iframeDoc.createElement("style");
                 styleEl.textContent = `
                     /* Hides the number input's spin buttons (chrome, edge, safari) */
@@ -64,8 +67,8 @@ export class IframeInput extends Component {
                         outline: none;
                         text-align: center;
                         border: none;
-                        background-color: ${isDarkMode ? "#262A36" : "#FFF"};
-                        color: ${isDarkMode ? "#FFF" : "#000"};
+                        background-color: ${isDarkMode ? "#25262b" : "#FFF"};
+                        color: ${inputColor || (isDarkMode ? "#FFF" : "#000")};
                         ${this.props.inputStyle || ""}
                     }
                 `;

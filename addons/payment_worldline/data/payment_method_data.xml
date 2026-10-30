@@ -92,6 +92,16 @@
         <field name="support_tokenization">True</field>
     </record>
 
+    <record id="payment_method_cetelem" model="payment.method">
+        <field name="name">Cetelem</field>
+        <field name="code">cetelem</field>
+        <field name="provider_id" ref="payment.payment_provider_worldline"/>
+        <field name="sequence">1000</field>
+        <field name="image" type="bytes" file="payment/static/img/cetelem.png"/>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.fr')])]"/>
+        <field name="supported_currency_ids" eval="[Command.set([ref('base.EUR')])]"/>
+    </record>
+
     <record id="payment_method_cofidis" model="payment.method">
         <field name="name">cofidis</field>
         <field name="code">cofidis</field>
@@ -137,6 +147,26 @@
         <field name="provider_id" ref="payment.payment_provider_worldline"/>
         <field name="image" type="bytes" file="payment/static/img/ideal_wero.png"/>
         <field name="support_tokenization">False</field>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.nl')])]"/>
+        <field name="supported_currency_ids" eval="[Command.set([ref('base.EUR')])]"/>
+    </record>
+
+    <record id="payment_method_illicado" model="payment.method">
+        <field name="name">Illicado</field>
+        <field name="code">illicado</field>
+        <field name="provider_id" ref="payment.payment_provider_worldline"/>
+        <field name="sequence">1000</field>
+        <field name="image" type="bytes" file="payment/static/img/illicado.png"/>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.fr')])]"/>
+        <field name="supported_currency_ids" eval="[Command.set([ref('base.EUR')])]"/>
+    </record>
+
+    <record id="payment_method_in3" model="payment.method">
+        <field name="name">in3</field>
+        <field name="code">in3</field>
+        <field name="provider_id" ref="payment.payment_provider_worldline"/>
+        <field name="sequence">1000</field>
+        <field name="image" type="bytes" file="payment/static/img/in3.png"/>
         <field name="supported_country_ids" eval="[Command.set([ref('base.nl')])]"/>
         <field name="supported_currency_ids" eval="[Command.set([ref('base.EUR')])]"/>
     </record>
@@ -202,6 +232,46 @@
         <field name="supported_currency_ids" eval="[Command.set([ref('base.EUR')])]"/>
     </record>
 
+    <record id="payment_method_oney" model="payment.method">
+        <field name="name">Oney</field>
+        <field name="code">oney</field>
+        <field name="provider_id" ref="payment.payment_provider_worldline"/>
+        <field name="sequence">1000</field>
+        <field name="image" type="bytes" file="payment/static/img/oney.png"/>
+        <field
+            name="supported_country_ids"
+            eval="[Command.set([
+                ref('base.be'),
+                ref('base.de'),
+                ref('base.es'),
+                ref('base.fr'),
+                ref('base.hu'),
+                ref('base.it'),
+                ref('base.pl'),
+                ref('base.pt'),
+                ref('base.ro'),
+            ])]"
+        />
+        <field
+            name="supported_currency_ids"
+            eval="[Command.set([
+                ref('base.EUR'),
+                ref('base.HUF'),
+                ref('base.RON'),
+            ])]"
+        />
+    </record>
+
+    <record id="payment_method_oney_financement_long" model="payment.method">
+        <field name="name">Oney Financement Long</field>
+        <field name="code">oney_financement_long</field>
+        <field name="provider_id" ref="payment.payment_provider_worldline"/>
+        <field name="sequence">1000</field>
+        <field name="image" type="bytes" file="payment/static/img/oney_financement_long.png"/>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.fr')])]"/>
+        <field name="supported_currency_ids" eval="[Command.set([ref('base.EUR')])]"/>
+    </record>
+
     <record id="payment_method_p24" model="payment.method">
         <field name="name">P24</field>
         <field name="code">p24</field>
@@ -213,7 +283,7 @@
     </record>
 
     <record id="payment_method_paypal" model="payment.method">
-        <field name="name">Paypal</field>
+        <field name="name">PayPal</field>
         <field name="code">paypal</field>
         <field name="sequence">20</field>
         <field name="provider_id" ref="payment.payment_provider_worldline"/>

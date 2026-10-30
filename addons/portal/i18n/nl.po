@@ -13,9 +13,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0+e\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-26 19:11+0000\n"
-"PO-Revision-Date: 2026-06-21 13:04+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-09-11 17:44+0000\n"
+"PO-Revision-Date: 2026-09-09 14:11+0000\n"
+"Last-Translator: Bren Driesen <brdri@odoo.com>\n"
 "Language-Team: Dutch <https://translate.odoo.com/projects/odoo-master/portal/"
 "nl/>\n"
 "Language: nl\n"
@@ -23,7 +23,21 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: portal
+#: model:ir.module.module,description:base.module_portal
+msgid ""
+"\n"
+"This module adds required base code for a fully integrated customer portal.\n"
+"It contains the base controller class and base templates. Business addons\n"
+"will add their specific templates and controllers to extend the customer\n"
+"portal.\n"
+"\n"
+"This module contains most code coming from odoo v10 website_portal. Purpose\n"
+"of this module is to allow the display of a customer portal without having\n"
+"a dependency towards website editing and customization capabilities."
+msgstr ""
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_my_security
@@ -58,13 +72,6 @@ msgstr ""
 "                                        het kopiëren van je login ("
 
 #. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.address_form_fields
-msgid ""
-"<br/>\n"
-"                            If you want to modify it, update"
-msgstr ""
-
-#. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_footer
 msgid ""
 "<i class=\"fw-light oi me-2\" data-icon=\"keyboard_arrow_left\"/>Discard"
@@ -72,19 +79,21 @@ msgstr ""
 "<i class=\"fw-light oi me-2\" data-icon=\"keyboard_arrow_left\"/>Negeren"
 
 #. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.portal_back_in_edit_mode
-msgid "<i class=\"oi me-1\" data-icon=\"east\"/>Back to edit mode"
-msgstr "<i class=\"oi me-1\" data-icon=\"east\"/>Terug naar bewerkingsmodus"
+#: model_terms:ir.ui.view,arch_db:portal.portal_my_contact
+msgid ""
+"<i class=\"oi m-auto ms-auto me-3\" data-icon=\"mail\" role=\"img\" aria-"
+"label=\"Send Message\"/>"
+msgstr ""
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.my_addresses
-msgid "<i class=\"oi me-2\" data-icon=\"add\"/>Add Address"
-msgstr "<i class=\"oi me-2\" data-icon=\"add\"/>Adres toevoegen"
+msgid "<i class=\"oi me-1\" data-icon=\"add\"/>Add"
+msgstr ""
 
 #. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.profile_picture_card
-msgid "<i class=\"oi oi-filled\" data-icon=\"edit\" title=\"Edit\"/>"
-msgstr ""
+#: model_terms:ir.ui.view,arch_db:portal.portal_back_in_edit_mode
+msgid "<i class=\"oi me-1\" data-icon=\"east\"/>Back to edit mode"
+msgstr "<i class=\"oi me-1\" data-icon=\"east\"/>Terug naar bewerkingsmodus"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.side_content
@@ -137,11 +146,6 @@ msgstr ""
 "label=\"Next\" title=\"Volgende\"/>"
 
 #. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.profile_picture_card
-msgid "<i class=\"oi\" data-icon=\"delete\" title=\"Clear\"/>"
-msgstr ""
-
-#. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_my_security
 msgid ""
 "<i title=\"Documentation\" class=\"oi oi-fw o_button_icon\" data-"
@@ -149,23 +153,6 @@ msgid ""
 msgstr ""
 "<i title=\"Documentatie\" class=\"oi oi-fw o_button_icon\" data-"
 "icon=\"info\"/>"
-
-#. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.address_form_fields
-msgid ""
-"<small class=\"form-text text-muted\">\n"
-"                    Changing country is not allowed once document(s) have\n"
-"                    been issued for your account. Please contact us directly "
-"for this\n"
-"                    operation.\n"
-"                </small>"
-msgstr ""
-"<small class=\"form-text text-muted\">\n"
-"                    Het land kan niet worden gewijzigd zodra er documenten\n"
-"                    voor je account zijn uitgegeven. Neem hiervoor "
-"rechtstreeks contact\n"
-"                    met ons op.\n"
-"                </small>"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.pager
@@ -206,6 +193,11 @@ msgid "<span class=\"small me-1 navbar-text\">Sort By:</span>"
 msgstr "<span class=\"small me-1 navbar-text\">Sorteren op:</span>"
 
 #. module: portal
+#: model_terms:ir.ui.view,arch_db:portal.portal_my_contact
+msgid "<span class=\"small text-muted\">Your Contact</span>"
+msgstr ""
+
+#. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_share_template
 msgid "<strong>Open </strong>"
 msgstr "<strong>Open </strong>"
@@ -234,6 +226,12 @@ msgid "Access warning"
 msgstr "Toegang waarschuwing"
 
 #. module: portal
+#: model_terms:ir.ui.view,arch_db:portal.portal_breadcrumbs
+#: model_terms:ir.ui.view,arch_db:portal.portal_my_details
+msgid "Account Details"
+msgstr ""
+
+#. module: portal
 #. odoo-python
 #: code:addons/portal/controllers/portal.py:0
 msgid "Account deleted!"
@@ -242,7 +240,7 @@ msgstr "Account verwijderd!"
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_share_wizard
 msgid "Add a note"
-msgstr "Voeg een notitie toe"
+msgstr "Notitie toevoegen"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.my_addresses
@@ -295,7 +293,7 @@ msgstr "Al geregistreerd"
 #. odoo-javascript
 #: code:addons/portal/static/src/interactions/portal_profile_editor.js:0
 msgid "An error occurred while saving your profile."
-msgstr ""
+msgstr "Er is een fout opgetreden tijdens het opslaan van je profiel."
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_form_fields
@@ -320,9 +318,13 @@ msgstr "Factuuradres"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_management
-#: model_terms:ir.ui.view,arch_db:portal.my_addresses
 msgid "Billing address"
 msgstr "Factuuradres"
+
+#. module: portal
+#: model_terms:ir.ui.view,arch_db:portal.my_addresses
+msgid "Billing addresses"
+msgstr ""
 
 #. module: portal
 #: model:ir.model.fields,field_description:portal.field_portal_entry__category
@@ -338,12 +340,17 @@ msgstr "Wachtwoord wijzigen"
 #. odoo-python
 #: code:addons/portal/controllers/portal.py:0
 msgid ""
-"Changing VAT number is not allowed once document(s) have been issued for "
-"your account. Please contact us directly for this operation."
+"Changing %(field_description)s is not allowed once document(s) have been "
+"issued for your account. Please contact us directly for this operation."
 msgstr ""
-"Het wijzigen van een btw-nummer is niet toegestaan zodra documenten zijn "
-"uitgegeven voor je account. Neem direct contact met ons op voor deze "
-"bewerking."
+
+#. module: portal
+#. odoo-python
+#: code:addons/portal/controllers/portal.py:0
+msgid ""
+"Changing country is not allowed once document(s) have been issued for your "
+"account. Please contact us directly for this operation."
+msgstr ""
 
 #. module: portal
 #. odoo-python
@@ -367,8 +374,8 @@ msgid "City"
 msgstr "Plaats"
 
 #. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.profile_picture_card
-msgid "Clear"
+#: model_terms:ir.ui.view,arch_db:portal.address_form_fields
+msgid "City..."
 msgstr ""
 
 #. module: portal
@@ -389,12 +396,12 @@ msgstr "Sluiten"
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.message_thread
 msgid "Communication History"
-msgstr ""
+msgstr "Communicatiegeschiedenis"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_form_fields
-msgid "Company Name"
-msgstr "Bedrijfsnaam"
+msgid "Company"
+msgstr ""
 
 #. module: portal
 #: model:ir.model.fields,field_description:portal.field_portal_entry__is_config_card
@@ -443,11 +450,6 @@ msgid "Contact"
 msgstr "Contact"
 
 #. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.portal_my_details
-msgid "Contact Details"
-msgstr "Contactgegevens"
-
-#. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.wizard_view
 msgid "Contacts"
 msgstr "Contacten"
@@ -459,6 +461,7 @@ msgid "Could not save file %s"
 msgstr "Bestand %s kon niet opgeslagen worden"
 
 #. module: portal
+#: model:ir.model,name:portal.model_res_country
 #: model_terms:ir.ui.view,arch_db:portal.address_form_fields
 msgid "Country"
 msgstr "Land"
@@ -495,6 +498,12 @@ msgid "Customer API Keys"
 msgstr "Klant API-sleutels"
 
 #. module: portal
+#: model:ir.module.module,shortdesc:base.module_portal
+#: model:ir.module.module,summary:base.module_portal
+msgid "Customer Portal"
+msgstr ""
+
+#. module: portal
 #: model:ir.model.fields,help:portal.field_portal_mixin__access_url
 msgid "Customer Portal URL"
 msgstr "Klantenportaal URL"
@@ -527,9 +536,13 @@ msgstr "Afleveradres"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_management
-#: model_terms:ir.ui.view,arch_db:portal.my_addresses
 msgid "Delivery address"
 msgstr "Afleveradres"
+
+#. module: portal
+#: model_terms:ir.ui.view,arch_db:portal.my_addresses
+msgid "Delivery addresses"
+msgstr ""
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_my_security
@@ -586,6 +599,7 @@ msgstr "Annuleren"
 #: model:ir.model.fields,field_description:portal.field_portal_wizard__display_name
 #: model:ir.model.fields,field_description:portal.field_portal_wizard_user__display_name
 #: model:ir.model.fields,field_description:portal.field_res_config_settings__display_name
+#: model:ir.model.fields,field_description:portal.field_res_country__display_name
 #: model:ir.model.fields,field_description:portal.field_res_partner__display_name
 #: model:ir.model.fields,field_description:portal.field_res_users_apikeys_description__display_name
 msgid "Display Name"
@@ -602,11 +616,6 @@ msgstr "Vervalt over %s dagen"
 #: code:addons/portal/static/src/interactions/sidebar.js:0
 msgid "Due today"
 msgstr "Vervalt vandaag"
-
-#. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.profile_picture_card
-msgid "Edit"
-msgstr ""
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_card
@@ -706,6 +715,7 @@ msgstr "Startpagina"
 #: model:ir.model.fields,field_description:portal.field_portal_wizard__id
 #: model:ir.model.fields,field_description:portal.field_portal_wizard_user__id
 #: model:ir.model.fields,field_description:portal.field_res_config_settings__id
+#: model:ir.model.fields,field_description:portal.field_res_country__id
 #: model:ir.model.fields,field_description:portal.field_res_partner__id
 #: model:ir.model.fields,field_description:portal.field_res_users_apikeys_description__id
 msgid "ID"
@@ -722,6 +732,11 @@ msgstr ""
 "Als je bestelt voor een externe persoon, plaats je order via de back-end. "
 "Indien je je naam of e-mailadres wilt wijzigen, kan je dit doen in de "
 "accountinstellingen of contact opnemen met je administrator."
+
+#. module: portal
+#: model_terms:ir.ui.view,arch_db:portal.address_form_fields
+msgid "If you want to modify it, update"
+msgstr ""
 
 #. module: portal
 #: model:ir.model.fields,field_description:portal.field_portal_entry__image
@@ -843,11 +858,11 @@ msgstr "Bericht"
 #. odoo-python
 #: code:addons/portal/models/mail_thread.py:0
 msgid ""
-"Model %(model_name)s does not support token signature, as it does not have "
-"%(field_name)s field."
+"Model %(model_name)s does not support token signature, as it does not have %"
+"(field_name)s field."
 msgstr ""
-"Model %(model_name)s ondersteunt geen tokenhandtekening, aangezien het geen "
-"%(field_name)s veld heeft."
+"Model %(model_name)s ondersteunt geen tokenhandtekening, aangezien het geen %"
+"(field_name)s veld heeft."
 
 #. module: portal
 #. odoo-python
@@ -864,6 +879,11 @@ msgstr "Mijn account"
 #: model_terms:ir.ui.view,arch_db:portal.my_addresses
 msgid "My addresses"
 msgstr "Mijn adressen"
+
+#. module: portal
+#: model_terms:ir.ui.view,arch_db:portal.address_form_fields
+msgid "Name"
+msgstr ""
 
 #. module: portal
 #. odoo-javascript
@@ -957,7 +977,7 @@ msgstr ""
 #: code:addons/portal/wizard/portal_wizard.py:0
 #: model_terms:ir.ui.view,arch_db:portal.wizard_view
 msgid "Portal Access Management"
-msgstr "Portaal toegangsbeheer"
+msgstr "Portaaltoegangsbeheer"
 
 #. module: portal
 #: model:ir.model.fields,field_description:portal.field_portal_mixin__access_url
@@ -1041,12 +1061,12 @@ msgstr "Dit adres verwijderen"
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.wizard_view
 msgid "Revoke Access"
-msgstr "Toegang herroepen"
+msgstr "Toegang intrekken"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_my_security
 msgid "Revoke All Sessions"
-msgstr "Alle sessies herroepen"
+msgstr "Alle sessies beëindigen"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.my_addresses
@@ -1093,10 +1113,10 @@ msgid ""
 "                        If necessary, you can fix any contact's email "
 "address directly in the list."
 msgstr ""
-"Selecteer welke contactpersonen onderdeel moeten uitmaken van het portaal.\n"
-"                        Het e-mail adres van ieder geselecteerd "
+"Selecteer welke contactpersonen toegang moeten hebben tot het portaal.\n"
+"                        Het e-mailadres van elke geselecteerde "
 "contactpersoon moet geldig en uniek zijn.\n"
-"                        Indien nodig, kun je een e-mail adres van een "
+"                        Indien nodig kun je het e-mailadres van een "
 "contactpersoon direct in de lijst wijzigen."
 
 #. module: portal
@@ -1105,11 +1125,6 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:portal.portal_share_wizard
 msgid "Send"
 msgstr "Verzenden"
-
-#. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.portal_my_contact
-msgid "Send message"
-msgstr "Verzend bericht"
 
 #. module: portal
 #: model:ir.actions.act_window,name:portal.portal_share_action
@@ -1187,14 +1202,14 @@ msgstr "Bedankt!"
 #. module: portal
 #. odoo-python
 #: code:addons/portal/controllers/portal.py:0
-msgid "The %(field_name)s is managed on your company account."
-msgstr "%(field_name)s wordt beheerd op je bedrijfsaccount."
+msgid "The %(field_description)s is managed on your company account."
+msgstr ""
 
 #. module: portal
 #. odoo-python
 #: code:addons/portal/controllers/portal.py:0
-msgid "The %(field_name)s is managed on your main account address."
-msgstr "%(field_name)s wordt beheerd op je hoofdaccountadres."
+msgid "The %(field_description)s is managed on your main account address."
+msgstr ""
 
 #. module: portal
 #. odoo-python
@@ -1367,7 +1382,7 @@ msgstr "Gebruikers"
 
 #. module: portal
 #. odoo-python
-#: code:addons/portal/controllers/portal.py:0
+#: code:addons/portal/models/res_country.py:0
 msgid "VAT"
 msgstr "Btw"
 
@@ -1435,7 +1450,7 @@ msgstr "Je kunt je hoofdadres niet archiveren"
 #. odoo-python
 #: code:addons/portal/controllers/portal.py:0
 msgid "You cannot edit another user's profile."
-msgstr ""
+msgstr "Je kunt het profiel van een andere gebruiker niet bewerken."
 
 #. module: portal
 #. odoo-python
@@ -1470,11 +1485,6 @@ msgstr "Jouw account"
 #: model_terms:ir.ui.view,arch_db:portal.portal_contact
 msgid "Your contact"
 msgstr "Je contact"
-
-#. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.address_form_fields
-msgid "Your name"
-msgstr "Je naam"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_form_fields
@@ -1535,3 +1545,38 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:portal.address_form_fields
 msgid "your account details"
 msgstr "je accountgegevens"
+
+#~ msgid "<i class=\"oi me-2\" data-icon=\"add\"/>Add Address"
+#~ msgstr "<i class=\"oi me-2\" data-icon=\"add\"/>Adres toevoegen"
+
+#~ msgid ""
+#~ "<small class=\"form-text text-muted\">\n"
+#~ "                    Changing country is not allowed once document(s) "
+#~ "have\n"
+#~ "                    been issued for your account. Please contact us "
+#~ "directly for this\n"
+#~ "                    operation.\n"
+#~ "                </small>"
+#~ msgstr ""
+#~ "<small class=\"form-text text-muted\">\n"
+#~ "                    Het land kan niet worden gewijzigd zodra er "
+#~ "documenten\n"
+#~ "                    voor je account zijn uitgegeven. Neem hiervoor "
+#~ "rechtstreeks contact\n"
+#~ "                    met ons op.\n"
+#~ "                </small>"
+
+#~ msgid "Clear"
+#~ msgstr "Wissen"
+
+#~ msgid "Company Name"
+#~ msgstr "Bedrijfsnaam"
+
+#~ msgid "Contact Details"
+#~ msgstr "Contactgegevens"
+
+#~ msgid "Edit"
+#~ msgstr "Bewerken"
+
+#~ msgid "Your name"
+#~ msgstr "Je naam"

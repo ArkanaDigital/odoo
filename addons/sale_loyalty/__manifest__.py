@@ -17,8 +17,18 @@
         "views/sale_portal_templates.xml",
         "views/res_partner_views.xml",
         "views/sale_loyalty_menus.xml",
-        'security/ir.access.csv',
+        "security/ir.access.csv",
     ],
+    "assets": {
+        "web.assets_frontend": [
+            "sale_loyalty/static/src/interactions/gift_card.js",
+            "sale_loyalty/static/src/scss/gift_card.css",
+        ],
+        "web.assets_backend": [
+            "sale_loyalty/static/src/xml/discount_menu_widget.xml",
+            "sale_loyalty/static/src/sale_order_form_view/**/*",
+        ],
+    },
     "uninstall_hook": "uninstall_hook",
     "author": "Odoo S.A.",
     "license": "LGPL-3",

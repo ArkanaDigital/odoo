@@ -231,6 +231,8 @@ class PaymentTransaction(models.Model):
             return
 
         order_data = self._razorpay_create_order()
+        if not order_data:  # The order creation failed and the transaction was set in error.
+            return
         phone = self._validate_phone_number(self.partner_phone)
         customer_id, token_id = self.token_id.provider_ref.split(",")
         payload = {
@@ -421,11 +423,6 @@ class PaymentTransaction(models.Model):
                 # In case the tokenization was requested on provider side not from odoo form.
                 self.tokenize = True
             self._set_done()
-
-            # Immediately post-process the transaction if it is a refund, as the post-processing
-            # will not be triggered by a customer browsing the transaction from the portal.
-            if self.operation == "refund":
-                self.env.ref("payment.cron_post_process_payment_tx")._trigger()
         elif entity_status in const.PAYMENT_STATUS_MAPPING["error"]:
             _logger.warning(
                 "The transaction %s underwent an error. Reason: %s",
@@ -447,6 +444,10 @@ class PaymentTransaction(models.Model):
         """Override of payment to extract the amount and currency from the payment data."""
         if self.provider_code != "razorpay":
             return super()._extract_amount_data(payment_data)
+
+        # Amount and currency are not sent in the payment data when redirecting to the return route.
+        if "amount" not in payment_data or "currency" not in payment_data:
+            return None
 
         amount = payment_utils.to_major_currency_units(payment_data["amount"], self.currency_id)
         return {"amount": amount, "currency_code": payment_data["currency"]}

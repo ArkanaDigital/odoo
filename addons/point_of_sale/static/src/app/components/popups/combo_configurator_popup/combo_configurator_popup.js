@@ -1,6 +1,5 @@
 import { Dialog } from "@web/core/dialog/dialog";
 import { Component, onWillStart, proxy, useProps, t } from "@odoo/owl";
-import { formatCurrency } from "@web/core/currency";
 import { usePos } from "@point_of_sale/app/hooks/pos_hook";
 import { ProductCard } from "@point_of_sale/app/components/product_card/product_card";
 import { QuantityButtons } from "@point_of_sale/app/components/buttons/quantity_buttons/quantity_buttons";
@@ -182,15 +181,14 @@ export class ComboConfiguratorPopup extends Component {
     }
 
     formattedComboPrice(comboItem) {
-        if (this.pos.currency.isZero(comboItem.extra_price)) {
+        const extraPrice = comboItem.extra_price;
+        if (this.pos.currency.isZero(extraPrice)) {
             return "";
         }
-        const priceSign = comboItem.extra_price > 0 ? "+" : "-";
-        return (
-            priceSign +
-            " " +
-            formatCurrency(comboItem.extra_price, this.pos.currency.id, { trailingZeros: false })
-        );
+        const formattedPrice = this.pos.formatCurrency(Math.abs(extraPrice), this.pos.currency.id, {
+            trailingZeros: false,
+        });
+        return extraPrice > 0 ? `+ ${formattedPrice}` : `- ${formattedPrice}`;
     }
 
     getSelectedComboItems() {
@@ -371,7 +369,7 @@ export class ComboConfiguratorPopup extends Component {
             (acc, combo) => acc + this.computeComboExtraPrice(combo),
             0
         );
-        return this.env.utils.formatCurrency(basePrice + extraPrice);
+        return this.pos.formatCurrency(basePrice + extraPrice);
     }
 
     getSelectedComboItemsText(combo) {

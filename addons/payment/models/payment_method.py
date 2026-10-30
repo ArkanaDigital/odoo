@@ -13,7 +13,7 @@ class PaymentMethod(models.Model):
     _description = "Payment Method"
     _order = "active desc, sequence, name"
 
-    name = fields.Char(string="Name", required=True, translate=True)
+    name = fields.Char(string="Name", required=True, translate=True, copy=True)
     code = fields.Char(
         string="Code", help="The technical code of this payment method.", required=True
     )
@@ -61,7 +61,8 @@ class PaymentMethod(models.Model):
         store=True,
     )
 
-    # Feature support fields.
+    # === FEATURE SUPPORT FIELDS === #
+
     support_tokenization = fields.Boolean(
         string="Tokenization",
         help="Tokenization is the process of saving the payment details as a token that can later"
@@ -108,6 +109,12 @@ class PaymentMethod(models.Model):
         " customers.",
         comodel_name="res.currency",
         context={"active_test": False},
+    )
+
+    # === CONFIGURATION FIELDS === #
+
+    allow_amount_selection = fields.Boolean(
+        string="Amount Selection", help="Allow splitting payments across several payment methods."
     )
 
     # === SQL CONSTRAINTS === #
@@ -264,11 +271,3 @@ class PaymentMethod(models.Model):
         return self.sorted(
             key=lambda pm: (pm.provider_id.sequence, pm.provider_id.name, pm.sequence, pm.name)
         )
-
-    def _is_postpaid(self):
-        """Return whether the payment method is postpaid.
-
-        :return: Whether the payment method is postpaid
-        :rtype: bool
-        """
-        return False

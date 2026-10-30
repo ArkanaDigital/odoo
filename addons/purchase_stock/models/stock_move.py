@@ -3,8 +3,8 @@
 from collections import deque
 
 from odoo import api, Command, fields, models, _
-from odoo.tools.float_utils import float_round, float_is_zero, float_compare
-from odoo.exceptions import UserError
+from odoo.fields import Domain
+from odoo.tools.sql import SQL
 
 
 class StockMove(models.Model):
@@ -27,6 +27,13 @@ class StockMove(models.Model):
     def _prepare_merge_negative_moves_excluded_distinct_fields(self):
         return super()._prepare_merge_negative_moves_excluded_distinct_fields() + ['created_purchase_line_ids']
 
+    @api.depends('company_id', 'purchase_line_id', 'purchase_line_id.company_id')
+    def _compute_origin_company_id(self):
+        super()._compute_origin_company_id()
+        for move in self:
+            if move.purchase_line_id and move.purchase_line_id.company_id != move.company_id:
+                move.origin_company_id = move.purchase_line_id.company_id
+
     @api.depends('purchase_line_id', 'purchase_line_id.uom_id')
     def _compute_packaging_uom_id(self):
         super()._compute_packaging_uom_id()
@@ -43,15 +50,19 @@ class StockMove(models.Model):
     def _compute_description_picking(self):
         super()._compute_description_picking()
         for move in self:
-            if move.purchase_line_id:
+            if move.purchase_line_id and not move.description_picking_manual:
                 current_description = move.description_picking
                 seller = move.purchase_line_id.sudo().selected_seller_id
                 vendor_reference = f'[{seller.product_code}]' if seller.product_code else ''
                 vendor_reference += f' {seller.product_name}' if seller.product_name else ''
-                if vendor_reference.strip() in current_description:
+                if current_description and vendor_reference.strip() in current_description:
                     vendor_reference = ''
-                no_variant_attributes = '\n'.join(f'{attribute.attribute_id.name}: {attribute.name}' for attribute in move.purchase_line_id.sudo().product_no_variant_attribute_value_ids)
-                move.description_picking = (no_variant_attributes + '\n' + vendor_reference + '\n' + current_description).strip()
+                product = move.product_id.with_context(lang=move._get_lang())
+                has_receipt_description = bool(product._get_picking_description(move.picking_type_id))
+                no_variant_attributes = ''
+                if has_receipt_description:
+                    no_variant_attributes = '\n'.join(f'{attribute.attribute_id.name}: {attribute.name}' for attribute in move.purchase_line_id.sudo().product_no_variant_attribute_value_ids)
+                move.description_picking = '\n'.join(part for part in (no_variant_attributes, vendor_reference, current_description) if part).strip()
 
     def write(self, vals):
         res = super().write(vals)
@@ -100,11 +111,6 @@ class StockMove(models.Model):
         self.ensure_one()
         return self.origin_returned_move_id or not self.purchase_line_id or not self.product_id.id
 
-    def _prepare_extra_move_vals(self, qty):
-        vals = super()._prepare_extra_move_vals(qty)
-        vals['purchase_line_id'] = self.purchase_line_id.id
-        return vals
-
     def _prepare_move_split_vals(self, uom_qty):
         vals = super(StockMove, self)._prepare_move_split_vals(uom_qty)
         # when backordering an mto move link the bakcorder to the purchase order
@@ -125,6 +131,20 @@ class StockMove(models.Model):
             return[(self.purchase_line_id.order_id, self.purchase_line_id.order_id.user_id, visited)]
         else:
             return super(StockMove, self)._get_upstream_documents_and_responsibles(visited)
+
+    def _get_origin_company_domains(self, operator, value):
+        domains = super()._get_origin_company_domains(operator, value)
+        domains.append(Domain.AND([
+            Domain.custom(
+                to_sql=lambda table: SQL(
+                    "%(move_company_id)s != %(pol_company_id)s",
+                    move_company_id=table.company_id,
+                    pol_company_id=table._join('purchase_line_id').company_id,
+                ),
+            ),
+            Domain('purchase_line_id.company_id', operator, value),
+        ]))
+        return domains
 
     def _get_source_document(self):
         res = super()._get_source_document()

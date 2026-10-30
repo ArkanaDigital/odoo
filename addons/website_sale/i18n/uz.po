@@ -14,21 +14,29 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 19.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-24 17:41+0000\n"
-"PO-Revision-Date: 2026-06-21 17:25+0000\n"
+"POT-Creation-Date: 2026-09-11 17:41+0000\n"
+"PO-Revision-Date: 2026-08-31 14:10+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Uzbek <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Uzbek <https://translate.odoo.com/projects/odoo-s19-4/"
 "website_sale/uz/>\n"
 "Language: uz\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.products
 msgid "\" category"
+msgstr ""
+
+#. module: website_sale
+#. odoo-python
+#: code:addons/website_sale/models/sale_order_line.py:0
+msgid ""
+"%(product_name)s requires a minimum of %(min_qty)g; please add %"
+"(missing_qty)g more to your cart."
 msgstr ""
 
 #. module: website_sale
@@ -211,6 +219,7 @@ msgstr ""
 
 #. module: website_sale
 #. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/dynamic_snippet_products_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/products_list_page_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/wishlist_page_option.xml:0
 #, fuzzy
@@ -219,6 +228,7 @@ msgstr "1 ustun"
 
 #. module: website_sale
 #. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/dynamic_snippet_products_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/products_list_page_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/wishlist_page_option.xml:0
 #, fuzzy
@@ -233,6 +243,7 @@ msgstr ""
 
 #. module: website_sale
 #. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/dynamic_snippet_products_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/wishlist_page_option.xml:0
 msgid "3 Columns"
 msgstr ""
@@ -245,6 +256,7 @@ msgstr ""
 
 #. module: website_sale
 #. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/dynamic_snippet_products_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/wishlist_page_option.xml:0
 msgid "4 Columns"
 msgstr ""
@@ -257,6 +269,7 @@ msgstr ""
 
 #. module: website_sale
 #. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/dynamic_snippet_products_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/wishlist_page_option.xml:0
 msgid "5 Columns"
 msgstr ""
@@ -269,6 +282,7 @@ msgstr ""
 
 #. module: website_sale
 #. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/dynamic_snippet_products_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/wishlist_page_option.xml:0
 msgid "6 Columns"
 msgstr ""
@@ -280,12 +294,6 @@ msgstr ""
 #, fuzzy
 msgid "<b>Categories</b>"
 msgstr "<b>Turkumlar</b>"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.payment_confirmation_status
-#, fuzzy
-msgid "<b>Communication: </b>"
-msgstr "<b>Muloqot: </b>"
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.filter_products_price
@@ -390,123 +398,44 @@ msgstr ""
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.suggested_products_list
-#, fuzzy
 msgid ""
-"<i class=\"d-md-none fa fa-shopping-cart\" role=\"presentation\"/>\n"
-"                                    <span class=\"d-none d-md-inline\">Add "
-"to cart</span>"
+"<i class=\"oi d-md-none\" data-icon=\"shopping_cart\" role=\"presentation\"/"
+">\n"
+"                                <span class=\"d-none d-md-inline\">Add to "
+"cart</span>"
 msgstr ""
-"<i class=\"d-md-none fa fa-shopping-cart\" role=\"presentation\"/> <span "
-"class=\"d-none d-md-inline\">Savatga qo‘shish</span>"
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.billing_address_list
+#: model_terms:ir.ui.view,arch_db:website_sale.delivery_address_list
+msgid "<i class=\"oi me-1\" data-icon=\"add\"/>Add"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.product_compare
+msgid "<i class=\"oi me-1\" data-icon=\"chevron_backward\"/> Back to shop"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.sale_order_re_order_btn
+msgid ""
+"<i class=\"oi me-1\" data-icon=\"redo\"/>\n"
+"                    Order Again"
+msgstr ""
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.navigation_buttons
-#, fuzzy
 msgid ""
-"<i class=\"fa fa-angle-left me-2 fw-light\"/>\n"
+"<i class=\"oi me-2 fw-light\" data-icon=\"keyboard_arrow_left\"/>\n"
 "                    Continue shopping"
 msgstr ""
-"<i class=\"fa fa-angle-left me-2 fw-light\"/> Xarid qilishni davom ettirish"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.product_buy_now
-#, fuzzy
-msgid ""
-"<i class=\"fa fa-bolt me-2\"/>\n"
-"                Buy now"
-msgstr "<i class=\"fa fa-bolt me-2\"/> Hoziroq sotib olish"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.confirmation
-msgid "<i class=\"fa fa-cart-arrow-down me-2\"/>Order"
-msgstr ""
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.product_wishlist
-msgid ""
-"<i class=\"fa fa-circle text-danger me-1\" aria-hidden=\"true\"/>\n"
-"                                            Out of stock"
-msgstr ""
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.confirmation
-msgid "<i class=\"fa fa-download me-2\"/>Download"
-msgstr ""
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.confirmation
-msgid "<i class=\"fa fa-file-text-o me-2\"/>Invoice"
-msgstr ""
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.shop_product_buttons
-msgid ""
-"<i class=\"fa fa-fw fa-envelope o_not-animable\" role=\"presentation\"/>\n"
-"                    <span class=\"o_label small ms-1\">Contact Us</span>"
-msgstr ""
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.shop_product_buttons
-#, fuzzy
-msgid ""
-"<i class=\"fa fa-fw fa-shopping-cart o_not-animable\" role=\"presentation\"/"
-">\n"
-"                    <span class=\"o_label small ms-1\">Add to Cart</span>"
-msgstr ""
-"<i class=\"fa fa-fw fa-shopping-cart o_not-animable\" role=\"presentation\"/"
-"> <span class=\"o_label small ms-1\">Savatga qo‘shish</span>"
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.product_add_to_wishlist
 msgid ""
-"<i class=\"fa fa-heart-o me-2 me-lg-0\" role=\"img\" aria-label=\"Add to "
-"wishlist\"/>"
+"<i class=\"oi me-2 me-lg-0\" data-icon=\"favorite\" role=\"img\" aria-"
+"label=\"Add to wishlist\"/>"
 msgstr ""
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.template_footer_website_sale
-#, fuzzy
-msgid "<i class=\"fa fa-long-arrow-right\"/> All Products"
-msgstr "<i class=\"fa fa-long-arrow-right\"/> Barcha mahsulotlar"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.address_edit_button
-#, fuzzy
-msgid "<i class=\"fa fa-pencil me-1\"/>Edit"
-msgstr "<i class=\"fa fa-pencil me-1\"/>Tahrirlash"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.address_edit_button
-#, fuzzy
-msgid "<i class=\"fa fa-pencil me-1\"/>Want an invoice?"
-msgstr "<i class=\"fa fa-pencil me-1\"/>Hisob-faktura kerakmi?"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.quick_reorder_button
-#, fuzzy
-msgid "<i class=\"fa fa-rotate-left me-2\"/>Quick reorder"
-msgstr "<i class=\"fa fa-rotate-left me-2\"/>Tezkor qayta buyurtma"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.sale_order_re_order_btn
-#, fuzzy
-msgid ""
-"<i class=\"fa fa-rotate-right me-1\"/>\n"
-"                    Order Again"
-msgstr "<i class=\"fa fa-rotate-right me-1\"/> Yana buyurtma berish"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.product_compare
-msgid "<i class=\"fa fa-shopping-cart me-2\" aria-hidden=\"true\"/>Add to Cart"
-msgstr ""
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.cta_wrapper
-#, fuzzy
-msgid ""
-"<i class=\"fa fa-shopping-cart me-2\"/>\n"
-"                    Add to cart"
-msgstr "<i class=\"fa fa-shopping-cart me-2\"/> Savatga qo‘shish"
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.s_add_to_cart
@@ -514,29 +443,116 @@ msgid "<i class=\"oi me-2\" data-icon=\"add_shopping_cart\"/>Add to Cart"
 msgstr ""
 
 #. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.confirmation
+msgid "<i class=\"oi me-2\" data-icon=\"article\"/>Invoice"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.confirmation
+msgid "<i class=\"oi me-2\" data-icon=\"download\"/>Download"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.product_buy_now
+msgid ""
+"<i class=\"oi me-2\" data-icon=\"flash_on\"/>\n"
+"                Buy now"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.cta_wrapper
+msgid ""
+"<i class=\"oi me-2\" data-icon=\"mail\"/>\n"
+"                    Notify me"
+msgstr ""
+
+#. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.product_compare
-msgid "<i class=\"oi oi-chevron-left me-1\"/> Back to shop"
+msgid ""
+"<i class=\"oi me-2\" data-icon=\"shopping_cart\" aria-hidden=\"true\"/>Add "
+"to Cart"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.cta_wrapper
+msgid ""
+"<i class=\"oi me-2\" data-icon=\"shopping_cart\"/>\n"
+"                    Add to cart"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.confirmation
+msgid "<i class=\"oi me-2\" data-icon=\"shopping_cart_checkout\"/>Order"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.quick_reorder_button
+msgid "<i class=\"oi me-2\" data-icon=\"undo\"/>Quick reorder"
 msgstr ""
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.shop_product_carousel
-#, fuzzy
 msgid ""
-"<i class=\"oi oi-chevron-left oe_unmovable border bg-white text-900\" "
-"role=\"img\" aria-label=\"Previous\" title=\"Previous\"/>"
+"<i class=\"oi oe_unmovable border bg-white text-900\" data-"
+"icon=\"chevron_backward\" role=\"img\" aria-label=\"Previous\" "
+"title=\"Previous\"/>"
 msgstr ""
-"<i class=\"oi oi-chevron-left oe_unmovable border bg-white text-900\" "
-"role=\"img\" aria-label=\"Oldingi\" title=\"Oldingi\"/>"
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.shop_product_carousel
-#, fuzzy
 msgid ""
-"<i class=\"oi oi-chevron-right oe_unmovable border bg-white text-900\" "
-"role=\"img\" aria-label=\"Next\" title=\"Next\"/>"
+"<i class=\"oi oe_unmovable border bg-white text-900\" data-"
+"icon=\"chevron_forward\" role=\"img\" aria-label=\"Next\" title=\"Next\"/>"
 msgstr ""
-"<i class=\"oi oi-chevron-right oe_unmovable border bg-white text-900\" "
-"role=\"img\" aria-label=\"Keyingi\" title=\"Keyingi\"/>"
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.address_edit_button
+msgid "<i class=\"oi oi-filled me-1\" data-icon=\"edit\"/>Edit"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.address_edit_button
+msgid "<i class=\"oi oi-filled me-1\" data-icon=\"edit\"/>Want an invoice?"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.product_compare
+msgid ""
+"<i class=\"oi oi-filled me-2 text-danger\" data-icon=\"circle\" aria-"
+"hidden=\"true\"/>\n"
+"                                            Out of stock"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.cta_wrapper
+msgid ""
+"<i class=\"oi oi-filled me-2\" data-icon=\"notifications\"/>\n"
+"                    Subscribed"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.product_wishlist
+msgid ""
+"<i class=\"oi oi-filled text-danger me-1\" data-icon=\"circle\" aria-"
+"hidden=\"true\"/>\n"
+"                                            Out of stock"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.shop_product_buttons
+msgid ""
+"<i class=\"oi oi-fw o_not-animable\" data-icon=\"shopping_cart\" "
+"role=\"presentation\"/>\n"
+"                    <span class=\"o_label small ms-1\">Add to Cart</span>"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.shop_product_buttons
+msgid ""
+"<i class=\"oi oi-fw oi-filled o_not-animable\" data-icon=\"mail\" "
+"role=\"presentation\"/>\n"
+"                    <span class=\"o_label small ms-1\">Contact Us</span>"
+msgstr ""
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.dynamic_filter_template_product_product_products_item
@@ -554,11 +570,9 @@ msgid ""
 msgstr ""
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.billing_address_list
-#: model_terms:ir.ui.view,arch_db:website_sale.delivery_address_list
-#, fuzzy
-msgid "<i class=\"oi oi-plus me-2\"/>Add Address"
-msgstr "<i class=\"oi oi-plus me-2\"/>Manzil qo‘shish"
+#: model_terms:ir.ui.view,arch_db:website_sale.template_footer_website_sale
+msgid "<i class=\"oi\" data-icon=\"east\"/> All Products"
+msgstr ""
 
 #. module: website_sale
 #. odoo-python
@@ -579,26 +593,28 @@ msgstr ""
 "<p>Mijozlarni rag‘batlantirish uchun ularga xat yuborishingiz kerak!</p>"
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.products
-#, fuzzy
+#: model:mail.template,body_html:website_sale.mail_template_withdrawal_request_notification
 msgid ""
-"<small class=\"mx-auto\"><b>Clear Filters</b></small>\n"
-"                                        <i class=\"oi oi-close\" "
-"role=\"presentation\"/>"
+"<p>\n"
+"A withdrawal request was submitted for order <t t-"
+"out=\"object.order_reference\">S00001</t>.\n"
+"</p>\n"
+"<div style=\"margin: 16px 0; text-align: center;\">\n"
+"    <a t-att-href=\"ctx.get('order_access_link')\" target=\"_blank\" "
+"style=\"background-color: #875A7B; padding: 8px 16px; text-decoration: none; "
+"color: #fff; border-radius: 5px; font-size: 14px; display: inline-block;\">\n"
+"        View Order\n"
+"    </a>\n"
+"</div>\n"
+"            "
 msgstr ""
-"<small class=\"mx-auto\"><b>Filtrlarni tozalash</b></small> <i class=\"oi oi-"
-"close\" role=\"presentation\"/>"
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.product_terms_and_conditions
+#: model_terms:ir.ui.view,arch_db:website_sale.products
 msgid ""
-"<small class=\"text-muted mb-0\">\n"
-"                <a href=\"/terms\" class=\"o_translate_inline text-muted\">\n"
-"                    <u>Terms and Conditions</u>\n"
-"                </a><br/>\n"
-"                30-day money-back guarantee<br/>\n"
-"                Shipping: 2-3 Business Days\n"
-"            </small>"
+"<small class=\"mx-auto\"><b>Clear Filters</b></small>\n"
+"                                        <i class=\"oi\" data-"
+"icon=\"close_small\" role=\"presentation\"/>"
 msgstr ""
 
 #. module: website_sale
@@ -616,21 +632,8 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:website_sale.product_wishlist
 msgid ""
 "<span class=\"d-inline-flex align-items-baseline\">\n"
-"                                                    <i class=\"fa fa-fw fa-"
-"envelope o_not-animable\" role=\"presentation\"/>\n"
-"                                                    <span class=\"o_label "
-"small ms-1\">\n"
-"                                                        Contact Us\n"
-"                                                    </span>\n"
-"                                                </span>"
-msgstr ""
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.product_wishlist
-msgid ""
-"<span class=\"d-inline-flex align-items-baseline\">\n"
-"                                                    <i class=\"fa fa-fw fa-"
-"shopping-cart o_not-animable\" role=\"presentation\"/>\n"
+"                                                    <i class=\"oi oi-fw "
+"o_not-animable\" data-icon=\"shopping_cart\" role=\"presentation\"/>\n"
 "                                                    <span class=\"o_label "
 "small ms-1\">\n"
 "                                                        Add to Cart\n"
@@ -639,72 +642,22 @@ msgid ""
 msgstr ""
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.comparison_button
+#: model_terms:ir.ui.view,arch_db:website_sale.product_wishlist
 msgid ""
-"<span class=\"fa fa-exchange fa-fw o_not-animable\"/>\n"
-"            <span class=\"o_label small ms-2\">Compare</span>"
+"<span class=\"d-inline-flex align-items-baseline\">\n"
+"                                                    <i class=\"oi oi-fw oi-"
+"filled o_not-animable\" data-icon=\"mail\" role=\"presentation\"/>\n"
+"                                                    <span class=\"o_label "
+"small ms-1\">\n"
+"                                                        Contact Us\n"
+"                                                    </span>\n"
+"                                                </span>"
 msgstr ""
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.s_donation_inline
 msgid "<span class=\"fw-bold fs-5 w-100\">Donate</span>"
 msgstr ""
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.s_dynamic_snippet_products_preview_data
-#, fuzzy
-msgid ""
-"<span class=\"fw-bold\" name=\"product_price\" data-oe-type=\"monetary\" "
-"data-oe-expression=\"data['price']\">\n"
-"                                                <span "
-"class=\"oe_currency_value\">1,500.00</span>\n"
-"                                            </span>"
-msgstr ""
-"<span class=\"fw-bold\" name=\"product_price\" data-oe-type=\"monetary\" "
-"data-oe-expression=\"data['price']\"> <span class=\"oe_currency_value\">1 "
-"500,00</span> </span>"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.s_dynamic_snippet_products_preview_data
-#, fuzzy
-msgid ""
-"<span class=\"fw-bold\" name=\"product_price\" data-oe-type=\"monetary\" "
-"data-oe-expression=\"data['price']\">\n"
-"                                                <span "
-"class=\"oe_currency_value\">140.00</span>\n"
-"                                            </span>"
-msgstr ""
-"<span class=\"fw-bold\" name=\"product_price\" data-oe-type=\"monetary\" "
-"data-oe-expression=\"data['price']\"> <span "
-"class=\"oe_currency_value\">140,00</span> </span>"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.s_dynamic_snippet_products_preview_data
-#, fuzzy
-msgid ""
-"<span class=\"fw-bold\" name=\"product_price\" data-oe-type=\"monetary\" "
-"data-oe-expression=\"data['price']\">\n"
-"                                                <span "
-"class=\"oe_currency_value\">33.00</span>\n"
-"                                            </span>"
-msgstr ""
-"<span class=\"fw-bold\" name=\"product_price\" data-oe-type=\"monetary\" "
-"data-oe-expression=\"data['price']\"> <span "
-"class=\"oe_currency_value\">33,00</span> </span>"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.s_dynamic_snippet_products_preview_data
-#, fuzzy
-msgid ""
-"<span class=\"fw-bold\" name=\"product_price\" data-oe-type=\"monetary\" "
-"data-oe-expression=\"data['price']\">\n"
-"                                                <span "
-"class=\"oe_currency_value\">750.00</span>\n"
-"                                            </span>"
-msgstr ""
-"<span class=\"fw-bold\" name=\"product_price\" data-oe-type=\"monetary\" "
-"data-oe-expression=\"data['price']\"> <span "
-"class=\"oe_currency_value\">750,00</span> </span>"
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.delivery_method
@@ -721,6 +674,13 @@ msgstr ""
 "uchun tanlang</small> </span>"
 
 #. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.comparison_button
+msgid ""
+"<span class=\"oi oi-fw o_not-animable\" data-icon=\"swap_horiz\"/>\n"
+"            <span class=\"o_label small ms-2\">Compare</span>"
+msgstr ""
+
+#. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.navigation_buttons
 #, fuzzy
 msgid "<span class=\"px-3\">or</span>"
@@ -728,32 +688,24 @@ msgstr "<span class=\"px-3\">yoki</span>"
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.template_footer_website_sale
-#, fuzzy
 msgid ""
 "<span class=\"s_badge badge text-bg-primary o_animable\" data-"
 "name=\"Badge\">\n"
-"                                    <i class=\"fa fa-dollar fa-fw o_not-"
-"animable\"/> Low Prices\n"
+"                                    <i class=\"oi oi-fw o_not-animable\" "
+"data-icon=\"attach_money\"/> Low Prices\n"
 "                                </span>\n"
 "                                <span class=\"s_badge badge text-bg-primary "
 "o_animable\" data-name=\"Badge\">\n"
-"                                    <i class=\"fa fa-shopping-basket fa-fw "
-"o_not-animable\"/>\n"
+"                                    <i class=\"oi oi-fw o_not-animable\" "
+"data-icon=\"shopping_basket\"/>\n"
 "                                    Easy Returns\n"
 "                                </span>\n"
 "                                <span class=\"s_badge badge text-bg-primary "
 "o_animable\" data-name=\"Badge\">\n"
-"                                    <i class=\"fa fa-truck fa-fw o_not-"
-"animable\"/> Fast Shipping\n"
+"                                    <i class=\"oi oi-fw o_not-animable\" "
+"data-icon=\"local_shipping\"/> Fast Shipping\n"
 "                                </span>"
 msgstr ""
-"<span class=\"s_badge badge text-bg-primary o_animable\" data-"
-"name=\"Badge\"> <i class=\"fa fa-dollar fa-fw o_not-animable\"/> Arzon "
-"narxlar </span> <span class=\"s_badge badge text-bg-primary o_animable\" "
-"data-name=\"Badge\"> <i class=\"fa fa-shopping-basket fa-fw o_not-animable\"/"
-"> Oson qaytarish </span> <span class=\"s_badge badge text-bg-primary "
-"o_animable\" data-name=\"Badge\"> <i class=\"fa fa-truck fa-fw o_not-"
-"animable\"/> Tez yetkazib berish </span>"
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.s_donation_form
@@ -942,9 +894,10 @@ msgid ""
 "                    </div>\n"
 "                    <div t-attf-style=\"margin-bottom: 22px; font-size: 14px;"
 "\">\n"
-"                        <a t-att-href=\"object.website_url\" t-attf-"
-"style=\"background-color: {{website.company_id.email_secondary_color or "
-"'#875A7B'}}; padding: 8px 16px 8px 16px; text-decoration: none; color: "
+"                        <a t-att-href=\"website.get_base_url() + "
+"object.website_url\" t-attf-style=\"background-color: "
+"{{website.company_id.email_secondary_color or '#875A7B'}}; padding: 8px 16px "
+"8px 16px; text-decoration: none; color: "
 "{{website.company_id.email_primary_color or '#fff'}}; border-radius: 5px; "
 "font-size:14px;\">\n"
 "                            Order Now\n"
@@ -987,6 +940,22 @@ msgid ""
 "                        </table>\n"
 "                    </div>\n"
 "                </div>\n"
+"            "
+msgstr ""
+
+#. module: website_sale
+#: model:mail.template,body_html:website_sale.mail_template_sale_withdrawal_request_confirmation
+msgid ""
+"<t>\n"
+"Hello,<br/><br/>\n"
+"This email confirms that we have received your request to cancel Order <t t-"
+"out=\"object.name\">S00001</t>.<br/><br/>\n"
+"Our team is currently reviewing your request. We will notify you once it is "
+"processed.<br/><br/>\n"
+"Sincerely,<br/>\n"
+"<t t-out=\"(object.company_id or object.user_id.company_id or "
+"user.company_id).name\">YourCompany</t> Team\n"
+"</t>\n"
 "            "
 msgstr ""
 
@@ -1376,6 +1345,12 @@ msgstr ""
 "mahsulotlarni Toifalar bilan ajrating."
 
 #. module: website_sale
+#: model:ir.model.constraint,message:website_sale.constraint_product_stock_notification_rel_product_stock_notificat_a3552ee5
+msgid ""
+"A stock notification can only exist once per product, website and partner."
+msgstr ""
+
+#. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.s_donation_form
 msgid "A year of cultural awakening."
 msgstr ""
@@ -1410,12 +1385,6 @@ msgid "Abandoned Delay"
 msgstr "Tark etish kechikishi"
 
 #. module: website_sale
-#: model:ir.model.fields,field_description:website_sale.field_res_config_settings__send_abandoned_cart_email
-#, fuzzy
-msgid "Abandoned Email"
-msgstr "Tark etilgan xabar"
-
-#. module: website_sale
 #: model:ir.model.fields,field_description:website_sale.field_website_snippet_filter__product_cross_selling
 #, fuzzy
 msgid "About cross selling products"
@@ -1429,10 +1398,9 @@ msgid "Accept Terms"
 msgstr "Shartlarni qabul qilish"
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.product_image_view_kanban
-#, fuzzy
-msgid "Acceptable file size"
-msgstr "Ruxsat etilgan fayl hajmi"
+#: model:ir.model,name:website_sale.model_res_groups
+msgid "Access Groups"
+msgstr ""
 
 #. module: website_sale
 #: model:ir.model.fields,field_description:website_sale.field_product_feed__access_token
@@ -1567,6 +1535,12 @@ msgid "Add an address"
 msgstr "Manzil qo‘shish"
 
 #. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.container_dropzone_above_product_details
+#: model_terms:ir.ui.view,arch_db:website_sale.container_dropzone_below_product_details
+msgid "Add elements to all products"
+msgstr ""
+
+#. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.cart_lines_quantity
 #: model_terms:ir.ui.view,arch_db:website_sale.product_quantity
 #, fuzzy
@@ -1592,12 +1566,6 @@ msgstr "Savatga qo‘shish tugmasi"
 
 #. module: website_sale
 #. odoo-javascript
-#: code:addons/website_sale/static/src/website_builder/checkout_page_option.xml:0
-msgid "Add to Wishlist"
-msgstr ""
-
-#. module: website_sale
-#. odoo-javascript
 #: code:addons/website_sale/static/src/js/product_configurator_dialog/product_configurator_dialog.xml:0
 #: model_terms:ir.ui.view,arch_db:website_sale.shop_product_buttons
 #, fuzzy
@@ -1611,17 +1579,9 @@ msgid "Add to compare"
 msgstr ""
 
 #. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/xml/website_sale_product_availability.xml:0
 #: model_terms:ir.ui.view,arch_db:website_sale.product_add_to_wishlist
 #: model_terms:ir.ui.view,arch_db:website_sale.wishlist_button
 msgid "Add to wishlist"
-msgstr ""
-
-#. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/xml/website_sale_product_availability.xml:0
-msgid "Added to your wishlist"
 msgstr ""
 
 #. module: website_sale
@@ -1639,13 +1599,13 @@ msgid "Alerts"
 msgstr ""
 
 #. module: website_sale
-#: model:ir.model.fields,field_description:website_sale.field_product_public_category__align_category_content
+#: model:ir.model.fields,field_description:website_sale.field_website__align_category_content
 #, fuzzy
 msgid "Align Category Content"
 msgstr "Toifa tarkibini tekislash"
 
 #. module: website_sale
-#: model:ir.model.fields,help:website_sale.field_product_public_category__align_category_content
+#: model:ir.model.fields,help:website_sale.field_website__align_category_content
 #, fuzzy
 msgid ""
 "Align the category content on the shop page. Corresponds to the 'Center "
@@ -1663,6 +1623,9 @@ msgid "Alignment"
 msgstr "Tekislash"
 
 #. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/js/product_image/attribute_value_selector/attribute_value_selector.js:0
+#: model:website.snippet.filter,name:website_sale.dynamic_filter_all_products
 #: model_terms:ir.ui.view,arch_db:website_sale.filter_select_attributes
 #: model_terms:ir.ui.view,arch_db:website_sale.product_template_form_view
 #, fuzzy
@@ -1687,6 +1650,14 @@ msgid "All Products"
 msgstr "Barcha mahsulotlar"
 
 #. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/product_page_option_plugin.js:0
+msgid "All categories"
+msgstr ""
+
+#. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/product_page_option_plugin.js:0
 #: model_terms:ir.ui.view,arch_db:website_sale.products
 #, fuzzy
 msgid "All products"
@@ -1766,6 +1737,12 @@ msgid "Amount of Abandoned Carts"
 msgstr "Tark etilgan savatlar miqdori"
 
 #. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/js/product_image/attribute_value_selector/attribute_value_selector.xml:0
+msgid "And"
+msgstr ""
+
+#. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.shop_page_empty_screen
 msgid ""
 "Animation showing how to create a new product: Click 'New' in the top-right "
@@ -1806,6 +1783,12 @@ msgstr ""
 
 #. module: website_sale
 #. odoo-javascript
+#: code:addons/website_sale/static/src/js/product_image/attribute_value_selector/attribute_value_selector.xml:0
+msgid "Apply to attributes"
+msgstr ""
+
+#. module: website_sale
+#. odoo-javascript
 #: code:addons/website_sale/static/src/website_builder/dynamic_snippet_category_options.xml:0
 #, fuzzy
 msgid "Arrows"
@@ -1834,6 +1817,11 @@ msgstr "Ilovalar soni"
 #: model:ir.actions.act_window,name:website_sale.product_attribute_category_action
 #: model:ir.ui.menu,name:website_sale.menu_attribute_category_action
 msgid "Attribute Categories"
+msgstr ""
+
+#. module: website_sale
+#: model:ir.model.fields,field_description:website_sale.field_product_image__attribute_value_ids
+msgid "Attribute Value"
 msgstr ""
 
 #. module: website_sale
@@ -1873,12 +1861,6 @@ msgid "Auto-crop"
 msgstr "Avtomatik kesish"
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.res_config_settings_view_form
-#, fuzzy
-msgid "Automate abandoned checkout emails"
-msgstr "Tark etilgan to‘lov xatlarini avtomatlashtirish"
-
-#. module: website_sale
 #: model:ir.model.fields,field_description:website_sale.field_res_config_settings__group_automate_suggested_products
 msgid "Automate suggested products"
 msgstr ""
@@ -1912,11 +1894,6 @@ msgstr "O‘rtacha reyting"
 #, fuzzy
 msgid "Back Button Label"
 msgstr "Orqaga tugmasi yorlig‘i"
-
-#. module: website_sale
-#: model:ir.model.fields,field_description:website_sale.field_product_product__stock_notification_partner_ids
-msgid "Back in stock Notifications"
-msgstr ""
 
 #. module: website_sale
 #: model:website.checkout.step,back_button_label:website_sale.checkout_step_delivery
@@ -2047,13 +2024,6 @@ msgstr "Konteynerlar"
 
 #. module: website_sale
 #. odoo-javascript
-#: code:addons/website_sale/static/src/website_builder/dynamic_snippet_category_options.xml:0
-#, fuzzy
-msgid "Blocks Design"
-msgstr "Bloklar dizayni"
-
-#. module: website_sale
-#. odoo-javascript
 #: code:addons/website_sale/static/src/website_builder/products_design_panel.xml:0
 #, fuzzy
 msgid "Bold"
@@ -2155,12 +2125,6 @@ msgid "CSS class for wishlist page design"
 msgstr ""
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.s_dynamic_snippet_products_preview_data
-#, fuzzy
-msgid "Cabinet with Doors"
-msgstr "Eshikli javon"
-
-#. module: website_sale
 #: model:product.public.category,name:website_sale.public_category_cabinets
 #: model_terms:ir.ui.view,arch_db:website_sale.s_dynamic_snippet_category_preview_data
 #, fuzzy
@@ -2211,6 +2175,7 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/website_sale/static/src/website_builder/product_page_option.xml:0
 #: model:ir.model.fields.selection,name:website_sale.selection__website__product_page_image_layout__carousel
+#: model_terms:ir.ui.view,arch_db:website_sale.snippets
 #, fuzzy
 msgid "Carousel"
 msgstr "Karusel"
@@ -2246,6 +2211,7 @@ msgstr "Savatni tiklash xati allaqachon yuborilgan"
 #: model_terms:ir.ui.view,arch_db:website_sale.filmstrip_categories
 #: model_terms:ir.ui.view,arch_db:website_sale.product_template_form_view
 #: model_terms:ir.ui.view,arch_db:website_sale.product_template_view_tree_website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.snippets
 #, fuzzy
 msgid "Categories"
 msgstr "Toifalar"
@@ -2347,16 +2313,12 @@ msgid "Chandeliers"
 msgstr "Qandillar"
 
 #. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/website_sale_options.xml:0
 #: model:website.checkout.step,main_button_label:website_sale.checkout_step_delivery
 #, fuzzy
 msgid "Checkout"
 msgstr "To‘lov"
-
-#. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/website_builder/website_sale_options.xml:0
-msgid "Checkout Page"
-msgstr ""
 
 #. module: website_sale
 #: model:ir.model.fields,field_description:website_sale.field_product_public_category__child_id
@@ -2517,6 +2479,12 @@ msgstr "Rang"
 
 #. module: website_sale
 #. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/dynamic_snippet_category_options.xml:0
+msgid "Color Filter"
+msgstr ""
+
+#. module: website_sale
+#. odoo-javascript
 #: code:addons/website_sale/static/src/website_builder/products_design_panel.xml:0
 #, fuzzy
 msgid "Color combinations are defined in the Theme Tab"
@@ -2557,6 +2525,12 @@ msgstr ""
 #. module: website_sale
 #: model:ir.model,name:website_sale.model_res_company
 msgid "Company"
+msgstr ""
+
+#. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/checkout_page_option.xml:0
+msgid "Company Details"
 msgstr ""
 
 #. module: website_sale
@@ -2619,12 +2593,6 @@ msgstr "Yetkazib berilgandan so‘ng hisoblanadi"
 #, fuzzy
 msgid "Condensed List"
 msgstr "Qisqartirilgan ro‘yxat"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.s_dynamic_snippet_products_preview_data
-#, fuzzy
-msgid "Conference Chair"
-msgstr "Konferensiya stuli"
 
 #. module: website_sale
 #: model:ir.model,name:website_sale.model_res_config_settings
@@ -2813,23 +2781,14 @@ msgstr ""
 #: model:ir.model.fields,field_description:website_sale.field_product_image__create_uid
 #: model:ir.model.fields,field_description:website_sale.field_product_public_category__create_uid
 #: model:ir.model.fields,field_description:website_sale.field_product_ribbon__create_uid
+#: model:ir.model.fields,field_description:website_sale.field_product_stock_notification__create_uid
 #: model:ir.model.fields,field_description:website_sale.field_product_wishlist__create_uid
 #: model:ir.model.fields,field_description:website_sale.field_website_checkout_step__create_uid
 #: model:ir.model.fields,field_description:website_sale.field_website_sale_extra_field__create_uid
+#: model:ir.model.fields,field_description:website_sale.field_withdrawal_request__create_uid
 #, fuzzy
 msgid "Created by"
 msgstr "Yaratuvchi"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.s_mega_menu_images_subtitles
-#: model_terms:ir.ui.view,arch_db:website_sale.s_mega_menu_little_icons
-#, fuzzy
-msgid ""
-"Created in 2021, the company is young and dynamic. Discover the composition "
-"of the team and their skills."
-msgstr ""
-"2021-yilda tashkil etilgan kompaniya yosh va serharakat. Jamoa tarkibi va "
-"ularning mahoratini bilib oling"
 
 #. module: website_sale
 #: model:ir.model.fields,field_description:website_sale.field_product_attribute_category__create_date
@@ -2837,15 +2796,17 @@ msgstr ""
 #: model:ir.model.fields,field_description:website_sale.field_product_image__create_date
 #: model:ir.model.fields,field_description:website_sale.field_product_public_category__create_date
 #: model:ir.model.fields,field_description:website_sale.field_product_ribbon__create_date
+#: model:ir.model.fields,field_description:website_sale.field_product_stock_notification__create_date
 #: model:ir.model.fields,field_description:website_sale.field_product_wishlist__create_date
 #: model:ir.model.fields,field_description:website_sale.field_website_checkout_step__create_date
 #: model:ir.model.fields,field_description:website_sale.field_website_sale_extra_field__create_date
+#: model:ir.model.fields,field_description:website_sale.field_withdrawal_request__create_date
 #, fuzzy
 msgid "Created on"
 msgstr "Yaratilgan sana"
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.view_sales_order_filter_ecommerce_abondand
+#: model_terms:ir.ui.view,arch_db:website_sale.sale_order_abandoned_cart_search
 #, fuzzy
 msgid "Creation Date"
 msgstr "Yaratilgan sana"
@@ -2907,30 +2868,11 @@ msgid "Customers"
 msgstr "Mijozlar"
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.s_dynamic_snippet_products_preview_data
-#, fuzzy
-msgid "Customizable Desk"
-msgstr "Moslanuvchan ish stoli"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.res_config_settings_view_form
-#, fuzzy
-msgid "Customize Abandoned Email Template"
-msgstr "Tark etilgan xatni moslashtirish andozasi"
-
-#. module: website_sale
 #. odoo-python
 #: code:addons/website_sale/models/res_config_settings.py:0
 #, fuzzy
 msgid "Customize Email Templates"
 msgstr "Xat andozalarini moslashtirish"
-
-#. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/website_builder/dynamic_snippet_category_options.xml:0
-#, fuzzy
-msgid "Darken overlay"
-msgstr "Qoramtir qoplama"
 
 #. module: website_sale
 #: model:ir.model.fields,field_description:website_sale.field_res_config_settings__rating_email_delay
@@ -3177,6 +3119,7 @@ msgstr "Ish stollari"
 
 #. module: website_sale
 #. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/dynamic_snippet_products_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/wishlist_page_option.xml:0
 msgid "Desktop"
 msgstr ""
@@ -3246,13 +3189,6 @@ msgid "Discounts, Loyalty & Gift Card"
 msgstr "Chegirmalar, sodiqlik dasturi va sovg‘a kartasi"
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.s_mega_menu_images_subtitles
-#: model_terms:ir.ui.view,arch_db:website_sale.s_mega_menu_little_icons
-#, fuzzy
-msgid "Discover our team"
-msgstr "Jamoamiz bilan tanishing"
-
-#. module: website_sale
 #. odoo-javascript
 #: code:addons/website_sale/static/src/website_builder/product_page_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/products_list_page_option.xml:0
@@ -3268,7 +3204,6 @@ msgstr "Ko‘rsatish"
 #: model:ir.model.fields,field_description:website_sale.field_digest_digest__display_name
 #: model:ir.model.fields,field_description:website_sale.field_ir_http__display_name
 #: model:ir.model.fields,field_description:website_sale.field_ir_module_module__display_name
-#: model:ir.model.fields,field_description:website_sale.field_payment_token__display_name
 #: model:ir.model.fields,field_description:website_sale.field_payment_transaction__display_name
 #: model:ir.model.fields,field_description:website_sale.field_product_attribute__display_name
 #: model:ir.model.fields,field_description:website_sale.field_product_attribute_category__display_name
@@ -3281,6 +3216,7 @@ msgstr "Ko‘rsatish"
 #: model:ir.model.fields,field_description:website_sale.field_product_product__display_name
 #: model:ir.model.fields,field_description:website_sale.field_product_public_category__display_name
 #: model:ir.model.fields,field_description:website_sale.field_product_ribbon__display_name
+#: model:ir.model.fields,field_description:website_sale.field_product_stock_notification__display_name
 #: model:ir.model.fields,field_description:website_sale.field_product_tag__display_name
 #: model:ir.model.fields,field_description:website_sale.field_product_template__display_name
 #: model:ir.model.fields,field_description:website_sale.field_product_template_attribute_line__display_name
@@ -3288,6 +3224,7 @@ msgstr "Ko‘rsatish"
 #: model:ir.model.fields,field_description:website_sale.field_product_wishlist__display_name
 #: model:ir.model.fields,field_description:website_sale.field_res_company__display_name
 #: model:ir.model.fields,field_description:website_sale.field_res_config_settings__display_name
+#: model:ir.model.fields,field_description:website_sale.field_res_groups__display_name
 #: model:ir.model.fields,field_description:website_sale.field_res_partner__display_name
 #: model:ir.model.fields,field_description:website_sale.field_res_users__display_name
 #: model:ir.model.fields,field_description:website_sale.field_sale_order__display_name
@@ -3303,6 +3240,7 @@ msgstr "Ko‘rsatish"
 #: model:ir.model.fields,field_description:website_sale.field_website_snippet_filter__display_name
 #: model:ir.model.fields,field_description:website_sale.field_website_track__display_name
 #: model:ir.model.fields,field_description:website_sale.field_website_visitor__display_name
+#: model:ir.model.fields,field_description:website_sale.field_withdrawal_request__display_name
 #, fuzzy
 msgid "Display Name"
 msgstr "Ko‘rsatiladigan nom"
@@ -3332,7 +3270,7 @@ msgid "Display estimated date to your customer. Editable if range is defined."
 msgstr ""
 
 #. module: website_sale
-#: model:ir.model.fields,help:website_sale.field_product_public_category__show_category_description
+#: model:ir.model.fields,help:website_sale.field_website__show_category_description
 #, fuzzy
 msgid ""
 "Display the category description on the shop page. Corresponds to the 'Show "
@@ -3342,7 +3280,7 @@ msgstr ""
 "muharrir tanloviga mos keladi."
 
 #. module: website_sale
-#: model:ir.model.fields,help:website_sale.field_product_public_category__show_category_title
+#: model:ir.model.fields,help:website_sale.field_website__show_category_title
 #, fuzzy
 msgid ""
 "Display the category title on the shop page. Corresponds to the 'Show Title' "
@@ -3463,6 +3401,18 @@ msgid "Drawers"
 msgstr "Tortmalar"
 
 #. module: website_sale
+#: model:ir.model.fields,field_description:website_sale.field_product_product__dropzone_above_price
+#: model:ir.model.fields,field_description:website_sale.field_product_template__dropzone_above_price
+msgid "Drop Zone Above Price"
+msgstr ""
+
+#. module: website_sale
+#: model:ir.model.fields,field_description:website_sale.field_product_product__dropzone_above_specification
+#: model:ir.model.fields,field_description:website_sale.field_product_template__dropzone_above_specification
+msgid "Drop Zone Above Specification"
+msgstr ""
+
+#. module: website_sale
 #: model:ir.model.constraint,message:website_sale.constraint_product_wishlist_product_unique_partner_id
 msgid "Duplicated wishlisted product for this partner."
 msgstr ""
@@ -3471,12 +3421,6 @@ msgstr ""
 #: model:product.attribute.category,name:website_sale.product_attribute_category_duration
 msgid "Duration"
 msgstr ""
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.snippets
-#, fuzzy
-msgid "Dynamic Content"
-msgstr "Dinamik tarkib"
 
 #. module: website_sale
 #: model:ir.model.fields,field_description:website_sale.field_website__shop_extra_field_ids
@@ -3528,6 +3472,16 @@ msgid "Ecommerce: Order Rating Request"
 msgstr ""
 
 #. module: website_sale
+#: model:mail.template,name:website_sale.mail_template_sale_withdrawal_request_confirmation
+msgid "Ecommerce: Withdrawal Request Confirmation"
+msgstr ""
+
+#. module: website_sale
+#: model:mail.template,name:website_sale.mail_template_withdrawal_request_notification
+msgid "Ecommerce: Withdrawal Request Notification"
+msgstr ""
+
+#. module: website_sale
 #. odoo-javascript
 #: code:addons/website_sale/static/src/website_builder/product_ribbon_options.xml:0
 #: model_terms:ir.ui.view,arch_db:website_sale.shop_page_empty_screen
@@ -3559,6 +3513,13 @@ msgstr "Ta'lim vositalari"
 #, fuzzy
 msgid "Email"
 msgstr "Elektron pochta"
+
+#. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/website_sale_form_editor.js:0
+msgid ""
+"Email addresses of the recipients of the withdrawal request notification"
+msgstr ""
 
 #. module: website_sale
 #. odoo-javascript
@@ -3625,16 +3586,9 @@ msgid "Extra Step"
 msgstr "Qo‘shimcha qadam"
 
 #. module: website_sale
-#: model:ir.model.fields,field_description:website_sale.field_product_product__product_variant_image_ids
-#, fuzzy
-msgid "Extra Variant Images"
-msgstr "Qo‘shimcha variant rasmlari"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.product_normal_form_view
-#, fuzzy
-msgid "Extra Variant Media"
-msgstr "Qo‘shimcha variant medialari"
+#: model:ir.model.fields,field_description:website_sale.field_website__extra_step_category_ids
+msgid "Extra Step Categories"
+msgstr ""
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.extra_info
@@ -3808,6 +3762,16 @@ msgid "Follow us"
 msgstr "Bizni kuzating"
 
 #. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.sale_order_abandoned_cart_search
+msgid "Follow-up Sent"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.sale_order_abandoned_cart_search
+msgid "Follow-up to Send"
+msgstr ""
+
+#. module: website_sale
 #: model:ir.model.fields,field_description:website_sale.field_product_feed__message_follower_ids
 #: model:ir.model.fields,field_description:website_sale.field_product_template__message_follower_ids
 #, fuzzy
@@ -3837,13 +3801,6 @@ msgstr "Oziq-ovqat saqlash idishlari"
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.res_config_settings_view_form
 msgid "For"
-msgstr ""
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.product_pricelist_item_form
-msgid ""
-"For formula or fixed pricing, the original price isn’t shown in\n"
-"                    sale orders or checkout."
 msgstr ""
 
 #. module: website_sale
@@ -3892,9 +3849,8 @@ msgstr "Funksional"
 #: code:addons/website_sale/models/website_snippet_filter.py:0
 #: model:product.public.category,name:website_sale.public_category_furnitures
 #: model_terms:ir.ui.view,arch_db:website_sale.s_dynamic_snippet_category_preview_data
-#, fuzzy
-msgid "Furnitures"
-msgstr "Mebellar"
+msgid "Furniture"
+msgstr ""
 
 #. module: website_sale
 #. odoo-python
@@ -3947,23 +3903,10 @@ msgid "General Features"
 msgstr ""
 
 #. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/xml/website_sale_product_availability.xml:0
-msgid "Get notified when back in stock"
-msgstr ""
-
-#. module: website_sale
 #: model:product.public.category,name:website_sale.public_category_desks_glass
 #, fuzzy
 msgid "Glass Desks"
 msgstr "Shisha stollar"
-
-#. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/website_builder/dynamic_snippet_category_options.xml:0
-#, fuzzy
-msgid "Global options for all inner blocks."
-msgstr "Barcha ichki bloklar uchun global parametrlar."
 
 #. module: website_sale
 #. odoo-javascript
@@ -3991,6 +3934,7 @@ msgstr "Google Savdo markazi"
 #: code:addons/website_sale/static/src/website_builder/products_list_page_option.xml:0
 #: model:ir.model.fields.selection,name:website_sale.selection__website__product_page_image_layout__grid
 #: model_terms:ir.ui.view,arch_db:website_sale.products
+#: model_terms:ir.ui.view,arch_db:website_sale.snippets
 #, fuzzy
 msgid "Grid"
 msgstr "To‘r"
@@ -4017,6 +3961,11 @@ msgstr "HTTP yo‘naltirish"
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.wishlist_button
 msgid "Handle your wishlist from the menu icon."
+msgstr ""
+
+#. module: website_sale
+#: model:ir.model.fields,field_description:website_sale.field_product_image__has_attribute_value
+msgid "Has Attribute Value"
 msgstr ""
 
 #. module: website_sale
@@ -4102,14 +4051,6 @@ msgid "Href"
 msgstr "Href"
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.product_image_view_kanban
-#, fuzzy
-msgid "Huge file size. The image should be optimized/reduced."
-msgstr ""
-"Fayl hajmi juda katta. Rasmni optimallashtirish yoki hajmini kamaytirish "
-"kerak."
-
-#. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.accept_terms_and_conditions
 #, fuzzy
 msgid "I agree to the"
@@ -4122,7 +4063,6 @@ msgstr "Men rozilik bildiraman"
 #: model:ir.model.fields,field_description:website_sale.field_digest_digest__id
 #: model:ir.model.fields,field_description:website_sale.field_ir_http__id
 #: model:ir.model.fields,field_description:website_sale.field_ir_module_module__id
-#: model:ir.model.fields,field_description:website_sale.field_payment_token__id
 #: model:ir.model.fields,field_description:website_sale.field_payment_transaction__id
 #: model:ir.model.fields,field_description:website_sale.field_product_attribute__id
 #: model:ir.model.fields,field_description:website_sale.field_product_attribute_category__id
@@ -4135,6 +4075,7 @@ msgstr "Men rozilik bildiraman"
 #: model:ir.model.fields,field_description:website_sale.field_product_product__id
 #: model:ir.model.fields,field_description:website_sale.field_product_public_category__id
 #: model:ir.model.fields,field_description:website_sale.field_product_ribbon__id
+#: model:ir.model.fields,field_description:website_sale.field_product_stock_notification__id
 #: model:ir.model.fields,field_description:website_sale.field_product_tag__id
 #: model:ir.model.fields,field_description:website_sale.field_product_template__id
 #: model:ir.model.fields,field_description:website_sale.field_product_template_attribute_line__id
@@ -4142,6 +4083,7 @@ msgstr "Men rozilik bildiraman"
 #: model:ir.model.fields,field_description:website_sale.field_product_wishlist__id
 #: model:ir.model.fields,field_description:website_sale.field_res_company__id
 #: model:ir.model.fields,field_description:website_sale.field_res_config_settings__id
+#: model:ir.model.fields,field_description:website_sale.field_res_groups__id
 #: model:ir.model.fields,field_description:website_sale.field_res_partner__id
 #: model:ir.model.fields,field_description:website_sale.field_res_users__id
 #: model:ir.model.fields,field_description:website_sale.field_sale_order__id
@@ -4157,6 +4099,7 @@ msgstr "Men rozilik bildiraman"
 #: model:ir.model.fields,field_description:website_sale.field_website_snippet_filter__id
 #: model:ir.model.fields,field_description:website_sale.field_website_track__id
 #: model:ir.model.fields,field_description:website_sale.field_website_visitor__id
+#: model:ir.model.fields,field_description:website_sale.field_withdrawal_request__id
 #, fuzzy
 msgid "ID"
 msgstr "ID"
@@ -4181,6 +4124,13 @@ msgstr ""
 #. module: website_sale
 #: model:ir.model.fields,help:website_sale.field_product_public_category__not_in_shop
 msgid "If checked, the category will not be displayed in the main catalog page"
+msgstr ""
+
+#. module: website_sale
+#: model:ir.model.fields,help:website_sale.field_website__extra_step_category_ids
+msgid ""
+"If set, the extra step is only shown when the cart contains products from "
+"these eCommerce categories."
 msgstr ""
 
 #. module: website_sale
@@ -4364,6 +4314,7 @@ msgstr ""
 #. module: website_sale
 #. odoo-javascript
 #: code:addons/website_sale/static/src/interactions/product_page.js:0
+#: model_terms:ir.ui.view,arch_db:website_sale.cta_wrapper
 msgid "Invalid email"
 msgstr ""
 
@@ -4435,6 +4386,7 @@ msgstr "Kuzatuvchimi"
 
 #. module: website_sale
 #: model:ir.model.fields,field_description:website_sale.field_delivery_carrier__is_published
+#: model:ir.model.fields,field_description:website_sale.field_product_product__is_published
 #: model:ir.model.fields,field_description:website_sale.field_product_public_category__is_published
 #: model:ir.model.fields,field_description:website_sale.field_product_template__is_published
 #: model:ir.model.fields,field_description:website_sale.field_website_checkout_step__is_published
@@ -4509,7 +4461,6 @@ msgstr "Lampa"
 
 #. module: website_sale
 #: model:product.public.category,name:website_sale.public_category_lamps
-#: model_terms:ir.ui.view,arch_db:website_sale.s_dynamic_snippet_category_preview_data
 #, fuzzy
 msgid "Lamps"
 msgstr "Lampalar"
@@ -4560,33 +4511,9 @@ msgid "Large Images"
 msgstr "Katta rasmlar"
 
 #. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/js/date_filter_button/date_filter_button.js:0
-msgid "Last 30 days"
-msgstr ""
-
-#. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/js/date_filter_button/date_filter_button.js:0
-msgid "Last 365 days"
-msgstr ""
-
-#. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/js/date_filter_button/date_filter_button.js:0
-msgid "Last 7 days"
-msgstr ""
-
-#. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/js/date_filter_button/date_filter_button.js:0
-msgid "Last 90 days"
-msgstr ""
-
-#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.sale_order_abandoned_cart_search
 #: model_terms:ir.ui.view,arch_db:website_sale.sale_report_view_search_website
 #: model_terms:ir.ui.view,arch_db:website_sale.view_sales_order_filter_ecommerce
-#: model_terms:ir.ui.view,arch_db:website_sale.view_sales_order_filter_ecommerce_abondand
 #, fuzzy
 msgid "Last Month"
 msgstr "O‘tgan oy"
@@ -4603,9 +4530,11 @@ msgstr "Oxirgi bildirishnoma sanasi"
 #: model:ir.model.fields,field_description:website_sale.field_product_image__write_uid
 #: model:ir.model.fields,field_description:website_sale.field_product_public_category__write_uid
 #: model:ir.model.fields,field_description:website_sale.field_product_ribbon__write_uid
+#: model:ir.model.fields,field_description:website_sale.field_product_stock_notification__write_uid
 #: model:ir.model.fields,field_description:website_sale.field_product_wishlist__write_uid
 #: model:ir.model.fields,field_description:website_sale.field_website_checkout_step__write_uid
 #: model:ir.model.fields,field_description:website_sale.field_website_sale_extra_field__write_uid
+#: model:ir.model.fields,field_description:website_sale.field_withdrawal_request__write_uid
 #, fuzzy
 msgid "Last Updated by"
 msgstr "Oxirgi yangilagan shaxs"
@@ -4616,25 +4545,27 @@ msgstr "Oxirgi yangilagan shaxs"
 #: model:ir.model.fields,field_description:website_sale.field_product_image__write_date
 #: model:ir.model.fields,field_description:website_sale.field_product_public_category__write_date
 #: model:ir.model.fields,field_description:website_sale.field_product_ribbon__write_date
+#: model:ir.model.fields,field_description:website_sale.field_product_stock_notification__write_date
 #: model:ir.model.fields,field_description:website_sale.field_product_wishlist__write_date
 #: model:ir.model.fields,field_description:website_sale.field_website_checkout_step__write_date
 #: model:ir.model.fields,field_description:website_sale.field_website_sale_extra_field__write_date
+#: model:ir.model.fields,field_description:website_sale.field_withdrawal_request__write_date
 #, fuzzy
 msgid "Last Updated on"
 msgstr "Oxirgi yangilangan sana"
 
 #. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.sale_order_abandoned_cart_search
 #: model_terms:ir.ui.view,arch_db:website_sale.sale_report_view_search_website
 #: model_terms:ir.ui.view,arch_db:website_sale.view_sales_order_filter_ecommerce
-#: model_terms:ir.ui.view,arch_db:website_sale.view_sales_order_filter_ecommerce_abondand
 #, fuzzy
 msgid "Last Week"
 msgstr "O‘tgan hafta"
 
 #. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.sale_order_abandoned_cart_search
 #: model_terms:ir.ui.view,arch_db:website_sale.sale_report_view_search_website
 #: model_terms:ir.ui.view,arch_db:website_sale.view_sales_order_filter_ecommerce
-#: model_terms:ir.ui.view,arch_db:website_sale.view_sales_order_filter_ecommerce_abondand
 #, fuzzy
 msgid "Last Year"
 msgstr "O‘tgan yil"
@@ -4782,6 +4713,7 @@ msgstr ""
 #: code:addons/website_sale/static/src/website_builder/product_image_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/product_tag_image_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/product_variant_option.xml:0
+#: model_terms:ir.ui.view,arch_db:website_sale.product_normal_form_view
 #: model_terms:ir.ui.view,arch_db:website_sale.product_template_form_view
 #, fuzzy
 msgid "Media"
@@ -4804,10 +4736,9 @@ msgid "Medium"
 msgstr "O‘rtacha"
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.s_mega_menu_menu_image_menu
-#, fuzzy
-msgid "Mega menu default image"
-msgstr "Mega menyu standart rasmi"
+#: model:ir.model.fields,field_description:website_sale.field_withdrawal_request__log_message
+msgid "Message"
+msgstr ""
 
 #. module: website_sale
 #: model:ir.model.fields,field_description:website_sale.field_product_feed__message_has_error
@@ -4836,7 +4767,14 @@ msgid "Minimum"
 msgstr ""
 
 #. module: website_sale
+#: model:ir.model.fields,field_description:website_sale.field_product_product__minimum_quantity
+#: model:ir.model.fields,field_description:website_sale.field_product_template__minimum_quantity
+msgid "Minimum Quantity"
+msgstr ""
+
+#. module: website_sale
 #. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/dynamic_snippet_products_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/product_page_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/products_list_page_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/wishlist_page_option.xml:0
@@ -4916,12 +4854,7 @@ msgstr ""
 
 #. module: website_sale
 #. odoo-javascript
-#: code:addons/website_sale/static/src/js/dashboard/dashboard.xml:0
-msgid "N/A"
-msgstr ""
-
-#. module: website_sale
-#. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/dynamic_snippet_products_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/product_ribbon_options.xml:0
 #: model:ir.model.fields,field_description:website_sale.field_product_feed__name
 #: model:ir.model.fields,field_description:website_sale.field_product_image__name
@@ -4998,18 +4931,17 @@ msgid "New!"
 msgstr "Yangi!"
 
 #. module: website_sale
+#: model:website.snippet.filter,name:website_sale.dynamic_filter_newest_products
+msgid "Newest"
+msgstr ""
+
+#. module: website_sale
 #. odoo-javascript
 #: code:addons/website_sale/static/src/website_builder/shared.js:0
 #: model:ir.model.fields.selection,name:website_sale.selection__website__shop_default_sort__publish_date_desc
 #, fuzzy
 msgid "Newest Arrivals"
 msgstr "Eng so‘nggi kelganlar"
-
-#. module: website_sale
-#: model:website.snippet.filter,name:website_sale.dynamic_filter_newest_products
-#, fuzzy
-msgid "Newest Products"
-msgstr "Eng yangi mahsulotlar"
 
 #. module: website_sale
 #. odoo-javascript
@@ -5051,18 +4983,6 @@ msgstr ""
 #, fuzzy
 msgid "No previous products available for reorder."
 msgstr "Qayta buyurtma qilish uchun oldingi mahsulotlar mavjud emas."
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.products
-#, fuzzy
-msgid "No product defined"
-msgstr "Mahsulot aniqlanmagan"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.products
-#, fuzzy
-msgid "No product defined in this category."
-msgstr "Ushbu toifada hech qanday mahsulot aniqlanmagan."
 
 #. module: website_sale
 #: model_terms:ir.actions.act_window,help:website_sale.website_sale_visitor_product_action
@@ -5187,6 +5107,189 @@ msgid "Number of products in the grid on the shop"
 msgstr "Do‘kon to‘ridagi mahsulotlar soni"
 
 #. module: website_sale
+#: model:ir.module.module,description:base.module_website_sale
+msgid ""
+"Odoo e-Commerce\n"
+"---------------\n"
+"\n"
+"### Optimize sales with an awesome online store.\n"
+"\n"
+"Odoo is an <a href=\"https://www.odoo.com/app/ecommerce\">Open Source "
+"eCommerce</a>\n"
+"unlike anything you have ever seen before. Get an awesome catalog of "
+"products\n"
+"and great product description pages.\n"
+"\n"
+"It's full-featured, integrated with your management software, fully\n"
+"customizable and super easy.\n"
+"\n"
+"Create Awesome Product Pages\n"
+"----------------------------\n"
+"\n"
+"Odoo's unique *'edit inline'* and building blocks approach makes product "
+"pages\n"
+"creation surprisingly easy. \"Want to change the price of a product? or put "
+"it\n"
+"in bold? Want to add a banner for a specific product?\" just click and "
+"change.\n"
+"What you see is what you get. Really.\n"
+"\n"
+"Drag & Drop well designed *'Building Blocks'* to create beautifull product\n"
+"pages that your customer will love.\n"
+"\n"
+"Increase Your Revenue Per Order\n"
+"-------------------------------\n"
+"\n"
+"The built-in cross-selling feature helps you offer extra products related "
+"to\n"
+"what the shopper put in his cart. (e.g. accessories)\n"
+"\n"
+"Odoo's upselling algorythm allows you to show visitors similar but more\n"
+"expensive products than the one in view, with incentives.\n"
+"\n"
+"The inline editing feature allows you to easily change a price, launch a\n"
+"promotion or fine tune the description of a product, in a just a click.\n"
+"\n"
+"A Clean Google Analytics Integration\n"
+"------------------------------------\n"
+"\n"
+"Get a clear visibility of your sales funnel. Odoo's Google Analytics "
+"trackers\n"
+"are configured by default to track all kind of events related to shopping\n"
+"carts, call-to-actions, etc.\n"
+"\n"
+"As Odoo marketing tools (mass mailing, campaigns, etc) are also linked with\n"
+"Google Analytics, you get a complete view of your business.\n"
+"\n"
+"Target New Markets\n"
+"------------------\n"
+"\n"
+"Get your website translated in multiple languages with no effort. Odoo "
+"proposes\n"
+"and propagates translations automatically across pages.\n"
+"\n"
+"Our translation \"on demand\" features allows you to benefit from "
+"professional\n"
+"translators to translate all your changes automatically. Just change any "
+"part\n"
+"of your website (a new blog post, a page modification, product "
+"descriptions,\n"
+"...) and the translated versions are updated automatically in around 32 "
+"hours.\n"
+"\n"
+"Fine Tune Your Catalog\n"
+"----------------------\n"
+"\n"
+"Get full control on how you display your products in the catalog page:\n"
+"promotional ribbons, related size of products, discounts, variants, grid/"
+"list\n"
+"view, etc.\n"
+"\n"
+"Edit any product inline to make your website evolve with your customer "
+"need.\n"
+"\n"
+"Acquire New Customers\n"
+"---------------------\n"
+"\n"
+"SEO tools are ready to use, with no configuration required. Odoo suggests\n"
+"keywords according to Google most searched terms, Google Analytics tracks "
+"your\n"
+"shopping cart events, sitemap are created automatically for Google "
+"indexation,\n"
+"etc.\n"
+"\n"
+"We even do structured content automatically to promote your product and "
+"events\n"
+"efficiently in Google.\n"
+"\n"
+"Leverage Social Media\n"
+"---------------------\n"
+"\n"
+"Create new landing pages easily with the Odoo inline editing feature. Send\n"
+"visitors of your different marketing campaigns to specific landing pages to\n"
+"optimize conversions.\n"
+"\n"
+"Manage a Reseller Network\n"
+"-------------------------\n"
+"\n"
+"Manage a reseller network to target new market, have local presences or "
+"broaden\n"
+"your distribution. Give them access to your reseller portal for an "
+"efficient\n"
+"collaboration.\n"
+"\n"
+"Promote your resellers online, forward leads to resellers (with built-in\n"
+"geolocalisation feature), define specific pricelists, launch a loyalty "
+"program\n"
+"(offer specific discounts to your best customers or resellers), etc.\n"
+"\n"
+"Benefit from the power of Odoo, in your online store: a powerfull tax "
+"engine,\n"
+"flexible pricing structures, a real inventory management solution, a "
+"reseller\n"
+"interface, support for products with different behaviours; physical goods,\n"
+"events, services, variants and options, etc.\n"
+"\n"
+"You don't need to interface with your warehouse, sales or accounting "
+"software.\n"
+"Everything is integrated with Odoo. No pain, real time.\n"
+"\n"
+"A Clean Checkout Process\n"
+"------------------------\n"
+"\n"
+"Convert most visitor interests into real orders with a clean checkout "
+"process\n"
+"with a minimal number of steps and a great useability on every page.\n"
+"\n"
+"Customize your checkout process to fit your business needs: payment modes,\n"
+"delivery methods, cross-selling, special conditions, etc.\n"
+"\n"
+"And much more...\n"
+"----------------\n"
+"\n"
+"### Online Sales\n"
+"\n"
+"-   Mobile Interface\n"
+"-   Sell products, events or services\n"
+"-   Flexible pricelists\n"
+"-   Product multi-variants\n"
+"-   Multiple stores\n"
+"-   Great checkout process\n"
+"\n"
+"### Customer Service\n"
+"\n"
+"-   Customer Portal to track orders\n"
+"-   Assisted shopping with website live chats\n"
+"-   Returns management\n"
+"-   Advanced shipping rules\n"
+"-   Coupons or gift certificates\n"
+"\n"
+"### Order Management\n"
+"\n"
+"-   Advanced warehouse management features\n"
+"-   Invoicing and accounting integration\n"
+"-   Mass mailing and customer segmentations\n"
+"-   Lead automation and marketing campaigns\n"
+"-   Persistent shopping cart\n"
+"\n"
+"Fully Integrated With Other Apps\n"
+"--------------------------------\n"
+"\n"
+"### CMS\n"
+"\n"
+"Easily create awesome websites with no technical knowledge required.\n"
+"\n"
+"### Blog\n"
+"\n"
+"Write news, attract new visitors, build customer loyalty.\n"
+"\n"
+"### Online Events\n"
+"\n"
+"Schedule, organize, promote or sell events online; conferences, webinars, "
+"trainings, etc.\n"
+msgstr ""
+
+#. module: website_sale
 #. odoo-javascript
 #: code:addons/website_sale/static/src/website_builder/products_list_page_option.xml:0
 #, fuzzy
@@ -5226,12 +5329,6 @@ msgstr "Chegirmada"
 #: model_terms:ir.ui.view,arch_db:website_sale.ribbon_filter_pills
 msgid "On sale"
 msgstr ""
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.product_pricelist_item_form
-#, fuzzy
-msgid "On the website original price is crossed out."
-msgstr "Veb-saytda asl narx ustidan chizilgan."
 
 #. module: website_sale
 #. odoo-python
@@ -5334,16 +5431,6 @@ msgid "Open Source eCommerce"
 msgstr "Ochiq kodli elektron tijorat"
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.product_image_view_kanban
-#, fuzzy
-msgid ""
-"Optimization required! Reduce the image size or increase your compression "
-"settings."
-msgstr ""
-"Optimallashtirishni talab qiladi! Rasm hajmini kichraytiring yoki siqish "
-"sozlamalarini oshiring."
-
-#. module: website_sale
 #: model:ir.model.fields.selection,name:website_sale.selection__res_config_settings__account_on_checkout__optional
 #: model:ir.model.fields.selection,name:website_sale.selection__website__account_on_checkout__optional
 #, fuzzy
@@ -5359,12 +5446,7 @@ msgid "Options"
 msgstr "Variantlar"
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.payment_confirmation_status
-#, fuzzy
-msgid "Or scan me with your banking app."
-msgstr "Yoki bank ilovangiz orqali meni skanerlang"
-
-#. module: website_sale
+#: model:ir.model.fields,field_description:website_sale.field_withdrawal_request__order_id
 #: model:website.checkout.step,name:website_sale.checkout_step_cart
 #: model_terms:ir.ui.view,arch_db:website_sale.checkout_layout
 #, fuzzy
@@ -5378,9 +5460,9 @@ msgid "Order Confirmation"
 msgstr "Buyurtma tasdiqi"
 
 #. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.sale_order_abandoned_cart_search
 #: model_terms:ir.ui.view,arch_db:website_sale.sale_report_view_search_website
 #: model_terms:ir.ui.view,arch_db:website_sale.view_sales_order_filter_ecommerce
-#: model_terms:ir.ui.view,arch_db:website_sale.view_sales_order_filter_ecommerce_abondand
 #: model_terms:ir.ui.view,arch_db:website_sale.view_sales_order_filter_ecommerce_unpaid
 #, fuzzy
 msgid "Order Date"
@@ -5391,6 +5473,17 @@ msgstr "Buyurtma sanasi"
 #, fuzzy
 msgid "Order Lines displayed on Website"
 msgstr "Veb-saytda ko‘rsatilgan buyurtma qatorlari"
+
+#. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/website_sale_form_editor.edit.js:0
+msgid "Order Number"
+msgstr ""
+
+#. module: website_sale
+#: model:ir.model.fields,field_description:website_sale.field_withdrawal_request__order_reference
+msgid "Order Reference"
+msgstr ""
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.cart
@@ -5466,6 +5559,8 @@ msgid "Out of Stock"
 msgstr ""
 
 #. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/js/product/product.xml:0
 #: model:product.ribbon,name:website_sale.out_of_stock_ribbon
 #, fuzzy
 msgid "Out of stock"
@@ -5539,6 +5634,11 @@ msgid "Parents And Self"
 msgstr "Yuqori va o‘zi"
 
 #. module: website_sale
+#: model:ir.model.fields,field_description:website_sale.field_product_stock_notification__partner_id
+msgid "Partner"
+msgstr ""
+
+#. module: website_sale
 #: model:website.checkout.step,name:website_sale.checkout_step_payment
 #, fuzzy
 msgid "Payment"
@@ -5548,12 +5648,6 @@ msgstr "To‘lov"
 #: model:website.checkout.step,name:website_sale.checkout_step_confirmation
 msgid "Payment Confirmation"
 msgstr ""
-
-#. module: website_sale
-#: model:ir.model,name:website_sale.model_payment_token
-#, fuzzy
-msgid "Payment Token"
-msgstr "To‘lov belgisi"
 
 #. module: website_sale
 #: model:ir.model,name:website_sale.model_payment_transaction
@@ -5775,6 +5869,11 @@ msgid "Prices have changed. Please review your cart."
 msgstr ""
 
 #. module: website_sale
+#: model:ir.model.fields.selection,name:website_sale.selection__product_image__type__primary
+msgid "Primary"
+msgstr ""
+
+#. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.template_footer_website_sale
 #, fuzzy
 msgid "Privacy Policy"
@@ -5791,6 +5890,7 @@ msgstr "To‘lov qabul qilingandan so‘ng buyurtmani qayta ishlang"
 #: code:addons/website_sale/static/src/website_builder/add_to_cart_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/website_sale_options.xml:0
 #: model:ir.model,name:website_sale.model_product_template
+#: model:ir.model.fields,field_description:website_sale.field_product_stock_notification__product_id
 #: model:ir.model.fields,field_description:website_sale.field_product_wishlist__product_id
 #: model:ir.model.fields,field_description:website_sale.field_website_track__product_id
 #: model_terms:ir.ui.view,arch_db:website_sale.products
@@ -5890,13 +5990,6 @@ msgstr "Mahsulot nomi"
 
 #. module: website_sale
 #. odoo-javascript
-#: code:addons/website_sale/static/src/website_builder/dynamic_snippet_products_option.xml:0
-#, fuzzy
-msgid "Product Names"
-msgstr "Mahsulot nomlari"
-
-#. module: website_sale
-#. odoo-javascript
 #: code:addons/website_sale/static/src/website_builder/website_sale_options.xml:0
 #, fuzzy
 msgid "Product Page"
@@ -5975,6 +6068,8 @@ msgid "Product Public Categories"
 msgstr "Mahsulotning ommaviy toifalari"
 
 #. module: website_sale
+#: model:ir.model.fields,field_description:website_sale.field_res_config_settings__website_show_reference_price
+#: model:ir.model.fields,field_description:website_sale.field_website__show_product_reference_price
 #: model_terms:ir.ui.view,arch_db:website_sale.res_config_settings_view_form
 #, fuzzy
 msgid "Product Reference Price"
@@ -5991,6 +6086,11 @@ msgstr "Mahsulot tasmasi"
 #, fuzzy
 msgid "Product Ribbons"
 msgstr "Mahsulot tasmalari"
+
+#. module: website_sale
+#: model:ir.model,name:website_sale.model_product_stock_notification
+msgid "Product Stock Notification"
+msgstr ""
 
 #. module: website_sale
 #: model:ir.model,name:website_sale.model_product_tag
@@ -6024,7 +6124,6 @@ msgstr "Mahsulot shabloni"
 
 #. module: website_sale
 #: model:ir.model,name:website_sale.model_product_product
-#: model:ir.model.fields,field_description:website_sale.field_product_image__product_variant_id
 #, fuzzy
 msgid "Product Variant"
 msgstr "Mahsulot varianti"
@@ -6082,16 +6181,14 @@ msgid "Product: send email regarding products availability"
 msgstr ""
 
 #. module: website_sale
-#. odoo-javascript
 #. odoo-python
 #: code:addons/website_sale/models/product_template.py:0
-#: code:addons/website_sale/static/src/website_builder/products_searchbar_option.xml:0
+#: code:addons/website_sale/models/website.py:0
 #: model:ir.actions.act_window,name:website_sale.product_template_action_website
 #: model:ir.ui.menu,name:website_sale.menu_catalog
 #: model:ir.ui.menu,name:website_sale.menu_catalog_products
 #: model_terms:ir.ui.view,arch_db:website_sale.product_public_category_form_view
 #: model_terms:ir.ui.view,arch_db:website_sale.products_breadcrumb
-#: model_terms:ir.ui.view,arch_db:website_sale.snippets
 #: model_terms:ir.ui.view,arch_db:website_sale.template_footer_website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.website_sale_visitor_page_view_search
 #: model_terms:ir.ui.view,arch_db:website_sale.website_sale_visitor_view_form
@@ -6101,12 +6198,22 @@ msgid "Products"
 msgstr "Mahsulotlar"
 
 #. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.snippets
+msgid "Products Carousel"
+msgstr ""
+
+#. module: website_sale
 #. odoo-javascript
 #: code:addons/website_sale/static/src/website_builder/products_list_page_option.xml:0
 #: code:addons/website_sale/static/src/website_builder/wishlist_page_option.xml:0
 #, fuzzy
 msgid "Products Design"
 msgstr "Mahsulotlar dizayni"
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.snippets
+msgid "Products Grid"
+msgstr ""
 
 #. module: website_sale
 #. odoo-javascript
@@ -6329,34 +6436,27 @@ msgstr "Qayta buyurtma"
 #. module: website_sale
 #: model:ir.actions.server,name:website_sale.dynamic_snippet_latest_sold_products_action
 #: model:website.snippet.filter,name:website_sale.dynamic_filter_latest_sold_products
-#, fuzzy
-msgid "Recently Sold Products"
-msgstr "Yaqinda sotilgan mahsulotlar"
+msgid "Recently Sold"
+msgstr ""
 
 #. module: website_sale
 #: model:ir.actions.server,name:website_sale.dynamic_snippet_latest_viewed_products_action
 #: model:website.snippet.filter,name:website_sale.dynamic_filter_latest_viewed_products
-#, fuzzy
-msgid "Recently Viewed Products (per user)"
-msgstr "Yaqinda ko‘rilgan mahsulotlar (foydalanuvchi bo‘yicha)"
+msgid "Recently Viewed (per user)"
+msgstr ""
+
+#. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/website_sale_form_editor.js:0
+#: model:ir.model.fields,field_description:website_sale.field_withdrawal_request__recipient_emails
+msgid "Recipient Emails"
+msgstr ""
 
 #. module: website_sale
 #: model:product.public.category,name:website_sale.public_category_furnitures_recliners
 #, fuzzy
 msgid "Recliners"
 msgstr "Kreslolar"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.view_sales_order_filter_ecommerce_abondand
-#, fuzzy
-msgid "Recovery Email Sent"
-msgstr "Tiklash xati yuborildi"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.view_sales_order_filter_ecommerce_abondand
-#, fuzzy
-msgid "Recovery Email to Send"
-msgstr "Yuborish uchun tiklash xati"
 
 #. module: website_sale
 #. odoo-javascript
@@ -6445,6 +6545,8 @@ msgid "Remove image"
 msgstr ""
 
 #. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/interactions/product_page.js:0
 #: model_terms:ir.ui.view,arch_db:website_sale.cart_lines_quantity
 #: model_terms:ir.ui.view,arch_db:website_sale.product_quantity
 #, fuzzy
@@ -6489,9 +6591,20 @@ msgid "Replace image"
 msgstr "Rasmni almashtirish"
 
 #. module: website_sale
+#: model:ir.model,website_form_label:website_sale.model_withdrawal_request
+msgid "Request Withdrawal"
+msgstr ""
+
+#. module: website_sale
 #: model:ir.model.fields,field_description:website_sale.field_res_config_settings__send_order_rating_emails
 #: model:ir.model.fields,field_description:website_sale.field_website__send_order_rating_emails
 msgid "Request ratings"
+msgstr ""
+
+#. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/checkout_page_option.xml:0
+msgid "Required"
 msgstr ""
 
 #. module: website_sale
@@ -6511,6 +6624,12 @@ msgstr "Moslashuvchan"
 #: model:ir.model.fields,field_description:website_sale.field_res_config_settings__restricted_uom_ids
 #: model:ir.model.fields,field_description:website_sale.field_website__restricted_uom_ids
 msgid "Restrict Packagings"
+msgstr ""
+
+#. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/checkout_page_option.xml:0
+msgid "Restrict to"
 msgstr ""
 
 #. module: website_sale
@@ -6707,6 +6826,8 @@ msgid "Sample"
 msgstr "Namuna"
 
 #. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/checkout_page_option.xml:0
 #: model_terms:ir.ui.view,arch_db:website_sale.product_cart_lines
 msgid "Save for Later"
 msgstr ""
@@ -6719,7 +6840,7 @@ msgid "Search"
 msgstr "Qidirish"
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.view_sales_order_filter_ecommerce_abondand
+#: model_terms:ir.ui.view,arch_db:website_sale.sale_order_abandoned_cart_search
 #, fuzzy
 msgid "Search Abandoned Sales Orders"
 msgstr "Tashlab ketilgan sotish buyurtmalarini qidirish"
@@ -6752,6 +6873,11 @@ msgstr ""
 #, fuzzy
 msgid "Search {{0}} globally"
 msgstr "{{0}} bo‘ylab umumiy qidirish"
+
+#. module: website_sale
+#: model:ir.model.fields.selection,name:website_sale.selection__product_image__type__secondary
+msgid "Secondary"
+msgstr ""
 
 #. module: website_sale
 #. odoo-javascript
@@ -6819,6 +6945,17 @@ msgid "Sell when Out-of-Stock"
 msgstr ""
 
 #. module: website_sale
+#: model:ir.module.module,summary:base.module_website_sale
+msgid "Sell your products online"
+msgstr ""
+
+#. module: website_sale
+#: model:ir.model.fields,field_description:website_sale.field_res_config_settings__send_abandoned_cart_followup
+#: model:ir.model.fields,field_description:website_sale.field_website__send_abandoned_cart_followup
+msgid "Send Follow-up"
+msgstr ""
+
+#. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.sale_order_view_form
 #, fuzzy
 msgid "Send a Recovery Email"
@@ -6836,20 +6973,30 @@ msgid "Send after"
 msgstr "Keyin yuborish"
 
 #. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.res_config_settings_view_form
+msgid "Send automated reminders for cart recovery"
+msgstr ""
+
+#. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.sale_order_view_form
 #, fuzzy
 msgid "Send by Email"
 msgstr "Elektron pochta orqali yuborish"
 
 #. module: website_sale
-#: model:ir.model.fields,field_description:website_sale.field_website__send_abandoned_cart_email
-#, fuzzy
-msgid "Send email to customers who abandoned their cart."
-msgstr "Savatini tashlab ketgan mijozlarga elektron xat yuboring."
-
-#. module: website_sale
 #: model:mail.template,description:website_sale.mail_template_sale_order_rating
 msgid "Sent to customers to request feedback on their order"
+msgstr ""
+
+#. module: website_sale
+#: model:mail.template,description:website_sale.mail_template_sale_withdrawal_request_confirmation
+msgid ""
+"Sent to the customer to confirm their withdrawal request has been received"
+msgstr ""
+
+#. module: website_sale
+#: model:mail.template,description:website_sale.mail_template_withdrawal_request_notification
+msgid "Sent to the internal team when a withdrawal request is submitted"
 msgstr ""
 
 #. module: website_sale
@@ -6879,7 +7026,6 @@ msgstr "Ketma-ketlik"
 
 #. module: website_sale
 #: model:product.public.category,name:website_sale.public_category_services
-#: model_terms:ir.ui.view,arch_db:website_sale.s_dynamic_snippet_category_preview_data
 #, fuzzy
 msgid "Services"
 msgstr "Xizmatlar"
@@ -7032,20 +7178,13 @@ msgid "Show Available Quantity"
 msgstr ""
 
 #. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/website_builder/checkout_page_option.xml:0
-#, fuzzy
-msgid "Show B2B Fields"
-msgstr "B2B maydonlarini ko‘rsatish"
-
-#. module: website_sale
-#: model:ir.model.fields,field_description:website_sale.field_product_public_category__show_category_description
+#: model:ir.model.fields,field_description:website_sale.field_website__show_category_description
 #, fuzzy
 msgid "Show Category Description"
 msgstr "Turkum tavsifini ko‘rsatish"
 
 #. module: website_sale
-#: model:ir.model.fields,field_description:website_sale.field_product_public_category__show_category_title
+#: model:ir.model.fields,field_description:website_sale.field_website__show_category_title
 #, fuzzy
 msgid "Show Category Title"
 msgstr "Turkum nomini ko‘rsatish"
@@ -7142,13 +7281,6 @@ msgstr ""
 #, fuzzy
 msgid "Show the button even if the Cart/Wishlist is empty"
 msgstr "Savat/Istaklar ro‘yxati bo‘sh bo‘lsa ham tugmani ko‘rsatish"
-
-#. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/website_builder/dynamic_snippet_products_option.xml:0
-#, fuzzy
-msgid "Show variants"
-msgstr "Variantlarni ko‘rsatish"
 
 #. module: website_sale
 #. odoo-javascript
@@ -7260,6 +7392,20 @@ msgid ""
 msgstr ""
 
 #. module: website_sale
+#. odoo-python
+#: code:addons/website_sale/models/sale_order.py:0
+msgid "Some products don't meet the minimum quantity required to be purchased."
+msgstr ""
+
+#. module: website_sale
+#. odoo-python
+#: code:addons/website_sale/models/sale_order.py:0
+msgid ""
+"Some products in your cart are not available for purchase in your country. "
+"Please remove them or contact us."
+msgstr ""
+
+#. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.sort
 #, fuzzy
 msgid "Sort By"
@@ -7311,10 +7457,10 @@ msgstr ""
 "bo‘lishi kerak."
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.s_mega_menu_menus_logos
-#, fuzzy
-msgid "Spring collection has arrived!"
-msgstr "Bahor kolleksiyasi keldi!"
+#. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/dynamic_snippet_products_option.xml:0
+msgid "Split variants"
+msgstr ""
 
 #. module: website_sale
 #: model:product.public.category,name:website_sale.public_category_boxes_stackable
@@ -7341,11 +7487,6 @@ msgid "Step"
 msgstr ""
 
 #. module: website_sale
-#: model:ir.model.fields,field_description:website_sale.field_product_wishlist__stock_notification
-msgid "Stock Notification"
-msgstr ""
-
-#. module: website_sale
 #: model:product.public.category,name:website_sale.public_category_cabinets_storage
 #, fuzzy
 msgid "Storage Cabinets"
@@ -7360,6 +7501,11 @@ msgstr "Saqlash shkaflari"
 #, fuzzy
 msgid "Style"
 msgstr "Uslub"
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.cta_wrapper
+msgid "Subscribe"
+msgstr ""
 
 #. module: website_sale
 #. odoo-javascript
@@ -7401,13 +7547,6 @@ msgid ""
 msgstr ""
 "Mijozingizga qo‘shimcha mahsulotlarni taklif qiling (sotishni ko‘paytirish "
 "strategiyasi). Bu mahsulotlar mahsulot sahifasida ko‘rsatiladi."
-
-#. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/website_builder/checkout_page_option.xml:0
-#, fuzzy
-msgid "Suggested Accessories"
-msgstr "Tavsiya etilgan aksessuarlar"
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.suggested_products_list
@@ -7502,13 +7641,6 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:website_sale.template_footer_website_sale
 #, fuzzy
 msgid "Terms &amp; Conditions"
-msgstr "Shartlar va qoidalar"
-
-#. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/website_builder/product_page_option.xml:0
-#, fuzzy
-msgid "Terms and Conditions"
 msgstr "Shartlar va qoidalar"
 
 #. module: website_sale
@@ -7670,6 +7802,23 @@ msgid "The minimum donation amount is %(amount)s"
 msgstr ""
 
 #. module: website_sale
+#: model:ir.model.constraint,message:website_sale.constraint_product_template_minimum_quantity_non_negative
+msgid "The minimum quantity must be greater than or equal to 0."
+msgstr ""
+
+#. module: website_sale
+#. odoo-python
+#: code:addons/website_sale/models/sale_order_line.py:0
+msgid "The minimum quantity to purchase for this product is %(min_qty)s."
+msgstr ""
+
+#. module: website_sale
+#. odoo-python
+#: code:addons/website_sale/models/product_template.py:0
+msgid "The minimum quantity to purchase this product is %(min_qty)s."
+msgstr ""
+
+#. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.res_config_settings_view_form
 #, fuzzy
 msgid ""
@@ -7708,13 +7857,6 @@ msgid ""
 "The selected delivery date was no longer available. Please pick another "
 "delivery date."
 msgstr ""
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.s_mega_menu_images_subtitles
-#: model_terms:ir.ui.view,arch_db:website_sale.s_mega_menu_little_icons
-#, fuzzy
-msgid "The team"
-msgstr "Jamoa"
 
 #. module: website_sale
 #: model_terms:ir.actions.act_window,help:website_sale.action_view_abandoned_tree
@@ -7773,6 +7915,12 @@ msgid "These other products might interest you"
 msgstr "Sizni qiziqtirishi mumkin bo‘lgan boshqa mahsulotlar"
 
 #. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/product_page_option_plugin.js:0
+msgid "This category"
+msgstr ""
+
+#. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.accordion_more_information
 #, fuzzy
 msgid "This content will be shared across all product pages."
@@ -7783,6 +7931,12 @@ msgstr "Ushbu mazmun barcha mahsulot sahifalarida ko‘rsatiladi"
 msgid ""
 "This note is added to sales orders, invoices, eCommerce listing and SEO "
 "descriptions."
+msgstr ""
+
+#. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/product_page_option_plugin.js:0
+msgid "This page"
 msgstr ""
 
 #. module: website_sale
@@ -7797,6 +7951,12 @@ msgstr ""
 "Ushbu hamkorning ochiq savati mavjud. E'tibor bering, narxlar ro‘yxati bu "
 "savatda yangilanmaydi. Shuningdek, siz savatning narxlar ro‘yxatini "
 "yangilamaguncha, savat mijozga ko‘rinmasligi mumkin"
+
+#. module: website_sale
+#. odoo-javascript
+#: code:addons/website_sale/static/src/website_builder/product_page_option_plugin.js:0
+msgid "This product"
+msgstr ""
 
 #. module: website_sale
 #. odoo-javascript
@@ -7826,6 +7986,12 @@ msgstr ""
 
 #. module: website_sale
 #. odoo-python
+#: code:addons/website_sale/models/sale_order.py:0
+msgid "This product is not available for purchase in your country."
+msgstr ""
+
+#. module: website_sale
+#. odoo-python
 #: code:addons/website_sale/controllers/wishlist.py:0
 msgid "This product is not eligible for stock notifications."
 msgstr ""
@@ -7835,12 +8001,6 @@ msgstr ""
 #, fuzzy
 msgid "This promo code is not available."
 msgstr "Bu promo-kod mavjud emas"
-
-#. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.s_dynamic_snippet_products_preview_data
-#, fuzzy
-msgid "Three-Seat Sofa"
-msgstr "Uch kishilik divan"
 
 #. module: website_sale
 #. odoo-javascript
@@ -7858,11 +8018,10 @@ msgstr "TikTok"
 
 #. module: website_sale
 #: model:ir.model.fields,field_description:website_sale.field_website__send_abandoned_cart_email_activation_time
-#, fuzzy
-msgid "Time when the 'Send abandoned cart email' feature was activated."
+msgid ""
+"Time when the 'Send abandoned cart' feature was activated for emails "
+"followup."
 msgstr ""
-"\"Tashlab ketilgan savat haqida xabar yuborish\" funksiyasi faollashtirilgan "
-"vaqt"
 
 #. module: website_sale
 #. odoo-javascript
@@ -7984,10 +8143,20 @@ msgstr ""
 "ular qo‘shimcha sotuvga tegishli"
 
 #. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.products
+msgid "Try to refine your search criteria."
+msgstr ""
+
+#. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.template_footer_website_sale
 #, fuzzy
 msgid "Twitter"
 msgstr "Twitter"
+
+#. module: website_sale
+#: model:ir.model.fields,field_description:website_sale.field_product_image__type
+msgid "Type"
+msgstr ""
 
 #. module: website_sale
 #: model:ir.model.fields,help:website_sale.field_product_image__video_url
@@ -8030,11 +8199,6 @@ msgid "Unfortunately, there is no longer enough stock to fulfill your order."
 msgstr ""
 
 #. module: website_sale
-#: model:ir.model.fields,field_description:website_sale.field_sale_order__is_unfulfilled
-msgid "Unfulfilled Orders"
-msgstr ""
-
-#. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.view_sales_order_filter_ecommerce
 #, fuzzy
 msgid "Unpaid"
@@ -8045,6 +8209,22 @@ msgstr "To‘lanmagan"
 #, fuzzy
 msgid "Unpaid Orders"
 msgstr "To‘lanmagan buyurtmalar"
+
+#. module: website_sale
+#: model:ir.model.fields,field_description:website_sale.field_res_config_settings__group_unpublish_out_of_stock
+#: model:res.groups,name:website_sale.group_unpublish_out_of_stock
+msgid "Unpublish Out-of-Stock Products"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.res_config_settings_view_form
+msgid "Unpublish out-of-stock products"
+msgstr ""
+
+#. module: website_sale
+#: model_terms:ir.ui.view,arch_db:website_sale.res_config_settings_view_form
+msgid "Unpublish/Republish products based on stock availability."
+msgstr ""
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.dynamic_filter_template_product_public_category_default
@@ -8110,6 +8290,11 @@ msgstr ""
 #, fuzzy
 msgid "Variant"
 msgstr "Variant"
+
+#. module: website_sale
+#: model:ir.model.fields,field_description:website_sale.field_product_product__variant_image_ids
+msgid "Variant Extra Images"
+msgstr ""
 
 #. module: website_sale
 #: model:ir.model.fields,field_description:website_sale.field_product_product__variant_ribbon_id
@@ -8257,12 +8442,6 @@ msgid "Warranty"
 msgstr "Kafolat"
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.s_dynamic_snippet_products_preview_data
-#, fuzzy
-msgid "Warranty (2 year)"
-msgstr "Kafolat (2 yillik)"
-
-#. module: website_sale
 #: model:product.template,description_sale:website_sale.product_product_1_product_template
 #, fuzzy
 msgid ""
@@ -8276,6 +8455,13 @@ msgstr ""
 
 #. module: website_sale
 #. odoo-python
+#: code:addons/website_sale/models/withdrawal_request.py:0
+msgid ""
+"We could not find any order matching this email address and order number."
+msgstr ""
+
+#. module: website_sale
+#. odoo-python
 #: code:addons/website_sale/models/sale_order.py:0
 #, fuzzy
 msgid ""
@@ -8286,12 +8472,6 @@ msgstr ""
 "yangilang."
 
 #. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/xml/website_sale_product_availability.xml:0
-msgid "We'll notify you once the product is back in stock"
-msgstr ""
-
-#. module: website_sale
 #: model:ir.model,name:website_sale.model_website
 #: model:ir.model.fields,field_description:website_sale.field_account_bank_statement_line__website_id
 #: model:ir.model.fields,field_description:website_sale.field_account_move__website_id
@@ -8300,6 +8480,7 @@ msgstr ""
 #: model:ir.model.fields,field_description:website_sale.field_product_pricelist__website_id
 #: model:ir.model.fields,field_description:website_sale.field_product_product__website_id
 #: model:ir.model.fields,field_description:website_sale.field_product_public_category__website_id
+#: model:ir.model.fields,field_description:website_sale.field_product_stock_notification__website_id
 #: model:ir.model.fields,field_description:website_sale.field_product_tag__website_id
 #: model:ir.model.fields,field_description:website_sale.field_product_template__website_id
 #: model:ir.model.fields,field_description:website_sale.field_product_wishlist__website_id
@@ -8531,6 +8712,27 @@ msgid "With three feet"
 msgstr "Uch oyoqli"
 
 #. module: website_sale
+#: model:ir.model,name:website_sale.model_withdrawal_request
+msgid "Withdrawal Request"
+msgstr ""
+
+#. module: website_sale
+#: model:mail.template,subject:website_sale.mail_template_withdrawal_request_notification
+msgid "Withdrawal Request - {{ object.order_reference }}"
+msgstr ""
+
+#. module: website_sale
+#: model:mail.template,subject:website_sale.mail_template_sale_withdrawal_request_confirmation
+msgid "Withdrawal Request Confirmation"
+msgstr ""
+
+#. module: website_sale
+#. odoo-python
+#: code:addons/website_sale/models/withdrawal_request.py:0
+msgid "Withdrawal Requested"
+msgstr ""
+
+#. module: website_sale
 #. odoo-python
 #: code:addons/website_sale/controllers/main.py:0
 #, fuzzy
@@ -8574,10 +8776,16 @@ msgstr ""
 
 #. module: website_sale
 #. odoo-python
-#: code:addons/website_sale/controllers/main.py:0
+#: code:addons/website_sale/models/product_product.py:0
 #, fuzzy
 msgid "You can't use a video as the product's main image."
 msgstr "Mahsulotning asosiy tasviri sifatida videodan foydalanish mumkin emas."
+
+#. module: website_sale
+#. odoo-python
+#: code:addons/website_sale/models/product_template.py:0
+msgid "You can't use a video as the template's main image."
+msgstr ""
 
 #. module: website_sale
 #: model_terms:ir.actions.act_window,help:website_sale.sale_report_action_carts
@@ -8629,6 +8837,7 @@ msgstr "YouTube"
 #. module: website_sale
 #. odoo-javascript
 #: code:addons/website_sale/static/src/website_builder/website_sale_form_editor.edit.js:0
+#: model:ir.model.fields,field_description:website_sale.field_withdrawal_request__email
 #, fuzzy
 msgid "Your Email"
 msgstr "Elektron pochtangiz"
@@ -8672,6 +8881,12 @@ msgstr ""
 msgid ""
 "Your delivery address appears to be incomplete or invalid. Please ensure all "
 "required fields are correctly filled and try again."
+msgstr ""
+
+#. module: website_sale
+#. odoo-python
+#: code:addons/website_sale/models/payment_transaction.py:0
+msgid "Your order will be confirmed after payment is received."
 msgstr ""
 
 #. module: website_sale
@@ -8744,6 +8959,7 @@ msgstr "masalan, lampa, quti"
 #. odoo-python
 #: code:addons/website_sale/models/website.py:0
 #: code:addons/website_sale/static/src/website_builder/footer_option_plugin.js:0
+#: model:ir.module.module,shortdesc:base.module_website_sale
 #: model:ir.ui.menu,name:website_sale.menu_ecommerce
 #: model:ir.ui.menu,name:website_sale.menu_ecommerce_settings
 #: model_terms:ir.ui.view,arch_db:website_sale.product_attribute_view_form
@@ -8756,8 +8972,6 @@ msgid "eCommerce"
 msgstr "Elektron tijorat"
 
 #. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/website_builder/mega_menu_option.xml:0
 #: model:ir.actions.act_window,name:website_sale.product_public_category_action
 #: model:ir.model.fields,field_description:website_sale.field_sale_report__public_categ_ids
 #, fuzzy
@@ -8820,12 +9034,6 @@ msgid "eCommerce: send order rating request emails"
 msgstr ""
 
 #. module: website_sale
-#: model_terms:ir.ui.view,arch_db:website_sale.res_config_settings_view_form
-#, fuzzy
-msgid "hours."
-msgstr "soat."
-
-#. module: website_sale
 #. odoo-javascript
 #: code:addons/website_sale/static/src/website_builder/products_list_page_option.xml:0
 msgid "in"
@@ -8860,15 +9068,15 @@ msgstr "tashlab_ketilgan_savat"
 #: model_terms:ir.ui.view,arch_db:website_sale.checkout_layout
 msgid ""
 "items - Scroll for more\n"
-"                                    <i class=\"oi oi-arrow-down ms-1\" aria-"
-"hidden=\"true\"/>"
+"                                    <i class=\"oi ms-1\" data-icon=\"south\" "
+"aria-hidden=\"true\"/>"
 msgstr ""
 
 #. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.cart_summary_content
 msgid ""
 "items - Scroll for more\n"
-"                        <i class=\"oi oi-arrow-down ms-1\" aria-"
+"                        <i class=\"oi ms-1\" data-icon=\"south\" aria-"
 "hidden=\"true\"/>"
 msgstr ""
 
@@ -8943,6 +9151,12 @@ msgid "slide"
 msgstr ""
 
 #. module: website_sale
+#. odoo-python
+#: code:addons/website_sale/models/withdrawal_request.py:0
+msgid "string"
+msgstr ""
+
+#. module: website_sale
 #: model_terms:ir.ui.view,arch_db:website_sale.accept_terms_and_conditions
 #, fuzzy
 msgid "terms &amp; conditions"
@@ -8959,8 +9173,7 @@ msgid "x"
 msgstr ""
 
 #. module: website_sale
-#. odoo-javascript
-#: code:addons/website_sale/static/src/xml/website_sale_product_availability.xml:0
+#: model_terms:ir.ui.view,arch_db:website_sale.cta_wrapper
 msgid "youremail@gmail.com"
 msgstr ""
 
@@ -8970,59 +9183,100 @@ msgid "{{ object.name or 'Product' }} is back in stock"
 msgstr ""
 
 #, fuzzy
-#~ msgid "Add More"
-#~ msgstr "Yana qo‘shish"
-
-#, fuzzy
-#~ msgid "Customer Reviews"
-#~ msgstr "Mijoz sharhlari"
-
-#, fuzzy
-#~ msgid "Extra Media"
-#~ msgstr "Qo‘shimcha media"
-
-#, fuzzy
-#~ msgid "Main Image"
-#~ msgstr "Asosiy rasm"
-
-#, fuzzy
-#~ msgid "<i class=\"fa fa-cart-plus me-2\"/>Add to Cart"
-#~ msgstr "<i class=\"fa fa-cart-plus me-2\"/>Savatga qo‘shish"
+#~ msgid ""
+#~ "<span class=\"fw-bold\" name=\"product_price\" data-oe-type=\"monetary\" "
+#~ "data-oe-expression=\"data['price']\">\n"
+#~ "                                                <span "
+#~ "class=\"oe_currency_value\">1,500.00</span>\n"
+#~ "                                            </span>"
+#~ msgstr ""
+#~ "<span class=\"fw-bold\" name=\"product_price\" data-oe-type=\"monetary\" "
+#~ "data-oe-expression=\"data['price']\"> <span class=\"oe_currency_value\">1 "
+#~ "500,00</span> </span>"
 
 #, fuzzy
 #~ msgid ""
-#~ "<i class=\"fa fa-shopping-cart fa-fw\" role=\"presentation\"/><span "
-#~ "class=\"o_label small ms-1\">Add to Cart</span>"
+#~ "<span class=\"fw-bold\" name=\"product_price\" data-oe-type=\"monetary\" "
+#~ "data-oe-expression=\"data['price']\">\n"
+#~ "                                                <span "
+#~ "class=\"oe_currency_value\">140.00</span>\n"
+#~ "                                            </span>"
 #~ msgstr ""
-#~ "<i class=\"fa fa-shopping-cart fa-fw\" role=\"presentation\"/><span "
-#~ "class=\"o_label small ms-1\">Savatga qo‘shish</span>"
-
-#, fuzzy
-#~ msgid "<span>Publish on website</span>"
-#~ msgstr "<span>Veb-saytda e'lon qilish</span>"
-
-#, fuzzy
-#~ msgid "<strong>Documents</strong>"
-#~ msgstr "<strong>Hujjatlar</strong>"
+#~ "<span class=\"fw-bold\" name=\"product_price\" data-oe-type=\"monetary\" "
+#~ "data-oe-expression=\"data['price']\"> <span "
+#~ "class=\"oe_currency_value\">140,00</span> </span>"
 
 #, fuzzy
 #~ msgid ""
-#~ "Documents shown on product page cannot be restricted to a specific variant"
+#~ "<span class=\"fw-bold\" name=\"product_price\" data-oe-type=\"monetary\" "
+#~ "data-oe-expression=\"data['price']\">\n"
+#~ "                                                <span "
+#~ "class=\"oe_currency_value\">33.00</span>\n"
+#~ "                                            </span>"
 #~ msgstr ""
-#~ "Mahsulot sahifasida ko‘rsatiladigan hujjatlarni muayyan variantga cheklab "
-#~ "bo‘lmaydi"
+#~ "<span class=\"fw-bold\" name=\"product_price\" data-oe-type=\"monetary\" "
+#~ "data-oe-expression=\"data['price']\"> <span "
+#~ "class=\"oe_currency_value\">33,00</span> </span>"
 
 #, fuzzy
-#~ msgid "E-commerce"
-#~ msgstr "Elektron tijorat"
+#~ msgid ""
+#~ "<span class=\"fw-bold\" name=\"product_price\" data-oe-type=\"monetary\" "
+#~ "data-oe-expression=\"data['price']\">\n"
+#~ "                                                <span "
+#~ "class=\"oe_currency_value\">750.00</span>\n"
+#~ "                                            </span>"
+#~ msgstr ""
+#~ "<span class=\"fw-bold\" name=\"product_price\" data-oe-type=\"monetary\" "
+#~ "data-oe-expression=\"data['price']\"> <span "
+#~ "class=\"oe_currency_value\">750,00</span> </span>"
 
 #, fuzzy
-#~ msgid "Publish on website"
-#~ msgstr "Veb-saytda e'lon qilish"
+#~ msgid "Cabinet with Doors"
+#~ msgstr "Eshikli javon"
 
 #, fuzzy
-#~ msgid "This is your current cart."
-#~ msgstr "Bu sizning joriy savatingiz"
+#~ msgid "Conference Chair"
+#~ msgstr "Konferensiya stuli"
+
+#, fuzzy
+#~ msgid "Customizable Desk"
+#~ msgstr "Moslanuvchan ish stoli"
+
+#, fuzzy
+#~ msgid "Newest Products"
+#~ msgstr "Eng yangi mahsulotlar"
+
+#, fuzzy
+#~ msgid "On the website original price is crossed out."
+#~ msgstr "Veb-saytda asl narx ustidan chizilgan."
+
+#, fuzzy
+#~ msgid "Payment Token"
+#~ msgstr "To‘lov belgisi"
+
+#, fuzzy
+#~ msgid "Product Names"
+#~ msgstr "Mahsulot nomlari"
+
+#, fuzzy
+#~ msgid "Recently Sold Products"
+#~ msgstr "Yaqinda sotilgan mahsulotlar"
+
+#, fuzzy
+#~ msgid "Recently Viewed Products (per user)"
+#~ msgstr "Yaqinda ko‘rilgan mahsulotlar (foydalanuvchi bo‘yicha)"
+
+#, fuzzy
+#~ msgid "Show variants"
+#~ msgstr "Variantlarni ko‘rsatish"
+
+#, fuzzy
+#~ msgid "Three-Seat Sofa"
+#~ msgstr "Uch kishilik divan"
+
+#, fuzzy
+#~ msgid "Warranty (2 year)"
+#~ msgstr "Kafolat (2 yillik)"
 
 #, fuzzy
 #~ msgid "<strong>Warning!</strong>"

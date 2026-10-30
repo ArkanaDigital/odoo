@@ -1,7 +1,6 @@
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { _t } from "@web/core/l10n/translation";
 import { memoize, uniqueId } from "@web/core/utils/functions";
-import { Reactive } from "@web/core/utils/reactive";
 import { AddSnippetDialog } from "./add_snippet_dialog";
 import { registry } from "@web/core/registry";
 import { user } from "@web/core/user";
@@ -9,9 +8,8 @@ import { markup, proxy } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { patch } from "@web/core/utils/patch";
 
-export class SnippetModel extends Reactive {
+export class SnippetModel {
     constructor(services, { snippetsName, context }) {
-        super();
         this.orm = services.orm;
         this.dialog = services.dialog;
         this.snippetsName = snippetsName;
@@ -26,6 +24,7 @@ export class SnippetModel extends Reactive {
             snippet_custom_content: [],
         };
         this.originalSnippets = {};
+        return proxy(this);
     }
 
     get hasCustomGroup() {
@@ -103,7 +102,7 @@ export class SnippetModel extends Reactive {
 
         this.dialog.add(ConfirmationDialog, {
             title: _t("Install %s", snippet.moduleDisplayName),
-            body: markup`${bodyText}\n<a href="${linkUrl}" target="_blank"><i class="oi me-1" data-icon="east"></i>${linkText}</a>`,
+            body: markup`${bodyText}\n<a href="${linkUrl}" target="_blank"><i class="oi me-1" data-icon="east" role="img" aria-hidden="true"></i>${linkText}</a>`,
             confirm: async () => installSnippetModule(snippet),
             confirmLabel: _t("Save and Install"),
             cancel: () => {},
@@ -159,7 +158,10 @@ export class SnippetModel extends Reactive {
                 this.snippetsDocument = new DOMParser().parseFromString(html, "text/html");
                 const processors = registry.category("html_builder.snippetsPreprocessor").getAll();
                 for (const processor of Object.values(processors)) {
-                    processor(this.snippetsName, this.snippetsDocument);
+                    await processor(this.snippetsName, this.snippetsDocument, {
+                        orm: this.orm,
+                        context,
+                    });
                 }
                 this.computeSnippetTemplates(this.snippetsDocument);
                 this.setSnippetName(this.snippetsDocument);
@@ -337,40 +339,22 @@ export class SnippetModel extends Reactive {
         return { ...this.context };
     }
 
-    cleanSnippetForSave(snippetCopyEl, cleanForSaveProcessors) {
-        let item = snippetCopyEl;
-        cleanForSaveProcessors.forEach((processor) => {
-            item = processor(item);
-        });
-        return item;
-    }
-
     /**
      * Saves the given snippet as a custom one and reloads all the snippets
      * to have access to it directly.
      *
      * @param {HTMLElement} snippetEl the snippet we want to save
-     * @param {Array<Function>} cleanForSaveProcessors all the processors of the
-     *     `clean_for_save_processors` resources
-     * @param {Function} wrapWithSaveSnippetHandlers a function that processes the snippet
-     * before and/or after the cloning. E.g. stopping the interactions before
-     * cloning and restarting them after cloning.
+     * @param {Function} cloneAndPrepareForSave a function that clone and
+     * processes the snippet before and/or after the cloning. E.g. stopping the
+     * interactions before cloning and restarting them after cloning.
      * @returns
      */
-    async saveSnippet(
-        snippetEl,
-        cleanForSaveProcessors,
-        wrapWithSaveSnippetHandlers = (_, callback) => callback()
-    ) {
+    async saveSnippet(snippetEl, cloneAndPrepareForSave) {
         const isButton = snippetEl.matches("a.btn");
         const snippetKey = isButton ? "s_button" : snippetEl.dataset.snippet;
         const thumbnailURL = this.getSnippetThumbnailURL(snippetKey);
 
-        const snippetCopyEl = await wrapWithSaveSnippetHandlers(snippetEl, () =>
-            snippetEl.cloneNode(true)
-        );
-        // "CleanForSave" the snippet copy
-        this.cleanSnippetForSave(snippetCopyEl, cleanForSaveProcessors);
+        const snippetCopyEl = await cloneAndPrepareForSave(snippetEl);
 
         snippetCopyEl.classList.remove("oe_unremovable", "oe_unmovable");
 

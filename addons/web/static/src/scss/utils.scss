@@ -3,60 +3,15 @@
 ///
 
 // ------------------------------------------------------------------
-// Caret
-// ------------------------------------------------------------------
-@mixin utils-caret-boilerplate {
-    content: "";
-    display: inline-block;
-    width: 0;
-    height: 0;
-    vertical-align: middle;
-    -moz-transform: scale(0.9999); // Smooth the caret on firefox
-}
-
-// ------------------------------------------------------------------
-// Position absolute
-// ------------------------------------------------------------------
-@mixin o-position-absolute($top: auto, $right: auto, $bottom: auto, $left: auto) {
-    position: absolute;
-    top: $top;
-    left: $left;
-    bottom: $bottom;
-    right: $right;
-}
-
-// ------------------------------------------------------------------
-// Position sticky
-// ------------------------------------------------------------------
-@mixin o-position-sticky($top: auto, $right: auto, $bottom: auto, $left: auto) {
-    position: sticky;
-    top: $top;
-    left: $left;
-    bottom: $bottom;
-    right: $right;
-}
-
-// ------------------------------------------------------------------
 // Text overflow
 // ------------------------------------------------------------------
-@mixin o-text-overflow($display: inline-block, $max-width: 100%) {
+@mixin o-text-overflow($display: inline-block, $max-width: 100%, $vertical-align: top) {
     display: $display;
     max-width: $max-width;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    vertical-align: top; // To update display context changed by overflow:hidden
-}
-
-// ------------------------------------------------------------------
-// Hovering effects
-// ------------------------------------------------------------------
-@mixin o-hover-opacity($default-opacity: 0.5, $hover-opacity: 1) {
-    opacity: $default-opacity;
-
-    &:hover, &:focus, &.focus {
-        opacity: $hover-opacity;
-    }
+    vertical-align: $vertical-align; // To update display context changed by overflow:hidden
 }
 
 //------------------------------------------------------------------------------
@@ -77,7 +32,11 @@
 
     &::before {
         content: "";
-        @include o-position-absolute(0, 0, 0, 0);
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        right: 0;
         z-index: -1;
         background-image: url('/web/static/img/transparent.png');
         background-size: var(--PreviewAlphaBg-background-size, 10px) auto;
@@ -85,7 +44,11 @@
     }
     &::after {
         content: "";
-        @include o-position-absolute(0, 0, 0, 0);
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        right: 0;
         z-index: -1;
         background: inherit; // Inherit all background properties
         border-radius: inherit;
@@ -114,38 +77,6 @@
     padding-left: $left;
 }
 
-// ------------------------------------------------------------------
-// Caret
-// ------------------------------------------------------------------
-@mixin o-caret-down($caret-width: $caret-width, $caret-color: var(--o-caret-color, currentColor)) {
-    @include utils-caret-boilerplate;
-    border-bottom: 0;
-    border-left: $caret-width solid transparent;
-    border-right: $caret-width solid transparent;
-    border-top: $caret-width solid $caret-color;
-}
-@mixin o-caret-up($caret-width: $caret-width, $caret-color: var(--o-input-border-color, currentColor)) {
-    @include utils-caret-boilerplate;
-    border-bottom: $caret-width solid $caret-color;
-    border-left: $caret-width solid transparent;
-    border-right: $caret-width solid transparent;
-    border-top: 0;
-}
-@mixin o-caret-left($caret-width: $caret-width, $caret-color: var(--o-input-border-color, currentColor)) {
-    @include utils-caret-boilerplate;
-    border-bottom: $caret-width solid transparent;
-    border-left: 0;
-    border-right: $caret-width solid $caret-color;
-    border-top: $caret-width solid transparent;
-}
-@mixin o-caret-right($caret-width: $caret-width, $caret-color: var(--o-input-border-color, currentColor)) {
-    @include utils-caret-boilerplate;
-    border-bottom: $caret-width solid transparent;
-    border-left: $caret-width solid $caret-color;
-    border-right: 0;
-    border-top: $caret-width solid transparent;
-}
-
 //-------------------------------------------------------------------
 // Cursor
 //-------------------------------------------------------------------
@@ -162,22 +93,15 @@
 }
 
 // ------------------------------------------------------------------
-// Hovering effects
-// ------------------------------------------------------------------
-@mixin o-hover-text-color($default-color: $body-color, $hover-color: $link-color) {
-    color: $default-color;
-
-    &:hover, &:focus, &.focus {
-        color: $hover-color;
-    }
-}
-
-// ------------------------------------------------------------------
 // Mixin to define variations for btn-links and muted btn-links
 // ------------------------------------------------------------------
 @mixin o-btn-link-variant($color, $color-active) {
     text-transform: none;
-    @include o-hover-text-color($default-color: $color, $hover-color: $color-active);
+    color: $color;
+
+    &:hover, &:focus, &.focus {
+        color: $color-active;
+    }
 
     &, &:hover, &:focus, &:active, &.active {
         border-color: transparent !important;
@@ -190,7 +114,11 @@
     }
 
     &.text-muted, .text-muted {
-        @include o-hover-text-color($default-color: $text-muted, $hover-color: $color-active);
+        color: $text-muted;
+
+        &:hover, &:focus, &.focus {
+            color: $color-active;
+        }
     }
 }
 
@@ -264,73 +192,6 @@
     margin-top: 0;
 }
 
-// Emulate dropdown links
-@mixin o-kanban-dashboard-dropdown-link($link-padding-gap: $o-dropdown-hpadding) {
-    padding: 0;
-
-    > a {
-        margin: auto auto auto (-$link-padding-gap);
-        padding: 3px $link-padding-gap;
-        color: $dropdown-link-color;
-        display: block;
-
-        &:hover {
-            background-color: $dropdown-link-hover-bg;
-            color: $dropdown-link-hover-color;
-        }
-    }
-
-    &:last-child {
-        margin-bottom: 5px;
-    }
-}
-
-// No content helper
-@mixin o-nocontent-empty {
-    pointer-events: auto;
-    max-width: 650px;
-    margin: auto;
-    padding: 15px;
-    z-index: 1000;
-    text-align: center;
-    color: $body-color;
-    font-size: 115%;
-
-    > p:first-of-type {
-        margin-top: 0;
-        color: $headings-color;
-        font-weight: bold;
-        font-size: 125%;
-    }
-
-    a {
-        cursor: pointer;
-    }
-}
-
-%o-nocontent-init-image {
-    content: "";
-    display: block;
-    margin: auto;
-    background-size: cover;
-}
-
-%o-nocontent-empty-document {
-    @extend %o-nocontent-init-image;
-    width: 120px;
-    height: 80px;
-    margin-top: 30px;
-    margin-bottom: 30px;
-    background: transparent url(/web/static/img/empty_folder.svg) no-repeat center;
-}
-
-// Sample data
-@mixin o-sample-data-disabled {
-    opacity: 0.06;
-    pointer-events: none;
-    user-select: none;
-}
-
 // ----------------------------------------------------------------------------
 // CSS Variables
 // ----------------------------------------------------------------------------
@@ -347,26 +208,6 @@
         } @else {
             --#{$key}: #{$value};
         }
-    }
-}
-
-
-// ----------------------------------------------------------------------------
-// Media Type
-// ----------------------------------------------------------------------------
-
-// Conditionally includes SCSS  based on the current media context.
-// It serves two main purposes:
-// 1. Keep the base code clean by avoiding redundant `@media only screen {}`.
-// 2. Reduces CSS footprint by only compiling styles that match the current `$o-webclient-media`.
-
-@mixin media-only($-media) {
-    @if ($-media != null and type-of($-media) == 'string') {
-        @if $-media == $o-webclient-media {
-            @content;
-        }
-    } @else {
-        @warn "'media-only()' - missing argument";
     }
 }
 

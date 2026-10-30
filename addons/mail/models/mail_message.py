@@ -8,14 +8,15 @@ import textwrap
 import typing
 from binascii import Error as binascii_error
 from collections import defaultdict
+from html import escape
 from lxml import html
 from typing import Self
 
 from odoo import _, api, fields, models, modules, tools
-from odoo.exceptions import AccessError, MissingError
+from odoo.exceptions import AccessError, MissingError, UserError
 from odoo.fields import Domain
 from odoo.tools import clean_context, groupby, SQL
-from odoo.tools.constants import PREFETCH_MAX
+from odoo.tools.constants import IN_MAX
 from odoo.tools.misc import OrderedSet
 from odoo.addons.base.models.ir_attachment import condition_values
 from odoo.addons.mail.tools.discuss import Store
@@ -28,12 +29,16 @@ _logger = logging.getLogger(__name__)
 _image_dataurl = re.compile(r'(data:image/[a-z]+?);base64,([a-z0-9+/\n]{3,}=*)\n*([\'"])(?: data-filename="([^"]*)")?', re.I)
 
 MAX_COMODELS_FOR_DOMAIN = 5
-MAX_SEARCH_LIMIT = PREFETCH_MAX * 10
+MAX_SEARCH_LIMIT = IN_MAX * 10
 SHARE_DOMAIN = (
     Domain("message_type", "!=", "tracking")
     & Domain("is_internal", "=", False)
     & Domain("subtype_id.internal", "=", False)
 )
+# Supported `search_filter` values for `_message_fetch`.
+# Keep in sync with `MESSAGE_SEARCH_FILTERS` in
+# `addons/mail/static/src/core/common/search_message_input.js`.
+MESSAGE_SEARCH_FILTERS = ("messages", "notes", "activities", "changes")
 
 
 def exists_in_cache(records, *, hint_field=''):
@@ -402,10 +407,11 @@ class MailMessage(models.Model):
     @api.depends_context("uid")
     def _compute_is_bookmarked(self):
         """ Compute if the message is bookmarked by the current user. """
-        # TDE FIXME: use SQL
+        partner = self.env.user.partner_id
         bookmarked = (
             self.sudo()
-            .filtered(lambda msg: self.env.user.partner_id in msg.bookmarked_partner_ids)
+            .with_context(active_test=False)
+            .filtered(lambda msg: partner in msg.bookmarked_partner_ids and partner.active)
             .sudo(False)
         )
         for message in self:
@@ -455,14 +461,14 @@ class MailMessage(models.Model):
                 domain,
                 [],
                 offset=looping_offset,
-                limit=PREFETCH_MAX,
+                limit=IN_MAX,
                 order=order,
             ).sudo(False)
             result.extend(records._filtered_access('read')._ids)
-            if len(records) < PREFETCH_MAX:
+            if len(records) < IN_MAX:
                 # There are no more records
                 break
-            looping_offset += PREFETCH_MAX
+            looping_offset += IN_MAX
         return self.browse(result[offset:limit])._as_query(ordered)
 
     def _compute_res_access(self, operation: str):
@@ -487,7 +493,8 @@ class MailMessage(models.Model):
         if not isinstance(domain, Domain):
             domain = Domain.TRUE
         # Non-employee see only messages with a subtype and not internal
-        domain = self._get_search_domain_share() & domain
+        share_domain = self._get_search_domain_share()
+        domain = share_domain & domain
         self = self.sudo(False)  # noqa: PLW0642
 
         # searching for all messages or a subset of models
@@ -501,6 +508,9 @@ class MailMessage(models.Model):
         # search by model and res_id
         model_codomains = Domain.FALSE  # (model = a & res_id in ...) | (model = b & ...)
         env = self.with_context(active_test=False).env
+        inverse_field = self.env.context.get('search_from_field')
+        if self._fields['res_id'] not in self.env.registry.field_inverses.get(inverse_field, ()):
+            inverse_field = None
         for res_model_name in res_model_names:
             if res_model_name not in env:
                 continue
@@ -518,6 +528,7 @@ class MailMessage(models.Model):
             # (because the rules are applied with sudo permissions) and search.
             comodel_domain = Domain.FALSE
             comodel_domain_remaining = Domain.TRUE
+            only_read = bool(inverse_field)
             for domain_operation, doc_operation in comodel._mail_get_operation_for_mail_message_operation(operation):
                 domain_operation, comodel_domain_remaining = (
                     comodel_domain_remaining & domain_operation,
@@ -525,13 +536,20 @@ class MailMessage(models.Model):
                 )
                 comodel_rule = comodel._access_domain(doc_operation)
                 if comodel_rule.is_false():
+                    only_read = False
                     continue
                 if doc_operation == 'read':
                     comodel_rule = Domain.TRUE  # covered by the search below
+                else:
+                    only_read = False
                 comodel_domain |= (domain_operation & comodel_rule)
             if comodel_res_ids is not None:
                 comodel_domain &= Domain('id', 'in', comodel_res_ids)
-            comodel_domain = comodel_domain.optimize_full(comodel.sudo())
+            if not (only_read and inverse_field.model_name == res_model_name):
+                # if we only read and we have access
+                comodel_domain &= comodel._access_domain('read')
+            comodel = comodel.sudo()
+            comodel_domain = comodel_domain.optimize_full(comodel)
             query = comodel._search(comodel_domain)
             if query.is_empty():
                 continue
@@ -540,7 +558,10 @@ class MailMessage(models.Model):
             model_codomains |= codomain
 
         partner = self.env.user.partner_id
-        domain &= Domain.OR((
+        # The search domain is only used above to restrict the models and ids
+        # to check: the caller already filters on it, repeating it here would
+        # only duplicate its conditions in the final query.
+        return share_domain & Domain.OR((
             Domain('author_id', '=', partner.id),
             Domain('create_uid', '=', self.env.uid),
             # force an IN condition with a list of values
@@ -552,8 +573,6 @@ class MailMessage(models.Model):
             # complete from records-based domain).
             model_codomains & Domain('message_type', '!=', 'user_notification'),
         ))
-
-        return domain
 
     def _get_search_domain_share(self):
         if self.env.user._is_internal():
@@ -638,7 +657,10 @@ class MailMessage(models.Model):
             for values in self.env.cr.dictfetchall()
         }
         if len(messages_to_check) == MAX_SEARCH_LIMIT:  # avoid out of memory
-            raise ValueError(self.env._("Cannot search, too many messages"))
+            raise UserError(self.env._(
+                "Too many messages to be processed.\n"
+                "Please apply additional filters to reduce the number of potential messages."
+            ))
         accessible = self.browse(messages_to_check)
         if not messages_to_check:
             return accessible
@@ -867,16 +889,6 @@ class MailMessage(models.Model):
         return res
 
     def unlink(self):
-        # cascade-delete attachments that are directly attached to the message (should only happen
-        # for mail.messages that act as parent for a standalone mail.mail record).
-        # the cache of the related document doesn't need to be invalidate (see @_invalidate_documents)
-        # because the unlink method invalidates the whole cache anyway
-        if not self:
-            return True
-        self.check_access('unlink')
-        self.mapped('attachment_ids').filtered(
-            lambda attach: attach.res_model == self._name and (attach.res_id in self.ids or attach.res_id == 0)
-        ).unlink()
         messages_by_partner = defaultdict(lambda: self.env['mail.message'])
         partners_with_user = (self.partner_ids | self.partner_cc_ids).filtered('user_ids')
         for elem in self:
@@ -888,6 +900,15 @@ class MailMessage(models.Model):
         for partner, messages in messages_by_partner.items():
             partner._bus_send("mail.message/delete", {"message_ids": messages.ids})
         return super().unlink()
+
+    def _delete_extra(self):
+        # cascade-delete attachments that are directly attached to the message (should only happen
+        # for mail.messages that act as parent for a standalone mail.mail record).
+        yield from super()._delete_extra()
+        ids = set(self._ids)
+        yield self.attachment_ids.filtered(
+            lambda attach: attach.res_model == 'mail.message' and (attach.res_id in ids or not attach.res_id)
+        )
 
     def export_data(self, fields_to_export):
         if not self.env.is_admin():
@@ -976,7 +997,7 @@ class MailMessage(models.Model):
         ).add(notifications.mail_message_id, "_store_message_fields")
 
     @api.model
-    def _message_fetch(self, domain, *, thread=None, search_term=None, is_notification=None, before=None, after=None, around=None, limit=30):
+    def _message_fetch(self, domain, *, thread=None, search_term=None, search_filter=None, before=None, after=None, around=None, limit=30):
         res = {}
         domain = Domain(True if domain is None else domain)
         if thread:
@@ -985,10 +1006,24 @@ class MailMessage(models.Model):
                 & Domain("model", "=", thread._name)
                 & Domain("message_type", "!=", "user_notification")
             )
-        if is_notification is True:
-            domain &= Domain("message_type", "=", "notification")
-        elif is_notification is False:
-            domain &= Domain("message_type", "!=", "notification")
+        is_filtered = search_filter in MESSAGE_SEARCH_FILTERS
+        if is_filtered:
+            def subtype_domain(xmlid):
+                return Domain("subtype_id", "=", self.env["ir.model.data"]._xmlid_to_res_id(xmlid))
+            if search_filter == "messages":
+                domain &= (
+                    subtype_domain("mail.mt_comment")
+                    & Domain("message_type", "in", ("comment", "email"))
+                )
+            elif search_filter == "notes":
+                domain &= (
+                    subtype_domain("mail.mt_note")
+                    & Domain("message_type", "=", "comment")
+                )
+            elif search_filter == "activities":
+                domain &= subtype_domain("mail.mt_activities")
+            else:  # changes
+                domain &= Domain("message_type", "=", "tracking")
         if search_term:
             # we replace every space by a % to avoid hard spacing matching
             search_term = search_term.replace(" ", "%")
@@ -999,12 +1034,12 @@ class MailMessage(models.Model):
                 [("author_id", "in", self.env["res.partner"].sudo()._search([("name", "ilike", search_term)]))],
                 # sudo: mail.guest - allow searching by guest name
                 [("author_guest_id", "in", self.env["mail.guest"].sudo()._search([("name", "ilike", search_term)]))],
-                [("body", "ilike", search_term)],
+                [("body", "ilike", escape(search_term, quote=False))],
                 [("subject", "ilike", search_term)],
                 [("subtype_id.description", "ilike", search_term)],
             ])
             domain &= message_domain
-        if search_term or is_notification is not None:
+        if search_term or is_filtered:
             res["count"] = self.search_count(domain)
         if around is not None:
             messages_before = self.search(domain & Domain('id', '<=', around), limit=limit // 2, order="id DESC")
@@ -1019,39 +1054,6 @@ class MailMessage(models.Model):
             res["messages"] = res["messages"].sorted('id', reverse=True)
         return res
 
-    def _get_tracking_values_domain(self, search_term):
-        """Get the domain to search for tracking values."""
-        numeric_term = None
-        # try to convert the search term to a number
-        with contextlib.suppress(ValueError, TypeError):
-            numeric_term = float(search_term)
-        domain = Domain.OR(
-            Domain(field_name, "ilike", search_term)
-            for field_name in (
-                "old_value_char",
-                "new_value_char",
-                "old_value_text",
-                "new_value_text",
-                "old_value_datetime",
-                "new_value_datetime",
-                "field_id.name",
-                "field_id.field_description",
-            )
-        )
-        if numeric_term:
-            epsilon = 1e-9  # small epsilon to allow for floating point precision
-            domain |= Domain.OR(
-                Domain(field_name, ">=", numeric_term - epsilon)
-                & Domain(field_name, "<=", numeric_term + epsilon)
-                for field_name in ("old_value_float", "new_value_float")
-            )
-            if numeric_term.is_integer():
-                domain |= Domain.OR(
-                    Domain(field_name, "=", int(numeric_term))
-                    for field_name in ("old_value_integer", "new_value_integer")
-                )
-        return domain
-
     def _message_reaction(self, content, action, partner, guest, store: Store = None):
         self.ensure_one()
         # search for existing reaction
@@ -1059,9 +1061,11 @@ class MailMessage(models.Model):
             ("message_id", "=", self.id),
             ("partner_id", "=", partner.id),
             ("guest_id", "=", guest.id),
-            ("content", "=", content),
         ]
-        reaction = self.env["mail.message.reaction"].search(domain)
+        if content:
+            domain.append(("content", "=", content))
+        reaction = self.env["mail.message.reaction"].search(domain, limit=1)
+
         # create/unlink reaction if necessary
         if action == "add" and not reaction:
             create_values = {
@@ -1072,6 +1076,7 @@ class MailMessage(models.Model):
             }
             self.env["mail.message.reaction"].create(create_values)
         if action == "remove" and reaction:
+            content = reaction.content
             reaction.unlink()
         if store:
             # fill the store to use for non logged in portal users in mail_message_reaction()
@@ -1261,7 +1266,7 @@ class MailMessage(models.Model):
                 scheduled_dt_by_msg[scheduler.mail_message_id.id] = scheduler.scheduled_datetime
         record_by_message = self._record_by_message()
         records = record_by_message.values()
-        non_channel_records = filter(lambda record: record._name != "discuss.channel", records)
+        non_channel_records = [record for record in records if record._name != "discuss.channel"]
         target_user = res.target_user()
         follower_by_record_and_partner = defaultdict(self.env["mail.followers"].browse)
         if target_user and inbox_fields and non_channel_records:
@@ -1294,7 +1299,9 @@ class MailMessage(models.Model):
                 res.one(
                     "selfFollower",
                     ["is_active", "partner_id"],
-                    predicate=lambda t: target_user and inbox_fields and non_channel_records,
+                    predicate=lambda t: target_user
+                    and inbox_fields
+                    and t._name != "discuss.channel",
                     value=lambda t: follower_by_record_and_partner[t, target_user.partner_id],
                 ),
                 res.attr(
@@ -1540,3 +1547,6 @@ class MailMessage(models.Model):
             .with_prefetch(records_by_model_name[message.model]._prefetch_ids)
             for message in self.filtered(lambda m: m.model and m.res_id)
         }
+
+
+MailMessage._search_res_access.__override__ = False  # whitelist super()

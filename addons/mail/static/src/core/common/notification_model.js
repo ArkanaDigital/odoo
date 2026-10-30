@@ -5,13 +5,22 @@ import { _t } from "@web/core/l10n/translation";
 export class Notification extends Record {
     static _name = "mail.notification";
 
+    setup() {
+        super.setup(...arguments);
+        this.onChange(
+            () => [this.mail_message_id],
+            (mail_message_id) => {
+                if (!mail_message_id) {
+                    this.delete();
+                }
+            },
+            { immediate: true, initialRun: false }
+        );
+    }
+
     /** @type {number} */
     id;
-    mail_message_id = fields.One("mail.message", {
-        onDelete() {
-            this.delete();
-        },
-    });
+    mail_message_id = fields.One("mail.message");
     /** @type {string} */
     notification_status;
     /** @type {string} */
@@ -25,12 +34,14 @@ export class Notification extends Record {
             if (!this.mail_message_id?.isSelfAuthored) {
                 return;
             }
-            const failure = Object.values(this.store.Failure.records).find(
-                (f) =>
-                    f.resModel === thread?.model &&
-                    f.type === this.notification_type &&
-                    (f.resModel !== "discuss.channel" || f.resIds.has(thread?.id))
-            );
+            const failure = this.store.Failure.records
+                .values()
+                .find(
+                    (f) =>
+                        f.resModel === thread?.model &&
+                        f.type === this.notification_type &&
+                        (f.resModel !== "discuss.channel" || f.resIds.has(thread?.id))
+                );
             return this.isFailure
                 ? {
                       id: failure ? failure.id : this.store.Failure.nextId.value++,
@@ -68,7 +79,6 @@ export class Notification extends Record {
      * when it corresponds to a failure type
      * that is automatically cancelled before sending.
      *
-     * @returns {string}
      */
     get autoCanceledFailureType() {
         switch (this.failure_type) {
@@ -87,7 +97,7 @@ export class Notification extends Record {
     }
 
     get icon() {
-        return "mail";
+        return this.isFailure ? "cancel" : "mail";
     }
 
     get iconClass() {
@@ -118,7 +128,7 @@ export class Notification extends Record {
             case "bounce":
                 return "priority_high";
             case "exception":
-                return "close";
+                return "cancel";
             case "ready":
                 return "send";
             case "canceled":
@@ -131,7 +141,7 @@ export class Notification extends Record {
     }
 
     get statusClass() {
-        return this.notification_status === "exception" ? "text-danger" : "";
+        return this.notification_status === "exception" ? "text-danger oi-filled" : "";
     }
 
     get statusTitle() {

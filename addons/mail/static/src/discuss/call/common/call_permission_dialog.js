@@ -19,7 +19,6 @@ export class CallPermissionDialog extends Component {
         /** @type {import("@odoo/owl").Signal<Element>} */
         this.rootRef = signal();
         this.rtc = useService("discuss.rtc");
-        this.ui = useService("ui");
     }
 
     async onClickUseMicrophone() {
@@ -49,7 +48,7 @@ export class CallPermissionDialog extends Component {
     }
 
     get secondaryActionText() {
-        return this.props.media === "camera" ? _t("Use Camera") : _t("Use Microphone");
+        return this.props.media === "camera" ? _t("Use camera") : _t("Use microphone");
     }
 
     get permissionPrompt() {
@@ -63,6 +62,9 @@ export class CallPermissionDialog extends Component {
     }
 
     get permissionNote() {
-        return _t("You can still turn off your %s anytime.", this.props.media);
+        if (this.props.media === "microphone") {
+            return _t("You can still turn off your microphone anytime.");
+        }
+        return _t("You can still turn off your camera anytime.");
     }
 }

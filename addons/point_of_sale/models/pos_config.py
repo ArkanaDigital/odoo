@@ -14,7 +14,6 @@ from odoo.fields import Domain
 from odoo.http import request
 from odoo.tools import SQL, convert
 from odoo.tools.misc import get_lang
-from odoo.tools.translate import mark_as_copy
 
 DEFAULT_LIMIT_LOAD_PRODUCT = 5000
 DEFAULT_LIMIT_LOAD_PARTNER = 100
@@ -28,6 +27,9 @@ class PosConfig(models.Model):
 
     def _default_sale_journal(self):
         return self.env['account.journal']._ensure_company_account_journal()
+
+    def _default_closing_journal(self):
+        return self.env['account.journal']._ensure_company_closing_journal()
 
     def _default_invoice_journal(self):
         return self.env['account.journal'].search([
@@ -68,7 +70,7 @@ class PosConfig(models.Model):
     def _default_partner(self):
         return self.sudo()._get_or_create_default_partner()
 
-    name = fields.Char(string='Point of Sale', required=True, translate=True, help="An internal identification of the point of sale.", copy=mark_as_copy('name'))
+    name = fields.Char(string='Point of Sale', required=True, translate=True, help="An internal identification of the point of sale.")
     preparation_printer_ids = fields.Many2many('pos.printer', 'pos_config_printer_rel', 'config_id', 'printer_id', string="Preparation Printers", domain="[('use_type', '=', 'preparation')]")
     receipt_printer_ids = fields.Many2many('pos.printer', 'pos_config_receipt_printer_rel', 'config_id', 'printer_id', string="Receipt Printers", domain="[('use_type', '=', 'receipt')]")
     use_order_printer = fields.Boolean('Order Printer')
@@ -78,8 +80,16 @@ class PosConfig(models.Model):
         'account.journal', string='Point of Sale Journal',
         domain=[('type', '=', 'sale')],
         check_company=True,
-        help="Accounting journal used to post POS session receipts and invoices.",
+        help="Journal used for customer invoices and refunds credit notes. ",
         default=_default_sale_journal,
+        ondelete='restrict')
+    closing_journal_id = fields.Many2one(
+        'account.journal', string='Closing Journal',
+        domain=[('type', '=', 'sale')],
+        required=True,
+        check_company=True,
+        help="Journal used specifically for PoS session closing and reverse entries",
+        compute='_compute_closing_journal_id', store=True, readonly=False, precompute=True,
         ondelete='restrict')
     default_partner_id = fields.Many2one(
         'res.partner',
@@ -222,6 +232,7 @@ class PosConfig(models.Model):
         string='Download Invoice',
         help="Automatically download the invoice PDF when an order is invoiced.",
     )
+    welcome_message = fields.Char(string='Customer Message', help="Set the message that will be displayed on the PoS customer display")
 
     def _get_next_order_refs(self, device_identifier='0'):
         next_number = self.order_backend_seq_id._next()
@@ -275,6 +286,11 @@ class PosConfig(models.Model):
                 'records': records,
             })
 
+    def _get_paid_orders_config_domain(self):
+        """Domain on pos.order matching configs whose paid orders are visible from this config."""
+        self.ensure_one()
+        return Domain('config_id', 'in', (self | self.trusted_config_ids).ids)
+
     def read_config_open_orders(self, domain, record_ids=[]):
         delete_record_ids = {}
         dynamic_records = {}
@@ -307,6 +323,10 @@ class PosConfig(models.Model):
         }
 
     @api.model
+    def load_pos_data_force_loading(self):
+        return True
+
+    @api.model
     def _load_pos_data_domain(self, data):
         return [('id', '=', data['pos.session'].config_id.id)]
 
@@ -327,6 +347,7 @@ class PosConfig(models.Model):
         record['_has_cash_move_perm'] = self.env.user._has_cash_move_permission()
         record['_has_cash_delete_perm'] = self.env.user._has_cash_delete_permission()
         record["_unit_uom_id"] = self.env.ref('uom.product_uom_unit').id
+        record['_limited_partner_count'] = config._get_limited_partner_count()
 
         session = config.current_session_id
         last_opening = config._get_opening_balance() if session else 0.0
@@ -373,6 +394,14 @@ class PosConfig(models.Model):
         account_accountant = self.env['ir.module.module'].sudo().search([('name', '=', 'account_accountant'), ('state', '=', 'installed')])
         for pos_config in self:
             pos_config.is_installed_account_accountant = account_accountant and account_accountant.id
+
+    @api.depends('company_id')
+    def _compute_closing_journal_id(self):
+        for config in self:
+            if not config.closing_journal_id:
+                config.closing_journal_id = config.with_company(
+                    config.company_id,
+                )._default_closing_journal()
 
     @api.depends('journal_id.currency_id', 'journal_id.company_id.currency_id', 'company_id', 'company_id.currency_id')
     def _compute_currency(self):
@@ -470,9 +499,8 @@ class PosConfig(models.Model):
         }
 
         all_paid_orders = session.order_ids.filtered(lambda o: o.state in ['paid', 'done'])
-        refund_orders = all_paid_orders.filtered(lambda o: o.is_refund_or_negative())
+        refund_orders, non_refund_orders = all_paid_orders.partitioned(lambda o: o.is_refund_or_negative())
         draft_orders = session.order_ids.filtered(lambda o: o.state == 'draft')
-        non_refund_orders = all_paid_orders - refund_orders
 
         # calculate total refunded amount per original order for refund count check
         refund_totals = defaultdict(float)
@@ -491,7 +519,7 @@ class PosConfig(models.Model):
             statistics['orders']['paid'] = {
                 'amount': total_paid,
                 'count': paid_order_count,
-                'display': f"{currency.format(total_paid)} ({paid_order_count} {'order' if paid_order_count == 1 else 'orders'})",
+                'display': f"{currency.format(total_paid)} ({paid_order_count} {self.env._('order') if paid_order_count == 1 else self.env._('orders')})",
             }
 
         if draft_orders:
@@ -500,7 +528,7 @@ class PosConfig(models.Model):
             statistics['orders']['draft'] = {
                 'amount': total_draft,
                 'count': count_draft,
-                'display': f"{currency.format(total_draft)} ({count_draft} {'order' if count_draft == 1 else 'orders'})",
+                'display': f"{currency.format(total_draft)} ({count_draft} {self.env._('order') if count_draft == 1 else self.env._('orders')})",
             }
 
         return statistics
@@ -690,8 +718,8 @@ class PosConfig(models.Model):
 
         pos_configs = super().create(vals_list)
         pos_configs._create_sequences()
-        pos_configs.sudo()._check_modules_to_install()
-        pos_configs.sudo()._check_groups_implied()
+        pos_configs._check_modules_to_install()
+        pos_configs._check_groups_implied()
         pos_configs._update_preparation_printers_menuitem_visibility()
         # If you plan to add something after this, use a new environment. The one above is no longer valid after the modules install.
         return pos_configs
@@ -778,17 +806,28 @@ class PosConfig(models.Model):
         if ('use_order_printer' in vals and not vals['use_order_printer']):
             vals['preparation_printer_ids'] = [fields.Command.clear()]
 
-        bypass_payment_method_ids_forbidden_change = self.env.context.get('bypass_payment_method_ids_forbidden_change', False)
-
         self._preprocess_x2many_vals_from_settings_view(vals)
         vals = self._keep_new_vals(vals)
+
+        if 'payment_method_ids' in vals:
+            for config in self:
+                opened_session = config.session_ids.filtered(lambda s: s.state != 'closed')
+                if not opened_session:
+                    continue
+                new_ids = set(config._fields['payment_method_ids'].convert_to_cache(vals['payment_method_ids'], config))
+                removed_pms = config.payment_method_ids.filtered(lambda pm: pm.id not in new_ids)
+                if removed_pms:
+                    raise UserError(_(
+                        "You cannot remove %(pms)s from %(config)s while it has an open session.",
+                        pms=', '.join(removed_pms.mapped('name')),
+                        config=config.name,
+                    ))
+
         opened_session = self.mapped('session_ids').filtered(lambda s: s.state != 'closed')
         if opened_session:
             forbidden_fields = []
             for key in self._get_forbidden_change_fields():
                 if key in vals:
-                    if bypass_payment_method_ids_forbidden_change and key == 'payment_method_ids':
-                        continue
                     # Allow activating a pos config even if it has an open session, but don't allow deactivating it.
                     if key == 'active' and vals['active']:
                         continue
@@ -807,9 +846,9 @@ class PosConfig(models.Model):
             if config.use_presets and config.default_preset_id and config.default_preset_id.id not in config.available_preset_ids.ids:
                 config.available_preset_ids |= config.default_preset_id
 
-        self.sudo()._set_fiscal_position()
-        self.sudo()._check_modules_to_install()
-        self.sudo()._check_groups_implied()
+        self._set_fiscal_position()
+        self._check_modules_to_install()
+        self._check_groups_implied()
         if 'use_order_printer' in vals:
             self._update_preparation_printers_menuitem_visibility()
         return result
@@ -879,22 +918,26 @@ class PosConfig(models.Model):
         return new_vals
 
     def _get_forbidden_change_fields(self):
-        return ['module_pos_restaurant', 'payment_method_ids', 'active']
+        return ['module_pos_restaurant', 'active']
 
-    def unlink(self):
+    @api.ondelete(at_uninstall=True)
+    def _unlink_sequences(self):
         # Delete the pos.config records first then delete the sequences linked to them
-        sequences_to_delete = self.order_line_seq_id | self.device_seq_id
-        res = super().unlink()
-        sequences_to_delete.unlink()
-        return res
+        return (self.order_line_seq_id | self.device_seq_id).unlink
+
+    def _check_pos_manager_access(self):
+        if not (self.env.is_admin() or self.env.user.has_group('point_of_sale.group_pos_manager')):
+            raise AccessError(_("Only Point of Sale managers can modify a Point of Sale configuration."))
 
     # TODO-JCB: Maybe we can move this logic in `_reset_default_on_vals`
     def _set_fiscal_position(self):
         for config in self:
             if config.tax_regime_selection and config.default_fiscal_position_id and (config.default_fiscal_position_id.id not in config.fiscal_position_ids.ids):
-                config.fiscal_position_ids = [(4, config.default_fiscal_position_id.id)]
+                self._check_pos_manager_access()
+                config.sudo().fiscal_position_ids = [(4, config.default_fiscal_position_id.id)]
             elif not config.tax_regime_selection and config.fiscal_position_ids.ids:
-                config.fiscal_position_ids = [(5, 0, 0)]
+                self._check_pos_manager_access()
+                config.sudo().fiscal_position_ids = [(5, 0, 0)]
 
     def _check_modules_to_install(self):
         # determine modules to install
@@ -909,6 +952,7 @@ class PosConfig(models.Model):
             modules = self.env['ir.module.module'].sudo().search([('name', 'in', expected)])
             modules = modules.filtered(lambda module: module.state not in STATES)
             if modules:
+                self._check_pos_manager_access()
                 modules.button_immediate_install()
                 # just in case we want to do something if we install a module. (like a refresh ...)
                 return True
@@ -921,7 +965,11 @@ class PosConfig(models.Model):
                 if field.type in ('boolean', 'selection') and hasattr(field, 'implied_group'):
                     field_group_xmlids = getattr(field, 'group', 'base.group_user').split(',')
                     field_groups = self.env['res.groups'].concat(self.env.ref(it) for it in field_group_xmlids)
-                    field_groups.write({'implied_ids': [(4, self.env.ref(field.implied_group).id)]})
+                    implied_group = self.env.ref(field.implied_group)
+                    field_groups = field_groups.filtered(lambda group: implied_group not in group.implied_ids)
+                    if field_groups:
+                        self._check_pos_manager_access()
+                        field_groups.sudo().write({'implied_ids': [(4, implied_group.id)]})
 
     def execute(self):
         return {
@@ -1061,7 +1109,7 @@ class PosConfig(models.Model):
                 partner.company_id=%s OR partner.company_id IS NULL
             )
             ORDER BY  COALESCE(pm.order_count, 0) DESC,
-                      NAME limit %s offset %s;
+                      NAME, partner.id limit %s offset %s;
         """, self.company_id.id, self._get_limited_partner_count(), offset))
 
     def action_pos_config_modal_edit(self):
@@ -1103,6 +1151,7 @@ class PosConfig(models.Model):
             'access_token': self.access_token,
             'has_bg_img': bool(self.customer_display_bg_img),
             'company_id': self.company_id.id,
+            'welcome_message': self.welcome_message,
         }
 
     @api.model
@@ -1164,7 +1213,7 @@ class PosConfig(models.Model):
         journal_domain = [
             *self.env['account.journal']._check_company_domain(self.env.company),
             ('type', '=', 'bank'),
-            ('currency_id', '=', False),
+            ('currency_id', 'in', [False, self.env.company.currency_id.id]),
         ]
         bank_pm = self.env['pos.payment.method'].search([
             *self.env['pos.payment.method']._check_company_domain(self.env.company),

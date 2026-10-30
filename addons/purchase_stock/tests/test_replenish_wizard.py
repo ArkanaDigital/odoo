@@ -52,7 +52,6 @@ class TestReplenishWizard(PurchaseTestCommon):
         2)seq2 vendor1 100  min qty 10
         -> 2) should be chosen
         """
-        self._use_route_buy(self.product, create_seller=False)
         self.env['product.supplierinfo'].create({
             'product_tmpl_id': self.product.product_tmpl_id.id,
             'partner_id': self.vendor.id,
@@ -79,16 +78,16 @@ class TestReplenishWizard(PurchaseTestCommon):
         self.assertEqual(po.order_line.price_unit, 100)
 
     def test_chose_supplier_2(self):
-        """ Choose supplier based on the ordered quantity and minimum price
+        """ Choose supplier based on the ordered quantity and minimum price and supplier sequence
+        (seq1 vendor will always be selected before other vendors)
 
         replenish 10
 
         1)seq1 vendor1 140 min qty 1
         2)seq2 vendor2 90  min qty 10
         3)seq3 vendor1 100 min qty 10
-        -> 2) should be chosen
+        -> 3) should be chosen
         """
-        self._use_route_buy(self.product, create_seller=False)
 
         vendor1 = self.env['res.partner'].create({'name': 'vendor1', 'email': 'from.test@example.com'})
         vendor2 = self.env['res.partner'].create({'name': 'vendor2', 'email': 'from.test2@example.com'})
@@ -123,8 +122,8 @@ class TestReplenishWizard(PurchaseTestCommon):
             'warehouse_id': self.warehouse.id,
         })
         po = self._get_purchase_order_from_replenishment(replenish_wizard)
-        self.assertEqual(po.partner_id, vendor2)
-        self.assertEqual(po.order_line.price_unit, 90)
+        self.assertEqual(po.partner_id, vendor1)
+        self.assertEqual(po.order_line.price_unit, 100)
 
     def test_chose_supplier_3(self):
         """ Choose supplier based on the ordered quantity and minimum price
@@ -135,7 +134,6 @@ class TestReplenishWizard(PurchaseTestCommon):
         2)seq1 vendor2 50
         -> 2) should be chosen
         """
-        self._use_route_buy(self.product, create_seller=False)
         vendor1 = self.env['res.partner'].create({'name': 'vendor1', 'email': 'from.test@example.com'})
         vendor2 = self.env['res.partner'].create({'name': 'vendor2', 'email': 'from.test2@example.com'})
 
@@ -172,7 +170,6 @@ class TestReplenishWizard(PurchaseTestCommon):
         2)seq3 vendor1 80 min qty 5
         -> 2) should be chosen
         """
-        self._use_route_buy(self.product, create_seller=False)
         self.env['product.supplierinfo'].create({
             'partner_id': self.vendor.id,
             'price': 100,
@@ -211,7 +208,6 @@ class TestReplenishWizard(PurchaseTestCommon):
         2)seq2 vendor 110 discount 20%
         -> 2) should be chosen
         """
-        self._use_route_buy(self.product, create_seller=False)
         self.env['product.supplierinfo'].create({
             'product_tmpl_id': self.product.product_tmpl_id.id,
             'partner_id': self.vendor.id,
@@ -240,7 +236,6 @@ class TestReplenishWizard(PurchaseTestCommon):
         self.assertEqual(po.order_line.discount, 20.0)
 
     def test_supplier_delay(self):
-        self._use_route_buy(self.product, create_seller=False)
         vendor1, vendor2 = self.env['res.partner'].create([{
             'name': 'vendor1', 'email': 'vendor1@odoo.com',
         }, {
@@ -275,7 +270,6 @@ class TestReplenishWizard(PurchaseTestCommon):
             self.assertEqual(fields.Datetime.from_string('2023-01-04 00:00:00'), wizard.date_planned)
 
     def test_purchase_delay(self):
-        self._use_route_buy(self.product, create_seller=False)
         supplier1 = self.env['product.supplierinfo'].create({
             'partner_id': self.vendor.id,
             'price': 100,
@@ -312,7 +306,6 @@ class TestReplenishWizard(PurchaseTestCommon):
         self.product = self.env['product.product'].create({
             'name': "Furniture Service",
             'is_storable': True,
-            'route_ids': [Command.link(self.route_buy.id)],
         })
         supplier = self.env['product.supplierinfo'].create({
             'partner_id': self.vendor.id,
@@ -344,7 +337,6 @@ class TestReplenishWizard(PurchaseTestCommon):
                 'price': 1.0,
                 'date_end': '2019-01-01',
             })],
-            'route_ids': [Command.set([self.route_buy.id])],
         })
 
         replenish_wizard = self.env['product.replenish'].create({
@@ -364,7 +356,6 @@ class TestReplenishWizard(PurchaseTestCommon):
         self.warehouse.reception_steps = 'two_steps'
         product = self.env['product.product'].create({
             'name': 'Product',
-            'route_ids': [Command.set([self.route_buy.id])],
         })
         vendor1, vendor2 = self.env['res.partner'].create([{
             'name': 'vendor1', 'email': 'vendor1@odoo.com'
@@ -436,7 +427,6 @@ class TestReplenishWizard(PurchaseTestCommon):
         self.assertEqual(stock_picking.partner_id, second_warehouse.partner_id)
 
     def test_purchase_order_uom(self):
-        self._use_route_buy(self.product, create_seller=False)
         price_list_uom, price_list_pack_of_6 = self.env['product.supplierinfo'].create([{
             'partner_id': self.vendor.id,
             'product_id': self.product.id,
@@ -523,7 +513,6 @@ class TestReplenishWizard(PurchaseTestCommon):
         product_to_buy = self.env['product.product'].create({
             'name': "Furniture Service",
             'is_storable': True,
-            'route_ids': [Command.link(self.route_buy.id)],
         })
 
         # Replenishing with partner not on pricelists
@@ -595,7 +584,6 @@ class TestReplenishWizard(PurchaseTestCommon):
         product = self.env['product.product'].create({
             'name': "Furniture Service",
             'is_storable': True,
-            'route_ids': [Command.link(self.route_buy.id)],
         })
         self.vendor1, self.vendor2 = self.env['res.partner'].create([
             {'name': 'vendor1', 'email': 'from.test@example.com'},

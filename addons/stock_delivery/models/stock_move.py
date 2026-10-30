@@ -2,6 +2,7 @@
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError
+from odoo.fields import Domain
 
 
 class StockRoute(models.Model):
@@ -13,7 +14,7 @@ class StockRoute(models.Model):
 class StockMove(models.Model):
     _inherit = 'stock.move'
 
-    weight = fields.Float(compute='_cal_move_weight', digits='Stock Weight', store=True, compute_sudo=True,
+    weight = fields.Float(compute='_compute_weight', digits='Stock Weight', store=True, compute_sudo=True,
         # In case of a big database with a lot of stock moves, the RAM gets exhausted
         # To prevent a process from being killed We create the column 'weight' manually
         # Then we do the computation in a query by multiplying product weight with qty
@@ -26,11 +27,11 @@ class StockMove(models.Model):
                 """),
     )
 
-    @api.depends('product_id', 'product_uom_qty', 'uom_id')
-    def _cal_move_weight(self):
+    @api.depends('product_id', 'quantity', 'uom_id')
+    def _compute_weight(self):
         moves_with_weight = self.filtered(lambda moves: moves.product_id.weight > 0.00)
         for move in moves_with_weight:
-            move.weight = (move.product_qty * move.product_id.weight)
+            move.weight = (move.quantity * move.product_id.weight)
         (self - moves_with_weight).weight = 0
 
     def _get_new_picking_values(self):
@@ -141,3 +142,13 @@ class StockMoveLine(models.Model):
         if self.carrier_id:
             return True
         return super()._should_set_package()
+
+    def _get_potential_existing_waves_extra_domain(self, domain_list, picking_type):
+        domain_list = super()._get_potential_existing_waves_extra_domain(domain_list, picking_type)
+        if picking_type.batch_group_by_carrier:
+            domain_list.append(Domain('picking_ids.carrier_id', 'in', self.carrier_id.ids))
+        return domain_list
+
+    def _is_new_potential_line_extra(self, potential_line, picking_type):
+        res = super()._is_new_potential_line_extra(potential_line, picking_type)
+        return res or (picking_type.batch_group_by_carrier and self.carrier_id != potential_line.carrier_id)

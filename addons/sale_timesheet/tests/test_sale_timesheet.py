@@ -2,8 +2,7 @@
 from datetime import timedelta
 
 from odoo import Command
-from odoo.fields import Date
-from odoo.fields import Domain
+from odoo.fields import Date, Domain
 from odoo.tools import float_is_zero
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.addons.sale_timesheet.tests.common import TestCommonSaleTimesheet
@@ -386,6 +385,38 @@ class TestSaleTimesheet(TestCommonSaleTimesheet):
         self.assertFalse(timesheet1.reinvoice_move_id, "The timesheet1 should not be linked to the invoice, even after invoice validation")
         self.assertFalse(timesheet2.reinvoice_move_id, "The timesheet2 should not be linked to the invoice, even after invoice validation")
 
+    def test_billable_type_of_project_billed_manually(self):
+        """ A billable project whose billing type is 'manually' flags its timesheets as
+            billable even when they have no sales order item set.
+        """
+        project = self.env['project.project'].create({
+            'name': 'Training',
+            'allow_timesheets': True,
+            'allow_billable': True,
+            'partner_id': self.partner_a.id,
+        })
+        self.assertEqual(project.billing_type, 'not_billable', "The default billing type is 'not_billable'")
+
+        timesheet = self.env['account.analytic.line'].create({
+            'name': 'Test Line',
+            'project_id': project.id,
+            'unit_amount': 3,
+            'employee_id': self.employee_user.id,
+        })
+        self.assertFalse(timesheet.so_line)
+        self.assertEqual(timesheet.billable_type, '09_non_billable')
+
+        project.billing_type = 'manually'
+        self.assertEqual(
+            timesheet.billable_type, '08_billable_manual',
+            "The timesheet should be billable manually even without any sales order item")
+
+        project.allow_billable = False
+        self.assertEqual(
+            project.billing_type, 'not_billable',
+            "A project which is not billable cannot be billed manually")
+        self.assertEqual(timesheet.billable_type, '09_non_billable')
+
     def test_timesheet_invoice(self):
         """ Test to create invoices for the sale order with timesheets
 
@@ -465,7 +496,7 @@ class TestSaleTimesheet(TestCommonSaleTimesheet):
         })
 
         with self.assertRaises(AccessError, msg="The user should not have access to the SOL"):
-            so_line_deliver_timesheet.with_user(self.user_employee_without_sales_access).read(['name'])
+            so_line_deliver_timesheet.with_user(self.user_employee_without_sales_access).fetch(['name'])
 
         # invalidate cache to make sure the SOL set on the timesheet is not in the cache since the user
         # should not be able to access on the SOL.
@@ -1058,18 +1089,23 @@ class TestSaleTimesheet(TestCommonSaleTimesheet):
         self.assertEqual(len(invoices), 2, "The number of invoices created should be equal to the number of sales orders.")
 
     def test_timesheet_with_negative_time_spent(self):
-        """ Check the billable type of a timesheet with negative time spent """
+        """
+        Check the billable type of a timesheet with negative time spent
+        and ensure that invoices can properly be created with negative timesheet
+        """
         sale_order = self.env['sale.order'].create([{
             'partner_id': self.partner_a.id,
             'order_line': [Command.create({
                 'product_id': self.product_delivery_timesheet2.id,
             })],
         }])
+        so_line = sale_order.order_line
         sale_order.action_confirm()
         task1 = sale_order.tasks_ids
         timesheet = self.env['account.analytic.line'].create([
             {
                 'name': 'Timesheet',
+                'date': '2026-09-15',
                 'task_id': task1.id,
                 'project_id': task1.project_id.id,
                 'unit_amount': -1,
@@ -1077,11 +1113,21 @@ class TestSaleTimesheet(TestCommonSaleTimesheet):
             },
         ])
         self.assertEqual(timesheet.billable_type, '04_billable_time')
+        invoice = self._create_invoice_timesheet_over_period(sale_order, '2026-09-01', '2026-09-30')
+        self.assertEqual(invoice.move_type, 'out_refund', 'Invoicing negative timesheets should create credit notes')
+        self.assertEqual(self._get_valid_invoiced_lines(invoice).quantity, 1.0)
+        invoice.action_post()
+        self.assertRecordValues(so_line, [{
+            'qty_delivered': -1.0,
+            'qty_invoiced': -1.0,
+        }])
 
     def test_linked_timesheet_after_invoice_reversal(self):
-        """Test that uneditable timesheet entries aren't linked to a reversed invoice form"""
+        """Test that timesheet entries end up linked to the correct invoice (or unlinked)
+        depending on whether the reversal creates a replacement invoice.
+        """
 
-        # Full refund credit note
+        # --- Reverse and create invoice (modify_moves) ---------------------------
         sale_order = self.env['sale.order'].create({
             'partner_id': self.partner_a.id,
             'partner_invoice_id': self.partner_a.id,
@@ -1112,11 +1158,18 @@ class TestSaleTimesheet(TestCommonSaleTimesheet):
             'journal_id': invoice.journal_id.id,
         })
         reversal_wizard.modify_moves()
-        self.assertFalse(timesheet.reinvoice_move_id, "Timesheet should not be linked to the invoice after reversal")
-        timesheet.write({'unit_amount': 7})
-        self.assertEqual(timesheet.unit_amount, 7, "It Should be possible to edit timesheet after invoice reversal")
 
-        # Partial refund credit note
+        new_invoice = reversal_wizard.new_move_ids.filtered(lambda m: m.move_type == 'out_invoice')
+        self.assertTrue(new_invoice, "A new draft invoice should have been created")
+        self.assertNotEqual(new_invoice, invoice, "The new invoice should not be the original invoice")
+        self.assertEqual(
+            timesheet.reinvoice_move_id,
+            new_invoice,
+            "Timesheet should be relinked to the newly created invoice"
+        )
+
+        with self.assertRaises(UserError, msg="Timesheet should be uneditable once relinked to the new invoice"):
+            timesheet.write({'unit_amount': 7})
         sale_order2 = self.env['sale.order'].create({
             'partner_id': self.partner_a.id,
             'partner_invoice_id': self.partner_a.id,
@@ -1168,8 +1221,11 @@ class TestSaleTimesheet(TestCommonSaleTimesheet):
         )
         invoice_line_to_remove.unlink()
         credit_note.action_post()
-        self.assertFalse(timesheet1.reinvoice_move_id, "Timesheet1 should be cleared after partial refund of its task")
-        self.assertEqual(timesheet2.reinvoice_move_id, invoice2, "Timesheet2 should still be linked to the original invoice")
+        self.assertFalse(timesheet1.reinvoice_move_id, "Timesheet1 should be cleared after refund of its task")
+        self.assertEqual(timesheet2.reinvoice_move_id, invoice2, "Timesheet2 should still be linked, its line wasn't refunded")
+
+        timesheet1.write({'unit_amount': 9})
+        self.assertEqual(timesheet1.unit_amount, 9, "Timesheet1 should be editable again after plain reversal")
 
         # Make sure only the refunded line is invoiced again
         context = {
@@ -1677,6 +1733,42 @@ class TestSaleTimesheet(TestCommonSaleTimesheet):
         self.assertEqual(move.move_type, 'out_invoice')
         self.assertEqual(self._get_valid_invoiced_lines(move).quantity, 1.0)
 
+    def test_period_invoicing_after_manual_over_invoicing(self):
+        sale_order = self._create_order_with_timesheet_lines()
+        so_line = sale_order.order_line
+
+        self.env['account.analytic.line'].create([
+            {
+                'name': 'Timesheet June (1 hour)',
+                'date': '2026-06-15',
+                'unit_amount': 1.0,
+                'project_id': so_line.task_id.project_id.id,
+                'task_id': so_line.task_id.id,
+                'employee_id': self.employee_user.id,
+            },
+            {
+                'name': 'Timesheet July (1 hour)',
+                'date': '2026-07-15',
+                'unit_amount': 1.0,
+                'project_id': so_line.task_id.project_id.id,
+                'task_id': so_line.task_id.id,
+                'employee_id': self.employee_user.id,
+            }
+        ])
+
+        invoice_june = self._create_invoice_timesheet_over_period(sale_order, '2026-06-01', '2026-06-30')
+        self.assertEqual(self._get_valid_invoiced_lines(invoice_june).quantity, 1.0, "Should invoice the one hour of June")
+        self._get_valid_invoiced_lines(invoice_june).write({'quantity': 11.0})
+        invoice_june.action_post()
+
+        self.assertEqual(so_line.qty_delivered, 2.0, "Should reflect both the hours of June and July")
+        self.assertEqual(so_line.qty_invoiced, 11.0, "Should reflect the manual over-invoicing")
+
+        invoice_july = self._create_invoice_timesheet_over_period(sale_order, '2026-07-01', '2026-07-31')
+        self.assertEqual(self._get_valid_invoiced_lines(invoice_july).quantity, 1.0,
+                         'We should invoice the timesheet of July, depsite over-billing the one of June')
+
+
 @tagged('-at_install', 'post_install')
 class TestSaleTimesheetAnalyticPlan(TestCommonSaleTimesheet):
 
@@ -1712,7 +1804,7 @@ class TestSaleTimesheetAnalyticPlan(TestCommonSaleTimesheet):
             'product_id': self.product_order_timesheet4.id,
             'product_uom_qty': 10,
             'order_id': sale_order.id,
-            'analytic_distribution': {f'{analytic_account1.id}, {analytic_account2.id}': 100},
+            'analytic_distribution': {f'{analytic_account1.id},{analytic_account2.id}': 100},
         })
         timesheet = self.env['account.analytic.line'].create({
             'name': 'Test Line',
@@ -1734,7 +1826,7 @@ class TestSaleTimesheetAnalyticPlan(TestCommonSaleTimesheet):
             'product_id': self.product_order_timesheet4.id,
             'product_uom_qty': 10,
             'order_id': sale_order.id,
-            'analytic_distribution': {f'{analytic_account1.id}, {analytic_account3.id}': 100},
+            'analytic_distribution': {f'{analytic_account1.id},{analytic_account3.id}': 100},
         })
         timesheet.so_line = so_line2
         self.assertEqual(timesheet.account_id, analytic_account1)
@@ -1901,3 +1993,56 @@ class TestSaleTimesheetAnalyticPlan(TestCommonSaleTimesheet):
         ])._compute_so_line()
         self.assertEqual(first_sol.qty_delivered, 3.0)
         self.assertEqual(second_sol.qty_delivered, 5.0)
+
+    def test_archive_employee_with_invoiced_timesheet(self):
+        """ Test that registering departure ignores future timesheets linked to posted invoices,
+            allowing the departure to succeed while preserving the invoiced timesheet. """
+        today = Date.context_today(self.env.user)
+        yesterday = today - timedelta(days=1)
+        tomorrow = today + timedelta(days=1)
+
+        self.employee_manager.version_ids.sudo().write({
+            'date_version': today - timedelta(days=10),
+            'contract_date_start': today - timedelta(days=10),
+        })
+
+        invoiced_timesheet = self.env['account.analytic.line'].create({
+            'project_id': self.project_global.id,
+            'name': 'Future Invoiced Timesheet',
+            'unit_amount': 2,
+            'employee_id': self.employee_manager.id,
+            'date': tomorrow,
+        })
+
+        standard_timesheet = self.env['account.analytic.line'].create({
+            'project_id': self.project_global.id,
+            'name': 'Future Standard Timesheet',
+            'unit_amount': 2,
+            'employee_id': self.employee_manager.id,
+            'date': tomorrow,
+        })
+
+        invoice = self.env['account.move'].create({
+            'move_type': 'out_invoice',
+            'partner_id': self.partner_a.id,
+            'invoice_date': today,
+            'invoice_line_ids': [Command.create({
+                'name': 'Consulting Services',
+                'price_unit': 100.0,
+                'quantity': 2.0,
+            })],
+        })
+        invoice.action_post()
+
+        invoiced_timesheet.sudo().write({
+            'reinvoice_move_id': invoice.id,
+        })
+
+        self.env['hr.employee.departure'].sudo().with_context(employee_termination=True).create({
+            'employee_id': self.employee_manager.id,
+            'departure_date': yesterday,
+        }).action_register()
+
+        self.assertFalse(self.employee_manager.active, "The employee should be successfully archived.")
+        self.assertFalse(standard_timesheet.exists(), "The standard future timesheet should be deleted.")
+        self.assertTrue(invoiced_timesheet.exists(), "The invoiced future timesheet should be ignored and kept in the database.")

@@ -1,12 +1,9 @@
-# -*- coding: utf-8 -*-
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 import copy
 
 from datetime import datetime
-from freezegun import freeze_time
-from unittest.mock import patch
 
-from odoo import exceptions
+from odoo import Command, exceptions
 from odoo.addons.mass_mailing.tests.common import MassMailCommon
 from odoo.tests import Form, tagged, users
 
@@ -92,8 +89,7 @@ class TestMailingListMerge(MassMailCommon):
             new = new.with_context(default_list_ids=[list_id])
             self.assertFalse(any(contact.opt_out for contact in new))
 
-        with freeze_time('2022-01-01 12:00'), \
-             patch.object(self.env.cr, 'now', lambda: datetime(2022, 1, 1, 12, 0, 0)):
+        with self.mock_datetime_and_now(datetime(2022, 1, 1, 12, 0, 0)):
             contact_form = Form(self.env['mailing.contact'])
             contact_form.name = 'Contact_test'
             with contact_form.subscription_ids.new() as subscription:
@@ -105,6 +101,30 @@ class TestMailingListMerge(MassMailCommon):
             contact = contact_form.save()
         self.assertEqual(contact.subscription_ids.filtered(lambda s: s.list_id == self.mailing_list_1).opt_out_datetime, datetime(2022, 1, 1, 12, 0, 0))
         self.assertFalse(contact.subscription_ids.filtered(lambda s: s.list_id == self.mailing_list_2).opt_out_datetime)
+
+    @users('user_marketing')
+    def test_mailing_contact_create_with_list_ids(self):
+        mailing_lists = self.mailing_list_1 | self.mailing_list_2
+        list_values = {
+            'raw_ids': mailing_lists.ids,
+            'set': [Command.set(mailing_lists.ids)],
+            'link': [Command.link(list_id) for list_id in mailing_lists.ids],
+            'mixed': [
+                self.mailing_list_1.id,
+                Command.set(self.mailing_list_2.ids),
+                Command.link(self.mailing_list_1.id),
+            ],
+        }
+
+        for case, list_ids in list_values.items():
+            with self.subTest(case=case):
+                contact = self.env['mailing.contact'].create({
+                    'name': f'Subscriber ({case})',
+                    'list_ids': list_ids,
+                })
+                self.assertEqual(contact.list_ids, mailing_lists)
+                self.assertEqual(len(contact.subscription_ids), 2)
+                self.assertTrue(all(contact.subscription_ids.mapped('create_date')))
 
     @users('user_marketing')
     def test_mailing_list_action_send_mailing(self):

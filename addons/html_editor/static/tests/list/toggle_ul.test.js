@@ -208,7 +208,7 @@ describe("Range collapsed", () => {
                 stepFunction: toggleUnorderedList,
                 contentAfterEdit: unformat(`
                     <p data-selection-placeholder=""><br></p>
-                    <table class="table table-bordered o_selected_table">
+                    <div class="o_table_wrapper"><table class="table table-bordered o_selected_table">
                         <tbody>
                             <tr>
                                 <td class="o_selected_td"><ul><li>[<br></li></ul></td>
@@ -221,7 +221,7 @@ describe("Range collapsed", () => {
                                 <td class="o_selected_td"><ul><li>]<br></li></ul></td>
                             </tr>
                         </tbody>
-                    </table>
+                    </table></div>
                     <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
                 `),
                 contentAfter: unformat(`
@@ -322,6 +322,28 @@ describe("Range collapsed", () => {
                 stepFunction: toggleUnorderedList,
                 contentAfter:
                     '<ul><li style="font-size: 18px;"><b><font style="color: rgb(255, 0, 0);">a</font></b><i><font style="color: rgb(255, 0, 0);">a</font></i></li></ul>',
+            });
+        });
+        test.tags("desktop");
+        test("should preserve selection when creating a list", async () => {
+            await testEditor({
+                contentBefore: unformat(`
+                        <ul>
+                            <li class="display-1-fs">a</li>
+                        </ul>
+                        <div class="o-paragraph"><span class="display-1-fs" data-oe-zws-empty-inline="">\u200b</span></div>
+                        <div class="o-paragraph"><span class="display-1-fs">[]<br></span>
+                        </div>`),
+                stepFunction: (editor) => {
+                    toggleUnorderedList(editor);
+                    editor.editable.querySelectorAll("ul").forEach((list) => {
+                        list.removeAttribute("style");
+                    });
+                },
+                contentAfter: unformat(`
+                    <ul><li class="display-1-fs">a</li></ul>
+                    <div><br></div>
+                    <ul><li class="display-1-fs">[]<br></li></ul>`),
             });
         });
     });
@@ -458,7 +480,7 @@ describe("Range collapsed", () => {
                 stepFunction: toggleUnorderedList,
                 contentAfterEdit: unformat(`
                     <p data-selection-placeholder=""><br></p>
-                    <table class="table table-bordered o_selected_table">
+                    <div class="o_table_wrapper"><table class="table table-bordered o_selected_table">
                         <tbody>
                             <tr>
                                 <td class="o_selected_td">[<p><br></p></td>
@@ -471,7 +493,7 @@ describe("Range collapsed", () => {
                                 <td class="o_selected_td"><p><br></p>]</td>
                             </tr>
                         </tbody>
-                    </table>
+                    </table></div>
                     <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
                 `),
                 contentAfter: unformat(`

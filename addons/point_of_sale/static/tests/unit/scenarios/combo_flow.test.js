@@ -1,5 +1,5 @@
 import { expect, test } from "@odoo/hoot";
-import { animationFrame, waitFor, queryAll } from "@odoo/hoot-dom";
+import { animationFrame, waitFor, queryAll, queryOne } from "@odoo/hoot-dom";
 import { advanceTime } from "@odoo/hoot-mock";
 import { contains } from "@web/../tests/web_test_helpers";
 import {
@@ -165,6 +165,7 @@ test("test_convert_orderlines_to_combo: convert orderlines to combo and break", 
 
     const order = store.getOrder();
     expect(order.lines).toHaveLength(3);
+    expect(order.priceIncl).toBe(61);
 
     await Utils.ensurePane("left");
     await waitFor(".combo-proposition");
@@ -172,6 +173,16 @@ test("test_convert_orderlines_to_combo: convert orderlines to combo and break", 
     await animationFrame();
 
     expect(Utils.hasOrderline({ productName: "Office Combo", quantity: "1" })).toBe(true);
+
+    // After converting the combo, assert combo line prices
+    const comboParent = order.lines.find((l) => l.product_id.type === "combo");
+    const childLines = order.lines.filter((l) => l.combo_parent_id?.id === comboParent.id);
+    expect(childLines).toHaveLength(3);
+    const childPrices = childLines.map((l) => store.currency.round(l.price_unit));
+    expect(childPrices.sort((a, b) => b - a)).toEqual([16.67, 16.67, 16.66]);
+    expect(order.priceIncl).toBe(50);
+    expect(Utils.getOrderTotal()).toInclude("50.00");
+
     await Utils.clickControlButton("Break Combo");
 
     expect(Utils.hasOrderline({ productName: "Combo Product 2", quantity: "1" })).toBe(true);
@@ -524,8 +535,8 @@ test("ProductComboChangePricelist: changing pricelist updates combo price", asyn
     const plItem = store.models["product.pricelist.item"].create({
         id: 20,
         pricelist_id: salePricelist.id,
-        compute_price: "percentage",
-        percent_price: 10,
+        compute_price: "discount",
+        price_discount: 10,
         base: "list_price",
         min_quantity: 0,
     });
@@ -867,4 +878,39 @@ test("test_convert_orderlines_to_combo_with_same_product: same product with diff
     expect(Utils.hasOrderline({ productName: "Combo Product 4", quantity: "1" })).toBe(true);
     expect(Utils.hasOrderline({ productName: "Combo Product 6", quantity: "1" })).toBe(true);
     expect(queryAll(".orderline")).toHaveLength(5);
+});
+
+test("ProductComboPriceButtonDisabled: price numpad button is disabled for combo lines", async () => {
+    const store = await setupAndMountPosApp({ use_pricelist: false });
+
+    createComboSetup(store, {
+        id: 8400,
+        name: "Office Combo",
+        price: 30,
+        combos: [
+            {
+                name: "Combo 1",
+                items: [{ name: "Combo Product 2", price: 11 }],
+                basePrice: 10,
+                qtyFree: 1,
+                qtyMax: 1,
+            },
+        ],
+    });
+    await animationFrame();
+
+    const order = store.getOrder();
+
+    await Utils.clickDisplayedProduct("TEST");
+    await Utils.ensurePane("left");
+    expect(order.getSelectedOrderline().isPartOfCombo()).toBe(false);
+    expect(queryOne('.numpad button:contains("Price")').disabled).toBe(false);
+
+    await Utils.clickDisplayedProduct("Office Combo");
+    expect(order.getSelectedOrderline().isPartOfCombo()).toBe(true);
+    expect(queryOne('.numpad button:contains("Price")').disabled).toBe(true);
+
+    await Utils.clickOrderline("Combo Product 2");
+    expect(order.getSelectedOrderline().isPartOfCombo()).toBe(true);
+    expect(queryOne('.numpad button:contains("Price")').disabled).toBe(true);
 });

@@ -36,7 +36,7 @@ def make_efactura_request(session, company, endpoint, params, data=None) -> dict
     else:
         return {'error': company.env._('Unknown endpoint.')}
     headers = {'Content-Type': 'application/xml',
-               'Authorization': f'Bearer {company.l10n_ro_edi_access_token}'}
+               'Authorization': f'Bearer {company.sudo().l10n_ro_edi_access_token}'}
     if endpoint == 'transformare':
         url = "https://webservicesp.anaf.ro/prod/FCTEL/rest/transformare/FACT1/DA"
         headers = {'Content-Type': 'text/plain'}
@@ -160,7 +160,7 @@ def _request_ciusro_download_answer(company, key_download, session):
                 'name': ``str``,
                 'amount_total': ``float``,
                 'due_date': ``datetime``,
-                'attachment_raw': ``str``,
+                'attachment_raw': ``bytes``,
             } -> When the invoice is accepted
         }
     """

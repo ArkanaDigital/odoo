@@ -30,7 +30,9 @@ export class CalendarCommonPopover extends Component {
             window,
             "pointerdown",
             (e) => {
-                if (!e.target.closest(`.fc-event[data-event-id="${this.props.record.id}"]`)) {
+                if (
+                    !e.target.closest(`.o_calendar_event[data-event-id="${this.props.record.id}"]`)
+                ) {
                     e.preventDefault();
                 }
             },
@@ -58,7 +60,9 @@ export class CalendarCommonPopover extends Component {
             resId: this.resId,
             popoverNode: meta.popoverNode,
             readonly: this.readonly,
-            rootClass: `o_cw_popover o_calendar_color_${typeof color === "number" ? color : 0}`,
+            rootClass: `o_calendar_popover o_calendar_color_${
+                typeof color === "number" ? color : 0
+            }`,
             context: meta.context,
             reloadOnClose: () => this.props.model.load(),
             openRecord: this.props.openRecord,
@@ -138,8 +142,8 @@ export class CalendarCommonPopover extends Component {
                 ? ` <small class="fw-bold">${this.dateDuration}</small>`
                 : "";
             items.push(`
-                <div class="d-flex align-items-baseline gap-2">
-                    <i class="oi oi-fw oi-filled text-400" data-icon="calendar_today"/>
+                <div class="d-flex gap-2">
+                    <i class="oi oi-fw oi-filled flex-shrink-0 align-self-start text-muted lh-base" data-icon="calendar_today"/>
                     <span class="fw-bold">${this.date}</span>${duration}
                 </div>
             `);
@@ -149,8 +153,8 @@ export class CalendarCommonPopover extends Component {
                 ? ` <small class="fw-bold">(${this.timeDuration})</small>`
                 : "";
             items.push(`
-                <div class="d-flex align-items-baseline gap-2">
-                    <i class="oi oi-fw text-400" data-icon="schedule"/>
+                <div class="d-flex gap-2">
+                    <i class="oi oi-fw flex-shrink-0 align-self-start text-muted lh-base" data-icon="schedule"/>
                     <span class="fw-bold">${this.time}</span>${duration}
                 </div>
             `);
@@ -168,12 +172,12 @@ export class CalendarCommonPopover extends Component {
             let label = "";
             if (!fieldNode.options.noLabel && fieldNode.type !== "properties") {
                 label = fieldNode.options.icon
-                    ? `<i class="oi oi-fw text-400" title="${fieldNode.string}" data-icon="${fieldNode.options.icon}"/>`
+                    ? `<i class="oi oi-fw flex-shrink-0 align-self-start text-muted lh-base" title="${fieldNode.string}" data-icon="${fieldNode.options.icon}"/>`
                     : `<span class="fw-bold">${fieldNode.string}</span>`;
             }
             const invisible = fieldNode.invisible ? `invisible="${fieldNode.invisible}"` : "";
             items.push(
-                `<div class="d-flex align-items-baseline gap-2" ${invisible}>${label}${field}</div>`
+                `<div class="d-flex gap-2" ${invisible}>${label}${field}</div>`
             );
         }
         return parseXML(`<t t-name="${CARD_ATTRIBUTE}" class="gap-3">${items.join("")}</t>`);

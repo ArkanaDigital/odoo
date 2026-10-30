@@ -38,7 +38,7 @@ registerWebsitePreviewTour("blog", {}, () => [
         run: "click",
     },
     {
-        trigger: ".o_builder_sidebar_open .o-snippets-menu",
+        trigger: ".o_builder_sidebar_open .o_hb_snippets_menu",
     },
     {
         trigger: ':iframe h1[data-oe-expression="blog_post.name"]',
@@ -51,7 +51,7 @@ registerWebsitePreviewTour("blog", {}, () => [
     },
     {
         trigger: ":iframe .o_record_cover_container",
-        content: _t("Click on the cover to edit it."),
+        content: markup(_t("Click on the <b>cover</b> to edit it.")),
         tooltipPosition: "top",
         run: "click",
     },

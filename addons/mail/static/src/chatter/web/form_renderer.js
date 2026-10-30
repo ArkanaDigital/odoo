@@ -1,15 +1,12 @@
 import { AttachmentView } from "@mail/core/common/attachment_view";
 import { Chatter } from "@mail/chatter/web_portal_project/chatter";
 
-import { onMounted, onWillUnmount, signal, types } from "@odoo/owl";
+import { signal, types } from "@odoo/owl";
 
-import { browser } from "@web/core/browser/browser";
 import { SIZES } from "@web/core/ui/ui_utils";
 import { useService } from "@web/core/utils/hooks";
 import { patch } from "@web/core/utils/patch";
-import { useDebounced } from "@web/core/utils/timing";
 import { FormRenderer } from "@web/views/form/form_renderer";
-import { render } from "@web/owl2/utils";
 
 patch(FormRenderer.prototype, {
     setup() {
@@ -26,10 +23,6 @@ patch(FormRenderer.prototype, {
         }
         this.uiService = useService("ui");
         this.mailPopoutService = useService("mail.popout");
-
-        this.onResize = useDebounced(() => render(this), 200);
-        onMounted(() => browser.addEventListener("resize", this.onResize));
-        onWillUnmount(() => browser.removeEventListener("resize", this.onResize));
     },
     /**
      * @returns {boolean}

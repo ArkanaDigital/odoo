@@ -295,13 +295,13 @@ class TestWorkingDaysWithVersion(TestHrContractCalendarCommon):
             datetime(2023, 12, 25).isoformat(),
             datetime(2023, 12, 31).isoformat(),
         )
-        # Employee E doesn't have a contract
+        # Employee E doesn't have a contract -> their calendar should not be grayed out
         expected_days = {
-            "2023-12-25": True,  # Monday
-            "2023-12-26": True,  # Tuesday
-            "2023-12-27": True,  # Wednesday
-            "2023-12-28": True,  # Thursday
-            "2023-12-29": True,  # Friday
+            "2023-12-25": False,  # Monday
+            "2023-12-26": False,  # Tuesday
+            "2023-12-27": False,  # Wednesday
+            "2023-12-28": False,  # Thursday
+            "2023-12-29": False,  # Friday
             "2023-12-30": True,  # Saturday
             "2023-12-31": True,  # Sunday
         }
@@ -372,9 +372,7 @@ class TestWorkingDaysWithVersion(TestHrContractCalendarCommon):
 
     def test_flexible_employee_is_available_in_the_middle_of_a_day(self):
         self.env.user.company_id = self.company_A
-        self.contractD.resource_calendar_id = False
-        self.contractD.hours_per_week = 56
-        self.contractD.hours_per_day = 8
+        self.contractD.resource_calendar_id = self.calendar_flexible
 
         work_days = self.env["res.partner"]._get_unusual_days(
             [self.partnerD.id],
@@ -398,9 +396,7 @@ class TestWorkingDaysWithVersion(TestHrContractCalendarCommon):
 
     def test_flexible_employee_is_available_in_the_middle_of_day_after_contract_start(self):
         self.env.user.company_id = self.company_A
-        self.contractD.resource_calendar_id = False
-        self.contractD.hours_per_week = 56
-        self.contractD.hours_per_day = 8
+        self.contractD.resource_calendar_id = self.calendar_flexible
         self.contractD.contract_date_start = datetime(2023, 12, 28)
 
         work_days = self.env["res.partner"]._get_unusual_days(
@@ -425,9 +421,7 @@ class TestWorkingDaysWithVersion(TestHrContractCalendarCommon):
 
     def test_flexible_employee_is_always_available_until_contract_end(self):
         self.env.user.company_id = self.company_A
-        self.contractD.resource_calendar_id = False
-        self.contractD.hours_per_week = 56
-        self.contractD.hours_per_day = 8
+        self.contractD.resource_calendar_id = self.calendar_flexible
         self.contractD.contract_date_end = datetime(2023, 12, 28)
 
         work_days = self.env["res.partner"]._get_unusual_days(
@@ -452,9 +446,7 @@ class TestWorkingDaysWithVersion(TestHrContractCalendarCommon):
 
     def test_fully_flexible_employee_is_always_available(self):
         self.env.user.company_id = self.company_A
-        self.contractD.resource_calendar_id = False
-        self.contractD.hours_per_week = False
-        self.contractD.hours_per_day = False
+        self.contractD.resource_calendar_id = self.calendar_fully_flexible
 
         work_days = self.env["res.partner"]._get_unusual_days(
             [self.partnerD.id],
@@ -478,9 +470,7 @@ class TestWorkingDaysWithVersion(TestHrContractCalendarCommon):
 
     def test_fully_flexible_employee_is_always_available_after_contract_start(self):
         self.env.user.company_id = self.company_A
-        self.contractD.resource_calendar_id = False
-        self.contractD.hours_per_week = False
-        self.contractD.hours_per_day = False
+        self.contractD.resource_calendar_id = self.calendar_fully_flexible
         self.contractD.contract_date_start = datetime(2023, 12, 28)
 
         work_days = self.env["res.partner"]._get_unusual_days(
@@ -505,9 +495,7 @@ class TestWorkingDaysWithVersion(TestHrContractCalendarCommon):
 
     def test_fully_flexible_employee_is_always_available_until_contract_end(self):
         self.env.user.company_id = self.company_A
-        self.contractD.resource_calendar_id = False
-        self.contractD.hours_per_week = False
-        self.contractD.hours_per_day = False
+        self.contractD.resource_calendar_id = self.calendar_fully_flexible
         self.contractD.contract_date_end = datetime(2023, 12, 28)
 
         work_days = self.env["res.partner"]._get_unusual_days(

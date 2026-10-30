@@ -25,7 +25,7 @@ import unicodedata
 import warnings
 import zlib
 from collections import defaultdict
-from collections.abc import Iterable, Iterator, Mapping, MutableMapping, MutableSet, Reversible
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping, MutableSet, Reversible, Set as AbstractSet
 from contextlib import ContextDecorator, contextmanager
 from difflib import HtmlDiff
 from functools import lru_cache, reduce, wraps
@@ -59,7 +59,6 @@ __all__ = [
     'DotDict',
     'LastOrderedSet',
     'OrderedSet',
-    'Reverse',
     'babel_locale_parse',
     'clean_context',
     'consteq',
@@ -995,6 +994,18 @@ class StackMap[K, T](MutableMapping[K, T]):
         return self._maps.pop()
 
 
+class LazyDict[K, T](dict[K, T]):
+    """A kind of `defaultdict` where the function accepts the key."""
+    def __init__(self, func: Callable[[K], T]):
+        super().__init__()
+        self._func = func
+
+    def __missing__(self, k: K) -> T:
+        v = self._func(k)
+        self[k] = v
+        return v
+
+
 class OrderedSet[T](MutableSet[T]):
     """ A set collection that remembers the elements first insertion order. """
     __slots__ = ['_map']
@@ -1020,6 +1031,16 @@ class OrderedSet[T](MutableSet[T]):
             return NotImplemented
         other = set(other)
         return self._from_iterable(value for value in self if value in other)
+
+    def __sub__(self, other):
+        # preserve order of this set
+        if isinstance(other, OrderedSet):
+            other = other._map
+        elif not isinstance(other, AbstractSet):
+            if not isinstance(other, Iterable):
+                return NotImplemented
+            other = set(other)
+        return self._from_iterable(value for value in self if value not in other)
 
     def add(self, elem):
         self._map[elem] = None
@@ -1188,25 +1209,6 @@ def submap[K, T](mapping: Mapping[K, T], keys: Iterable[K]) -> Mapping[K, T]:
     keys = frozenset(keys)
     return {key: mapping[key] for key in mapping if key in keys}
 
-
-class Reverse(object):
-    """ Wraps a value and reverses its ordering, useful in key functions when
-    mixing ascending and descending sort on non-numeric data as the
-    ``reverse`` parameter can not do piecemeal reordering.
-    """
-    __slots__ = ['val']
-
-    def __init__(self, val):
-        warnings.warn("Deprecated since 20.0, unused")
-        self.val = val
-
-    def __eq__(self, other): return self.val == other.val
-    def __ne__(self, other): return self.val != other.val
-
-    def __ge__(self, other): return self.val <= other.val
-    def __gt__(self, other): return self.val < other.val
-    def __le__(self, other): return self.val >= other.val
-    def __lt__(self, other): return self.val > other.val
 
 class replace_exceptions(ContextDecorator):
     """
@@ -1595,7 +1597,7 @@ def format_amount(env: Environment, amount: float, currency, lang_code: str | No
     formatted_amount = lang.format(fmt, currency.round(amount), grouping=True)\
         .replace(r' ', u'\N{NO-BREAK SPACE}').replace(r'-', u'-\N{ZERO WIDTH NO-BREAK SPACE}')
 
-    if not trailing_zeroes:
+    if not trailing_zeroes and currency.decimal_places:
         formatted_amount = re.sub(fr'{re.escape(lang.decimal_point)}?0+$', '', formatted_amount)
 
     pre = post = u''
@@ -1647,15 +1649,6 @@ class frozendict[K, V]:
 
     def __subclasscheck__(self, subclass):
         assert False, "cannot subclass frozendict"  # not a real class
-
-
-def ReadonlyDict(mapping=(), /, **kw) -> MappingProxyType:
-    warnings.warn(
-        "ReadonlyDict is deprecated starting Odoo 20, use frozendict",
-        category=DeprecationWarning,
-        stacklevel=2,
-    )
-    return frozendict(mapping, **kw)
 
 
 class DotDict[T](dict[str, T]):
@@ -1921,7 +1914,7 @@ def verify_limited_field_access_token(record, field_name, access_token, *, scope
     ) and datetime.datetime.now() < datetime.datetime.fromtimestamp(int(timestamp, 16))
 
 
-def is_list_of(values, type_: type) -> bool:
+def is_list_of(values, type_: type | tuple[type, ...]) -> bool:
     """Return True if the given values is a list / tuple of the given type.
 
     :param values: The values to check
@@ -1939,7 +1932,7 @@ def has_list_types(values, types: tuple[type, ...]) -> bool:
     """
     return (
         isinstance(values, (list, tuple)) and len(values) == len(types)
-        and all(itertools.starmap(isinstance, zip(values, types)))
+        and all(map(isinstance, values, types))
     )
 
 

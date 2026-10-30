@@ -429,7 +429,8 @@ class TestEventSale(TestEventSaleCommon):
         currency_USD = _prepare_currency(self, 'USD')
         currency_VEF = _prepare_currency(self, 'VEF')
 
-        company_test = self.env['res.company'].create({
+        company_test = self.env.ref('base.test_company_template')
+        company_test.write({
             'name': 'TestCompany',
             'country_id': self.env.ref('base.be').id,
             'currency_id': currency_USD.id,
@@ -578,15 +579,20 @@ class TestEventSale(TestEventSaleCommon):
         self.assertEqual(len(event.registration_ids), 0)
 
     @users('user_salesman')
-    def test_cancel_so(self):
+    def test_cancel_and_draft_so(self):
         """ This test ensures that when canceling a sale order, if the latter is linked to an event registration,
-        it is also cancelled """
+        it is also cancelled and that after the sale order is set back to draft, new registrations are created on confirmation. """
         event = self.env['event.event'].browse(self.event_0.ids)
         self.register_person.action_make_registration()
         self.assertEqual(len(event.registration_ids), 1)
         self.sale_order._action_cancel()
         self.assertEqual(len(event.registration_ids), 1)
         self.assertEqual(event.registration_ids.state, 'cancel')
+        # After canceling the sale order, we set it back to draft and confirm it again. This should create new registrations.
+        self.sale_order.action_draft()
+        self.sale_order.action_confirm()
+        self.assertEqual(len(event.registration_ids), 2)
+        self.assertEqual(event.registration_ids.mapped('state'), ['cancel', 'draft'])
 
     @users('user_salesman')
     def test_compute_sale_status(self):

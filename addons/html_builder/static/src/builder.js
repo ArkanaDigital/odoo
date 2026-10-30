@@ -1,5 +1,5 @@
 import { useSubEnv } from "@web/owl2/utils";
-import { Editor } from "@html_editor/editor";
+import { useEditor } from "@html_editor/editor";
 import {
     Component,
     EventBus,
@@ -9,10 +9,10 @@ import {
     onWillUnmount,
     providePlugins,
     signal,
-    status,
     proxy,
     useProps,
     t,
+    useScope,
 } from "@odoo/owl";
 import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
 import { _t } from "@web/core/l10n/translation";
@@ -41,6 +41,8 @@ const TAB_TRANSITION_FALLBACK_DELAY = 400;
 export class Builder extends Component {
     static template = "html_builder.Builder";
     static components = { BlockTab, CustomizeTab };
+
+    scope = useScope();
     props = useProps({
         closeEditor: t.function().optional(),
         reloadEditor: t.function().optional(() => () => {}),
@@ -62,6 +64,7 @@ export class Builder extends Component {
         initialTab: t.string().optional("blocks"),
         onlyCustomizeTab: t.boolean().optional(false),
         animateThemeTabSwitch: t.boolean().optional(false),
+        localOverlayContainerKey: t.string(),
     });
 
     // Ref on the local overlay container element, owned by the parent.
@@ -99,125 +102,120 @@ export class Builder extends Component {
         this.editorBus = new EventBus();
         this.activeTargetEl = null;
         const mobileBreakpoint = this.props.config.mobileBreakpoint ?? "lg";
-
         // TODO: maybe do a different config for the translate mode and the
         // "regular" mode.
-        /** @type {Editor} */
-        this.editor = new Editor(
-            {
-                Plugins: this.props.Plugins,
-                ...this.props.config,
-                mobileBreakpoint,
-                isMobileView: (targetEl) => {
-                    const mobileViewThreshold =
-                        MEDIAS_BREAKPOINTS[SIZES[mobileBreakpoint.toUpperCase()]].minWidth;
-                    const clientWidth =
-                        targetEl.ownerDocument.defaultView?.frameElement?.clientWidth ||
-                        targetEl.ownerDocument.documentElement.clientWidth;
-                    return !!clientWidth && clientWidth < mobileViewThreshold;
+        const config = {
+            Plugins: this.props.Plugins,
+            extraPreviewDocument: null,
+            ...this.props.config,
+            mobileBreakpoint,
+            isMobileView: (targetEl) => {
+                const mobileViewThreshold =
+                    MEDIAS_BREAKPOINTS[SIZES[mobileBreakpoint.toUpperCase()]].minWidth;
+                const clientWidth =
+                    targetEl.ownerDocument.defaultView?.frameElement?.clientWidth ||
+                    targetEl.ownerDocument.documentElement.clientWidth;
+                return !!clientWidth && clientWidth < mobileViewThreshold;
+            },
+            onChange: ({ isPreviewing }) => {
+                if (!isPreviewing) {
+                    this.state.canUndo = this.editor.shared.history.canUndo();
+                    this.state.canRedo = this.editor.shared.history.canRedo();
+                    this.updateInvisibleEls();
+                    this.editorBus.trigger("UPDATE_EDITING_ELEMENT");
+                    this.triggerDomUpdated();
+                    this.props.config.onChange?.();
+                }
+            },
+            reloadEditor: ({ url, editingElement } = {}) =>
+                this.props.reloadEditor(
+                    url,
+                    this.editor.processThrough("reload_context_processors", {}, editingElement)
+                ),
+            closeEditor: async () => {
+                await this.props.closeEditor?.();
+            },
+            installSnippetModule: (snippet) => this.props.installSnippetModule?.(snippet),
+            /** @type {import("plugins").BuilderResources} */
+            resources: {
+                on_dom_updated_handlers: () => {
+                    this.triggerDomUpdated();
                 },
-                onChange: ({ isPreviewing }) => {
-                    if (!isPreviewing) {
-                        this.state.canUndo = this.editor.shared.history.canUndo();
-                        this.state.canRedo = this.editor.shared.history.canRedo();
-                        this.updateInvisibleEls();
-                        this.editorBus.trigger("UPDATE_EDITING_ELEMENT");
-                        this.triggerDomUpdated();
-                        this.props.config.onChange?.();
+                on_mobile_view_switched_handlers: withSequence(20, () => {
+                    this.triggerDomUpdated();
+                    this.updateInvisibleEls();
+                }),
+                on_will_save_handlers: () => {
+                    const snippetMenuEl = this.builderSidebarRef();
+                    const saveButton = snippetMenuEl.querySelector("[data-action='save']");
+                    delete this.removeLoadingEffect;
+                    if (saveButton) {
+                        // Add a loading effect on the save button and disable the other actions
+                        this.removeLoadingEffect = addButtonLoadingEffect(
+                            snippetMenuEl.querySelector("[data-action='save']")
+                        );
+                    }
+                    this.actionButtonEls = snippetMenuEl.querySelectorAll("[data-action]");
+                    for (const actionButtonEl of this.actionButtonEls) {
+                        actionButtonEl.disabled = true;
                     }
                 },
-                reloadEditor: ({ url, editingElement } = {}) =>
-                    this.props.reloadEditor(
-                        url,
-                        this.editor.processThrough("reload_context_processors", {}, editingElement)
-                    ),
-                closeEditor: async () => {
-                    await this.props.closeEditor?.();
+                on_saved_handlers: () => {
+                    for (const actionButtonEl of this.actionButtonEls) {
+                        actionButtonEl.removeAttribute("disabled");
+                    }
+                    this.removeLoadingEffect?.();
                 },
-                installSnippetModule: (snippet) => this.props.installSnippetModule?.(snippet),
-                /** @type {import("plugins").BuilderResources} */
-                resources: {
-                    on_dom_updated_handlers: () => {
-                        this.triggerDomUpdated();
-                    },
-                    on_mobile_view_switched_handlers: withSequence(20, () => {
-                        this.triggerDomUpdated();
-                        this.updateInvisibleEls();
-                    }),
-                    on_will_save_handlers: () => {
-                        const snippetMenuEl = this.builderSidebarRef();
-                        const saveButton = snippetMenuEl.querySelector("[data-action='save']");
-                        delete this.removeLoadingEffect;
-                        if (saveButton) {
-                            // Add a loading effect on the save button and disable the other actions
-                            this.removeLoadingEffect = addButtonLoadingEffect(
-                                snippetMenuEl.querySelector("[data-action='save']")
-                            );
-                        }
-                        this.actionButtonEls = snippetMenuEl.querySelectorAll("[data-action]");
-                        for (const actionButtonEl of this.actionButtonEls) {
-                            actionButtonEl.disabled = true;
-                        }
-                    },
-                    on_saved_handlers: () => {
-                        for (const actionButtonEl of this.actionButtonEls) {
-                            actionButtonEl.removeAttribute("disabled");
-                        }
-                        this.removeLoadingEffect?.();
-                    },
-                    on_snippet_dropped_handlers: () => {
+                on_snippet_dropped_handlers: () => {
+                    this.activeTargetEl = null;
+                },
+                on_current_options_containers_changed_handlers: (currentOptionsContainers) => {
+                    this.state.currentOptionsContainers = currentOptionsContainers;
+                    if (currentOptionsContainers.length || this.props.onlyCustomizeTab) {
                         this.activeTargetEl = null;
-                    },
-                    on_current_options_containers_changed_handlers: (currentOptionsContainers) => {
-                        this.state.currentOptionsContainers = currentOptionsContainers;
-                        if (currentOptionsContainers.length || this.props.onlyCustomizeTab) {
-                            this.activeTargetEl = null;
-                            this.setTab("customize");
-                        } else if (this.state.activeTab === "customize") {
-                            // If there is no option, go to add blocks
-                            this.setTab("blocks");
-                        }
-                    },
-                    reload_context_processors: (context) => ({
-                        ...context,
-                        initialTab: this.state.activeTab,
-                    }),
-                    lower_panel_entries: withSequence(20, {
-                        Component: InvisibleElementsPanel,
-                        props: this.invisibleElementsPanelState,
-                    }),
-                    is_node_splittable_predicates: (/** @type {Node} */ node) => {
-                        if (node.querySelector?.("[data-oe-translation-source-sha]")) {
-                            return false;
-                        }
-                    },
+                        this.setTab("customize");
+                    } else if (this.state.activeTab === "customize") {
+                        // If there is no option, go to add blocks
+                        this.setTab("blocks");
+                    }
                 },
-                localOverlayContainers: {
-                    key: this.env.localOverlayContainerKey,
-                    ref: this.overlayRef,
+                reload_context_processors: (context) => ({
+                    ...context,
+                    initialTab: this.state.activeTab,
+                }),
+                lower_panel_entries: withSequence(20, {
+                    Component: InvisibleElementsPanel,
+                    props: this.invisibleElementsPanelState,
+                }),
+                is_node_splittable_predicates: (/** @type {Node} */ node) => {
+                    if (node.querySelector?.("[data-oe-translation-source-sha]")) {
+                        return false;
+                    }
                 },
-                saveSnippet: (snippetEl, cleanForSaveProcessors, wrapWithSaveSnippetHandlers) =>
-                    this.snippetModel.saveSnippet(
-                        snippetEl,
-                        cleanForSaveProcessors,
-                        wrapWithSaveSnippetHandlers
-                    ),
-                snippetModel: this.snippetModel,
-                updateInvisibleElementsPanel: () => this.updateInvisibleEls(),
-                hideStylingInLinkPopover: true,
-                allowTargetBlank: true,
-                allowTextColumnResize: false,
-                dropImageAsAttachment: true,
-                getAnimateTextConfig: () => ({ editor: this.editor, editorBus: this.editorBus }),
-                baseContainers: ["P"],
-                cleanEmptyStructuralContainers: false,
-                isEditableRTL: false,
-                publicAttachments: true,
-                direction: "ltr",
-                maxFontSize: 400,
             },
-            this.env.services
-        );
+            localOverlayContainers: {
+                key: this.props.localOverlayContainerKey,
+                ref: this.overlayRef,
+            },
+            saveSnippet: (snippetEl, cloneAndPrepareForSave) =>
+                this.snippetModel.saveSnippet(snippetEl, cloneAndPrepareForSave),
+            snippetModel: this.snippetModel,
+            updateInvisibleElementsPanel: () => this.updateInvisibleEls(),
+            hideStylingInLinkPopover: true,
+            allowTargetBlank: true,
+            allowTextColumnResize: false,
+            dropImageAsAttachment: true,
+            getAnimateTextConfig: () => ({ editor: this.editor, editorBus: this.editorBus }),
+            baseContainers: ["P"],
+            cleanEmptyStructuralContainers: false,
+            isEditableRTL: false,
+            publicAttachments: true,
+            direction: "ltr",
+            maxFontSize: 400,
+            responsiveFontSizeFallback: true,
+            saveScrollableTables: true,
+        };
+        this.editor = useEditor(config);
         this.props.onEditorLoad?.(this.editor);
 
         onWillStart(async () => {
@@ -226,7 +224,7 @@ export class Builder extends Component {
             // instantiating the sub components that potentially need the
             // editor.
             const iframeEl = await this.props.iframeLoaded;
-            if (status(this) === "destroyed") {
+            if (this.scope.isDestroyed()) {
                 return;
             }
             this.editableEl = iframeEl.contentDocument.body.querySelector(
@@ -352,7 +350,7 @@ export class Builder extends Component {
             this.state.pendingTab = tab;
             clearTimeout(this.tabTransitionFallbackTimeout);
             // Set a timeout to ensure the tab switch even when transitions
-            // are disabled on .o-tab-content
+            // are disabled on .o_hb_tab_content
             this.tabTransitionFallbackTimeout = setTimeout(
                 () => this.completeTabSwitch(),
                 TAB_TRANSITION_FALLBACK_DELAY

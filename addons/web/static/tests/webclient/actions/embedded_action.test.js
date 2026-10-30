@@ -16,7 +16,7 @@ import {
 } from "@web/../tests/web_test_helpers";
 
 import { animationFrame, mockTouch, runAllTimers } from "@odoo/hoot-mock";
-import { browser } from "@web/core/browser/browser";
+import { location } from "@web/core/browser/browser";
 import { router, routerBus } from "@web/core/browser/router";
 import { rpcBus } from "@web/core/network/rpc";
 import { user } from "@web/core/user";
@@ -237,6 +237,14 @@ const actions = [
         ],
     },
     {
+        id: 5,
+        xml_id: "action_5",
+        name: "Ponies in dialog",
+        res_model: "pony",
+        target: "new",
+        views: [[false, "list"]],
+    },
+    {
         id: 102,
         xml_id: "embedded_action_2",
         name: "Embedded Action 2",
@@ -263,6 +271,14 @@ const actions = [
         user_id: user.userId,
         parent_action_id: 4,
         action_id: 4,
+    },
+    {
+        id: 105,
+        name: "Embedded Action 5",
+        parent_res_model: "pony",
+        type: "ir.embedded.actions",
+        parent_action_id: 5,
+        action_id: 3,
     },
 ];
 
@@ -295,6 +311,18 @@ test("can display embedded actions linked to the current action", async () => {
             res_model: "partner",
         },
     });
+});
+
+test("don't display embedded actions in a dialog", async () => {
+    await mountWithCleanup(WebClient);
+    await getService("action").doAction(1);
+    expect(".o_control_panel_navigation > button > i[data-icon='tune']").toHaveCount(1);
+
+    // execute an action in target="new" with embedded actions: selecting one
+    // would replace the action in background, so they aren't displayed
+    await getService("action").doAction(5);
+    expect(".modal .o_list_view").toHaveCount(1);
+    expect(".modal .o_control_panel_navigation > button > i[data-icon='tune']").toHaveCount(0);
 });
 
 test("can toggle visibility of embedded actions", async () => {
@@ -371,6 +399,38 @@ test("can click on a embedded action and execute the corresponding action (with 
     });
 });
 
+test("embedded actions are displayed in the form view of an embedded action", async () => {
+    await mountWithCleanup(WebClient);
+    onRpc("do_python_method", () => ({
+        name: "Partner form from python action",
+        res_model: "partner",
+        res_id: 1,
+        type: "ir.actions.act_window",
+        views: [[false, "form"]],
+    }));
+    await getService("action").doAction(1);
+    await contains(".o_control_panel_navigation > button > i[data-icon='tune']").click();
+    await waitFor(".o_popover.dropdown-menu");
+    await contains(
+        ".o_popover.dropdown-menu .dropdown-item > div > span:contains('Embedded Action 2')"
+    ).click();
+    await contains(
+        ".o_popover.dropdown-menu .dropdown-item > div > span:contains('Embedded Action 3')"
+    ).click();
+    await contains(".o_embedded_actions > button > span:contains('Embedded Action 3')").click();
+    expect(".o_form_view").toHaveCount(1);
+    expect(".o_embedded_actions > button.active").toHaveText("Embedded Action 3", {
+        message: "the embedded actions should be displayed in the form view of the action",
+    });
+
+    await contains(".o_embedded_actions > button > span:contains('Embedded Action 2')").click();
+    await contains(".o_data_row .o_data_cell").click();
+    expect(".o_form_view").toHaveCount(1);
+    expect(".o_embedded_actions").toHaveCount(0, {
+        message: "the embedded actions should not be displayed on a record opened from the action",
+    });
+});
+
 test("breadcrumbs are updated when clicking on embeddeds", async () => {
     await mountWithCleanup(WebClient);
     onRpc("do_python_method", () => ({
@@ -391,17 +451,17 @@ test("breadcrumbs are updated when clicking on embeddeds", async () => {
     ).click();
     expect(".o_control_panel .breadcrumb-item").toHaveCount(0);
     expect(".o_control_panel .o_breadcrumb .active").toHaveText("Partners Action 1");
-    expect(browser.location.href).toBe("https://www.hoot.test/odoo/action-1");
+    expect(location.href).toBe("https://www.hoot.test/odoo/action-1");
     await contains(".o_embedded_actions > button > span:contains('Embedded Action 2')").click();
     await runAllTimers();
-    expect(browser.location.href).toBe("https://www.hoot.test/odoo/action-3");
+    expect(location.href).toBe("https://www.hoot.test/odoo/action-3");
     expect(router.current.action).toBe(3, {
         message: "the current action should be the one of the embedded action previously clicked",
     });
     expect(queryAllTexts(".breadcrumb-item, .o_breadcrumb .active")).toEqual(["Favorite Ponies"]);
     await contains(".o_embedded_actions > button > span:contains('Embedded Action 3')").click();
     await runAllTimers();
-    expect(browser.location.href).toBe("https://www.hoot.test/odoo/action-4");
+    expect(location.href).toBe("https://www.hoot.test/odoo/action-4");
     expect(router.current.action).toBe(4, {
         message: "the current action should be the one of the embedded action previously clicked",
     });

@@ -38,6 +38,7 @@ declare module "models" {
         "discuss.channel": StaticMailRecord<DiscussChannel, typeof DiscussChannelClass>;
         "discuss.channel.member": StaticMailRecord<ChannelMember, typeof ChannelMemberClass>;
         "discuss.voice.metadata": StaticMailRecord<VoiceMetadata, typeof VoiceMetadataClass>;
+        displayedChannels: DiscussChannel[];
         favoriteChannels: DiscussChannel[];
         fetchChannel: (channelId: number, param0: { with_last_message: boolean }) => Promise<void>;
         fetchChannelPromiseByChannelId: Map<number, Promise<DiscussChannel|void>>;
@@ -52,7 +53,7 @@ declare module "models" {
     export interface Thread {
         channel: DiscussChannel;
         firstUnreadMessage: Message;
-        handleMarkAsRead: (newestPersistentMessage: Message, wasMarkedAsUnread: boolean) => Promise<undefined|unknown>;
+        handleMarkAsRead: (newestPersistentMessage: Message) => Promise<undefined|unknown>;
         isReadBySelf: (message: Message) => boolean;
         markAsReadRpc: (newestPersistentMessage: Message) => unknown;
         markingAsRead: boolean;

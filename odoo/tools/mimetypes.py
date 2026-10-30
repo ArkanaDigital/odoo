@@ -4,6 +4,7 @@ import mimetypes
 import re
 import typing
 import zipfile
+from collections.abc import Buffer
 
 try:
     import magic
@@ -14,6 +15,7 @@ __all__ = [
     'get_extension',
     'guess_file_mimetype',
     'guess_mimetype',
+    'split_stem_and_extension',
 ]
 
 _logger = logging.getLogger(__name__)
@@ -32,7 +34,8 @@ class _Signature(typing.NamedTuple):
     offset: int = 0
 
 
-def _odoo_guess_mimetype(bin_data, default='application/octet-stream'):
+def _odoo_guess_mimetype(bin_data: Buffer, default: str = 'application/octet-stream') -> str:
+    bin_data = bytes(bin_data)
     for supported_mimetype in SUPPORTED_MIMETYPES:
         if supported_mimetype.match(bin_data):
             return supported_mimetype.mimetype
@@ -40,7 +43,7 @@ def _odoo_guess_mimetype(bin_data, default='application/octet-stream'):
     return default
 
 
-def _magic_guess_mimetype(bin_data):
+def _magic_guess_mimetype(bin_data: Buffer) -> str:
     magic_data = bytes(bin_data)
     mimetype = magic.from_buffer(magic_data, mime=True)
 
@@ -69,7 +72,7 @@ def _magic_guess_mimetype(bin_data):
     return mimetype
 
 
-def guess_mimetype(bin_data, default='application/octet-stream'):
+def guess_mimetype(bin_data: Buffer, default: str = 'application/octet-stream') -> str:
     if magic:
         return _magic_guess_mimetype(bin_data)
 
@@ -96,19 +99,16 @@ def guess_file_mimetype(path, default='application/octet-stream'):
     return _odoo_guess_file_mimetype(path, default)
 
 
-def _match_magic_number(bin_data, *, match_all=(), match_any=()):
-    for signature in match_all:
-        if not bin_data.startswith(signature.magic_number, signature.offset):
-            return False
-
-    if not match_any:
-        return True
-
-    for signature in match_any:
-        if bin_data.startswith(signature.magic_number, signature.offset):
-            return True
-
-    return False
+def _match_magic_number(bin_data: bytes, *, match_all=(), match_any=()):
+    return all(
+        bin_data.startswith(signature.magic_number, signature.offset)
+        for signature in match_all
+    ) and (
+        not match_any or any(
+            bin_data.startswith(signature.magic_number, signature.offset)
+            for signature in match_any
+        )
+    )
 
 
 def _match_office_open_xml(bin_data, *, dirname):
@@ -344,30 +344,43 @@ SUPPORTED_MIMETYPES = [
 _extension_pattern = re.compile(r'[\w-]+')
 
 
-def get_extension(filename):
+def split_stem_and_extension(filename: str) -> tuple[str, str]:
+    """
+    Split the filename into its stem and its extension, e.g. ``'Report.PDF'`` gives ``('Report', '.PDF')``.
+    Compressed files keep both extensions, e.g. ``'Backup.tar.gz'`` gives ``('Backup', '.tar.gz')``.
+
+    :param str filename: the filename to split
+    :returns: the stem and the extension, with its leading dot and its case,
+        or the filename and an empty string when it has no extension
+    """
     # A file has no extension if it has no dot (ignoring the leading one
     # of hidden files) or that what follow the last dot is not a single
     # word, e.g. "Mr. Doe"
+    stem, _dot, ext = filename.rpartition('.')
+    if not stem.lstrip('.') or not _extension_pattern.fullmatch(ext):
+        return filename, ''
 
-    _stem, dot, ext = filename.lstrip('.').rpartition('.')
-    if not dot or not _extension_pattern.fullmatch(ext):
-        return ''
+    # Use the mimetype database to determine the extension of the file.
+    guessed_mimetype = mimetypes.guess_type(filename)[0]
+
+    # Compressed files keep both extensions, e.g. ".tar.gz" but not "report v1.2.gz"
+    if guessed_mimetype and f'.{ext}' in mimetypes.encodings_map:
+        stem, inner_ext = split_stem_and_extension(stem)
+        return stem, f'{inner_ext}.{ext}'
 
     # Assume all 4-chars extensions to be valid extensions even if it is
     # not known from the mimetypes database. In /etc/mime.types, only 7%
     # known extensions are longer.
-    if len(ext) <= 4:
-        return f'.{ext}'.lower()
-
-    # Use the mimetype database to determine the extension of the file.
-    guessed_mimetype, guessed_ext = mimetypes.guess_type(filename)
-    if guessed_ext:
-        return guessed_ext
-    if guessed_mimetype:
-        return f'.{ext}'.lower()
+    if len(ext) <= 4 or guessed_mimetype:
+        return stem, f'.{ext}'
 
     # Unknown extension.
-    return ''
+    return filename, ''
+
+
+def get_extension(filename: str) -> str:
+    """ Return the lowercase extension of the filename, see :func:`split_stem_and_extension`. """
+    return split_stem_and_extension(filename)[1].lower()
 
 
 def fix_filename_extension(filename, mimetype):

@@ -87,8 +87,8 @@ class TestWebsiteEventSaleCommon(WebsiteSaleCommon):
                 'item_ids': [
                     Command.create({
                         'applied_on': '3_global',
-                        'compute_price': 'percentage',
-                        'percent_price': 10,
+                        'compute_price': 'discount',
+                        'price_discount': 10,
                     }),
                 ],
                 'name': name,
@@ -96,5 +96,5 @@ class TestWebsiteEventSaleCommon(WebsiteSaleCommon):
             })
 
         cls.pricelist = cls._enable_pricelists()
-        cls.pricelist_without_discount = create_pricelist(currency=cls.env.company.currency_id, name='EUR Without Discount Included')
-        cls.ex_pricelist_without_discount = create_pricelist(currency=cls.currency_test, name='EX Without Discount Included')
+        cls.pricelist_without_discount = create_pricelist(currency=cls.env.company.currency_id, name='EUR')
+        cls.ex_pricelist_without_discount = create_pricelist(currency=cls.currency_test, name='EX')

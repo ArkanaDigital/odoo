@@ -5,6 +5,7 @@ from freezegun import freeze_time
 from json import loads
 
 from odoo.tests import Form
+from odoo.tests.common import new_test_user
 from odoo.addons.mrp.tests.common import TestMrpCommon
 from odoo import fields, Command
 
@@ -34,9 +35,8 @@ class TestMrpReplenish(TestMrpCommon):
         """Open the replenish view and check if delay is taken into account
             in the base date computation
         """
-        route = self.warehouse_1.manufacture_pull_id.route_id
+        route = self.route_manufacture
         product = self.product_4
-        product.route_ids = route
 
         with freeze_time("2023-01-01"):
             wizard = self._create_wizard(product, self.warehouse_1)
@@ -47,14 +47,13 @@ class TestMrpReplenish(TestMrpCommon):
 
     def test_mrp_orderpoint_leadtime(self):
         self.env.company.sudo().horizon_days = 0
-        route_manufacture = self.warehouse_1.manufacture_pull_id.route_id
+        route_manufacture = self.route_manufacture
         route_manufacture.supplied_wh_id = self.warehouse_1
         route_manufacture.supplier_wh_id = self.warehouse_1
         route_manufacture.rule_ids.delay = 2
         product_1 = self.env['product.product'].create({
             'name': 'Cake',
             'is_storable': True,
-            'route_ids': [(6, 0, [route_manufacture.id])]
         })
 
         self.env['mrp.bom'].create({
@@ -81,7 +80,6 @@ class TestMrpReplenish(TestMrpCommon):
         """Check manufacturing order take bom according to picking type of the rule triggered by an
         orderpoint."""
 
-        self.product_4.route_ids = self.warehouse_1.manufacture_pull_id.route_id
         # setup: copying a picking type writes ir.sequence via the sequence_code related inverse
         picking_type_2 = self.picking_type_manu.sudo().copy({'sequence': 100})
         self.product_4.bom_ids.picking_type_id = picking_type_2
@@ -101,10 +99,8 @@ class TestMrpReplenish(TestMrpCommon):
         self.assertTrue(mo)
 
     def test_mrp_delay_bom(self):
-        route = self.warehouse_1.manufacture_pull_id.route_id
         product = self.product_4
         bom = product.bom_ids
-        product.route_ids = route
         with freeze_time("2023-01-01"):
             wizard = self._create_wizard(product, self.warehouse_1)
             self.assertEqual(fields.Datetime.from_string('2023-01-01 00:00:00'), wizard.date_planned)
@@ -195,7 +191,6 @@ class TestMrpReplenish(TestMrpCommon):
         """
         self.warehouse_1.manufacture_steps = 'pbm'
         finished_product = self.product_4
-        finished_product.route_ids = [Command.set(self.warehouse_1.manufacture_pull_id.route_id.ids)]
 
         orderpoint = self.env['stock.warehouse.orderpoint'].create({
             'product_id': finished_product.id,
@@ -224,9 +219,6 @@ class TestMrpReplenish(TestMrpCommon):
             linked to a confirmed MO, which is started but not finished by the
             end of the stock forecast.
         """
-        route_manufacture = self.warehouse_1.manufacture_pull_id.route_id
-
-        self.product_4.route_ids = [Command.set([route_manufacture.id])]
         self.product_4.bom_ids.produce_delay = 2
 
         orderpoint = self.env['stock.warehouse.orderpoint'].create({
@@ -264,7 +256,8 @@ class TestMrpReplenish(TestMrpCommon):
         6.) trigger replenishment for product_4
         """
         self.warehouse_1.write({'manufacture_steps': 'pbm_sam'})
-        self.warehouse_1.mto_pull_id.route_id.active = True
+        self.route_mto.active = True
+        self.route_manufacture.product_selectable = True
 
         self.product_1.write({
             'route_ids': [Command.set([self.route_mto.id, self.route_manufacture.id])]
@@ -275,27 +268,20 @@ class TestMrpReplenish(TestMrpCommon):
         })  # Finished Product
 
         # Create reordering rule
-        orderpoint = self.env['stock.warehouse.orderpoint'].create({
+        self.env['stock.warehouse.orderpoint'].create({
             'location_id': self.stock_location.id,
             'product_id': self.product_4.id,
             'route_id': self.route_manufacture.id,
             'product_min_qty': 1,
             'product_max_qty': 1,
         })
-        orderpoint.action_replenish()
+        self.product_4.orderpoint_ids.action_replenish()
 
         # Check both MOs were created
         mo_final = self.env['mrp.production'].search([('product_id', '=', self.product_4.id)])
         mo_component = self.env['mrp.production'].search([('product_id', '=', self.product_1.id)])
 
         self.assertEqual(len(mo_final), 1, "Expected one MO for the final product.")
-        self.assertFalse(mo_component, "No BoM should be found for the component as it's MTO, so no MO should be created for it.")
-        self.env['mrp.bom'].create({
-            'product_tmpl_id': self.product_1.product_tmpl_id.id,
-        })
-        orderpoint.product_min_qty = 2
-        orderpoint.action_replenish()
-        mo_component = self.env['mrp.production'].search([('product_id', '=', self.product_1.id)])
         self.assertEqual(len(mo_component), 1, "Expected one MO for the manufactured BOM component.")
 
     def test_orderpoint_warning_mrp(self):
@@ -313,8 +299,6 @@ class TestMrpReplenish(TestMrpCommon):
         orderpoint.invalidate_recordset(fnames=['rule_ids', 'show_supply_warning'])
         self.assertFalse(orderpoint.show_supply_warning)
 
-        # Add a manufacture route to the product
-        self.product_4.route_ids |= self.route_manufacture
         orderpoint.invalidate_recordset(fnames=['show_supply_warning'])
         self.assertFalse(orderpoint.show_supply_warning)
 
@@ -373,11 +357,11 @@ class TestMrpReplenish(TestMrpCommon):
         """Test that lead time is incremented by 365 days (1 year) when there
         is no BoM defined.
         """
-        route_manufacture = self.warehouse_1.manufacture_pull_id.route_id
+        self.route_manufacture.product_selectable = True
         product = self.env['product.product'].create({
             'name': 'test',
             'is_storable': True,
-            'route_ids': route_manufacture.ids,
+            'route_ids': [Command.set([self.route_manufacture.id])],
         })
         orderpoint = self.env['stock.warehouse.orderpoint'].create({
             'name': 'test',
@@ -399,6 +383,54 @@ class TestMrpReplenish(TestMrpCommon):
             'product_id': self.bom_2.product_id.id,
         })
         self.assertEqual(orderpoint.company_id, company_2)
+
+    def test_orderpoint_bom_uom_filtered_by_company(self):
+        """The allowed replenishment UoMs must not read another company's BoM."""
+        company_2 = self.env['res.company'].sudo().create({'name': 'Company 2'})
+        warehouse_2 = self.env['stock.warehouse'].sudo().create({
+            'name': 'Company 2 Warehouse',
+            'code': 'C2RR',
+            'company_id': company_2.id,
+        })
+        company_2_user = new_test_user(
+            self.env,
+            login='company_2_mrp_user',
+            groups='stock.group_stock_manager,mrp.group_mrp_user',
+            company_id=company_2.id,
+            company_ids=[Command.set(company_2.ids)],
+        )
+        other_company_uom = self.uom_dozen.copy({'name': 'Other Company Pack'})
+        product = self.env['product.product'].create({
+            'name': 'Shared Manufactured Product',
+            'is_storable': True,
+            'uom_id': self.uom_unit.id,
+        })
+        self.env['mrp.bom'].sudo().create([{
+            'product_id': product.id,
+            'product_tmpl_id': product.product_tmpl_id.id,
+            'uom_id': other_company_uom.id,
+            'product_qty': 1,
+            'company_id': self.env.company.id,
+        }, {
+            'product_id': product.id,
+            'product_tmpl_id': product.product_tmpl_id.id,
+            'uom_id': self.uom_dozen.id,
+            'product_qty': 1,
+            'company_id': company_2.id,
+        }])
+
+        orderpoint_model = self.env['stock.warehouse.orderpoint'].with_context(
+            allowed_company_ids=company_2.ids,
+        ).with_user(company_2_user).with_company(company_2)
+        orderpoint = orderpoint_model.create({
+            'product_id': product.id,
+            'location_id': warehouse_2.lot_stock_id.id,
+            'route_id': warehouse_2.manufacture_pull_id.route_id.id,
+            'company_id': company_2.id,
+        })
+
+        self.assertIn(self.uom_dozen, orderpoint.allowed_replenishment_uom_ids)
+        self.assertNotIn(other_company_uom, orderpoint.allowed_replenishment_uom_ids)
 
     def test_product_replenish_wizard_multiple_manufacture_routes(self):
         # setup: copying a route fetches restricted translation fields on stock.route

@@ -29,13 +29,13 @@
     ],
     'assets': {
         'web.assets_frontend': [
-            'website_event_exhibitor/static/src/scss/event_templates_sponsor.scss',
-            'website_event_exhibitor/static/src/scss/event_exhibitor_templates.scss',
+            'website_event_exhibitor/static/src/scss/event_templates_sponsor.css',
+            'website_event_exhibitor/static/src/scss/event_exhibitor_templates.css',
             'website_event_exhibitor/static/src/interactions/**/*',
             'website_event_exhibitor/static/src/components/exhibitor_connect_closed_dialog/**/*',
         ],
         'web.report_assets_common': [
-            '/website_event_exhibitor/static/src/scss/event_full_page_ticket_report.scss',
+            '/website_event_exhibitor/static/src/scss/event_full_page_ticket_report.css',
         ],
         'website.website_builder_assets': [
             'website_event_exhibitor/static/src/website_builder/**/*',

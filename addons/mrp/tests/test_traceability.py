@@ -39,10 +39,10 @@ class TestTraceability(TestMrpCommon):
         })
 
     def test_tracking_types_on_mo(self):
-        finished_no_track = self._create_product('none')
+        finished_no_track = self._create_product(False)
         finished_lot = self._create_product('lot')
         finished_serial = self._create_product('serial')
-        consumed_no_track = self._create_product('none')
+        consumed_no_track = self._create_product(False)
         consumed_lot = self._create_product('lot')
         consumed_serial = self._create_product('serial')
         Lot = self.env['stock.lot']
@@ -126,23 +126,14 @@ class TestTraceability(TestMrpCommon):
                 'model': 'mrp.production',
             })
             lines = self.env['stock.traceability.report'].with_context(context).get_lines()
-            self.assertEqual(len(lines), 1, "Should always return 1 line : the final product")
-            final_product = lines[0]
-            self.assertEqual(final_product['unfoldable'], True, "Final product should always be unfoldable")
-
-            # Find parts of the final products
-            lines = self.env['stock.traceability.report'].get_lines(final_product['id'], **{
-                'level': final_product['level'],
-                'model_id': final_product['model_id'],
-                'model_name': final_product['model'],
-            })
-            self.assertEqual(len(lines), 3, "There should be 3 lines. 1 for untracked, 1 for lot, and 1 for serial")
+            self.assertEqual(len(lines), 4, "Should always return 4 line : the final product first and the components")
+            lines = lines[1:]
 
             for line in lines:
                 columns = {column['name']: column['value'] for column in line['columns']}
                 tracking = columns['product'].split(' ')[1]
                 self.assertEqual(
-                    columns['quantity'], "1.00 Units", 'Part with tracking type "%s", should have quantity = 1' % (tracking)
+                    columns['quantity'], "1 Units", 'Part with tracking type "%s", should have quantity = 1' % (tracking)
                 )
                 unfoldable = tracking in ['lot', 'serial']
                 self.assertEqual(
@@ -363,6 +354,50 @@ class TestTraceability(TestMrpCommon):
         mo.move_raw_ids.picked = True
         mo.button_mark_done()
         self.assertEqual(mo.state, 'done')
+
+    def test_SN_manufactured_out_of_order(self):
+        """
+        Ensure that, when consuming serials before producing them, future production and assignation of
+        these serials work properly.
+        """
+        self.product_2.tracking = 'serial'
+        serial = self.env['stock.lot'].create({
+            'name': 'SN_PROD',
+            'product_id': self.product_2.id,
+        })
+        # First MO will consume a not-yet produced serial
+        mo_upper = self.env['mrp.production'].create({
+            'product_id': self.product_3.id,
+            'product_qty': 1,
+            'bom_id': False,
+            'move_raw_ids': [
+                Command.create({
+                    'product_id': self.product_2.id,
+                    'product_uom_qty': 1,
+                })
+            ]
+        })
+        mo_upper.action_confirm()
+        # Force the creation of a move line
+        mo_upper.move_raw_ids.quantity = 1
+        mo_upper.move_raw_ids.move_line_ids.write({
+            'lot_id': serial.id,
+            'picked': True,
+        })
+        mo_upper.button_mark_done()
+        # Second MO produces the same serial product that was consumed.
+        mo_lower = self.env['mrp.production'].create({
+            'product_id': self.product_2.id,
+            'product_qty': 1,
+            'bom_id': False,
+        })
+        mo_lower.action_confirm()
+        mo_lower.action_generate_serial()
+        mo_lower.action_clear_lot_producing_ids()
+        mo_lower.action_generate_serial()
+        produced_SN = mo_lower.lot_producing_ids
+        mo_lower.button_mark_done()
+        self.assertEqual(mo_lower.finished_move_line_ids.lot_id, produced_SN)
 
     def test_tracked_and_manufactured_component(self):
         """ Suppose this structure:
@@ -633,11 +668,12 @@ class TestTraceability(TestMrpCommon):
         mo.action_generate_serial()
         self.assertEqual(mo.lot_producing_ids[:1].name, "TEST/0000002")
 
-        p_final.lot_sequence_id.prefix = 'xx%(doy)sxx'
-        # generate serial lot_3 from the MO (next from sequence)
-        mo.lot_producing_ids = self.env['stock.lot']
-        mo.action_generate_serial()
-        self.assertIn(datetime.now().strftime('%j'), mo.lot_producing_ids.name)
+        with freeze_time(datetime.now()):
+            p_final.lot_sequence_id.prefix = 'xx%(doy)sxx'
+            # generate serial lot_3 from the MO (next from sequence)
+            mo.lot_producing_ids = self.env['stock.lot']
+            mo.action_generate_serial()
+            self.assertIn(datetime.now(mo.env.tz).strftime('%j'), mo.lot_producing_ids.name)
 
     def test_use_customized_serial_sequence(self):
         """

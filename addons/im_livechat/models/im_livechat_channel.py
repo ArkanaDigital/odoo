@@ -342,8 +342,8 @@ class Im_LivechatChannel(models.Model):
             chatbot_script=chatbot_script,
             operator_partner=operator_partner,
             operator_model=operator_model,
-            **kwargs
-        ))]
+            **kwargs,
+        ))] if operator_partner else []
         guest = self.env["mail.guest"]._get_guest_from_context()
         if guest and self.env.user._is_public():
             members_to_add.append(
@@ -676,6 +676,15 @@ class Im_LivechatChannelRule(models.Model):
         help="The rule will only be applied for these countries. Example: if you select 'Belgium' and 'United States' and that you set the action to 'Hide', the chat button will be hidden on the specified URL from the visitors located in these 2 countries. This feature requires GeoIP installed on your server.")
     sequence = fields.Integer('Matching order', default=10,
         help="Given the order to find a matching rule. If 2 rules are matching for the given url/country, the one with the lowest sequence will be chosen.")
+
+    @api.constrains("regex_url")
+    def _check_regex_url(self):
+        for rule in self:
+            if rule.regex_url:
+                try:
+                    re.compile(rule.regex_url)
+                except re.error:
+                    raise ValidationError(_("The URL Regex '%(regex)s' is not valid.", regex=rule.regex_url))
 
     def match_rule(self, channel_id, url, country_id=False):
         """ determine if a rule of the given channel matches with the given url

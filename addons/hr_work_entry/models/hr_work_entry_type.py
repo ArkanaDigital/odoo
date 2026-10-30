@@ -4,7 +4,6 @@ from uuid import uuid4
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError, ValidationError
-from odoo.tools.translate import mark_as_copy
 
 
 class HrWorkEntryType(models.Model):
@@ -12,8 +11,9 @@ class HrWorkEntryType(models.Model):
     _description = 'Time Type'
     _order = 'sequence'
     _inherit = ['mail.thread', 'mail.activity.mixin']
+    _rec_names_search = ('name', 'code', 'display_code')
 
-    name = fields.Char(required=True, translate=True, tracking=True, copy=mark_as_copy('name'))
+    name = fields.Char(required=True, translate=True, tracking=True)
     display_code = fields.Char(string="Display Code", size=3, translate=True, tracking=True, help="This code can be changed, it is only for a display purpose (3 letters max)")
     code = fields.Char(
         string="Payroll Code",
@@ -21,6 +21,20 @@ class HrWorkEntryType(models.Model):
         tracking=True,
         help="The code is used as a reference in salary rules. Careful, changing an existing code can lead to unwanted behaviors.")
     external_code = fields.Char(tracking=True, help="Use this code to export your data to a third party")
+
+    # Color Palette Specification (corresponds to default 12-color palette / .o_calendar_color_N / badges):
+    #  0: No color / Gray - Out of contract / not applicable (Outside contract, career break)
+    #  1: Red             - Unpaid absence & Disciplinary (Leave without pay, unjustified absence, tardiness)
+    #  2: Orange          - Overtime / premium pay (Overtime, extra hours, worked holidays)
+    #  3: Yellow          - Non-working day (Calendar-driven: public holidays, weekends)
+    #  4: Cyan            - Compensatory time off (Time off in lieu, recovered overtime)
+    #  5: Purple          - Family / life event leave (Maternity, paternity, bereavement, marriage)
+    #  6: Almond (Beige)  - External disruption (Economic unemployment, bad weather, strike)
+    #  7: Teal            - Training / education (Educational leave, training, study leave)
+    #  8: Blue            - Earned paid leave (Annual leave, legal leave / PTO, extra-legal)
+    #  9: Raspberry       - Sickness / injury (Illness, guaranteed wage illness, work accident)
+    # 10: Green           - Working time (Standard scheduled work, attendance, home working)
+    # 11: Violet          - Civic / statutory duty (Jury duty, union mission, military obligation)
     color = fields.Integer(default=0)
     sequence = fields.Integer(default=25)
     active = fields.Boolean(
@@ -45,7 +59,7 @@ class HrWorkEntryType(models.Model):
         string="Rate",
         default=1.0,
         tracking=True,
-        help="If you want the hours to be paid double, the rate should be set to 200%.")
+        help="The percentage of wages paid. For standard paid leave set to 100%, for unpaid leave to 0%, or for double-pay to 200%.")
     description = fields.Text(translate=True, tracking=True)
     resource_calendar_attendance_ids = fields.One2many('resource.calendar.attendance', 'work_entry_type_id', readonly=True, copy=False)
     resource_calendar_selectable = fields.Boolean(string="Selectable in Working Schedule", compute='_compute_resource_calendar_selectable', store=True, readonly=False, tracking=True)

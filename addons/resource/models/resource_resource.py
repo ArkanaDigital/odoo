@@ -10,7 +10,6 @@ from dateutil.relativedelta import relativedelta, weekdays
 
 from odoo import api, fields, models
 from odoo.addons.base.models.res_partner import _tz_get
-from odoo.exceptions import ValidationError
 from odoo.tools import get_lang, babel_locale_parse
 from odoo.tools.intervals import Intervals
 from odoo.tools.date_utils import localized, sum_intervals, to_timezone, weeknumber
@@ -51,27 +50,19 @@ class ResourceResource(models.Model):
         'Efficiency Factor', default=100, required=True,
         help="This field is used to calculate the expected duration of a work order at this work center. For example, if a work order takes one hour and the efficiency factor is 100%, then the expected duration will be one hour. If the efficiency factor is 200%, however the expected duration will be 30 minutes.")
     calendar_id = fields.Many2one(
-        "resource.calendar", string='Working Time',
+        "resource.calendar", string='Working Time', required=True,
         default=lambda self: self.env.company.resource_calendar_id,
         domain="[('company_id', '=', company_id)]",
-        help="Define the working schedule of the resource. If not set, the resource will have fully flexible working hours.")
-    hours_per_week = fields.Float(string="Hours per Week", compute='_compute_hours_per_week', store=True, readonly=False)
-    hours_per_day = fields.Float(string="Hours per Day", compute='_compute_hours_per_day', store=True, readonly=False)
+        help="Define the working schedule of the resource. Assign a flexible calendar for fully "
+             "flexible working hours.")
+    # readonly: several resources can share the same calendar, writing through would silently
+    # change everyone else's hours too; edit the Working Schedule itself instead
+    hours_per_week = fields.Float(string="Hours per Week", related='calendar_id.hours_per_week', readonly=True)
+    hours_per_day = fields.Float(string="Hours per Day", related='calendar_id.hours_per_day', readonly=True)
     tz = fields.Selection(
         _tz_get, string='Timezone', required=True,
         default=lambda self: self.env.context.get('tz') or self.env.user.tz or 'UTC')
     color = fields.Integer(default=_default_color)
-
-    @api.constrains('calendar_id', 'hours_per_week', 'hours_per_day')
-    def _check_hours_per_week_day(self):
-        for resource in self:
-            hours_per_week = resource.hours_per_week
-            hours_per_day = resource.hours_per_day
-            if not resource.calendar_id and hours_per_week and hours_per_day:
-                if hours_per_day < (hours_per_week / 7):
-                    raise ValidationError(self.env._("The average hours per day is too low compared to the number of hours per week"))
-                if hours_per_day > hours_per_week:
-                    raise ValidationError(self.env._("The average hours per day is too high compared to the number of hours per week"))
 
     _check_time_efficiency = models.Constraint(
         'CHECK(time_efficiency>0)',
@@ -95,10 +86,6 @@ class ResourceResource(models.Model):
                     values['tz'] = tz
         return super().create(vals_list)
 
-    def copy_data(self, default=None):
-        vals_list = super().copy_data(default=default)
-        return [dict(vals, name=self.env._("%s (copy)", resource.name)) for resource, vals in zip(self, vals_list)]
-
     def write(self, vals):
         if self.env.context.get('check_idempotence') and len(self) == 1:
             vals = {
@@ -110,21 +97,14 @@ class ResourceResource(models.Model):
             return True
         return super().write(vals)
 
-    @api.depends('hours_per_week')
-    def _compute_hours_per_day(self):
-        for resource in self:
-            resource.hours_per_day = resource.hours_per_week / 7
-
-    @api.depends('hours_per_day')
-    def _compute_hours_per_week(self):
-        for resource in self:
-            if not resource.hours_per_week:
-                resource.hours_per_week = resource.hours_per_day * 7
-
     @api.onchange('company_id')
     def _onchange_company_id(self):
         if self.company_id:
-            self.calendar_id = self.company_id.resource_calendar_id.id
+            default_calendar = self.env.context.get('default_calendar_id')
+            if default_calendar:
+                self.calendar_id = default_calendar
+            else:
+                self.calendar_id = self.company_id.resource_calendar_id.id
 
     @api.onchange('user_id')
     def _onchange_user_id(self):
@@ -132,20 +112,28 @@ class ResourceResource(models.Model):
             self.tz = self.user_id.tz
 
     def _get_work_interval(self, start, end):
+        """ Deprecated, use :meth:`_adjust_to_calendar`. """
         # Deprecated method. Use `_adjust_to_calendar` instead
         return self._adjust_to_calendar(start, end)
 
     def _adjust_to_calendar(self, start, end, compute_leaves=True):
-        """Adjust the given start and end datetimes to the closest effective hours encoded
-        in the resource calendar. Only attendances in the same day as `start` and `end` are
-        considered (respectively). If no attendance is found during that day, the closest hour
-        is None.
-        e.g. simplified example:
-             given two attendances: 8am-1pm and 2pm-5pm, given start=9am and end=6pm
-             resource._adjust_to_calendar(start, end)
-             >>> {resource: (8am, 5pm)}
-        :return: Closest matching start and end of working periods for each resource
-        :rtype: dict(resource, tuple(datetime | None, datetime | None))
+        """ Snap ``start`` and ``end`` to the closest work interval boundaries of each
+        resource's calendar (see ``resource.calendar._get_closest_work_time``), e.g. to
+        propose default dates in planning or time off forms.
+
+        ``start`` is matched against interval starts between the beginning of its day and
+        the end of the day of ``end``; ``end`` is matched against interval ends between
+        ``start`` and the end of its day. Computation happens in the resource timezone.
+
+        Example: with attendances 8:00-13:00 and 14:00-17:00, ``start=9:00`` and
+        ``end=18:00`` (same day) give ``(8:00, 17:00)``.
+
+        :param datetime start: start to adjust, naive means UTC
+        :param datetime end: end to adjust, naive means UTC
+        :param bool compute_leaves: deduct leaves from the work intervals
+        :return: ``{resource: (start, end)}``; each value is in the timezone of the given
+            argument (naive UTC if it was naive), or ``None`` if no boundary was found
+        :rtype: dict
         """
         revert_start_tz = to_timezone(start.tzinfo)
         revert_end_tz = to_timezone(end.tzinfo)
@@ -159,7 +147,7 @@ class ResourceResource(models.Model):
                 start + relativedelta(hour=0, minute=0, second=0),
                 end + relativedelta(days=1, hour=0, minute=0, second=0),
             ]
-            calendar = resource.calendar_id or resource.company_id.resource_calendar_id or self.env.company.resource_calendar_id
+            calendar = resource.calendar_id
             calendar_start = calendar._get_closest_work_time(start, resource=resource, search_range=search_range,
                                                                          compute_leaves=compute_leaves)
             search_range[0] = start
@@ -173,31 +161,48 @@ class ResourceResource(models.Model):
         return result
 
     def _get_unavailable_intervals(self, start, end):
-        """ Compute the intervals during which employee is unavailable with hour granularity between start and end
-            Note: this method is used in enterprise (forecast and planning)
+        """ Return the periods during which each resource does not work between ``start``
+        and ``end``, according to its calendar (``resource.calendar._unavailable_intervals_batch``),
+        e.g. to grey out Gantt views (planning, project, MRP).
 
+        :param datetime start: start of the period, naive means UTC
+        :param datetime end: end of the period, naive means UTC
+        :return: ``{resource_id: Intervals}`` expressed in UTC (only the leaves for
+            flexible resources, which are missing when they have no leave)
+        :rtype: dict
         """
         start_datetime = localized(start)
         end_datetime = localized(end)
         resource_mapping = {}
         calendar_mapping = defaultdict(lambda: self.env['resource.resource'])
         for resource in self:
-            calendar_mapping[resource.calendar_id or resource.company_id.resource_calendar_id] |= resource
+            calendar_mapping[resource.calendar_id] |= resource
 
         for calendar, resources in calendar_mapping.items():
-            if not calendar:
-                continue
             resources_per_tz = resources._get_resources_per_tz()
             resources_unavailable_intervals = calendar._unavailable_intervals_batch(start_datetime, end_datetime, resources_per_tz)
-            resource_mapping.update(resources_unavailable_intervals)
+            # _unavailable_intervals_batch also includes a `False`-keyed entry for the calendar's
+            # own generic (resource-less) unavailability; irrelevant here, this method only
+            # promises unavailability for the resources in self
+            resource_mapping.update({
+                resource_id: intervals for resource_id, intervals in resources_unavailable_intervals.items() if resource_id
+            })
         return resource_mapping
 
     def _get_calendars_validity_within_period(self, start, end, default_company=None):
-        """ Gets a dict of dict with resource's id as first key and resource's calendar as secondary key
-            The value is the validity interval of the calendar for the given resource.
+        """ Return, for each resource, the calendars it uses within the period and when each
+        of them applies. Here a resource has a single calendar valid on the whole period;
+        ``hr`` overrides it so that an employee uses the calendar of each of its contract
+        versions on their own validity period.
 
-            Here the validity interval for each calendar is the whole interval but it's meant to be overriden in further modules
-            handling resource's employee contracts.
+        :param datetime start: timezone-aware start of the period
+        :param datetime end: timezone-aware end of the period
+        :param default_company: ``res.company`` whose default calendar is used when ``self``
+            is empty (current company by default)
+        :return: ``{resource_id: {resource.calendar: Intervals}}`` (nested ``defaultdict``).
+            When ``self`` is empty, the key ``False`` maps the default calendar to the whole
+            period.
+        :rtype: dict
         """
         assert start.tzinfo and end.tzinfo
         resource_calendars_within_period = defaultdict(lambda: defaultdict(Intervals))  # keys are [resource id:integer][calendar:self.env['resource.calendar']]
@@ -206,17 +211,30 @@ class ResourceResource(models.Model):
             # if no resource, add the company resource calendar.
             resource_calendars_within_period[False][default_calendar] = Intervals([(start, end, self.env['resource.calendar.attendance'])])
         for resource in self:
-            calendar = resource.calendar_id or resource.company_id.resource_calendar_id or default_calendar
+            calendar = resource.calendar_id
             resource_calendars_within_period[resource.id][calendar] = Intervals([(start, end, self.env['resource.calendar.attendance'])])
         return resource_calendars_within_period
 
     def _get_valid_work_intervals(self, start, end, calendars=None, compute_leaves=True):
-        """ Gets the valid work intervals of the resource following their calendars between ``start`` and ``end``
+        """ Return the work intervals of each resource between ``start`` and ``end``, taking
+        into account that a resource may use several calendars over the period (see
+        :meth:`_get_calendars_validity_within_period`): the work intervals of each calendar
+        are restricted to its validity period, then united.
 
-            This methods handle the eventuality of a resource having multiple resource calendars, see _get_calendars_validity_within_period method
-            for further explanation.
+        This is the entry point to know when resources work, e.g. in planning, project or
+        MRP scheduling. Flexible calendars give the intervals described in
+        ``resource.calendar._attendance_intervals_batch``; a falsy calendar (possible with
+        overrides) gives the whole period.
 
-            For flexible calendars and fully flexible resources: -> return the whole interval
+        :param datetime start: timezone-aware start of the period
+        :param datetime end: timezone-aware end of the period
+        :param calendars: optional extra ``resource.calendar`` records for which the
+            calendar-level work intervals are wanted in the second returned dict
+        :param bool compute_leaves: deduct leaves
+        :return: a pair ``(resource_work_intervals, calendar_work_intervals)``:
+            ``{resource_id: Intervals}`` (in each resource's timezone) and
+            ``{calendar_id: Intervals}`` (calendar-level result of every calendar used)
+        :rtype: tuple
         """
         assert start.tzinfo and end.tzinfo
         resource_calendar_validity_intervals = {}
@@ -248,11 +266,20 @@ class ResourceResource(models.Model):
         return resource_work_intervals, calendar_work_intervals
 
     def _is_fully_flexible(self):
-        """ employee has a fully flexible schedule has no working calendar set """
+        """ Return whether the resource's calendar is fully flexible (no attendance and no
+        hours target), see ``resource.calendar._is_fully_flexible``. """
         self.ensure_one()
-        return bool(not self.calendar_id and not self.hours_per_week and not self.hours_per_day)
+        return self.calendar_id._is_fully_flexible()
 
     def _get_calendar_data_at(self, date_target, tz=False):
+        """ Return the calendar data applying to each resource at ``date_target``. Here it is
+        the resource's own calendar; ``hr`` overrides it to use the employee's contract
+        version valid at that date (``date_target`` being converted to ``tz``).
+
+        :return: ``{resource: {'resource_calendar_id': resource.calendar,
+            'hours_per_week': float, 'hours_per_day': float}}``
+        :rtype: dict
+        """
         return {
             resource: {
                 'resource_calendar_id': resource.calendar_id,
@@ -261,13 +288,21 @@ class ResourceResource(models.Model):
             } for resource in self}
 
     def _is_flexible(self):
-        """ An employee is considered flexible if he's not assigned any calendar
-            If the employee is not assigned any calendar and no hours_per_week or hours_per_day are defined, he's considered as Fully flexible.
-        """
+        """ Return whether the resource's calendar is flexible (type ``undefined``), see
+        ``resource.calendar._is_flexible``. """
         self.ensure_one()
-        return self._is_fully_flexible() or not self.calendar_id
+        return self.calendar_id._is_flexible()
 
     def _get_flexible_resources_default_work_intervals(self, start, end):
+        """ Return, for each (flexible) resource, one interval per day from the day of
+        ``start`` to the day of ``end``, each covering the whole day (00:00 to
+        23:59:59.999999) in the resource timezone (user timezone for an empty record).
+
+        :param datetime start: timezone-aware start
+        :param datetime end: timezone-aware end
+        :return: ``{resource_id: Intervals}``
+        :rtype: dict
+        """
         assert start.tzinfo and end.tzinfo
 
         start_date = start.date()
@@ -293,6 +328,14 @@ class ResourceResource(models.Model):
         return res
 
     def _get_flexible_resources_calendars_validity_within_period(self, start, end):
+        """ Flexible counterpart of :meth:`_get_calendars_validity_within_period`: the
+        validity of each calendar is expressed as whole-day intervals (see
+        :meth:`_get_flexible_resources_default_work_intervals`). Overridden by ``hr`` for
+        contract versions.
+
+        :return: ``{resource_id: {resource.calendar: Intervals}}``
+        :rtype: dict
+        """
         assert start.tzinfo and end.tzinfo
         resource_default_work_intervals = self._get_flexible_resources_default_work_intervals(start, end)
 
@@ -323,13 +366,35 @@ class ResourceResource(models.Model):
             leave_start_day += timedelta(days=1)
 
     def _get_flexible_resource_valid_work_intervals(self, start, end):
+        """ Flexible counterpart of :meth:`_get_valid_work_intervals`, for resources that all
+        have a flexible calendar. Since they have no attendance, it returns availability as
+        whole days plus hour budgets, to be consumed by :meth:`_get_flexible_resource_work_hours`.
+
+        The budgets are computed on the full weeks (per the user language's first day of the
+        week) containing the period. Each leave day (leaves counted as absence only, as for
+        the work intervals) is removed from the intervals and its ``hours_per_day`` deducted from
+        the budgets. Fully flexible resources get intervals but no budget.
+
+        :param datetime start: timezone-aware start of the period
+        :param datetime end: timezone-aware end of the period
+        :return: a triple ``(work_intervals, hours_per_day, hours_per_week)``:
+
+            - ``{resource_id: Intervals}``: whole-day intervals in the resource timezone,
+              leave days removed, restricted to ``[start, end]``;
+            - ``{resource_id: {date: float}}``: daily budget (at most ``hours_per_day``),
+              for the days of the period;
+            - ``{resource_id: {(year, week_number): float}}``: weekly budget (at most
+              ``hours_per_week``, or the calendar's full time hours).
+
+            Three empty dicts when ``self`` is empty.
+        :rtype: tuple
+        """
         if not self:
             return {}, {}, {}
 
         assert all(record._is_flexible() for record in self)
         assert start.tzinfo and end.tzinfo
 
-        start_day, end_day = start.date(), end.date()
         locale = babel_locale_parse(get_lang(self.env).code)
 
         week_start_day = int(get_lang(self.env).week_start) - 1
@@ -353,6 +418,11 @@ class ResourceResource(models.Model):
                 resource_work_intervals[resource.id] |= work_intervals
 
         resource_by_id = {resource.id: resource for resource in self}
+        # the days of the period must be computed in the timezone of the resource
+        period_days_per_resource = {}
+        for resource in self:
+            tz = ZoneInfo(resource.tz or self.env.user.tz)
+            period_days_per_resource[resource.id] = (start.astimezone(tz).date(), end.astimezone(tz).date())
 
         resource_hours_per_day = defaultdict(lambda: defaultdict(float))
         resource_hours_per_week = defaultdict(lambda: defaultdict(float))
@@ -371,6 +441,8 @@ class ResourceResource(models.Model):
 
             full_time_required_hours = resource.calendar_id.full_time_required_hours if resource.calendar_id else resource.company_id.resource_calendar_id.hours_per_week
             hours_per_day = resource.calendar_id.hours_per_day if resource.calendar_id else resource.hours_per_day
+
+            start_day, end_day = period_days_per_resource[resource.id]
             for day, hours in duration_per_day.items():
                 day_working_hours = min(hours, hours_per_day)
                 # only days inside the original period
@@ -386,14 +458,14 @@ class ResourceResource(models.Model):
                     cap = resource.hours_per_week or full_time_required_hours
                     resource_hours_per_week[resource.id][year_week] = min(cap, day_working_hours + resource_hours_per_week[resource.id][year_week])
         for calendar, resources in calendar_resources.items():
-            domain = [('calendar_id', '=', False)] if not calendar else None
             resources_per_tz = resources._get_resources_per_tz()
-            leave_intervals = (calendar or self.env['resource.calendar'])._leave_intervals_batch(min_start_date, max_end_date, resources_per_tz, domain)
+            leave_intervals = (calendar or self.env['resource.calendar'])._leave_intervals_batch(min_start_date, max_end_date, resources_per_tz)
             for resource_id, leaves in leave_intervals.items():
                 if not resource_id:
                     continue
 
                 ranges_to_remove = []
+                start_day, end_day = period_days_per_resource[resource_id]
                 for leave in leaves._items:
                     resource_by_id[resource_id]._format_leave(leave, resource_hours_per_day, resource_hours_per_week, ranges_to_remove, start_day, end_day, locale)
 
@@ -406,6 +478,20 @@ class ResourceResource(models.Model):
         return resource_work_intervals, resource_hours_per_day, resource_hours_per_week
 
     def _get_flexible_resource_work_hours(self, intervals, flexible_resources_hours_per_day, flexible_resources_hours_per_week, work_hours_per_day=None):
+        """ Return how many hours this flexible resource can work within ``intervals``,
+        capped day by day by the daily budget and the remaining weekly budget, as computed by
+        :meth:`_get_flexible_resource_valid_work_intervals`. For a fully flexible resource
+        (or without ``hours_per_day``), simply return the total duration of ``intervals``.
+
+        :param intervals: intervals of the resource to evaluate, e.g. a planning slot
+            intersected with its work intervals
+        :param dict flexible_resources_hours_per_day: ``{date: float}`` budget of this resource
+        :param dict flexible_resources_hours_per_week: ``{(year, week_number): float}`` budget
+            of this resource (not modified)
+        :param work_hours_per_day: optional ``defaultdict(float)`` filled in place with the
+            hours retained per ``date``
+        :rtype: float
+        """
         assert self._is_flexible()
 
         if self._is_fully_flexible() or not self.hours_per_day:
@@ -445,4 +531,10 @@ class ResourceResource(models.Model):
         return work_hours
 
     def _get_resources_per_tz(self):
+        """ Group the resources by timezone, in the format expected by the
+        ``resources_per_tz`` argument of the ``resource.calendar`` interval methods.
+
+        :return: ``{ZoneInfo: resource.resource recordset}`` (empty dict for no resource)
+        :rtype: dict
+        """
         return self.grouped(lambda r: ZoneInfo(r.tz))

@@ -1,5 +1,6 @@
 import { expect, test, describe } from "@odoo/hoot";
-import { contains, dataURItoBlob, onRpc, patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { contains, dataURItoBlob, onRpc } from "@web/../tests/web_test_helpers";
+import { patch } from "@web/core/utils/patch";
 import { dummyBase64Img, dummyCORSSrc, setupCORSProtectedImg, setupHTMLBuilder } from "./helpers";
 import { ImageShapeOptionPlugin } from "@html_builder/plugins/image/image_shape_option_plugin";
 import { ImageToolOptionPlugin } from "@html_builder/plugins/image/image_tool_option_plugin";
@@ -17,18 +18,18 @@ test("Size should not be displayed on CORS protected images", async () => {
     );
     await contains(":iframe img").click();
     await waitSidebarUpdated();
-    expect(".o-hb-image-size-info").toHaveCount(0);
+    expect(".o_hb_image_size_info").toHaveCount(0);
 });
 
 test("Transfer all options before processing image at image replace", async () => {
     expect.assertions(1);
-    patchWithCleanup(ImageShapeOptionPlugin.prototype, {
+    patch(ImageShapeOptionPlugin.prototype, {
         async onWillSaveMediaDialogHandlers(elements, { node }) {
             await super.onWillSaveMediaDialogHandlers(elements, { node });
             expect.step("shape_option_media_dialog_saved");
         },
     });
-    patchWithCleanup(ImageToolOptionPlugin.prototype, {
+    patch(ImageToolOptionPlugin.prototype, {
         async onWillSaveMediaDialogHandlers() {
             expect.verifySteps(["shape_option_media_dialog_saved"]);
         },

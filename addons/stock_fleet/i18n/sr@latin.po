@@ -1,23 +1,24 @@
 # Translation of Odoo Server.
 # This file contains the translation of the following modules:
-# 	* stock_fleet
+# * stock_fleet
 #
+# Weblate <noreply-mt-weblate@weblate.org>, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 18.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-17 17:39+0000\n"
-"PO-Revision-Date: 2026-06-20 00:01+0000\n"
+"POT-Creation-Date: 2026-09-11 17:43+0000\n"
+"PO-Revision-Date: 2026-08-31 16:57+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
 "Language-Team: Serbian (Latin script) <https://translate.odoo.com/projects/"
-"odoo-master/stock_fleet/sr_Latn/>\n"
+"odoo-s19-4/stock_fleet/sr_Latn/>\n"
 "Language: sr@latin\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: stock_fleet
 #. odoo-python
@@ -45,17 +46,21 @@ msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_card
-msgid "<i class=\"fa fa-cubes text-primary me-2\" title=\"Location\"/>"
+msgid "<i class=\"oi mx-2\" data-icon=\"east\" title=\"Arrow\"/>"
 msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_card
-msgid "<i class=\"fa fa-long-arrow-right mx-2\" title=\"Arrow\"/>"
+msgid ""
+"<i class=\"oi text-primary me-2\" data-icon=\"inventory_2\" "
+"title=\"Location\"/>"
 msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_card
-msgid "<i class=\"fa fa-truck text-primary me-2\" title=\"Vehicle\"/>"
+msgid ""
+"<i class=\"oi text-primary me-2\" data-icon=\"local_shipping\" "
+"title=\"Vehicle\"/>"
 msgstr ""
 
 #. module: stock_fleet
@@ -92,8 +97,20 @@ msgid "Allowed Docks"
 msgstr ""
 
 #. module: stock_fleet
+#: model:ir.module.module,description:base.module_stock_fleet
+msgid ""
+"Allows organizing deliveries by dock, assigning drivers and vehicles, and "
+"printing the associated consignment notes."
+msgstr ""
+
+#. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.report_cmr_translated_label
 msgid "Annexed documents"
+msgstr ""
+
+#. module: stock_fleet
+#: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_type__auto_print_cmr_report
+msgid "Auto Print Consignment Note (CMR)"
 msgstr ""
 
 #. module: stock_fleet
@@ -129,8 +146,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_type_kanban_inherit_stock_fleet
+#, fuzzy
 msgid "Calendar"
-msgstr ""
+msgstr "Kalendar"
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.report_cmr_translated_label
@@ -175,6 +193,7 @@ msgstr ""
 #. module: stock_fleet
 #: model:ir.actions.report,name:stock_fleet.action_report_cmr
 #: model:ir.actions.report,name:stock_fleet.action_report_cmr_batch
+#: model_terms:ir.ui.view,arch_db:stock_fleet.view_picking_type_form
 msgid "Consignment Note (CMR)"
 msgstr ""
 
@@ -217,8 +236,9 @@ msgstr ""
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__display_name
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_type__display_name
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_warehouse__display_name
+#, fuzzy
 msgid "Display Name"
-msgstr ""
+msgstr "Naziv za prikaz"
 
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__dock_id
@@ -256,8 +276,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__end_date
+#, fuzzy
 msgid "End Date"
-msgstr ""
+msgstr "Završni datum"
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.report_cmr_translated_label
@@ -292,7 +313,15 @@ msgstr ""
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__id
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_type__id
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_warehouse__id
+#, fuzzy
 msgid "ID"
+msgstr "ID"
+
+#. module: stock_fleet
+#: model:ir.model.fields,help:stock_fleet.field_stock_picking_type__auto_print_cmr_report
+msgid ""
+"If this checkbox is ticked, Odoo will automatically print the Consignment "
+"Note (CMR) of a delivery when it is validated."
 msgstr ""
 
 #. module: stock_fleet
@@ -367,11 +396,6 @@ msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_filter
-msgid "Operation Type"
-msgstr ""
-
-#. module: stock_fleet
-#: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_filter
 msgid "Own Fleet"
 msgstr ""
 
@@ -397,8 +421,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_filter
+#, fuzzy
 msgid "Scheduled Date"
-msgstr ""
+msgstr "Planirani datum"
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.report_cmr_translated_label
@@ -422,8 +447,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.report_picking_batch_inherit
+#, fuzzy
 msgid "Sequence"
-msgstr ""
+msgstr "Niz"
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.vpicktree
@@ -462,7 +488,18 @@ msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_type_kanban_inherit_stock_fleet
+#, fuzzy
 msgid "Statistics"
+msgstr "Statistike"
+
+#. module: stock_fleet
+#: model:ir.module.module,shortdesc:base.module_stock_fleet
+msgid "Stock Transport"
+msgstr ""
+
+#. module: stock_fleet
+#: model:ir.module.module,summary:base.module_stock_fleet
+msgid "Stock Transport Management"
 msgstr ""
 
 #. module: stock_fleet
@@ -510,13 +547,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_filter
-msgid "Today"
-msgstr ""
-
-#. module: stock_fleet
-#: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_filter
+#, fuzzy
 msgid "Tomorrow"
-msgstr ""
+msgstr "Sutra"
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.vpicktree
@@ -545,8 +578,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model:ir.model,name:stock_fleet.model_stock_picking
+#, fuzzy
 msgid "Transfer"
-msgstr ""
+msgstr "Prenos"
 
 #. module: stock_fleet
 #: model:fleet.vehicle.tag,name:stock_fleet.vehicle_tag_transport
@@ -566,8 +600,9 @@ msgstr ""
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__vehicle_id
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_filter
+#, fuzzy
 msgid "Vehicle"
-msgstr ""
+msgstr "Vozilo"
 
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__vehicle_category_id
@@ -577,8 +612,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_form
+#, fuzzy
 msgid "Volume"
-msgstr ""
+msgstr "Obim"
 
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__used_volume_percentage
@@ -598,13 +634,15 @@ msgstr ""
 
 #. module: stock_fleet
 #: model:ir.model,name:stock_fleet.model_stock_warehouse
+#, fuzzy
 msgid "Warehouse"
-msgstr ""
+msgstr "Magacin"
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_form
+#, fuzzy
 msgid "Weight"
-msgstr ""
+msgstr "Težina"
 
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__used_weight_percentage
@@ -619,8 +657,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking__zip
+#, fuzzy
 msgid "Zip"
-msgstr ""
+msgstr "Poštanski broj"
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_form

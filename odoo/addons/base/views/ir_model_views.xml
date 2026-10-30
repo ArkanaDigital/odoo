@@ -58,7 +58,12 @@
                                                     <field name="required"/>
                                                     <field name="readonly"/>
                                                     <field name="store" groups="base.group_no_one"/>
-                                                    <field name="index" groups="base.group_no_one"/>
+                                                    <field name="allowed_index_types" invisible="1"/>
+                                                    <!-- necessary for the widget's option -->
+                                                    <field name="index" groups="base.group_no_one"
+                                                        widget="filterable_selection"
+                                                        options="{'whitelist_fname': 'allowed_index_types'}"
+                                                        readonly="state != 'manual'"/>
                                                     <field name="copied" groups="base.group_no_one"/>
                                                     <field name="state" groups="base.group_no_one"/>
                                                     <field name="modules" groups="base.group_no_one"/>
@@ -237,7 +242,12 @@
                                         <field name="required"/>
                                         <field name="readonly"/>
                                         <field name="store" groups="base.group_no_one"/>
-                                        <field name="index" groups="base.group_no_one"/>
+                                        <field name="allowed_index_types" invisible="1"/>
+                                        <!-- necessary for the widget's option -->
+                                        <field name="index" groups="base.group_no_one"
+                                            widget="filterable_selection"
+                                            options="{'whitelist_fname': 'allowed_index_types'}"
+                                            readonly="state != 'manual'"/>
                                         <field name="copied" groups="base.group_no_one"/>
                                         <field name="state" groups="base.group_no_one"/>
                                         <field name="modules" groups="base.group_no_one"/>
@@ -375,7 +385,6 @@
                     <field name="model_id"/>
                     <field name="ttype"/>
                     <field name="state"/>
-                    <field name="index"/>
                     <field name="store"/>
                     <field name="readonly"/>
                     <field name="relation"/>
@@ -527,7 +536,7 @@
         <record model="ir.ui.view" id="view_model_constraint_form">
             <field name="model">ir.model.constraint</field>
             <field name="arch" type="xml">
-                <form string="Model Constraints">
+                <form string="Model Constraints" delete="0">
                 <sheet>
                     <group col="4">
                         <field name="type"/>
@@ -545,7 +554,7 @@
         <record id="view_model_constraint_list" model="ir.ui.view">
             <field name="model">ir.model.constraint</field>
             <field name="arch" type="xml">
-                <list string="Model Constraints">
+                <list string="Model Constraints" delete="0">
                     <field name="type"/>
                     <field name="name"/>
                     <field name="module"/>

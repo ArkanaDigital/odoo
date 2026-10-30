@@ -1,11 +1,11 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 import re
+from ast import literal_eval
 
 from markupsafe import Markup
 from collections import defaultdict
-from datetime import datetime
 
-from odoo import api, fields, models, tools
+from odoo import Command, api, fields, models, tools
 from odoo.exceptions import UserError, ValidationError
 from odoo.fields import Domain
 from odoo.tools import SQL, clean_context
@@ -98,7 +98,7 @@ class HrApplicant(models.Model):
                                     help="Stage of the applicant before being in the current stage. Used for lost cases analysis.")
     categ_ids = fields.Many2many('hr.applicant.category', string="Tags", tracking=True)
     currency_id = fields.Many2one('res.currency', string='Currency', related='company_id.currency_id')
-    company_id = fields.Many2one('res.company', "Company", compute='_compute_company', store=True, index=True, readonly=False, tracking=True)
+    company_id = fields.Many2one('res.company', "Company", compute='_compute_company', store=True, index=True, readonly=False, tracking=True, domain=lambda self: [('id', 'in', self.env.companies.ids)])
     recruiter_id = fields.Many2one('hr.employee', "Recruiter", compute='_compute_recruiter', domain=lambda self: str(self._recruiter_domain()),
         tracking=True, store=True, index=True, readonly=False)
     date_closed = fields.Datetime("Hire Date", compute='_compute_date_closed', store=True, readonly=False, tracking=True, copy=False)
@@ -162,6 +162,33 @@ class HrApplicant(models.Model):
         compute="_compute_is_applicant_in_pool", search="_search_is_applicant_in_pool"
     )
     talent_pool_count = fields.Integer(compute="_compute_talent_pool_count")
+    applicant_skill_ids = fields.One2many(
+        "hr.applicant.skill", "applicant_id", string="Skills", copy=True
+    )
+    current_applicant_skill_ids = fields.One2many(
+        comodel_name="hr.applicant.skill",
+        inverse_name="applicant_id",
+        compute="_compute_current_applicant_skill_ids",
+        readonly=False,
+    )
+    skill_ids = fields.Many2many("hr.skill", compute="_compute_skill_ids", store=True)
+    matching_skill_ids = fields.Many2many(
+        comodel_name="hr.skill",
+        string="Matching Factors",
+        compute="_compute_matching_skill_ids",
+    )
+    missing_skill_ids = fields.Many2many(
+        comodel_name="hr.skill",
+        string="Missing Factors",
+        compute="_compute_matching_skill_ids",
+    )
+    matching_score = fields.Integer(string="Matching Score", compute="_compute_matching_score", store=True)
+    degree_score = fields.Integer(string="Degree Score", compute="_compute_matching_score", store=True)
+    skills_score = fields.Integer(string="Skills Score", compute="_compute_matching_score", store=True)
+    is_degree_score_matching = fields.Boolean(string="Degree Score Matching",
+        compute="_compute_matching_skill_ids")
+    job_expected_degree = fields.Many2one('hr.recruitment.degree', related='job_id.expected_degree',
+        string='Job Degree', readonly=True)
 
     _job_id_stage_id_idx = models.Index("(job_id, stage_id) WHERE active IS TRUE")
 
@@ -191,14 +218,13 @@ class HrApplicant(models.Model):
         if not pool_applicants:
             return
 
-        directly_linked = pool_applicants.filtered("pool_applicant_id")
+        directly_linked, indirectly_linked = pool_applicants.partitioned("pool_applicant_id")
         for applicant in directly_linked:
             # All talents(applications with talent_pool_ids set) have a pool_applicant_id set to
             # themselves which is the reason we only look for that instead of searching for all
             # applications with talent_pool_ids and all applications with pool_applicant_id seperately
             applicant.talent_pool_count = len(applicant.pool_applicant_id.talent_pool_ids)
 
-        indirectly_linked = pool_applicants - directly_linked
         if not indirectly_linked:
             return
 
@@ -255,10 +281,15 @@ class HrApplicant(models.Model):
                 applicant.partner_id = applicant._partner_find_from_emails_single(
                     [applicant.email_from], no_create=False,
                     additional_values={
-                        email_normalized: {'lang': self.env.lang}
+                        email_normalized: {
+                            'lang': self.env.lang,
+                            'name': applicant.partner_name,
+                            'phone': applicant.partner_phone,
+                        },
                     },
                 )
-                applicant._track_record(applicant.partner_id, ['name', 'email', 'phone'], body="Contact has been updated")
+                continue
+            applicant._track_record(applicant.partner_id, ['name', 'email', 'phone'], body="Contact has been updated")
             if applicant.partner_name and applicant.partner_name != applicant.partner_id.name:
                 applicant.partner_id.name = applicant.partner_name
             if email_normalized and email_normalized != applicant.partner_id.email:
@@ -572,17 +603,17 @@ class HrApplicant(models.Model):
         stage_ids = stages.sudo()._search(search_domain, order=stages._order)
         return stages.browse(stage_ids)
 
-    @api.depends('job_id', 'department_id')
+    @api.depends('job_id', 'department_id', 'job_id.company_id')
     def _compute_company(self):
         for applicant in self:
             company_id = False
-            if applicant.department_id:
+            if applicant.department_id.company_id == applicant.job_id.company_id:
                 company_id = applicant.department_id.company_id.id
             if not company_id and applicant.job_id:
                 company_id = applicant.job_id.company_id.id
             applicant.company_id = company_id or self.env.company.id
 
-    @api.depends('job_id')
+    @api.depends('job_id', 'job_id.department_id')
     def _compute_department(self):
         for applicant in self:
             applicant.department_id = applicant.job_id.department_id.id
@@ -620,6 +651,66 @@ class HrApplicant(models.Model):
             if not applicant.stage_id.hired_stage:
                 applicant.date_closed = False
 
+    @api.depends("applicant_skill_ids")
+    def _compute_current_applicant_skill_ids(self):
+        current_applicant_skill_by_applicant = self.applicant_skill_ids._get_current_skills_by_applicant()
+        for applicant in self:
+            applicant.current_applicant_skill_ids = current_applicant_skill_by_applicant[applicant.id]
+
+    @api.depends("applicant_skill_ids.skill_id")
+    def _compute_skill_ids(self):
+        for applicant in self:
+            applicant.skill_ids = applicant.applicant_skill_ids.skill_id
+
+    @api.depends_context("matching_job_id")
+    @api.depends("current_applicant_skill_ids", "type_id", "job_id", "job_id.job_skill_ids", "job_id.expected_degree")
+    def _compute_matching_skill_ids(self):
+        matching_job_id = self.env.context.get("matching_job_id")
+        matching_job = self.env["hr.job"].browse(matching_job_id)
+        for applicant in self:
+            job = matching_job or applicant.job_id
+            if not job or not (job.job_skill_ids or job.expected_degree):
+                applicant.matching_skill_ids = False
+                applicant.missing_skill_ids = False
+                applicant.is_degree_score_matching = False
+                continue
+            job_skills = job.job_skill_ids
+            job_skill_map = {js.skill_id: js.level_progress for js in job_skills}
+            matching_applicant_skills = applicant.current_applicant_skill_ids.filtered(
+                lambda a: a.skill_id in job_skill_map,
+            )
+            applicant.matching_skill_ids = matching_applicant_skills.mapped("skill_id")
+            applicant.missing_skill_ids = job_skills.mapped("skill_id") - matching_applicant_skills.mapped("skill_id")
+            applicant.is_degree_score_matching = bool(job.expected_degree) and applicant.type_id.score >= job.expected_degree.sudo().score
+
+    @api.depends("current_applicant_skill_ids", "type_id", "job_id", "job_id.job_skill_ids", "job_id.expected_degree")
+    def _compute_matching_score(self):
+        matching_job_id = self.env.context.get("matching_job_id")
+        matching_job = self.env["hr.job"].browse(matching_job_id)
+        for applicant in self:
+            job = matching_job or applicant.job_id
+            if not job or not (job.job_skill_ids or job.expected_degree):
+                applicant.matching_score = False
+                applicant.degree_score = False
+                applicant.skills_score = False
+                continue
+            job_skills = job.job_skill_ids
+            job_degree = job.expected_degree.sudo().score * 100
+            job_skill_map = {js.skill_id: js.level_progress for js in job_skills}
+
+            matching_applicant_skills = applicant.current_applicant_skill_ids.filtered(
+                lambda a: a.skill_id in job_skill_map,
+            )
+            applicant_degree = applicant.type_id.score * 100 if job_degree > 1 else 0
+            skills_total = sum(
+                min(skill.level_progress, job_skill_map[skill.skill_id] * 2)
+                for skill in matching_applicant_skills
+            )
+            job_total = sum(job_skills.mapped("level_progress")) + job_degree
+            applicant.degree_score = round((100 * applicant_degree) / job_total) if job_total else 0
+            applicant.skills_score = round((100 * skills_total) / job_total) if job_total else 0
+            applicant.matching_score = applicant.degree_score + applicant.skills_score
+
     def copy_data(self, default=None):
         vals_list = super().copy_data(default=default)
 
@@ -634,6 +725,9 @@ class HrApplicant(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
+            # This is required for the talent pool mechanism to work. Duplicating an hr.applicant record without this
+            # will cause the skills to not be duplicated or disappear randomly.
+            vals["applicant_skill_ids"] = vals.pop("current_applicant_skill_ids", []) + vals.get("applicant_skill_ids", [])
             if vals.get('recruiter_id'):
                 vals['date_open'] = fields.Datetime.now()
             if vals.get('email_from'):
@@ -670,7 +764,62 @@ class HrApplicant(models.Model):
     def _get_sync_fields(self):
         return ('partner_name', 'email_from', 'partner_phone', 'linkedin_profile', 'categ_ids', 'type_id', 'availability')
 
+    def _map_applicant_skill_ids_to_other_applicant_skill_ids(self, other_applicant, vals):
+        """
+        The applicant_skills_ids contains a list of ORM tuples i.e (command, record ID, {values})
+        The challenge lies in the uniqueness of the record ID in this tuple. Each skill (e.g., 'arabic')
+        has a distinct ID per applicant, i.e arabic in applicant 1 will have a different id from arabic in
+        applicant 2. This means the content of applicant_skills_ids is unique for each record and attempting
+        to pass it directly (e.g., applicant.pool_applicant_id.write(vals)) won't yield results so we must
+        update each tuple to have the correct command and record ID for the other applicant
+
+        :param other_applicant: the other @hr.applicant the skill_ids will be mapped to
+        :param vals: list of CREATE, WRITE or UNLINK commands with skill_ids relevant to the applicant
+        :return: list of CREATE, WRITE or UNLINK commands with skill_ids relevant to the other applicant
+        """
+        applicant_skills = {a.id: a.skill_id.id for a in self.applicant_skill_ids}
+        applicant_skills_type = {a.id: a.skill_type_id.id for a in self.applicant_skill_ids}
+        other_applicant_skills = {a.skill_id.id: a.id for a in other_applicant.applicant_skill_ids}
+        mapped_commands = []
+        for command in vals.get("applicant_skill_ids"):
+            command_number = command[0]
+            record_id = command[1]
+            if command_number == Command.UPDATE:
+                values = command[2]
+                if applicant_skills[record_id] in other_applicant_skills:
+                    mapped_command = Command.update(other_applicant_skills[applicant_skills[record_id]], values)
+                    mapped_commands.append(mapped_command)
+                else:
+                    mapped_command = Command.create(
+                        {
+                            "skill_id": applicant_skills[record_id],
+                            "skill_type_id": applicant_skills_type[record_id],
+                            "skill_level_id": values["skill_level_id"],
+                        },
+                    )
+                    mapped_commands.append(mapped_command)
+            elif command_number == Command.DELETE:
+                if applicant_skills[record_id] in other_applicant_skills:
+                    mapped_command = Command.delete(other_applicant_skills[applicant_skills[record_id]])
+                    mapped_commands.append(mapped_command)
+            else:
+                mapped_commands.append(command)
+        return mapped_commands
+
     def write(self, vals):
+        if "current_applicant_skill_ids" in vals or "applicant_skill_ids" in vals:
+            skills = vals.pop("current_applicant_skill_ids", []) + vals.get("applicant_skill_ids", [])
+            original_vals = vals.copy()
+            original_vals["applicant_skill_ids"] = skills
+            vals["applicant_skill_ids"] = self.env["hr.applicant.skill"]._get_transformed_commands(skills, self)
+            if not self.env.context.get('skills_synced'):
+                for pool_applicant, current_applicants in self.grouped('pool_applicant_id').items():
+                    # Modify the skill values for the remaining applicants in the talent pool
+                    source_applicant = current_applicants[0]
+                    other_applicants = pool_applicant.linked_applicant_ids - current_applicants
+                    for applicant in other_applicants:
+                        mapped_skills = source_applicant._map_applicant_skill_ids_to_other_applicant_skill_ids(applicant, original_vals)
+                        applicant.with_context(skills_synced=True).write({"applicant_skill_ids": mapped_skills})
         # recruiter change: update date_open
         if vals.get('recruiter_id'):
             vals['date_open'] = fields.Datetime.now()
@@ -878,7 +1027,7 @@ class HrApplicant(models.Model):
         }
 
     def action_job_add_applicants(self):
-        return {
+        action = {
             "name": _("Apply to Jobs"),
             "type": "ir.actions.act_window",
             "res_model": "job.add.applicants",
@@ -886,10 +1035,29 @@ class HrApplicant(models.Model):
             "views": [[self.env.ref('hr_recruitment.job_add_applicants_view_form').id, "form"]],
             "context": {
                 "is_modal": True,
-                "default_applicant_ids": self.ids
-                or self.env.context.get("default_applicant_ids"),
+                "default_applicant_ids": self.ids or self.env.context.get("default_applicant_ids"),
             },
         }
+        if len(self) == 1:
+            action["context"]["active_applicant_skill_ids"] = self.skill_ids.ids
+            action["context"]["active_applicant_id"] = self.id
+            applicant_job_ids = self.job_id
+            if self.pool_applicant_id:
+                applicant_job_ids += self.pool_applicant_id.linked_applicant_ids.job_id
+            else:
+                domain = self._get_similar_applicants_domain()
+                applicant_job_ids += self.env["hr.applicant"].search(domain).job_id
+            action["context"]["active_applicant_job_ids"] = applicant_job_ids.ids
+        return action
+
+    def action_add_to_job(self):
+        self.with_context(just_moved=True).write({
+            "job_id": self.env["hr.job"].browse(self.env.context.get("matching_job_id")).id,
+            "stage_id": self.env.ref("hr_recruitment.stage_job0").id,
+        })
+        action = self.env["ir.actions.actions"]._for_xml_id("hr_recruitment.action_hr_job_applications")
+        action["context"] = literal_eval(action["context"].replace("active_id", str(self.job_id.id)))
+        return action
 
     def _track_template_parameters(self, tracked_fields):
         res = super()._track_template_parameters(tracked_fields)
@@ -945,9 +1113,23 @@ class HrApplicant(models.Model):
     @api.depends_context('show_partner_name')
     def _compute_display_name(self):
         if not self.env.context.get('show_partner_name'):
-            return super()._compute_display_name()
-        for applicant in self:
-            applicant.display_name = applicant.partner_name
+            super()._compute_display_name()
+        else:
+            for applicant in self:
+                applicant.display_name = applicant.partner_name
+        if self.env.context.get("show_matching_score_in_name", False):
+            for applicant in self:
+                if applicant.matching_score:
+                    name = f"{applicant.display_name or applicant.name} \t --{applicant.matching_score:.0f}%--"
+                    applicant.display_name = name.strip()
+
+    @api.model
+    def name_search(self, name='', domain=None, operator='ilike', limit=100):
+        show_matching_score_in_name = self.env.context.get('show_matching_score_in_name', False)
+        if show_matching_score_in_name:
+            records = self.search(domain).sorted(lambda a: a.matching_score, reverse=True)[:limit]
+            return [(r.id, r.display_name) for r in records]
+        return super().name_search(name=name, domain=domain if domain else None, operator=operator, limit=limit)
 
     @api.model
     def message_new(self, msg_dict, custom_values=None):
@@ -1060,7 +1242,15 @@ class HrApplicant(models.Model):
             'address_id': self.company_id.partner_id.id,
             'work_phone': self.department_id.company_id.phone,
             'applicant_ids': self.ids,
-            'phone': self.partner_phone
+            'phone': self.partner_phone,
+            'employee_skill_ids': [
+                Command.create({
+                    'skill_id': applicant_skill.skill_id.id,
+                    'skill_level_id': applicant_skill.skill_level_id.id,
+                    'skill_type_id': applicant_skill.skill_type_id.id,
+                })
+                for applicant_skill in self.applicant_skill_ids
+            ],
         }
 
     def _check_interviewer_access(self):
@@ -1077,7 +1267,6 @@ class HrApplicant(models.Model):
                 'target': 'new',
                 'context': {
                     'default_applicant_ids': self.ids,
-                    'active_test': False,
                     'hide_mail_template_management_options': True,
                 },
                 'views': [[False, 'form']],
@@ -1090,7 +1279,6 @@ class HrApplicant(models.Model):
             'target': 'new',
             'context': {
                 'default_applicant_ids': self.ids,
-                'active_test': False,
                 'hide_mail_template_management_options': True,
             },
             'views': [[False, 'form']]
@@ -1119,14 +1307,6 @@ class HrApplicant(models.Model):
         res = super(HrApplicant, self.with_context(just_unarchived=True)).action_unarchive()
         self.reset_applicant()
         return res
-
-    def _get_duration_from_tracking(self, trackings):
-        json = super()._get_duration_from_tracking(trackings)
-        now = datetime.now()
-        for applicant in self:
-            if applicant.refuse_reason_id and applicant.refuse_date:
-                json[applicant.stage_id.id] -= (now - applicant.refuse_date).total_seconds()
-        return json
 
     def _creation_message(self):
         self.ensure_one()

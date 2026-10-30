@@ -7,15 +7,13 @@
     'website': "https://www.odoo.com/documentation/latest/applications/finance/fiscal_localizations/spain.html#veri-factu",
     'depends': ['l10n_es', 'certificate'],
     'data': [
-        'wizard/account_move_reversal_views.xml',
         'wizard/account_resequence_views.xml',
         'views/account_move_views.xml',
-        'views/account_tax_views.xml',
         'views/certificate_certificate_views.xml',
         'views/l10n_es_edi_verifactu_document_views.xml',
         'views/report_invoice.xml',
-        'views/res_company_views.xml',
         'views/res_config_settings_views.xml',
+        'views/account_journal_dashboard_view.xml',
         'data/ir_cron.xml',
         'security/ir.access.csv',
     ],
@@ -25,7 +23,7 @@
     ],
     'assets': {
         'web.assets_backend': [
-            'l10n_es_edi_verifactu/static/src/css/warning.scss',
+            'l10n_es_edi_verifactu/static/src/css/warning.css',
         ],
     },
     'author': 'Odoo S.A.',

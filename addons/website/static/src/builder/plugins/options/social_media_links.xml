@@ -11,16 +11,18 @@
                 <tr t-foreach="items" t-as="item" t-key="item.fabricatedKey" t-att-data-id="item.id">
                     <td>
                         <button class="btn o_drag_handle">
-                            <i class="oi" data-icon="drag_indicator"/>
+                            <i class="oi" data-icon="drag_indicator" role="img" aria-hidden="true"/>
+                            <span class="visually-hidden">Drag Handle</span>
                         </button>
                     </td>
                     <td width="100%">
-                        <BuilderTextInput
+                        <BuilderUrlPicker
                             action="'editSocialMediaLink'"
                             attributeAction="'href'"
                             applyTo="`a:nth-of-type(${item.domPosition})`"
                             placeholder="'https://example.com/your-page'"
                             default="itemsLength === 1 ? '#' : ''"
+                            previewButton="false"
                         />
                     </td>
                     <td style="'min-width: 2.5em'">

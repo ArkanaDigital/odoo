@@ -12,15 +12,17 @@ import {
 } from "@odoo/hoot-dom";
 import { xml } from "@odoo/owl";
 import { contains, defineStyle } from "@web/../tests/web_test_helpers";
-import { OPEN_DELAY } from "@web/core/tooltip/tooltip_service";
+import { OPEN_DELAY } from "@web/core/tooltip/tooltip_plugin";
 
 function reapplyCollapseTransition() {
     defineStyle(/* css */ `
-        hoot-fixture:not(.allow-transitions) * .hb-collapse-content {
+        hoot-fixture:not(.allow-transitions) * .o_hb_collapse_content {
             transition: height 0.35s ease !important;
         }
     `);
 }
+
+const ONE_ROW_HEIGHT = 32; // $o-hb-row-min-height (28px) + the row's 4px padding-top.
 
 describe.current.tags("desktop");
 
@@ -31,8 +33,8 @@ test("show row title", async () => {
     });
     await setupHTMLBuilder(`<div class="test-options-target">b</div>`);
     await contains(":iframe .test-options-target").click();
-    expect(".options-container").toBeVisible();
-    expect(".hb-row .text-nowrap").toHaveText("my label");
+    expect(".o_hb_options_container").toBeVisible();
+    expect(".o_hb_row .text-nowrap").toHaveText("my label");
 });
 test("show row tooltip", async () => {
     addBuilderOption({
@@ -41,10 +43,10 @@ test("show row tooltip", async () => {
     });
     await setupHTMLBuilder(`<div class="test-options-target">b</div>`);
     await contains(":iframe .test-options-target").click();
-    expect(".options-container").toBeVisible();
-    expect(".hb-row .text-nowrap").toHaveText("my label");
+    expect(".o_hb_options_container").toBeVisible();
+    expect(".o_hb_row .text-nowrap").toHaveText("my label");
     expect(".o-tooltip").not.toHaveCount();
-    await hover(".hb-row .text-nowrap");
+    await hover(".o_hb_row .text-nowrap");
     await advanceTime(OPEN_DELAY);
     await waitFor(".o-tooltip");
     expect(".o-tooltip").toHaveText("my tooltip");
@@ -77,7 +79,7 @@ test("hide empty row and display row with content", async () => {
         `,
     });
     await setupHTMLBuilder(`<div class="parent-target"><div class="child-target">b</div></div>`);
-    const selectorRowLabel = ".options-container .hb-row:not(.d-none) .hb-row-label";
+    const selectorRowLabel = ".o_hb_options_container .o_hb_row:not(.d-none) .o_hb_row_label";
     await contains(":iframe .parent-target").click();
     expect(queryAllTexts(selectorRowLabel)).toEqual(["Row 1", "Row 2"]);
 
@@ -89,7 +91,7 @@ test("reconnects lines across mixed levels", async () => {
     addBuilderOption({
         selector: ".test-options-target",
         template: xml`
-            <div class="options-container">
+            <div class="o_hb_options_container">
                 <BuilderRow label="'root-1'">root-1</BuilderRow>
                 <BuilderRow label="'level-1'" level="1">A</BuilderRow>
                 <BuilderRow label="'level-2'" level="2">B</BuilderRow>
@@ -108,10 +110,10 @@ test("reconnects lines across mixed levels", async () => {
 
     await setupHTMLBuilder(`<div class="test-options-target">b</div>`);
     await contains(":iframe .test-options-target").click();
-    await waitFor(".options-container .hb-row-label");
+    await waitFor(".o_hb_options_container .o_hb_row_label");
 
-    const labelEls = queryAll(".options-container .hb-row-label");
-    const rowEls = queryAll(".options-container .hb-row");
+    const labelEls = queryAll(".o_hb_options_container .o_hb_row_label");
+    const rowEls = queryAll(".o_hb_options_container .o_hb_row");
     const rects = [
         { top: 0, bottom: 40 },
         { top: 40, bottom: 80 },
@@ -165,7 +167,7 @@ describe("BuilderRow with collapse content", () => {
         });
         await setupHTMLBuilder(`<div class="test-options-target">b</div>`);
         await contains(":iframe .test-options-target").click();
-        expect(".options-container").toBeVisible();
+        expect(".o_hb_options_container").toBeVisible();
         expect(".o_hb_collapse_toggler:not(.d-none)").not.toHaveClass("active");
     });
 
@@ -176,7 +178,7 @@ describe("BuilderRow with collapse content", () => {
         });
         await setupHTMLBuilder(`<div class="test-options-target">b</div>`);
         await contains(":iframe .test-options-target").click();
-        expect(".options-container").toBeVisible();
+        expect(".o_hb_options_container").toBeVisible();
         await animationFrame();
         expect(".o_hb_collapse_toggler:not(.d-none)").toHaveClass("active");
     });
@@ -191,7 +193,7 @@ describe("BuilderRow with collapse content", () => {
         });
         await setupHTMLBuilder(`<div class="test-options-target">b</div>`);
         await contains(":iframe .test-options-target").click();
-        expect(".options-container").toBeVisible();
+        expect(".o_hb_options_container").toBeVisible();
         expect(".o_hb_collapse_toggler:not(.d-none)").toHaveCount(0);
     });
 
@@ -202,12 +204,12 @@ describe("BuilderRow with collapse content", () => {
         });
         await setupHTMLBuilder(`<div class="test-options-target">b</div>`);
         await contains(":iframe .test-options-target").click();
-        expect(".options-container").toBeVisible();
-        await contains(".options-container button[data-class-action='a']").click();
+        expect(".o_hb_options_container").toBeVisible();
+        await contains(".o_hb_options_container button[data-class-action='a']").click();
         await animationFrame();
         expect(".o_hb_collapse_toggler:not(.d-none)").toHaveCount(1);
         expect(".o_hb_collapse_toggler:not(.d-none)").toHaveClass("active");
-        expect(".options-container button[data-class-action='b']").toBeVisible();
+        expect(".o_hb_options_container button[data-class-action='b']").toBeVisible();
     });
 
     test("Collapse works with several dependencies", async () => {
@@ -232,20 +234,20 @@ describe("BuilderRow with collapse content", () => {
         });
         await setupHTMLBuilder(`<div class="test-options-target">b</div>`);
         await contains(":iframe .test-options-target").click();
-        expect(".options-container").toBeVisible();
+        expect(".o_hb_options_container").toBeVisible();
         expect(".o_hb_collapse_toggler:not(.d-none)").toHaveCount(0);
-        await contains(".options-container .dropdown-toggle").click();
+        await contains(".o_hb_options_container .dropdown-toggle").click();
         await contains(".dropdown-menu [data-class-action='a']").click();
         await animationFrame();
         expect(".o_hb_collapse_toggler:not(.d-none)").toHaveCount(1);
-        expect(".options-container button[data-class-action='b']").toBeVisible();
-        expect(".options-container button[data-class-action='d']").not.toHaveCount();
-        await contains(".options-container .dropdown-toggle").click();
+        expect(".o_hb_options_container button[data-class-action='b']").toBeVisible();
+        expect(".o_hb_options_container button[data-class-action='d']").not.toHaveCount();
+        await contains(".o_hb_options_container .dropdown-toggle").click();
         await contains(".dropdown-menu [data-class-action='c']").click();
         await animationFrame();
         expect(".o_hb_collapse_toggler:not(.d-none)").toHaveCount(1);
-        expect(".options-container button[data-class-action='b']").not.toHaveCount();
-        expect(".options-container button[data-class-action='d']").toBeVisible();
+        expect(".o_hb_options_container button[data-class-action='b']").not.toHaveCount();
+        expect(".o_hb_options_container button[data-class-action='d']").toBeVisible();
     });
 
     test("Click on toggler collapses / expands the BuilderRow", async () => {
@@ -256,37 +258,55 @@ describe("BuilderRow with collapse content", () => {
         });
         await setupHTMLBuilder(`<div class="test-options-target">b</div>`);
         await contains(":iframe .test-options-target").click();
-        expect(".options-container").toBeVisible();
+        expect(".o_hb_options_container").toBeVisible();
         expect(".o_hb_collapse_toggler:not(.d-none)").not.toHaveClass("active");
-        expect(".options-container button[data-class-action='b']").toHaveCount(0);
+        expect(".o_hb_options_container button[data-class-action='b']").toHaveCount(0);
         await contains(".o_hb_collapse_toggler:not(.d-none)").click();
         expect(".o_hb_collapse_toggler:not(.d-none)").toHaveClass("active");
-        expect(".options-container button[data-class-action='b']").toBeVisible();
+        expect(".o_hb_options_container button[data-class-action='b']").toBeVisible();
+        const contentEl = queryOne(".o_hb_options_container .o_hb_collapse_content");
+        expect(contentEl.style.height).toBe(`${ONE_ROW_HEIGHT}px`);
+        expect(parseFloat(getComputedStyle(contentEl).height)).toBeLessThan(ONE_ROW_HEIGHT);
+        // Let the (real) expand transition settle, otherwise collapsing may reverse it from 0.
+        await new Promise((resolve) =>
+            contentEl.addEventListener("transitionend", resolve, { once: true })
+        );
+        expect(contentEl.style.height).toBe("auto");
+        // Collapsing pins the measured height, then targets 0 for the CSS transition.
         await contains(".o_hb_collapse_toggler:not(.d-none)").click();
+        expect(contentEl.style.height).toBe("0px");
+        expect(parseFloat(getComputedStyle(contentEl).height)).toBeGreaterThan(0);
         advanceTime(400); // wait for the collapse transition to be over
         await animationFrame();
         expect(".o_hb_collapse_toggler:not(.d-none)").not.toHaveClass("active");
-        expect(".options-container button[data-class-action='b']").toHaveCount(0);
+        expect(".o_hb_options_container button[data-class-action='b']").toHaveCount(0);
+        expect(parseFloat(getComputedStyle(contentEl).height)).toBe(NaN);
     });
 
     test("Click on toggler collapses / expands the BuilderRow (with observeCollapseContent)", async () => {
+        reapplyCollapseTransition();
         addBuilderOption({
             selector: ".test-options-target",
             template: collapseOptionTemplate({ observeCollapseContent: true }),
         });
         await setupHTMLBuilder(`<div class="test-options-target">b</div>`);
         await contains(":iframe .test-options-target").click();
-        expect(".options-container").toBeVisible();
+        expect(".o_hb_options_container").toBeVisible();
         expect(".o_hb_collapse_toggler:not(.d-none)").not.toHaveClass("active");
-        expect(".options-container button[data-class-action='b']").not.toBeVisible();
+        expect(".o_hb_options_container button[data-class-action='b']").not.toBeVisible();
+        // The content is never unmounted here, only hidden: it starts collapsed at 0.
+        const contentEl = queryOne(".o_hb_options_container .o_hb_collapse_content");
+        expect(contentEl.style.height).toBe("0px");
         await contains(".o_hb_collapse_toggler:not(.d-none)").click();
         expect(".o_hb_collapse_toggler:not(.d-none)").toHaveClass("active");
-        expect(".options-container button[data-class-action='b']").toBeVisible();
+        expect(".o_hb_options_container button[data-class-action='b']").toBeVisible();
+        expect(contentEl.style.height).toBe(`${ONE_ROW_HEIGHT}px`);
+        expect(parseFloat(getComputedStyle(contentEl).height)).toBeLessThan(ONE_ROW_HEIGHT);
         await contains(".o_hb_collapse_toggler:not(.d-none)").click();
         expect(".o_hb_collapse_toggler:not(.d-none)").not.toHaveClass("active");
         advanceTime(400); // wait for the collapse transition to be over
         await animationFrame();
-        expect(".options-container button[data-class-action='b']").not.toBeVisible();
+        expect(".o_hb_options_container button[data-class-action='b']").not.toBeVisible();
     });
 
     test("Click header row's label collapses / expands the BuilderRow", async () => {
@@ -297,17 +317,17 @@ describe("BuilderRow with collapse content", () => {
         });
         await setupHTMLBuilder(`<div class="test-options-target">b</div>`);
         await contains(":iframe .test-options-target").click();
-        expect(".options-container").toBeVisible();
+        expect(".o_hb_options_container").toBeVisible();
         expect(".o_hb_collapse_toggler:not(.d-none)").not.toHaveClass("active");
-        expect(".options-container button[data-class-action='b']").toHaveCount(0);
+        expect(".o_hb_options_container button[data-class-action='b']").toHaveCount(0);
         await contains("[data-label='Test Collapse'] span:contains('Test Collapse')").click();
         expect(".o_hb_collapse_toggler:not(.d-none)").toHaveClass("active");
-        expect(".options-container button[data-class-action='b']").toBeVisible();
+        expect(".o_hb_options_container button[data-class-action='b']").toBeVisible();
         await contains("[data-label='Test Collapse'] span:contains('Test Collapse')").click();
         advanceTime(400); // wait for the collapse transition to be over
         await animationFrame();
         expect(".o_hb_collapse_toggler:not(.d-none)").not.toHaveClass("active");
-        expect(".options-container button[data-class-action='b']").toHaveCount(0);
+        expect(".o_hb_options_container button[data-class-action='b']").toHaveCount(0);
     });
 
     test("Click header row's label collapses / expands the BuilderRow (with observeCollapseContent)", async () => {
@@ -317,17 +337,17 @@ describe("BuilderRow with collapse content", () => {
         });
         await setupHTMLBuilder(`<div class="test-options-target">b</div>`);
         await contains(":iframe .test-options-target").click();
-        expect(".options-container").toBeVisible();
+        expect(".o_hb_options_container").toBeVisible();
         expect(".o_hb_collapse_toggler:not(.d-none)").not.toHaveClass("active");
-        expect(".options-container button[data-class-action='b']").not.toBeVisible();
+        expect(".o_hb_options_container button[data-class-action='b']").not.toBeVisible();
         await contains("[data-label='Test Collapse'] span:contains('Test Collapse')").click();
         expect(".o_hb_collapse_toggler:not(.d-none)").toHaveClass("active");
-        expect(".options-container button[data-class-action='b']").toBeVisible();
+        expect(".o_hb_options_container button[data-class-action='b']").toBeVisible();
         await contains("[data-label='Test Collapse'] span:contains('Test Collapse')").click();
         expect(".o_hb_collapse_toggler:not(.d-none)").not.toHaveClass("active");
         advanceTime(400); // wait for the collapse transition to be over
         await animationFrame();
-        expect(".options-container button[data-class-action='b']").not.toBeVisible();
+        expect(".o_hb_options_container button[data-class-action='b']").not.toBeVisible();
     });
 
     test("Two BuilderRows with collapse content on the same option are toggled independently", async () => {
@@ -341,18 +361,18 @@ describe("BuilderRow with collapse content", () => {
         });
         await setupHTMLBuilder(`<div class="test-options-target">b</div>`);
         await contains(":iframe .test-options-target").click();
-        expect(".options-container").toBeVisible();
+        expect(".o_hb_options_container").toBeVisible();
         await animationFrame();
         expect(".o_hb_collapse_toggler:not(.d-none)").toHaveCount(1);
-        await contains(".options-container [data-class-action='a']:first").click();
+        await contains(".o_hb_options_container [data-class-action='a']:first").click();
         await animationFrame();
         expect(".o_hb_collapse_toggler:not(.d-none)").toHaveCount(2);
         expect(".o_hb_collapse_toggler:not(.d-none):first").toHaveClass("active");
         expect(".o_hb_collapse_toggler:not(.d-none):not(.d-none):last").not.toHaveClass("active");
-        await contains(".options-container .o_hb_collapse_toggler:not(.d-none):last").click();
+        await contains(".o_hb_options_container .o_hb_collapse_toggler:not(.d-none):last").click();
         expect(".o_hb_collapse_toggler:not(.d-none):first").toHaveClass("active");
         expect(".o_hb_collapse_toggler:not(.d-none):last").toHaveClass("active");
-        await contains(".options-container .o_hb_collapse_toggler:not(.d-none):first").click();
+        await contains(".o_hb_options_container .o_hb_collapse_toggler:not(.d-none):first").click();
         expect(".o_hb_collapse_toggler:not(.d-none):first").not.toHaveClass("active");
         expect(".o_hb_collapse_toggler:not(.d-none):last").toHaveClass("active");
     });
@@ -368,7 +388,7 @@ describe("HTML builder tests", () => {
         await setupHTMLBuilder(`<div class="test-options-target">b</div>`);
         await contains(":iframe .test-options-target").click();
         const textEl = queryOne(
-            "[data-label='Supercalifragilisticexpalidocious'] > .hb-row-label span"
+            "[data-label='Supercalifragilisticexpalidocious'] > .o_hb_row_label span"
         );
         await hover(textEl);
         await advanceTime(OPEN_DELAY);
@@ -385,7 +405,7 @@ describe("HTML builder tests", () => {
         await setupHTMLBuilder(`<div class="test-options-target">b</div>`);
         await contains(":iframe .test-options-target").click();
         const textEl = queryOne(
-            "[data-label='Supercalifragilisticexpalidocious'] > .hb-row-label span"
+            "[data-label='Supercalifragilisticexpalidocious'] > .o_hb_row_label span"
         );
         await hover(textEl);
         await advanceTime(OPEN_DELAY);

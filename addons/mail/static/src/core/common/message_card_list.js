@@ -1,10 +1,12 @@
-import { useSubEnv } from "@web/owl2/utils";
 import { Message } from "@mail/core/common/message";
 import { MessageSearchState } from "@mail/core/common/message_search_hook";
-import { useVisible } from "@mail/utils/common/hooks";
+import { MessageHighlightPlugin } from "@mail/core/common/message_highlight_plugin";
+import { useMaybePlugin, useVisible } from "@mail/utils/common/hooks";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 
-import { Component, signal, t, useProps } from "@odoo/owl";
+import { Component, signal, t, usePlugin, useProps } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
+import { UIPlugin } from "@web/core/ui/ui_plugin";
 import { useService } from "@web/core/utils/hooks";
 
 export class MessageCardList extends Component {
@@ -16,7 +18,9 @@ export class MessageCardList extends Component {
 
     setup() {
         super.setup();
+        this.ancestors = useAncestors({ inMessageCardList: true });
         this.store = useService("mail.store");
+        this.messageHighlight = useMaybePlugin(MessageHighlightPlugin);
         this.props = useProps({
             emptyText: t.string().optional(),
             loadMore: t.boolean().optional(),
@@ -28,8 +32,7 @@ export class MessageCardList extends Component {
             showEmpty: t.boolean().optional(),
             thread: t.instanceOf(this.store["mail.thread"]),
         });
-        this.ui = useService("ui");
-        useSubEnv({ messageCard: true });
+        this.ui = usePlugin(UIPlugin);
         useVisible(this.loadMoreRef, (isVisible) => {
             if (isVisible) {
                 this.props.onLoadMoreVisible?.();
@@ -39,20 +42,19 @@ export class MessageCardList extends Component {
 
     /**
      * Highlight the given message and scrolls to it. In small mode, the
-     * pin/search menus are closed beforewards
+     * panels are closed beforewards
      *
      * @param {import('@mail/core/common/message_model').Message} message
      */
     async onClickJump(message) {
         this.props.onClickJump?.();
-        if (this.ui.isSmall || this.env.inChatWindow || this.env.inMeetingView) {
-            this.env.pinMenu?.close();
-            this.env.searchMenu?.close();
-            this.env.inMeetingView?.openChat();
+        if (this.ui.isSmall() || this.ancestors.inChatWindow || this.ancestors.inMeetingView) {
+            this.ancestors.inActionPanel?.close({ closeAll: true });
+            this.ancestors.inMeetingView?.openChat();
         }
-        // Give the time for menus to close before scrolling to the message.
+        // Give the time for panels to close before scrolling to the message.
         await new Promise((resolve) => setTimeout(() => requestAnimationFrame(resolve)));
-        await this.env.messageHighlight?.highlightMessage(message);
+        await this.messageHighlight?.highlightMessage(message);
     }
 
     onClickUnpin(message) {

@@ -60,11 +60,13 @@ CREATE TABLE ir_module_module (
     description jsonb,
     application boolean default False,
     demo boolean default False,
+    test_data boolean default False,
     web boolean DEFAULT FALSE,
     license character varying(32),
     sequence integer DEFAULT 100,
     auto_install boolean default False,
     to_buy boolean default False,
+    imported boolean default False,
     primary key(id)
 );
 

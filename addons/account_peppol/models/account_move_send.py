@@ -49,8 +49,8 @@ class AccountMoveSend(models.AbstractModel):
             if not pdp_info['is_installed']:
                 install_pdp_action = pdp_info['action']
         else:
-            name = self.env._("Why should I use PEPPOL ?")
-            action_text = self.env._("Why should you use it ?")
+            name = self.env._("Why should I use Peppol?")
+            action_text = self.env._("Why should you use it?")
 
         if install_pdp_action:
             action = install_pdp_action
@@ -126,7 +126,7 @@ class AccountMoveSend(models.AbstractModel):
         elif all((
             (peppol_not_selected_partners := filter_peppol_state(not_peppol_moves, ['valid'])),
             any_moves_not_sent_peppol,
-            any(code in PEPPOL_DEFAULT_COUNTRIES for code in peppol_partner(moves).mapped('country_id.code')),
+            any(code in PEPPOL_DEFAULT_COUNTRIES for code in peppol_not_selected_partners.mapped('country_id.code')),
             len(peppol_not_selected_partners) == 1,  # Check for not peppol partners that are on the network
         )):
             alerts['account_peppol_partner_want_peppol'] = {
@@ -175,7 +175,11 @@ class AccountMoveSend(models.AbstractModel):
             filename = invoice_data['ubl_cii_xml_attachment_values']['name']
 
         if xml_file.size > 64000000:
-            invoice_data['error'] = self.env._("Invoice %s exceeds the size limit of 64 MB to be sent via Peppol.", invoice.name)
+            invoice_data['error'] = self.env._(
+                "Invoice %(invoice_name)s exceeds the size limit of 64 MB to be sent via %(network_name)s.",
+                invoice_name=invoice.name,
+                network_name=invoice.company_id._get_einvoicing_network_name(),
+            )
             return None, None
 
         receiver_identification = partner.routing_identifier
@@ -219,8 +223,22 @@ class AccountMoveSend(models.AbstractModel):
         if method == 'peppol':
             partner = move.partner_id.commercial_partner_id.with_company(move.company_id)
             invoice_edi_format = move_data.get('invoice_edi_format') or partner._get_peppol_edi_format()
+
             if partner.peppol_verification_state == 'not_verified':
                 partner.button_account_peppol_check_partner_endpoint(company=move.company_id)
+
+            if partner.peppol_verification_state != 'valid' and partner.routing_endpoint and partner.routing_scheme in ('0208', '9925'):
+                # only for BE participants
+                inverse_scheme = '9925' if partner.routing_scheme == '0208' else '0208'
+                inverse_endpoint = f'BE{partner.routing_endpoint}' if partner.routing_scheme == '0208' else partner.routing_endpoint.removeprefix('BE')
+                inverse_identifier = f'{inverse_scheme}:{inverse_endpoint}'
+                if partner._get_peppol_verification_state(inverse_identifier, invoice_edi_format) == 'valid':
+                    partner.write({
+                        'routing_scheme': inverse_scheme,
+                        'routing_endpoint': inverse_endpoint,
+                    })
+                    partner.button_account_peppol_check_partner_endpoint(company=move.company_id)
+
             return all([
                 partner.country_code in PEPPOL_LIST,
                 self._is_applicable_to_company(method, move.company_id),

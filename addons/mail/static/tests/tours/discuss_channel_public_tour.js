@@ -40,8 +40,8 @@ registry.category("web_tour.tours").add("discuss_channel_public_tour.js", {
             trigger: ".o_discuss_channel_public_modules_loaded",
         },
         {
-            trigger: ".o-mail-Composer-input",
-            run: "edit cheese",
+            trigger: ".o-mail-Composer-html",
+            run: "editor cheese",
         },
         {
             trigger: ".o-mail-Composer button[title='More Actions']",
@@ -127,7 +127,7 @@ registry.category("web_tour.tours").add("discuss_channel_public_tour.js", {
         // The upload steps target the "Attach Files" item but feed the hidden input directly,
         // so the "More Actions" menu is left open. Close it before sending to avoid clicking
         // Send while the menu is still dismissing.
-        { trigger: ".o-mail-Composer-input", run: "click" },
+        { trigger: ".o-mail-Composer-html", run: "click" },
         { trigger: "body:not(:has(.o-discuss-dropdownMenu))" },
         {
             // Check the conversation is unchanged, as the text and the attachments
@@ -150,7 +150,11 @@ registry.category("web_tour.tours").add("discuss_channel_public_tour.js", {
         },
         {
             trigger: messageSelector,
-            run: `hover && click ${messageSelector} [title='Add a Reaction']`,
+            run: "hover",
+        },
+        {
+            trigger: `${messageSelector} [title='Add a Reaction']`,
+            run: "click",
         },
         {
             trigger: ".o-mail-QuickReactionMenu",
@@ -172,15 +176,19 @@ registry.category("web_tour.tours").add("discuss_channel_public_tour.js", {
         },
         {
             trigger: `${messageSelector}`,
-            run: `hover && click ${messageSelector} [title='Expand']`,
+            run: "hover",
+        },
+        {
+            trigger: `${messageSelector} [title='Expand']`,
+            run: "click",
         },
         {
             trigger: `.o-mail-Message-moreMenu [name='edit']`,
             run: "click",
         },
         {
-            trigger: ".o-mail-Message .o-mail-Composer-input",
-            run: "edit vegetables",
+            trigger: ".o-mail-Message .o-mail-Composer-html",
+            run: "editor vegetables",
         },
         {
             trigger: ".o-mail-Message .o-mail-Composer button[title='More Actions']",
@@ -202,13 +210,12 @@ registry.category("web_tour.tours").add("discuss_channel_public_tour.js", {
             run: "click",
         },
         {
-            trigger: editedMessageSelector,
+            // Wait for the edition to be saved: while editing, the unlink button of the
+            // composer attachment removes it without confirmation.
+            trigger: `${editedMessageSelector}:not(:has(.o-mail-Composer)) .o-mail-AttachmentContainer:contains("text.txt")`,
         },
         {
-            trigger: `${editedMessageSelector} .o-mail-AttachmentContainer:contains("text.txt")`,
-        },
-        {
-            trigger: `${editedMessageSelector} .o-mail-AttachmentContainer:contains("extra.txt") .o-mail-Attachment-unlink`,
+            trigger: `${editedMessageSelector}:not(:has(.o-mail-Composer)) .o-mail-AttachmentContainer:contains("extra.txt") .o-mail-Attachment-unlink`,
             run: "click",
         },
         {
@@ -226,11 +233,11 @@ registry.category("web_tour.tours").add("discuss_channel_public_tour.js", {
             trigger: ".o-mail-SearchMessageInput",
         },
         {
-            trigger: ".o-mail-SearchInput input",
+            trigger: ".o-mail-SearchMessageInput .o-mail-SearchInput input",
             run: "edit text.txt",
         },
         {
-            trigger: `.o-mail-SearchMessagesPanel ${editedMessageSelector} .o-mail-AttachmentContainer:contains("text.txt")`,
+            trigger: `.o-mail-ActionPanel:has(.o-mail-ActionPanel-header:contains('Search Messages')) ${editedMessageSelector} .o-mail-AttachmentContainer:contains("text.txt")`,
         },
     ],
 });

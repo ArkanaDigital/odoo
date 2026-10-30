@@ -23,6 +23,7 @@
             "@bus/*": ["./addons/bus/static/src/*"],
             "@mail/*": ["./addons/mail/static/src/*"],
             "@im_livechat/*": ["./addons/im_livechat/static/src/*"],
+            "@crm/*": ["./addons/crm/static/src/*"],
             "@spreadsheet/*": ["./addons/spreadsheet/static/src/*"],
             "@whatsapp/*": ["./addons/whatsapp/static/src/*"],
 
@@ -81,6 +82,7 @@
             "@pos_stripe/*": ["./addons/pos_stripe/static/src/*"],
             "@pos_viva_com/*": ["./addons/pos_viva_com/static/src/*"],
             "@printer/*": ["./addons/printer/static/src/*"],
+            "@iot_webserial/*": ["./addons/iot_webserial/static/src/*"],
             "@spreadsheet_dashboard_pos_hr/*": ["./addons/spreadsheet_dashboard_pos_hr/static/src/*"],
 
             "@l10n_cl_edi_pos/*": ["./l10n_cl_edi_pos/static/src/*"],
@@ -132,6 +134,7 @@
             "@whatsapp_pos/*": ["./whatsapp_pos/static/src/*"],
 
             "@voip/*": ["./voip/static/src/*"],
+            "@website_helpdesk_livechat/*": ["./website_helpdesk_livechat/static/src/*"],
 
             "@test_mail/*": ["./addons/test_mail/static/src/*"]
         }

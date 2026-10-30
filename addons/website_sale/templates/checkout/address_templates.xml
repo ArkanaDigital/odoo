@@ -70,18 +70,21 @@
             </div>
             <!-- === Delivery estimated date === -->
             <div class="o_delivery_date_col order-1 order-md-0 order-lg-1 order-xl-0">
-                <t t-if="dm.enable_delivery_estimate">
+                <t t-if="dm.delivery_estimate_mode != 'none'">
                     <t t-set="tooltip_title" t-value="'Estimated Delivery'"/>
-                    <t t-set="available_delivery_days" t-value="dm._get_estimate_delivery_days()"/>
+                    <t
+                        t-set="delivery_estimate_dates"
+                        t-value="dm._get_delivery_estimate_dates(order=order)"
+                    />
                     <div
                         class="o_wsale_delivery_date_badge input-group"
-                        t-if="len(available_delivery_days) == 1"
+                        t-if="len(delivery_estimate_dates) == 1"
                     >
                         <input
                             type="text"
                             name="estimated_delivery"
                             class="form-control pt-0 pt-md-2 pt-lg-0 pt-xl-2"
-                            t-att-value="dm._format_estimate_delivery_date(available_delivery_days[0])"
+                            t-att-value="dm._format_delivery_estimate_date(delivery_estimate_dates[0])"
                             disabled="1"
                             t-att-title="tooltip_title"
                             data-bs-toggle="tooltip"
@@ -89,13 +92,13 @@
                             data-bs-delay="0"
                         />
                         <label class="input-group-text input-group-text-subtle d-flex align-items-center invisible">
-                            <i class="oi oi-filled" data-icon="edit" role="img"/>
+                            <i class="oi oi-filled" data-icon="edit" role="img" aria-label="Edit"/>
                         </label>
                     </div>
                     <div
-                        t-if="len(available_delivery_days) > 1"
+                        t-if="len(delivery_estimate_dates) > 1"
                         class="o_website_sale_delivery_date_picker input-group o_daterange_picker"
-                        t-att-data-delivery-available-days="json.dumps(dm._get_estimate_delivery_days())"
+                        t-att-data-delivery-estimate-dates="json.dumps(delivery_estimate_dates)"
                     >
                         <input
                             t-attf-id="o_estimated_delivery_date_{{dm.id}}"
@@ -107,11 +110,12 @@
                             t-attf-for="o_estimated_delivery_date_{{dm.id}}"
                             class="input-group-text input-group-text-subtle d-flex align-items-center"
                             t-att-title="tooltip_title"
+                            t-att-aria-label="tooltip_title"
                             data-bs-toggle="tooltip"
                             data-bs-placement="top"
                             data-bs-delay="0"
                         >
-                            <i class="oi oi-filled cursor-pointer" data-icon="edit" role="img"/>
+                            <i class="oi oi-filled cursor-pointer" data-icon="edit" role="img" aria-hidden="true"/>
                         </label>
                     </div>
                 </t>
@@ -147,12 +151,12 @@
                     title="Add an address"
                     aria-label="Add an address"
                 >
-                    <i class="oi me-2" data-icon="add"/>Add Address
+                    <i class="oi me-1" data-icon="add" role="img" aria-hidden="true"/>Add
                 </a>
             </div>
             <t t-call="website_sale.address_list"
                 addresses="delivery_addresses"
-                selected_address="order.partner_shipping_id"/>
+                selected_address="order._get_checkout_delivery_address()"/>
         </div>
     </template>
 
@@ -173,7 +177,7 @@
                     title="Add an address"
                     aria-label="Add an address"
                 >
-                    <i class="oi me-2" data-icon="add"/>Add Address
+                    <i class="oi me-1" data-icon="add" role="img" aria-hidden="true"/>Add
                 </a>
             </div>
             <div t-if="has_delivery" class="form-check form-switch mt-2">
@@ -253,6 +257,7 @@
                         name="address_form"
                         class="address_autoformat o_address_autocomplete"
                         t-att-data-company-country-code="res_company.country_id.code"
+                        t-att-data-default-required-fields="','.join(required_fields)"
                         t-att-data-submit-url="'/shop/address/submit'"
                     >
                         <t t-if="is_anonymous_cart">
@@ -299,14 +304,14 @@
     <template id="website_sale.address_edit_button" name="Address edit button">
         <t t-if="xmlid != 'website_sale.confirmation'">
             <a t-if="order.partner_invoice_id.country_id" class="float-end no-decoration" href="/shop/checkout">
-                <i class="oi oi-filled me-1" data-icon="edit"/>Edit
+                <i class="oi oi-filled me-1" data-icon="edit" role="img" aria-hidden="true"/>Edit
             </a>
             <a
                 t-else=""
                 class="float-end no-decoration"
                 t-attf-href="/shop/address?partner_id={{order.partner_invoice_id.id}}&amp;address_type=billing"
             >
-                <i class="oi oi-filled me-1" data-icon="edit"/>Want an invoice?
+                <i class="oi oi-filled me-1" data-icon="edit" role="img" aria-hidden="true"/>Want an invoice?
             </a>
         </t>
     </template>

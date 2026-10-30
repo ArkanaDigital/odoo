@@ -11,7 +11,7 @@ from odoo import SUPERUSER_ID, api, fields, models
 from odoo.exceptions import MissingError
 from odoo.fields import Domain
 from odoo.http import request
-from odoo.tools import SQL, BinaryBytes, file_open, split_every
+from odoo.tools import SQL, BinaryBytes, file_open, lazy, split_every
 
 from odoo.addons.website_sale import const
 
@@ -64,10 +64,12 @@ class Website(models.Model):
         default=_default_salesteam_id,
     )
     show_line_subtotals_tax_selection = fields.Selection(
-        string="Line Subtotals Tax Display",
+        string="Display Product Prices",
         selection=[("tax_excluded", "Tax Excluded"), ("tax_included", "Tax Included")],
         compute="_compute_show_line_subtotals_tax_selection",
+        precompute=True,
         readonly=False,
+        required=True,
         store=True,
     )
 
@@ -258,13 +260,6 @@ class Website(models.Model):
         string="Categories", comodel_name="product.public.category"
     )
 
-    currency_id = fields.Many2one(
-        string="Default Currency",
-        comodel_name="res.currency",
-        compute="_compute_currency_id",
-        compute_sql="_compute_sql_currency_id",
-        compute_sudo=True,
-    )
     pricelist_ids = fields.One2many(
         string="Price list available for this Ecommerce/Website",
         comodel_name="product.pricelist",
@@ -282,6 +277,7 @@ class Website(models.Model):
         domain=[("type", "=", "sale")],
         check_company=True,
     )
+    show_product_reference_price = fields.Boolean(string="Product Reference Price")
 
     extra_step_category_ids = fields.Many2many(
         string="Extra Step Categories",
@@ -312,6 +308,25 @@ class Website(models.Model):
         " editor option.",
     )
 
+    # Session dependant
+    pricelist_id = fields.Many2one(
+        comodel_name="product.pricelist",
+        compute="_compute_pricelist_id",
+        compute_sudo=True,
+        inverse="_inverse_pricelist_id",
+    )
+    currency_id = fields.Many2one(
+        string="Default Currency",
+        comodel_name="res.currency",
+        compute="_compute_currency_id",
+        compute_sql="_compute_sql_currency_id",
+        compute_sudo=True,
+    )
+    tax_display = fields.Selection(
+        selection=[("tax_excluded", "Tax Excluded"), ("tax_included", "Tax Included")],
+        compute="_compute_tax_display",
+    )
+
     # === COMPUTE METHODS ===#
 
     def _compute_pricelist_ids(self):
@@ -322,12 +337,27 @@ class Website(models.Model):
                 ProductPricelist._get_website_pricelists_domain(website)
             )
 
-    @api.depends("company_id")
+    def _compute_pricelist_id(self):
+        self.pricelist_id = self.env["product.pricelist"].browse(
+            request and hasattr(request, "pricelist") and request.pricelist.id
+        )
+
+    def _inverse_pricelist_id(self):
+        self.ensure_one()
+        if not request:
+            return
+        if self.pricelist_id:
+            request.session[PRICELIST_SESSION_CACHE_KEY] = self.pricelist_id.id
+            request.pricelist = self.pricelist_id.with_env(request.env).sudo()
+        else:
+            request.session.pop(PRICELIST_SESSION_CACHE_KEY, None)
+            request.pricelist = lazy(self.with_env(request.env)._get_and_cache_current_pricelist)
+        self.invalidate_model(["pricelist_id"], flush=False)
+
+    @api.depends("pricelist_id", "company_id")
     def _compute_currency_id(self):
         for website in self:
-            website.currency_id = (
-                request and hasattr(request, "pricelist") and request.pricelist.currency_id
-            ) or website.company_id.sudo().currency_id
+            website.currency_id = website.pricelist_id.currency_id or website.company_id.currency_id
 
     def _compute_sql_currency_id(self, table):  # noqa: ARG002
         msg = "website.currency_id is not searchable"
@@ -341,8 +371,19 @@ class Website(models.Model):
 
     @api.depends("company_id.account_fiscal_country_id")
     def _compute_show_line_subtotals_tax_selection(self):
+        for country_code, websites in self.grouped(
+            lambda website: website.company_id.account_fiscal_country_id.code
+        ).items():
+            websites.show_line_subtotals_tax_selection = (
+                "tax_excluded" if country_code in const.TAX_EXCLUDED_COUNTRIES else "tax_included"
+            )
+
+    @api.depends("pricelist_id", "show_line_subtotals_tax_selection")
+    def _compute_tax_display(self):
         for website in self:
-            website.show_line_subtotals_tax_selection = "tax_excluded"
+            website.tax_display = (
+                website.pricelist_id.tax_display or website.show_line_subtotals_tax_selection
+            )
 
     # === SELECTION METHODS ===#
 
@@ -351,32 +392,63 @@ class Website(models.Model):
 
     # === BUSINESS METHODS ===#
 
+    @api.model
+    def _render_template(self, template, values=None):
+        self.ensure_one()
+
+        if self.env["res.groups"]._is_feature_enabled("product.group_product_pricelist"):
+            values = values or {}
+            values.setdefault(
+                "website_sale_pricelists", lazy(self.get_pricelist_available, show_visible=True)
+            )
+
+        return super()._render_template(template, values=values)
+
     def get_cta_data(self, website_purpose, website_type):
         cta_data = super().get_cta_data(website_purpose, website_type)
         cta_data["shop_btn_href"] = "/shop"
         return cta_data
 
+    def _get_configurator_preview_urls(self):
+        return super()._get_configurator_preview_urls() | {
+            style['preview_url']
+            for mapping in (const.SHOP_PAGE_STYLE_MAPPING, const.PRODUCT_PAGE_STYLE_MAPPING)
+            for style in mapping.values()
+        }
+
     @api.model
-    def get_configurator_shop_page_styles(self):  # noqa: PLR6301
-        """Format and return the ids and images of each shop page style for website onboarding.
+    def get_configurator_shop_page_styles(self):
+        """Format and return the ids and previews of each shop page style for website onboarding.
 
         :return: The shop page style information.
         :rtype: list[dict]
         """
+        self._check_configurator_access()
         return [
-            {"option": option, "img_src": config["img_src"], "title": config["title"]}
+            {
+                "option": option,
+                "preview_url": config["preview_url"],
+                "img_src": config["img_src"],
+                "title": config["title"],
+            }
             for option, config in const.SHOP_PAGE_STYLE_MAPPING.items()
         ]
 
     @api.model
-    def get_configurator_product_page_styles(self):  # noqa: PLR6301
-        """Format and return ids and images of each product page style for website onboarding.
+    def get_configurator_product_page_styles(self):
+        """Format and return ids and previews of each product page style for website onboarding.
 
         :return: The product page style information.
         :rtype: list[dict]
         """
+        self._check_configurator_access()
         return [
-            {"option": option, "img_src": config["img_src"], "title": config["title"]}
+            {
+                "option": option,
+                "preview_url": config["preview_url"],
+                "img_src": config["img_src"],
+                "title": config["title"],
+            }
             for option, config in const.PRODUCT_PAGE_STYLE_MAPPING.items()
         ]
 
@@ -540,7 +612,7 @@ class Website(models.Model):
 
         # Note: 1. pricelists from all_pl are already website compliant (went through
         #          `_get_website_pricelists_domain`)
-        #       2. do not read `property_product_pricelist` here as `_get_pl_partner_order`
+        #       2. do not read `specific_property_product_pricelist` here as `_get_pl_partner_order`
         #          is cached and the result of this method will be impacted by that field value.
         #          Pass it through `partner_pl_id` parameter instead to invalidate the cache.
 
@@ -549,7 +621,8 @@ class Website(models.Model):
             pricelists |= (
                 self
                 .env["res.country.group"]
-                .search([("country_ids.code", "=", country_code)]).sudo()
+                .search([("country_ids.code", "=", country_code)])
+                .sudo()
                 .pricelist_ids.filtered(
                     lambda pl: pl._is_available_on_website(self) and check_pricelist(pl)
                 )
@@ -566,9 +639,9 @@ class Website(models.Model):
                 )
             )
 
-        # if logged in, add partner pl (which is `property_product_pricelist`, might not be website
-        # compliant)
-        if not self.env.user._is_public():
+        # if logged in, add partner pl (which is `specific_property_product_pricelist`, might not be
+        # website compliant)
+        if partner_pl_id and not self.env.user._is_public():
             # keep partner_pricelist only if website compliant
             partner_pricelist = pricelists.browse(partner_pl_id).filtered(
                 lambda pl: (
@@ -600,15 +673,17 @@ class Website(models.Model):
         if not self.env["res.groups"]._is_feature_enabled("product.group_product_pricelist"):
             return ProductPricelist  # Skip pricelist computation if pricelists are disabled.
 
-        country_code = self._get_geoip_country_code()
         website = self.with_company(self.company_id)
 
+        country_code = False
+        if request and not self.env["ir.http"].is_a_bot():
+            # Crawler agents should always see the default prices, otherwise, prices crawled from
+            # the US would be indexed for european customers.
+            country_code = self._get_geoip_country_code()
+
         partner_sudo = website.env.user.partner_id
-        is_user_public = self.env.user._is_public()
-        if not is_user_public:
-            # Don't needlessly trigger `depends_context` recompute
-            ctx = {"country_code": country_code} if country_code else {}
-            partner_pricelist_id = partner_sudo.with_context(**ctx).property_product_pricelist.id
+        if not self.env.user._is_public():
+            partner_pricelist_id = partner_sudo.specific_property_product_pricelist.id
         else:  # public user: do not compute partner pl (not used)
             partner_pricelist_id = False
         website_pricelists = website.sudo().pricelist_ids
@@ -689,7 +764,9 @@ class Website(models.Model):
         return {
             "company_id": self.company_id.id,
             "partner_id": partner_sudo.id,
-            **(self.is_public_user() and {"fiscal_position_id": request.fiscal_position.id} or {}),
+            **(
+                (self.is_public_user() and {"fiscal_position_id": request.fiscal_position.id}) or {}
+            ),
             "pricelist_id": request.pricelist.id,
             "team_id": self.salesteam_id.id,
             "website_id": self.id,
@@ -727,15 +804,19 @@ class Website(models.Model):
                 # If there is a cart, recompute on the cart and take it from there
                 cart_sudo._compute_pricelist_id()
             pricelist_sudo = cart_sudo.pricelist_id
-        else:
-            pricelist_sudo = self.env.user.partner_id.property_product_pricelist
-            available_pricelists = self.get_pricelist_available()
-            if not available_pricelists:
-                pricelist_sudo = available_pricelists
-            elif pricelist_sudo not in available_pricelists:
+        elif available_pricelists := self.get_pricelist_available():
+            pricelist_sudo = self.env.user.partner_id.specific_property_product_pricelist
+            if pricelist_sudo not in available_pricelists:
                 pricelist_sudo = available_pricelists[0].sudo()
+        else:
+            pricelist_sudo = ProductPricelistSudo
 
-        request.session[PRICELIST_SESSION_CACHE_KEY] = pricelist_sudo.id
+        if not request.session.is_new or request.session.is_dirty:
+            # Only cache in a session that will be persisted anyway: one already stored on disk, or
+            # one already modified during this request. Otherwise, caching the pricelist would force
+            # the session to be saved on disk for every visitor on all the pages of the website
+            # showing the pricelist selector.
+            request.session[PRICELIST_SESSION_CACHE_KEY] = pricelist_sudo.id
 
         return pricelist_sudo
 
@@ -756,7 +837,7 @@ class Website(models.Model):
             fpos_sudo = AccountFiscalPositionSudo.browse(
                 request.session[FISCAL_POSITION_SESSION_CACHE_KEY]
             )
-            if fpos_sudo and fpos_sudo.exists():
+            if not fpos_sudo or fpos_sudo.exists():
                 return fpos_sudo
 
         partner_sudo = self.env.user.partner_id
@@ -773,7 +854,10 @@ class Website(models.Model):
         if not fpos_sudo:
             fpos_sudo = AccountFiscalPositionSudo._get_fiscal_position(partner_sudo)
 
-        request.session[FISCAL_POSITION_SESSION_CACHE_KEY] = fpos_sudo.id
+        if not request.session.is_new or request.session.is_dirty:
+            # Only cache in a session that will be persisted anyway. Otherwise, it
+            # would force the session to be saved on disk
+            request.session[FISCAL_POSITION_SESSION_CACHE_KEY] = fpos_sudo.id
 
         return fpos_sudo
 
@@ -801,11 +885,15 @@ class Website(models.Model):
                 self.sale_reset()
                 sale_order_sudo = SaleOrderSudo
 
-            if sale_order_sudo and (
-                sale_order_sudo.state != "draft"
-                or sale_order_sudo.get_portal_last_transaction().state
-                in {"pending", "authorized", "done"}
-                or sale_order_sudo.website_id != self
+            if (
+                sale_order_sudo
+                and not sale_order_sudo._is_partially_paid()
+                and (
+                    sale_order_sudo.state != "draft"
+                    or sale_order_sudo.get_portal_last_transaction().state
+                    in {"pending", "authorized", "done"}
+                    or sale_order_sudo.website_id != self
+                )
             ):
                 self.sale_reset()
                 sale_order_sudo = SaleOrderSudo
@@ -839,11 +927,23 @@ class Website(models.Model):
                 limit=1,
             )
             if abandoned_cart_sudo:
-                if not self.env.cr.readonly:
+                # Do not resurrect an abandoned cart if a payment transaction is currently in
+                # progress or paid. Canceled/errored transactions are excluded so the user
+                # can still recover the cart after a failed attempt.
+                if abandoned_cart_sudo.get_portal_last_transaction().state in {
+                    "pending",
+                    "authorized",
+                    "done",
+                }:
+                    abandoned_cart_sudo = SaleOrderSudo
+                elif not self.env.cr.readonly:
+                    # The checks below end up reading `request.cart`, which is only filled in
+                    # once this method returns, so set it now to avoid looping back into it.
+                    request.cart = abandoned_cart_sudo
                     # Force the recomputation of the pricelist and fiscal position when resurrecting
                     # an abandoned cart
                     abandoned_cart_sudo._update_address(partner_sudo.id, ["partner_id"])
-                    abandoned_cart_sudo._verify_cart()
+                    abandoned_cart_sudo._cleanup_cart()
                 sale_order_sudo = abandoned_cart_sudo
 
         if (
@@ -859,7 +959,7 @@ class Website(models.Model):
     def sale_reset(self):  # noqa: PLR6301
         request.session.pop(CART_SESSION_CACHE_KEY, None)
         request.session.pop("website_sale_cart_quantity", None)
-        request.session.pop(PRICELIST_SESSION_CACHE_KEY, None)
+        self.env.website.sudo().pricelist_id = False
         request.session.pop(FISCAL_POSITION_SESSION_CACHE_KEY, None)
         request.session.pop(PRICELIST_SELECTED_SESSION_CACHE_KEY, None)
 
@@ -877,6 +977,12 @@ class Website(models.Model):
             "website_sale",
         ))
         return suggested_controllers
+
+    def _get_search_scopes(self):
+        return {
+            **super()._get_search_scopes(),
+            "products": {"label": self.env._("Products"), "url": const.SHOP_PATH},
+        }
 
     def _search_get_details(self, search_type, order, options):
         result = super()._search_get_details(search_type, order, options)
@@ -1005,20 +1111,22 @@ class Website(models.Model):
                 )
             step.copy({"website_id": self.id, "is_published": is_published})
 
-    def _get_checkout_step_values(self, href):
-        next_href = self._get_next_breadcrumb_step_href(href)
+    def _get_checkout_step_values(self, href, order_sudo):
+        """Prepare the common rendering values of checkout step pages.
+
+        :param str href: the technical step href.
+        :param sale.order order_sudo: the current cart.
+        :return: rendering values.
+        :rtype: dict
+        """
+        next_href = self._get_next_breadcrumb_step_href(href, order_sudo)
 
         # /shop/address is a "hidden" step of /shop/checkout
         if href == "/shop/address":
             href = "/shop/checkout"
         current_step_sudo = self._get_checkout_step(href)
-        breadcrumb_domain = self._get_breadcrumb_checkout_steps_domain()
-        next_step_sudo = current_step_sudo._get_next_steps(
-            additional_domain=breadcrumb_domain, limit=1
-        )
-        previous_step_sudo = current_step_sudo._get_previous_steps(
-            additional_domain=breadcrumb_domain, limit=1
-        )
+        next_step_sudo = self._get_next_breadcrumb_step(href, order_sudo)
+        previous_step_sudo = self._get_previous_breadcrumb_step(href, order_sudo)
 
         return {
             "current_website_checkout_step_href": current_step_sudo.step_href,
@@ -1035,43 +1143,52 @@ class Website(models.Model):
         self.ensure_one()
         return self.env["website.checkout.step"].sudo()._get_step_by_href(href, self).id
 
-    def _get_next_breadcrumb_step_href(self, href):
+    def _get_next_breadcrumb_step(self, href, order_sudo):
+        return self._get_checkout_step(href)._get_next_steps(
+            additional_domain=self._get_breadcrumb_checkout_steps_domain(order_sudo), limit=1
+        )
+
+    def _get_previous_breadcrumb_step(self, href, order_sudo):
+        return self._get_checkout_step(href)._get_previous_steps(
+            additional_domain=self._get_breadcrumb_checkout_steps_domain(order_sudo), limit=1
+        )
+
+    def _get_next_breadcrumb_step_href(self, href, order_sudo):
         # redirect handled by '/shop/address/submit' route when all values are properly filled
         if href == "/shop/address":
             return False
-        current_step_sudo = self._get_checkout_step(href)
-        next_step_sudo = current_step_sudo._get_next_steps(
-            additional_domain=self._get_breadcrumb_checkout_steps_domain(), limit=1
-        )
+
+        next_step_sudo = self._get_next_breadcrumb_step(href, order_sudo)
 
         # try_skip_step option required on /shop/checkout next button
         if next_step_sudo.step_href == "/shop/checkout":
             return "/shop/checkout?try_skip_step=true"
         return next_step_sudo.step_href
 
-    def _get_checkout_breadcrumb_steps(self):
+    def _get_checkout_breadcrumb_steps(self, order_sudo):
         return (
             self
             .env["website.checkout.step"]
             .sudo()
-            .search(self._get_breadcrumb_checkout_steps_domain(), order="sequence")
+            .search(self._get_breadcrumb_checkout_steps_domain(order_sudo), order="sequence")
         )
 
-    def _get_breadcrumb_checkout_steps_domain(self):
-        return self._get_allowed_checkout_steps_domain() & Domain("show_in_breadcrumb", "=", True)
+    def _get_breadcrumb_checkout_steps_domain(self, order_sudo):
+        return self._get_allowed_checkout_steps_domain(order_sudo) & Domain(
+            "show_in_breadcrumb", "=", True
+        )
 
-    def _get_allowed_checkout_steps_domain(self):
+    def _get_allowed_checkout_steps_domain(self, order_sudo):
         domain = Domain([("website_id", "=", self.id), ("is_published", "=", True)])
-        if not self._cart_has_extra_step_category():
+        if not self._cart_has_extra_step_category(order_sudo):
             domain &= Domain("step_href", "!=", "/shop/extra_info")
         return domain
 
-    def _cart_has_extra_step_category(self):
+    def _cart_has_extra_step_category(self, order_sudo):
         """Whether the cart contains a product from the restricted extra-step
         categories."""
         restricted_categories = self.sudo().extra_step_category_ids
-        order_sudo = request.cart if request else None
-        if not (order_sudo and restricted_categories):
+        if not restricted_categories:
             return True
         order_categories = order_sudo.order_line.product_id.public_categ_ids
         return bool(
@@ -1126,6 +1243,24 @@ class Website(models.Model):
         query = urlencode([*parse_qsl(parsed.query), ("subject", subject)])
         return parsed._replace(query=query).geturl()
 
+    def _get_shop_products_design_classes(self):
+        """Return the website's design classes for the product cards, as configured on the
+        shop page, falling back to the default catalog layout if not yet configured.
+        """
+        design_classes = self.shop_opt_products_design_classes or ""
+        if "o_wsale_products_opt_layout_catalog" not in design_classes:
+            return (
+                "o_wsale_products_opt_name_color_regular "
+                "o_wsale_products_opt_thumb_cover o_wsale_products_opt_img_secondary_show "
+                "o_wsale_products_opt_img_hover_zoom_out_light o_wsale_products_opt_cc1 "
+                "o_wsale_products_opt_rounded_2 o_wsale_products_opt_layout_catalog "
+                "o_wsale_products_opt_design_thumbs o_wsale_products_opt_has_description "
+                "o_wsale_products_opt_name_size_body o_wsale_products_opt_actions_onhover "
+                "o_wsale_products_opt_wishlist_fixed o_wsale_products_opt_actions_theme "
+                "o_wsale_products_opt_has_cta"
+            )
+        return design_classes
+
     def _get_product_image_ratio_classes(self):
         """Return the classes defining the product image aspect ratio from the website's design
         classes.
@@ -1157,11 +1292,10 @@ class Website(models.Model):
         return "64px"
 
     def _get_basic_feed_product_domain(self):
-        return Domain.AND([
-            Domain("is_published", "=", True),
-            Domain("type", "in", ("consu", "combo")),
-            self.website_domain(),
-        ])
+        return (
+            Domain("type", "in", {"consu", "combo"})
+            & self.with_user(self.user_id).sale_product_domain()
+        )
 
     def _default_feed_is_valid(self):
         self.ensure_one()
@@ -1189,10 +1323,11 @@ class Website(models.Model):
 
     @api.model
     def _get_settings_to_copy_onto_new_default_website(self):
-        """Provides a list of settings that should always be set on the default
-        website. When the default website changes, a check is performed. If some
-        of these settings are not already set on the new default website, they
-        are copied from the previous default website."""
+        """Provide a list of settings that should always be set on the default website.
+
+        When the default website changes, a check is performed. If some of these settings are not
+        already set on the new default website, they are copied from the previous default website.
+        """
         return super()._get_settings_to_copy_onto_new_default_website() + [
             "salesperson_id",
             "salesteam_id",

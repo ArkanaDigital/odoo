@@ -1,7 +1,10 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
+from unittest.mock import patch
+
 from odoo import Command, fields
 from odoo.exceptions import UserError
 from odoo.tests import Form, freeze_time
+from odoo.tools import mute_logger
 
 from odoo.addons.account.tests.common import AccountTestInvoicingCommon
 
@@ -181,12 +184,14 @@ class TestPosAccounting(AccountTestInvoicingCommon):
             ],
         })
 
-    def get_pos_session(self):
-        return self.pos_config.current_session_id
+    def get_pos_session(self, config=None):
+        config = config or self.pos_config
+        return config.current_session_id
 
-    def open_pos_session(self, opening=0, note=""):
-        self.pos_config.open_ui()
-        session = self.get_pos_session()
+    def open_pos_session(self, opening=0, note="", config=None):
+        config = config or self.pos_config
+        config.open_ui()
+        session = self.get_pos_session(config)
         session.set_opening_control(opening, note)
         self.assertEqual(session.state, 'opened')
         return session
@@ -206,7 +211,8 @@ class TestPosAccounting(AccountTestInvoicingCommon):
         self.assertEqual(session.state, 'closed')
         return session
 
-    def create_pos_order(self, payment_method=[], products=[], extra_data={}):
+    def create_pos_order(self, payment_method=[], products=[], extra_data={}, session=None):
+        session = session or self.get_pos_session()
         order = {
             'amount_total': 0,
             'amount_paid': 0,
@@ -215,7 +221,7 @@ class TestPosAccounting(AccountTestInvoicingCommon):
             'state': 'draft',
             'date_order': fields.Datetime.to_string(fields.Datetime.now()),
             'company_id': self.env.company.id,
-            'session_id': self.get_pos_session().id,
+            'session_id': session.id,
             'lines': [Command.create({
                 'qty': 1,
                 'product_id': product.id,
@@ -259,6 +265,32 @@ class TestPosAccounting(AccountTestInvoicingCommon):
         cash_details = closing_data['default_cash_details']
         self.assertEqual(cash_details['amount'], 10.6)
         self.assertEqual(cash_details['payment_amount'], 0)
+
+    def test_closing_data_amounts_are_rounded(self):
+        """ The sum of the payment amounts must not carry float noise
+        (e.g. 25.810000000000002), otherwise the closing popup shows a
+        difference while the counted amount matches the expected one.
+        """
+        self.env['decimal.precision'].search([('name', '=', 'Product Price')]).digits = 3
+        products = self.env['product.product'].create([{
+            'name': f'Product {price}',
+            'list_price': price,
+            'taxes_id': False,
+            'available_in_pos': True,
+        } for price in [12.345, 4.987, 8.474]])
+        session = self.open_pos_session()
+        for pm in [self.bank_pm, self.cash_pm]:
+            for product, amount in zip(products, [12.35, 4.99, 8.47]):
+                self.create_pos_order(
+                    payment_method=[[pm, {'amount': amount}]],
+                    products=[[product, {}]],
+                )
+
+        closing_data = session.get_closing_control_data()
+        bank_details = next(pm for pm in closing_data['non_cash_payment_methods'] if pm['id'] == self.bank_pm.id)
+        self.assertEqual(bank_details['amount'], 25.81)
+        self.assertEqual(closing_data['default_cash_details']['amount'], 25.81)
+        self.assertEqual(closing_data['default_cash_details']['payment_amount'], 25.81)
 
     def test_invoiced_order_are_on_partner_receivable_account(self):
         session = self.open_pos_session()
@@ -394,7 +426,7 @@ class TestPosAccounting(AccountTestInvoicingCommon):
 
     def test_classic_order(self):
         session = self.open_pos_session()
-        customer_order = self.create_pos_order(
+        self.create_pos_order(
             payment_method=[[self.customer_pm, {'amount': 10.6}]],
             products=[[self.product_6, {}]],
             extra_data={'partner_id': self.partner_1.id},
@@ -413,24 +445,19 @@ class TestPosAccounting(AccountTestInvoicingCommon):
         self.close_session()
         sale_move = session.move_ids
         cash_statement = self.cash_pm.journal_id.last_statement_id
+        amount_total = session.currency_id.round(
+            sum(session.order_ids.mapped('amount_total'))
+        )
+        amount_tax = session.currency_id.round(
+            sum(session.order_ids.mapped('amount_tax'))
+        )
         self.assertEqual(cash_statement, session.bank_statement_id)     # Cash statement should be the one linked to the session
-        self.assertEqual(len(sale_move.line_ids), 4)                    # 3 payment_term + 1 product + 1 tax
-        self.assertEqual(sale_move.amount_total, 21.2)                  # 10 + 6% tax * 2 orders (customer account order is not taken into account)
-        self.assertEqual(sale_move.amount_tax, 1.2)                     # 6% tax on 30
+        self.assertEqual(len(sale_move.line_ids), 5)                    # 3 payment_term + 1 product + 1 tax
+        self.assertAlmostEqual(sale_move.amount_total, amount_total)    # 10 + 6% tax * 3 orders
+        self.assertEqual(sale_move.amount_tax, amount_tax)              # 6% tax on 30
         self.assertEqual(len(cash_statement.line_ids), 1)               # Only one line in the cash statement since the 3 orders are merged into one statement line
         self.assertEqual(cash_statement.line_ids.amount, 10.6)          # 10 + 6% tax from the cash order
         self.assertEqual(cash_statement.is_complete, True)
-
-        # Customer account invoice
-        invoice = self.env['account.move'].search([
-            ('move_type', '=', 'out_invoice'),
-            ('partner_id', '=', self.partner_1.id),
-        ])
-        self.assertEqual(invoice.amount_total, 10.6)                    # 10 + 6% tax from the customer account order
-        self.assertEqual(invoice.amount_tax, 0.6)                       # 6% tax on 10
-        self.assertEqual(invoice.amount_residual, 10.6)                 # Not yet paid
-        self.assertEqual(invoice.amount_paid, 0.0)                      # Not yet paid
-        self.assertEqual(customer_order.to_invoice, True)               # Forced to True since the order is paid with a customer account
 
     def test_cash_statement_line(self):
         session = self.open_pos_session()
@@ -493,63 +520,6 @@ class TestPosAccounting(AccountTestInvoicingCommon):
         self.assertEqual(product2.tax_ids.ids, [self.tax_12.id])        # Second tax line should be for 12% tax
         self.assertEqual(tax_lines[0].amount_currency, -0.6)            # First tax line should be at 0.6 (6% of 10)
         self.assertEqual(tax_lines[1].amount_currency, -1.2)            # Second tax line should be at 1.2 (12% of 10)
-
-    def test_separate_invoicing_pos_order(self):
-        session = self.open_pos_session()
-
-        # Create a PoS order with 2 payment methods
-        # (customer account + cash)
-        pos_order = self.create_pos_order(
-            payment_method=[
-                [self.customer_pm, {'amount': 5.3}],
-                [self.cash_pm, {'amount': 5.3}],
-            ],
-            products=[[self.product_6, {}]],
-            extra_data={'partner_id': self.partner_1.id},
-        )
-
-        closing_data = session.get_closing_control_data()
-        cash_details = closing_data['default_cash_details']
-        expected_cashbox_amount = cash_details['payment_amount']
-        session.close_session_from_ui({self.cash_pm.id: expected_cashbox_amount})
-        self.assertEqual(session.state, 'closed')
-
-        # Check that the invoice is correctly created with the customer
-        # account payment method
-        invoice = self.env['account.move'].search([
-            ('move_type', '=', 'out_invoice'),
-            ('partner_id', '=', self.partner_1.id),
-        ])
-        self.assertEqual(pos_order.account_move, invoice)               # Invoice should be linked to the PoS order
-        self.assertEqual(invoice.amount_total, 10.6)                    # 10 + 6% tax from the customer account order
-        self.assertEqual(invoice.amount_tax, 0.6)                       # 6% tax on 10
-        self.assertEqual(invoice.amount_residual, 5.3)                  # Customer account part isn't yet paid, but cash part is paid
-
-        # Check each account.move.line of the invoice to ensure that the
-        # cash payment line is reconciled with the correct invoice line
-        # (in case of multiple tax lines for example)
-        payment_terms = invoice.line_ids.filtered(
-            lambda line: line.display_type == 'payment_term',
-        )
-        cash_payment = payment_terms[0]
-        customer_payment = payment_terms[1]
-        self.assertEqual(cash_payment.amount_currency, 5.3)             # Cash part of the payment
-        self.assertEqual(customer_payment.amount_currency, 5.3)         # Customer account part of the payment
-        self.assertEqual(cash_payment.reconciled, True)                 # Cash part
-        self.assertEqual(customer_payment.reconciled, False)            # Customer account part
-
-        product_line = invoice.line_ids.filtered(
-            lambda line: line.product_id == self.product_6,
-        )
-        product_taxes = self.product_6.taxes_id.ids
-        self.assertEqual(product_line.tax_ids.ids, product_taxes)       # Taxes should be correctly copied on the invoice line
-        self.assertEqual(product_line.amount_currency, -10.0)           # Product line should be at 10 (without taxes)
-        self.assertEqual(product_line.credit, 10.0)                     # Product line should be a credit of 10 (without taxes)
-
-        tax_lines = invoice.line_ids.filtered(
-            lambda line: line.display_type == 'tax',
-        )
-        self.assertEqual(tax_lines.amount_currency, -0.6)
 
     def test_fixed_tax_negative_qty_should_be_negative(self):
         service = self.env.ref('product.product_category_services').id
@@ -805,25 +775,49 @@ class TestPosAccounting(AccountTestInvoicingCommon):
         reversal_sale_move = session_sales.reversal_move_ids
         reversal_refund_move = session_refunds.reversal_move_ids
 
-        # Check that the reversal moves have the exact opposite lines
-        # than the original moves
-        used_line = self.env['account.move.line']
-        for sline in session_sales.line_ids:
-            rline = reversal_sale_move.line_ids.filtered(
-                lambda line: line.account_id == sline.account_id and not line in used_line,
-            )
-            used_line |= rline[0]
-            self.assertEqual(sline.debit, rline[0].credit)
-            self.assertEqual(sline.credit, rline[0].debit)
+        receivable = order.partner_id.property_account_receivable_id
+        reversal_payment_lines = reversal_sale_move.line_ids.filtered(
+            lambda line: line.account_id == receivable,
+        )
+        invoice_payment_lines = order.account_move.line_ids.filtered(
+            lambda line: line.account_id == receivable,
+        )
+        self.assertEqual(reversal_payment_lines.credit, invoice_payment_lines.debit)
 
-        used_line = self.env['account.move.line']
-        for rline in session_refunds.line_ids:
-            rliner = reversal_refund_move.line_ids.filtered(
-                lambda line: line.account_id == rline.account_id and not line in used_line,
+        receivable = order.partner_id.property_account_receivable_id
+        reversal_payment_lines = reversal_refund_move.line_ids.filtered(
+            lambda line: line.account_id == receivable,
+        )
+        invoice_payment_lines = refund.account_move.line_ids.filtered(
+            lambda line: line.account_id == receivable,
+        )
+        self.assertEqual(reversal_payment_lines.credit, invoice_payment_lines.debit)
+
+    def test_invoice_after_closing_reversal_is_negative(self):
+        self.open_pos_session()
+        orders = self.env['pos.order']
+        for pm in (self.cash_pm, self.bank_pm, self.customer_pm):
+            orders |= self.create_pos_order(
+                payment_method=[[pm, {'amount': 10.6}]],
+                products=[[self.product_6, {}]],
+                extra_data={'partner_id': self.partner_1.id},
             )
-            used_line |= rliner[0]
-            self.assertEqual(rline.debit, rliner[0].credit)
-            self.assertEqual(rline.credit, rliner[0].debit)
+        session = self.close_session()
+
+        # The last invoiced order detaches the closing entry from all its
+        # orders, the sign of every reversal must not depend on it.
+        for order in orders:
+            order.action_pos_order_invoice()
+
+        reversal_moves = session.sale_move_ids.reversal_move_ids
+        self.assertEqual(len(reversal_moves), 3)
+        for order in orders:
+            reversal = reversal_moves.filtered(lambda m, o=order: m.reversed_pos_order_id == o)
+            self.assertEqual(
+                reversal.amount_total_signed,
+                -10.6,
+                f"Reversal of order paid with {order.payment_ids.payment_method_id.name} should be negative",
+            )
 
     def test_order_partial_refund_rounding(self):
         """
@@ -889,7 +883,6 @@ class TestPosAccounting(AccountTestInvoicingCommon):
                 'partner_id': self.partner_1.id,
             },
         )
-        self.assertEqual(self.product_6.qty_available, 99)              # Check that the stock of the product is correctly updated when the order is done
         self.create_pos_order(
             payment_method=[[self.cash_pm, {'amount': -21.8}]],         # Total amount of the order is 10 + 6% tax + 10 + 12% tax = 21.8
             products=[
@@ -902,7 +895,6 @@ class TestPosAccounting(AccountTestInvoicingCommon):
                 'refunded_order_id': order.id,
             },
         )
-        self.assertEqual(self.product_6.qty_available, 100)             # Check that the stock of the product is correctly updated when the order is done
 
         closing_data = session.get_closing_control_data()
         cash_details = closing_data['default_cash_details']
@@ -974,7 +966,6 @@ class TestPosAccounting(AccountTestInvoicingCommon):
                 'to_invoice': True,
             },
         )
-        self.assertEqual(self.product_6.qty_available, 99)              # Check that the stock of the product is correctly updated when the order is done
         refund = self.create_pos_order(
             payment_method=[[self.cash_pm, {'amount': -21.8}]],         # Total amount of the order is 10 + 6% tax + 10 + 12% tax = 21.8
             products=[
@@ -988,7 +979,6 @@ class TestPosAccounting(AccountTestInvoicingCommon):
                 'to_invoice': True,
             },
         )
-        self.assertEqual(self.product_6.qty_available, 100)             # Check that the stock of the product is correctly updated when the order is done
         sale_move = order.account_move
         refund_move = refund.account_move
 
@@ -1319,13 +1309,8 @@ class TestPosAccounting(AccountTestInvoicingCommon):
                     self.assertEqual(len(statement), 1)
                     self.assertEqual(statement.amount, payment.amount)
                 elif pm.type == 'pay_later':
-                    self.assertEqual(order.to_invoice, True)
-                    self.assertNotIn(
-                        order.account_move,
-                        session.sale_move_ids,
-                    )
-                    acc = self.partner_1.property_account_receivable_id
-                    self.assertEqual(term.account_id, acc)
+                    session_move = session.sale_move_ids
+                    self.assertEqual(order.account_move, session_move)  # Customer account can now be globally invoiced
                 elif pm.type == 'bank':
                     payment = BankPayment.search([
                         ('pos_session_id', '=', order.session_id.id),
@@ -1999,19 +1984,19 @@ class TestPosAccounting(AccountTestInvoicingCommon):
         order.action_pos_order_invoice()
         self.assertTrue(order.is_singly_invoiced)
 
+        receivable = order.partner_id.property_account_receivable_id
         session_sales = session.sale_move_ids
         reversal_sale_move = session_sales.reversal_move_ids
 
         # Check that the reversal moves have the exact opposite lines
         # than the original moves
-        used_line = self.env['account.move.line']
-        for sline in session_sales.line_ids:
-            rline = reversal_sale_move.line_ids.filtered(
-                lambda line: line.account_id == sline.account_id and not line in used_line,
-            )
-            used_line |= rline[0]
-            self.assertEqual(sline.debit, rline[0].credit)
-            self.assertEqual(sline.credit, rline[0].debit)
+        reversal_payment_lines = reversal_sale_move.line_ids.filtered(
+            lambda line: line.account_id == receivable,
+        )
+        invoice_payment_lines = order.account_move.line_ids.filtered(
+            lambda line: line.account_id == receivable,
+        )
+        self.assertEqual(reversal_payment_lines.credit, invoice_payment_lines.debit)
 
         self.create_pos_order(
             payment_method=[[self.cash_pm, {'amount': 11.2}]],
@@ -2044,3 +2029,190 @@ class TestPosAccounting(AccountTestInvoicingCommon):
         self.assertTrue(order_move.reversal_move_ids)
         other_orders = session.order_ids - order
         self.assertFalse(other_orders.account_move.reversal_move_ids)
+
+    def test_consolidated_invoice_customer_account_after_closing(self):
+        """
+        The customer account line of the closing entry holds the amount of
+        every order of the customer, each reversal must only take the share
+        of its own order.
+        """
+        session = self.open_pos_session()
+        orders = self.env['pos.order']
+        for _i in range(2):
+            orders |= self.create_pos_order(
+                payment_method=[[self.customer_pm, {'amount': 11.2}]],
+                products=[[self.product_12, {}]],
+                extra_data={'partner_id': self.partner_1.id},
+            )
+        self.create_pos_order(
+            payment_method=[[self.cash_pm, {'amount': 11.2}]],
+            products=[[self.product_12, {}]],
+        )
+        self.close_session()
+
+        receivable = self.partner_1.property_account_receivable_id
+        transfer_line = self.env['account.move.line'].search([
+            ('account_id', '=', receivable.id),
+            ('partner_id', '=', self.partner_1.id),
+            ('move_id.move_type', '=', 'entry'),
+        ])
+        self.assertEqual(transfer_line.debit, 22.4)                     # One transfer for both orders
+
+        self.env['pos.make.invoice'].create({
+            'consolidated_billing': True,
+        }).with_context(active_ids=orders.ids).action_create_invoices()
+
+        invoice = orders.account_move
+        self.assertEqual(len(invoice), 1)
+        self.assertEqual(invoice.amount_total, 22.4)
+
+        reversal = session.sale_move_ids.reversal_move_ids
+        self.assertEqual(len(reversal), 1)                              # One reversal for the orders of the session
+        reversal_lines = reversal.line_ids.filtered(
+            lambda line: line.account_id == receivable,
+        )
+        self.assertEqual(sum(reversal_lines.mapped('credit')), 22.4)    # Only the share of these orders, not the cash one
+
+        # The customer debt moved from the transfer entry to the invoice
+        self.assertTrue(transfer_line.reconciled)
+        self.assertEqual(invoice.amount_residual, 22.4)
+
+    @mute_logger('odoo.addons.point_of_sale.models.pos_session')
+    def test_launch_cron_generate_invoice_period_rollback_on_failure(self):
+        session_ok = self.open_pos_session()
+        order_ok = self.create_pos_order(
+            payment_method=[[self.cash_pm, {'amount': 11.2}]],
+            products=[[self.product_12, {}]],
+            session=session_ok,
+        )
+
+        cash_journal_2 = self.env['account.journal'].create({
+            'name': 'Cash Test 2',
+            'type': 'cash',
+            'company_id': self.main_company.id,
+            'code': 'CSH2',
+            'sequence': 10,
+        })
+        cash_pm_2 = self.env['pos.payment.method'].create({
+            'name': 'Cash 2',
+            'type': 'cash',
+            'journal_id': cash_journal_2.id,
+        })
+        pos_config_2 = self.env['pos.config'].create({
+            'name': 'PoS Config 2',
+            'journal_id': self.config_sale_journal.id,
+            'payment_method_ids': [(4, cash_pm_2.id)],
+        })
+        session_ko = self.open_pos_session(config=pos_config_2)
+        order_ko = self.create_pos_order(
+            payment_method=[[cash_pm_2, {'amount': 11.2}]],
+            products=[[self.product_12, {}]],
+            session=session_ko,
+        )
+
+        # Force an accounting failure for the session_ko
+        PosOrderModel = self.env.registry['pos.order']
+        original_prepare_payments = PosOrderModel._prepare_account_move_line_data_for_payments
+
+        def patched_prepare_payments(orders, partner=None):
+            result = original_prepare_payments(orders, partner=partner)
+            if orders and orders[0].session_id == session_ko:
+                result[0]['account.move.line']['amount_currency'] += 0.01
+            return result
+
+        # Marker to identify the failing session in the accounting entries
+        marker = 'TEST_MARKER_KO'
+        PosSessionModel = self.env.registry['pos.session']
+        original_prepare_move_vals = PosSessionModel._prepare_session_move_vals
+
+        def patched_prepare_move_vals(session, orders):
+            vals = original_prepare_move_vals(session, orders)
+            if session == session_ko:
+                vals['ref'] = marker
+            return vals
+
+        with patch.object(PosOrderModel, '_prepare_account_move_line_data_for_payments', patched_prepare_payments), \
+            patch.object(PosSessionModel, '_prepare_session_move_vals', patched_prepare_move_vals):
+            self.env['pos.session']._launch_cron_generate_invoice_period()
+
+        # Healthy session is validated normally
+        self.assertEqual(order_ok.state, 'done')
+        self.assertTrue(session_ok.sale_move_ids)
+        for move in session_ok.sale_move_ids:
+            self.assertEqual(move.state, 'posted')
+            self.assertAlmostEqual(sum(move.line_ids.mapped('balance')), 0)
+
+        # Failing session is not validated and accounting entries are rolled back
+        self.assertFalse(session_ko.sale_move_ids)
+        self.assertFalse(order_ko.account_move)
+        self.assertEqual(order_ko.state, 'paid')
+        self.assertFalse(self.env['account.move'].search([('ref', '=', marker)]))
+
+    def test_pos_closing_journal_set(self):
+        """ With a Closing Journal, the closing entries go there while the customer invoices
+        stay in the Orders journal.
+        """
+        closing_journal = self.env['account.journal'].create({
+            'name': 'PoS Closing',
+            'type': 'sale',
+            'code': 'POSCL',
+            'company_id': self.main_company.id,
+        })
+        self.pos_config.closing_journal_id = closing_journal
+
+        session = self.open_pos_session()
+        invoiced_order = self.create_pos_order(
+            payment_method=[[self.cash_pm, {'amount': 10.6}]],
+            products=[[self.product_6, {}]],
+            extra_data={
+                'partner_id': self.partner_1.id,
+                'to_invoice': True,
+            },
+        )
+        self.create_pos_order(
+            payment_method=[[self.cash_pm, {'amount': 10.6}]],
+            products=[[self.product_6, {}]],
+        )
+        self.close_session()
+
+        self.assertEqual(
+            invoiced_order.account_move.journal_id, self.pos_config.journal_id,
+            "the customer invoices stay in the Orders journal",
+        )
+        self.assertEqual(session.sale_move_ids.journal_id, closing_journal)
+        self.assertEqual(session.sale_move_ids.move_type, 'out_invoice')
+        self.assertEqual(session.sale_move_ids.amount_total, 10.6)
+
+    def test_closing_untaxed_line_keeps_global_rounding_delta(self):
+        """ With global rounding, the base delta of an order can be allocated to an
+        untaxed line. It must be kept in the closing entry or the move is unbalanced.
+        """
+        self.main_company.tax_calculation_rounding_method = 'round_globally'
+        tax_21_incl, tax_12_incl = (self.tax_21 + self.tax_12).copy({'price_include_override': 'tax_included'})
+        product_21 = self.product_21.copy({'taxes_id': [(6, 0, tax_21_incl.ids)]})
+        product_12 = self.product_12.copy({'taxes_id': [(6, 0, tax_12_incl.ids)]})
+        product_untaxed = self.product_21.copy({'taxes_id': [(5, 0, 0)]})
+
+        session = self.open_pos_session()
+        order = self.create_pos_order(
+            payment_method=[[self.cash_pm, {'amount': 4.5}]],
+            products=[
+                [product_21, {'price_unit': 0.4}],
+                [product_12, {'price_unit': 0.12}],
+                [product_12, {'price_unit': 1.47}],
+                [product_12, {'price_unit': 0.15}],
+                [product_12, {'price_unit': 0.36}],
+                [product_21, {'price_unit': 3.2}],
+                [product_21, {'price_unit': 3.8}],
+                [product_untaxed, {'price_unit': -5.0}],
+            ],
+        )
+        self.assertEqual(order.amount_total, 4.5)
+        self.close_session()
+
+        move = session.sale_move_ids
+        self.assertEqual(move.state, 'posted')
+        self.assertEqual(move.amount_total, 4.5)
+        self.assertEqual(sum(move.line_ids.mapped('debit')), sum(move.line_ids.mapped('credit')))
+        untaxed_line = move.line_ids.filtered(lambda line: line.display_type == 'product' and not line.tax_ids)
+        self.assertEqual(untaxed_line.balance, 4.99)

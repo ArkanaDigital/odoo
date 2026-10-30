@@ -6,14 +6,6 @@ from odoo import api, fields, models, _
 from odoo.fields import Domain
 from odoo.tools.misc import unquote
 
-TIMESHEET_BILLABLE_TYPES = [
-    ('02_billable_fixed', 'Timesheets (Fixed Price)'),
-    ('04_billable_time', 'Timesheets (Time & Materials)'),
-    ('06_billable_milestones', 'Timesheets (Milestones)'),
-    ('08_billable_manual', 'Timesheets (Manual) '),
-    ('09_non_billable', 'Timesheets (Non-Billable)'),
-]
-
 
 class AccountAnalyticLine(models.Model):
     _inherit = 'account.analytic.line'
@@ -30,15 +22,24 @@ class AccountAnalyticLine(models.Model):
             ],
         ])
 
-    billable_type = fields.Selection(selection_add=TIMESHEET_BILLABLE_TYPES)
     commercial_partner_id = fields.Many2one('res.partner', compute="_compute_commercial_partner")
     so_line = fields.Many2one(
         falsy_value_label="Non-billable",
         help="Sales order item to which the time spent will be added in order to be invoiced to your customer. Remove the sales order item for the timesheet entry to be non-billable."
     )
     is_so_line_edited = fields.Boolean("Is Sales Order Item Manually Edited")
+    product_id = fields.Many2one(compute='_compute_product_id', store=True, readonly=False)
     allow_billable = fields.Boolean(related="project_id.allow_billable")
     sale_order_state = fields.Selection(related='order_id.state')
+
+    def _get_billable_types(self):
+        return super()._get_billable_types() + [
+            (100, '02_billable_fixed', self.env._('Timesheets (Fixed Price)')),
+            (110, '04_billable_time', self.env._('Timesheets (Time & Materials)')),
+            (120, '06_billable_milestones', self.env._('Timesheets (Milestones)')),
+            (130, '08_billable_manual', self.env._('Timesheets (Manual)')),
+            (140, '09_non_billable', self.env._('Timesheets (Non-Billable)')),
+        ]
 
     @api.depends('project_id.partner_id.commercial_partner_id', 'task_id.partner_id.commercial_partner_id')
     def _compute_commercial_partner(self):
@@ -89,6 +90,14 @@ class AccountAnalyticLine(models.Model):
         # compute only for timesheets
         for timesheet in self.filtered('project_id'):
             timesheet.order_id = timesheet.so_line.order_id
+
+    @api.depends('so_line.product_id')
+    def _compute_product_id(self):
+        for timesheet in self.filtered(lambda t: t.project_id and t.so_line):
+            timesheet.product_id = timesheet.so_line.product_id
+
+    def _compute_product_uom_id(self):
+        super(AccountAnalyticLine, self.filtered(lambda t: not t.project_id))._compute_product_uom_id()
 
     @api.depends('reinvoice_move_id.state')
     def _compute_partner_id(self):

@@ -3,14 +3,15 @@
 # * pos_viva_com
 #
 # "Tiffany Chang (tic)" <tic@odoo.com>, 2025.
+# Weblate <noreply-mt-weblate@weblate.org>, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server saas~18.4\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-10 17:37+0000\n"
-"PO-Revision-Date: 2026-06-21 13:09+0000\n"
+"POT-Creation-Date: 2026-08-28 17:41+0000\n"
+"PO-Revision-Date: 2026-08-31 17:54+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Arabic <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Arabic <https://translate.odoo.com/projects/odoo-s19-4/"
 "pos_viva_com/ar/>\n"
 "Language: ar\n"
 "MIME-Version: 1.0\n"
@@ -18,7 +19,7 @@ msgstr ""
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
 "&& n%100<=10 ? 3 : n%100>=11 ? 4 : 5;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: pos_viva_com
 #: model:ir.model.fields,field_description:pos_viva_com.field_pos_payment_method__viva_com_api_key
@@ -75,6 +76,11 @@ msgid "ID"
 msgstr "المُعرف"
 
 #. module: pos_viva_com
+#: model:ir.module.module,summary:base.module_pos_viva_com
+msgid "Integrate your PoS with a Viva.com payment terminal"
+msgstr ""
+
+#. module: pos_viva_com
 #. odoo-javascript
 #: code:addons/pos_viva_com/static/src/app/screens/payment_screen/payment_screen.js:0
 msgid ""
@@ -121,8 +127,9 @@ msgstr "رسالة من Viva.com: %s"
 #. module: pos_viva_com
 #. odoo-javascript
 #: code:addons/pos_viva_com/static/src/app/screens/payment_screen/payment_screen.js:0
+#, fuzzy
 msgid "No"
-msgstr ""
+msgstr "لا"
 
 #. module: pos_viva_com
 #. odoo-javascript
@@ -172,14 +179,21 @@ msgid ""
 msgstr ""
 
 #. module: pos_viva_com
-#: model:ir.model,name:pos_viva_com.model_pos_payment
-msgid "Point of Sale Payment"
+#: model:ir.module.module,shortdesc:base.module_pos_viva_com
+msgid "PoS Viva.com"
 msgstr ""
 
 #. module: pos_viva_com
+#: model:ir.model,name:pos_viva_com.model_pos_payment
+#, fuzzy
+msgid "Point of Sale Payment"
+msgstr "الدفع عند نقطة البيع"
+
+#. module: pos_viva_com
 #: model:ir.model,name:pos_viva_com.model_pos_payment_method
+#, fuzzy
 msgid "Point of Sale Payment Method"
-msgstr ""
+msgstr "طريقة الدفع في نقطة البيع"
 
 #. module: pos_viva_com
 #. odoo-javascript
@@ -284,8 +298,9 @@ msgstr "خطأ في Viva.com"
 #. module: pos_viva_com
 #. odoo-javascript
 #: code:addons/pos_viva_com/static/src/app/screens/payment_screen/payment_screen.js:0
+#, fuzzy
 msgid "Yes"
-msgstr ""
+msgstr "نعم"
 
 #. module: pos_viva_com
 #. odoo-python

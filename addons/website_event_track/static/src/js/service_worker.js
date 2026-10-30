@@ -1,4 +1,3 @@
-/* eslint-env serviceworker */
 /* eslint-disable no-restricted-globals */
 /* global idbKeyval */
 importScripts("/website_event_track/static/lib/idb-keyval/idb-keyval.js");
@@ -353,6 +352,13 @@ const processMessage = (data) => {
 };
 
 self.addEventListener("fetch", (event) => {
+    // let the browser handle form submissions itself: the worker has nothing to
+    // offer them, and a response coming from it is not kept in the history, so
+    // going back to the page would fail (or ask to resubmit the form)
+    if (event.request.mode === "navigate" && !isGET(event.request)) {
+        return;
+    }
+
     event.respondWith(processFetchRequest(event.request));
 });
 

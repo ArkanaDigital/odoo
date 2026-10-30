@@ -11,7 +11,6 @@ from odoo.fields import Domain
 from odoo.exceptions import UserError, ValidationError, RedirectWarning
 from odoo.models import Query, TableSQL
 from odoo.tools import SQL
-from odoo.tools.translate import mark_as_copy
 
 
 ACCOUNT_REGEX = re.compile(r'(?:(\S*\d+\S*))?(.*)')
@@ -27,7 +26,7 @@ class AccountAccount(models.Model):
     _name = 'account.account'
     _inherit = ['mail.thread', 'mail.activity.mixin']
     _description = "Account"
-    _order = "code_path, account_type, name_path"
+    _order = "code_path, account_type, name_path, id"
     _parent_store = True
     _check_company_auto = True
     _check_company_domain = models.check_companies_domain_parent_of
@@ -38,7 +37,7 @@ class AccountAccount(models.Model):
             if account.account_type in ('asset_receivable', 'liability_payable') and not account.reconcile:
                 raise ValidationError(_('You cannot have a receivable/payable account that is not reconcilable. (account code: %s)', account.code))
 
-    name = fields.Char(string="Account Name", required=True, index='trigram', tracking=True, translate=True, copy=mark_as_copy('name'))
+    name = fields.Char(string="Account Name", required=True, index='trigram', tracking=True, translate=True)
     description = fields.Text(translate=True)
     currency_id = fields.Many2one('res.currency', string='Account Currency', tracking=True,
         help="Forces all journal items in this account to have a specific currency (i.e. bank journals). If no currency is set, entries can use any currency.")
@@ -146,7 +145,7 @@ class AccountAccount(models.Model):
     opening_balance = fields.Monetary(string="Opening Balance", compute='_compute_opening_debit_credit', inverse='_set_opening_balance', currency_field='company_currency_id')
 
     current_balance = fields.Float(compute='_compute_current_balance')
-    related_taxes_amount = fields.Integer(compute='_compute_related_taxes_amount')
+    related_taxes_amount = fields.Integer(compute='_compute_related_taxes_amount', compute_sql='_compute_sql_related_taxes_amount', compute_sudo=True)
 
     non_trade = fields.Boolean(default=False,
                                help="If set, this account will belong to Non Trade Receivable/Payable in reports and filters.\n"
@@ -154,6 +153,14 @@ class AccountAccount(models.Model):
 
     # Form view: show code mapping tab or not
     display_mapping_tab = fields.Boolean(default=lambda self: len(self.env.user.company_ids) > 1, store=False)
+    account_stock_variation_id = fields.Many2one(
+        'account.account', string='Variation Account',
+        help="At closing, register the inventory variation of the period into a specific account")
+    account_stock_variation_active = fields.Boolean(related='account_stock_variation_id.active', string="Variation Account Active")
+    account_stock_expense_id = fields.Many2one(
+        'account.account', string='Expense Account',
+        help="Counterpart used at closing for accounting adjustments to inventory valuation.")
+    account_stock_expense_active = fields.Boolean(related='account_stock_expense_id.active', string="Expense Account Active")
 
     @api.constrains('reconcile', 'account_type', 'tax_ids')
     def _constrains_reconcile(self):
@@ -597,6 +604,28 @@ class AccountAccount(models.Model):
                 ('repartition_line_ids.account_id', 'in', record.ids),
             ])
 
+    def _compute_sql_related_taxes_amount(self, table):
+        query = table._query
+        count_tax_alias = query.make_alias(table._alias, 'count')
+
+        query.add_join(
+            'LEFT JOIN LATERAL',
+            count_tax_alias,
+            SQL(
+                """(
+                    SELECT COUNT(DISTINCT tax.id) AS tax_count
+                      FROM account_tax_repartition_line repartition_line
+                      JOIN account_tax tax
+                        ON tax.id = repartition_line.tax_id
+                     WHERE repartition_line.account_id = %s
+                       AND tax.active
+                )""",
+                SQL.identifier(table._alias, 'id'),
+            ),
+            SQL("TRUE"),
+        )
+        return SQL.identifier(count_tax_alias, 'tax_count')
+
     @api.depends_context('company')
     def _compute_company_currency_id(self):
         self.company_currency_id = self.env.company.currency_id
@@ -777,10 +806,8 @@ class AccountAccount(models.Model):
         :returns: List of account ids, ordered by frequency (from most to least frequent)
         """
         account_domain = Domain('active', '=', True)
-        if move_type in self.env['account.move'].get_inbound_types(include_receipts=True):
-            account_domain &= Domain('internal_group', '=', 'income')
-        elif move_type in self.env['account.move'].get_outbound_types(include_receipts=True):
-            account_domain &= Domain('internal_group', '=', 'expense')
+        if allowed_account_types := self._get_name_search_account_types(move_type):
+            account_domain &= Domain('account_type', 'in', allowed_account_types)
 
         query = self.env['account.move.line'].with_company(company_id)._search([
             *self.env['account.move.line']._check_company_domain(company_id),
@@ -899,7 +926,9 @@ class AccountAccount(models.Model):
 
     @api.onchange('code')
     def _onchange_code(self):
-        self.env.add_to_compute(self._fields['account_type'], self)
+        to_update = self.filtered(lambda a: not a.id or not a.account_type)
+        self.env.add_to_compute(self._fields['account_type'], to_update)
+        to_update.modified(['account_type'])
 
     @api.depends_context('company', 'formatted_display_name', 'from_bill')
     @api.depends('code')
@@ -964,7 +993,7 @@ class AccountAccount(models.Model):
         self.env.flush_all()
 
     @api.model
-    def _search(self, domain, offset=0, limit=None, order=None, *, active_test=True, bypass_access=False):
+    def _search(self, domain, offset=0, limit=None, order=None, *, active_test=True, **kw):
         """
             This includes inactive accounts that have active children at any depth if active accounts are being queried
         """
@@ -975,7 +1004,7 @@ class AccountAccount(models.Model):
             and self.env.context.get('active_test', True)
             and not any(leaf.field_expr == self._active_name for leaf in Domain(domain).iter_conditions())
         )
-        query = super()._search(domain, offset, limit, order, active_test=active_test and not include_inactive_account_parents, bypass_access=bypass_access)
+        query = super()._search(domain, offset, limit, order, active_test=active_test and not include_inactive_account_parents, **kw)
         if include_inactive_account_parents:
             query.add_where(SQL("""(
                     %(active)s = TRUE
@@ -1073,8 +1102,8 @@ class AccountAccount(models.Model):
         return res
 
     @api.model
-    def load(self, fields, data):
-        load_data = super(AccountAccount, self.with_context(defer_account_code_checks=True)).load(fields, data)
+    def load(self, fields, data, *, limit=None):
+        load_data = super(AccountAccount, self.with_context(defer_account_code_checks=True)).load(fields, data, limit=limit)
         if {'company_ids', 'code', 'code_mapping_ids/code', 'code_mapping_ids/company_id'} & set(fields):
             self.browse(load_data['ids'])._ensure_code_is_unique()
         return load_data

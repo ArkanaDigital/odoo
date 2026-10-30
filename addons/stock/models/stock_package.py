@@ -413,7 +413,7 @@ class StockPackage(models.Model):
 
     def _check_move_lines_map_quant(self, move_lines):
         """ This method checks that all product (quants) of self (package) are well present in the `move_line_ids`. """
-        precision_digits = self.env['decimal.precision'].precision_get('Product Unit of Measure')
+        precision_digits = self.env['decimal.precision'].precision_get('Product Unit')
 
         def _keys_groupby(record):
             return record.product_id, record.lot_id
@@ -556,3 +556,19 @@ class StockPackage(models.Model):
         if self.package_dest_id:
             # If one level was added, need to check if the upper container is fully contained as well.
             self.package_dest_id._apply_package_dest_for_entire_packs(allowed_package_ids)
+
+    def _get_package_vals(self):
+        self.ensure_one()
+        return {
+                'location_id': self.location_id.id,
+                'location_dest_id': self.location_dest_id.id,
+                'move_line_ids': [Command.set(self.move_line_ids.filtered(lambda ml: ml.result_package_id == self).ids)],
+                'picking_ids': [Command.set(self.picking_ids.ids)],
+                'package_id': self.id,
+                'package_name': self.complete_name,
+                'parent_orig_id': self.parent_package_id.id,
+                'parent_orig_name': self.parent_package_id.complete_name,
+                'parent_dest_id': self.package_dest_id.id,
+                'parent_dest_name': self.package_dest_id.dest_complete_name,
+                'outermost_dest_id': self.outermost_package_id.id,
+            }

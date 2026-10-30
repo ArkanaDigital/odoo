@@ -1,7 +1,8 @@
+import { Component, t, useProps } from "@odoo/owl";
+import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
-import { Component } from "@odoo/owl";
-import { DropdownItem } from "@web/core/dropdown/dropdown_item";
+import { useEnv } from "@web/owl2/utils";
 
 const cogMenuRegistry = registry.category("cogMenu");
 
@@ -9,9 +10,10 @@ export class ExportWorkEntriesCogMenu extends Component {
 
     static template = "hr_work_entry.ExportWorkEntriesCogMenu"
     static components = { DropdownItem };
-    static props = {
-        isActionMenu: { type: Boolean, optional: true },
-    };
+
+    props = useProps({
+        isActionMenu: t.boolean().optional(),
+    });
 
     setup() {
         this.actionService = useService("action");
@@ -34,7 +36,10 @@ cogMenuRegistry.add(
     {
         Component: ExportWorkEntriesCogMenu,
         groupNumber: 40,
-        isDisplayed: ({ searchModel }) => { return searchModel.resModel === "hr.employee" },
+        isDisplayed() {
+            const env = useEnv();
+            return env.searchModel.resModel === "hr.employee";
+        },
     },
     { sequence: 1 }
 );

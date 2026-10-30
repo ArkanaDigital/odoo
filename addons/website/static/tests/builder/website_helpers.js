@@ -2,7 +2,7 @@ import {
     confirmAddSnippet,
     getSnippetStructure,
     getSnippetView,
-    patchWithCleanupImg,
+    patchImg,
     waitForEndOfOperation,
 } from "@html_builder/../tests/helpers";
 import { Builder } from "@html_builder/builder";
@@ -19,7 +19,6 @@ import {
     models,
     mountWithCleanup,
     onRpc,
-    patchWithCleanup,
     waitUntilIdle,
 } from "@web/../tests/web_test_helpers";
 import { loadBundle } from "@web/core/assets";
@@ -32,13 +31,15 @@ import { WebsiteBridgePlugin } from "@website/builder/plugins/website_bridge_plu
 import { WebsiteBuilderClientAction } from "@website/client_actions/website_preview/website_builder_action";
 import { WebsiteSystrayItem } from "@website/client_actions/website_preview/website_systray_item";
 import { mockImageRequests } from "./image_test_helpers";
-import { getWebsiteSnippets } from "./snippets_getter.hoot";
+import { getWebsiteSnippets } from "../snippets_getter.hoot";
+import { getStructureSnippet, patchDOMParser } from "../snippet_helpers";
 import { revertPreview } from "@html_builder/core/utils";
 import { WebsiteBuilder } from "@website/builder/website_builder";
 import { session } from "@web/session";
 import { getTranslatedElements } from "./translated_elements_getter.hoot";
 import { BackgroundShapeOptionPlugin } from "@html_builder/plugins/background_option/background_shape_option_plugin";
 import { _t, translatedTerms, translationLoaded } from "@web/core/l10n/translation";
+import { patch } from "@web/core/utils/patch";
 
 class Website extends models.Model {
     _name = "website";
@@ -64,6 +65,10 @@ export function defineWebsiteModels({ includeMailModels = true } = {}) {
     defineModels([Website, IrUiView]);
     onRpc("/website/get_current_website_id", () => 1);
     onRpc("/website/theme_customize_data_get", () => []);
+    onRpc("website", "get_search_scopes", () => [
+        { search_type: "all", label: "Everything", url: "/website/search" },
+        { search_type: "pages", label: "Pages", url: "/pages" },
+    ]);
     onRpc("website", "web_search_read", () => ({
         length: 1,
         records: [
@@ -78,27 +83,6 @@ export function defineWebsiteModels({ includeMailModels = true } = {}) {
     }));
 }
 
-const domParserCache = new Map();
-function patchDOMParser() {
-    patchWithCleanup(DOMParser.prototype, {
-        parseFromString(html, type) {
-            if (type !== "text/html") {
-                return super.parseFromString(html, type);
-            }
-            if (domParserCache.has(html)) {
-                return domParserCache.get(html).cloneNode(true);
-            }
-            const res = super.parseFromString(html, type);
-            if (res.body?.firstChild?.id === "snippet_groups") {
-                // Only cache the document containing the snippets
-                domParserCache.set(html, res);
-                return res.cloneNode(true);
-            }
-            return res;
-        },
-    });
-}
-
 /**
  * This helper will be moved to website. Prefer using setupHTMLBuilder
  * for builder-specific tests
@@ -110,7 +94,7 @@ export async function setupWebsiteBuilder(
         openEditor = true,
         loadIframeBundles = false,
         loadAssetsFrontendJS = false,
-        loadIframeMinimalJS = false,
+        loadIframeBuilderTemplates = false,
         hasToCreateWebsite = true,
         styleContent,
         headerContent = "",
@@ -123,7 +107,7 @@ export async function setupWebsiteBuilder(
         delayReload = async () => {},
     } = {}
 ) {
-    loadIframeMinimalJS ||= withIframeRegistry;
+    loadIframeBuilderTemplates ||= withIframeRegistry;
     // TODO: fix when the iframe is reloaded and become empty (e.g. discard button)
     if (hasToCreateWebsite) {
         const pyEnv = await startServer();
@@ -183,7 +167,7 @@ export async function setupWebsiteBuilder(
 
     onRpc("/website/get_translated_elements", () => getTranslatedElements());
 
-    patchWithCleanup(WebsiteBuilderClientAction.prototype, {
+    patch(WebsiteBuilderClientAction.prototype, {
         setIframeLoaded() {
             super.setIframeLoaded();
             this.publicRootReady.resolve();
@@ -208,7 +192,7 @@ export async function setupWebsiteBuilder(
             if (loadIframeBundles) {
                 await loadBundle("website.assets_inside_builder_iframe", { targetDoc, js: false });
             }
-            if (loadIframeMinimalJS) {
+            if (loadIframeBuilderTemplates) {
                 // Load the builder's *.edit.xml, needed for some options
                 await loadBundle("website.assets_inside_builder_iframe_tests", { targetDoc });
                 // Reuse the translation in the iframe to avoid loading them
@@ -230,7 +214,7 @@ export async function setupWebsiteBuilder(
             this.websiteContent().contentDocument.body.innerHTML = bodyHTML;
         },
     });
-    patchWithCleanup(WebsiteSystrayItem.prototype, {
+    patch(WebsiteSystrayItem.prototype, {
         get isRestrictedEditor() {
             return true;
         },
@@ -244,7 +228,7 @@ export async function setupWebsiteBuilder(
         type: "ir.actions.client",
     });
 
-    patchWithCleanup(EditInteractionPlugin.prototype, {
+    patch(EditInteractionPlugin.prototype, {
         setup() {
             super.setup();
             // See loadAssetsEditBundle override in WebsiteBuilderClientAction
@@ -267,10 +251,10 @@ export async function setupWebsiteBuilder(
         await animationFrame();
         await waitUntilIdle(comp);
     };
-    patchWithCleanup(Builder.prototype, {
+    patch(Builder.prototype, {
         setup() {
             super.setup();
-            patchWithCleanup(this.env.editorBus, {
+            patch(this.env.editorBus, {
                 trigger(eventName, detail) {
                     if (eventName === "DOM_UPDATED") {
                         lastUpdatePromise = detail.updatePromise;
@@ -282,7 +266,7 @@ export async function setupWebsiteBuilder(
         },
     });
 
-    patchWithCleanup(SetupEditorPlugin.prototype, {
+    patch(SetupEditorPlugin.prototype, {
         setup() {
             super.setup();
             editableContent = this.editable.querySelector(
@@ -291,12 +275,12 @@ export async function setupWebsiteBuilder(
         },
     });
 
-    patchWithCleanup(WebsiteBridgePlugin.prototype, {
+    patch(WebsiteBridgePlugin.prototype, {
         getSession() {
             return {};
         },
         getRegistry() {
-            return loadIframeMinimalJS || loadAssetsFrontendJS
+            return loadIframeBuilderTemplates || loadAssetsFrontendJS
                 ? super.getRegistry()
                 : new Registry();
         },
@@ -307,7 +291,7 @@ export async function setupWebsiteBuilder(
 
     // Remove as soon as the background shape are not always instantiated when
     // entering in edit mode.
-    patchWithCleanup(BackgroundShapeOptionPlugin.prototype, {
+    patch(BackgroundShapeOptionPlugin.prototype, {
         getShapeStylePosition(shapeId, flip) {
             if (!this.shapeStyles[this.convertShapeIdForStyleSearch(shapeId)]) {
                 return [50, 50];
@@ -323,12 +307,12 @@ export async function setupWebsiteBuilder(
     });
 
     if (snippets) {
-        patchWithCleanup(IrUiView.prototype, {
+        patch(IrUiView.prototype, {
             render_public_asset: () => getSnippetView(snippets),
         });
     }
 
-    patchWithCleanupImg();
+    patchImg();
 
     const iframe = queryOne("iframe[data-src^='/website/force/1']");
     if (isBrowserFirefox() && !(iframe?.contentDocument.readyState === "complete")) {
@@ -374,7 +358,7 @@ async function openBuilderSidebar(editAssetsLoaded) {
         loadBundle("html_editor.assets_image_cropper"),
     ]);
 
-    await click(".o-website-btn-custo-primary");
+    await click(".o_website_btn_custo_primary");
     await editAssetsLoaded;
     // animationFrame linked to state.isEditing rendering the
     // WebsiteBuilderClientAction.
@@ -389,7 +373,7 @@ async function openBuilderSidebar(editAssetsLoaded) {
 }
 
 export function addPlugin(...Plugin) {
-    patchWithCleanup(WebsiteBuilder.prototype, {
+    patch(WebsiteBuilder.prototype, {
         get builderProps() {
             const props = super.builderProps;
             return { ...props, Plugins: [...props.Plugins, ...Plugin] };
@@ -449,7 +433,7 @@ export async function setupWebsiteBuilderWithDummySnippet(content) {
 
 export async function insertCategorySnippet({ group, snippet } = {}) {
     await contains(
-        `.o-snippets-menu #snippet_groups .o_snippet${
+        `.o_hb_snippets_menu #snippet_groups .o_snippet${
             group ? `[data-snippet-group=${group}]` : ""
         } .o_snippet_thumbnail .o_snippet_thumbnail_area`
     ).click();
@@ -470,7 +454,6 @@ export async function waitForSnippetDialog() {
  * @param {string | string[]} snippetName
  */
 export async function setupWebsiteBuilderWithSnippet(snippetName, options = {}) {
-    patchDOMParser();
     mockService("website", {
         get currentWebsite() {
             return {
@@ -524,7 +507,7 @@ export async function setupSidebarBuilderForTranslation(options) {
     // on the "Edit" button of the systray. The goal of this hack is to avoid
     // the handling of an extra reload of the action to arrive in translate
     // mode.
-    patchWithCleanup(WebsiteBuilder.prototype, {
+    patch(WebsiteBuilder.prototype, {
         setup() {
             super.setup();
             this.env.services.website = websiteServiceInTranslateMode;
@@ -544,21 +527,6 @@ export async function setupSidebarBuilderForTranslation(options) {
     await getTranslatedElements();
     await openBuilderSidebar();
     return { getEditor, getEditableContent, waitSidebarUpdated };
-}
-
-export async function getStructureSnippet(snippetName) {
-    const html = await getWebsiteSnippets();
-    const snippetsDocument = new DOMParser().parseFromString(html, "text/html");
-    const processors = registry.category("html_builder.snippetsPreprocessor").getAll();
-    for (const processor of Object.values(processors)) {
-        processor("website.snippets", snippetsDocument);
-    }
-    const snippetEl = snippetsDocument.querySelector(
-        `[data-snippet=${snippetName}]:not([data-snippet] [data-snippet])`
-    );
-    const el = snippetEl.cloneNode(true);
-    el.dataset.name = snippetEl.parentElement.getAttribute("name");
-    return el;
 }
 
 export async function insertStructureSnippet(editor, snippetName) {

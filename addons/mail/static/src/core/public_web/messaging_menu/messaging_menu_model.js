@@ -8,27 +8,7 @@ export const MENU_TABS = { BOOKMARK: "bookmark", NOTIFICATION: "notification" };
 export class MessagingMenu extends Record {
     static singleton = true;
 
-    static new() {
-        /** @type {MessagingMenu} */
-        const menu = super.new(...arguments);
-        menu.initializeCountersFetcher = menu.store.makeCachedFetchData(
-            "/mail/messaging_menu/initialize_counters",
-            () => {
-                const filter_id_by_tab_id_by_record_type = {};
-                for (const tab of menu.allTabs) {
-                    if (tab.hidden) {
-                        continue;
-                    }
-                    filter_id_by_tab_id_by_record_type[tab.recordType] ??= {};
-                    filter_id_by_tab_id_by_record_type[tab.recordType][tab.id] =
-                        tab.defaultFilter?.id ?? null;
-                }
-                return { filter_id_by_tab_id_by_record_type };
-            }
-        );
-        return menu;
-    }
-
+    allTabs = this.computedShallowEqual(() => [...this.store.MessagingMenuTab.records.values()]);
     bookmarkTab = fields.One("MessagingMenuTab", {
         compute() {
             if (this.store.self_user?.share !== false) {
@@ -57,11 +37,22 @@ export class MessagingMenu extends Record {
         },
         eager: true,
     });
-    globalCounter = fields.Attr(0, {
-        compute() {
-            return this._computeGlobalCounter();
-        },
-    });
+    globalCounter = this.computed(() => this._computeGlobalCounter());
+    initializeCountersFetcher = this.computed(() =>
+        this.store.makeCachedFetchData("/mail/messaging_menu/initialize_counters", () => {
+            const filter_id_by_tab_id_by_record_type = {};
+            for (const tab of this.allTabs) {
+                if (tab.hidden) {
+                    continue;
+                }
+                filter_id_by_tab_id_by_record_type[tab.recordType] ??= {};
+                filter_id_by_tab_id_by_record_type[tab.recordType][tab.id] =
+                    tab.defaultFilter?.id ?? null;
+            }
+            return { filter_id_by_tab_id_by_record_type };
+        })
+    );
+
     notificationTab = fields.One("MessagingMenuTab", {
         compute() {
             if (this.store.self_user?.notification_type !== "inbox") {
@@ -102,15 +93,14 @@ export class MessagingMenu extends Record {
         },
         eager: true,
     });
-    allTabs = fields.Many("MessagingMenuTab", { inverse: "messagingMenuAsTab" });
-    visibleTabs = fields.Many("MessagingMenuTab", { inverse: "messagingMenuAsVisibleTabs" });
-    sortedVisibleTabs = fields.Many("MessagingMenuTab", {
-        compute() {
-            return [...this.visibleTabs].sort(
-                (t1, t2) => t1.sequence - t2.sequence || t1.id.localeCompare(t2.id)
-            );
-        },
-    });
+    sortedVisibleTabs = this.computedShallowEqual(() =>
+        [...this.visibleTabs].sort(
+            (t1, t2) => t1.sequence - t2.sequence || t1.id.localeCompare(t2.id)
+        )
+    );
+    visibleTabs = this.computedShallowEqual(() =>
+        this.allTabs.filter((tab) => tab.appWide && tab.canBeShown)
+    );
 
     _computeGlobalCounter() {
         return this.visibleTabs.reduce((sum, t) => sum + (t.important ? t.counter ?? 0 : 0), 0);

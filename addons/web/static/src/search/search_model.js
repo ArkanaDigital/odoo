@@ -1,4 +1,4 @@
-import { EventBus, proxy, toRaw, usePlugin } from "@odoo/owl";
+import { computed, EventBus, proxy, signal, toRaw, usePlugin } from "@odoo/owl";
 import { router } from "@web/core/browser/router";
 import { makeContext } from "@web/core/context";
 import { DebugModePlugin } from "@web/core/debug_mode_plugin";
@@ -166,11 +166,17 @@ function execute(op, source, target) {
     target.nextId = nextId;
     target._appliedSearch = _appliedSearch;
 
+    // Filled in place: on import, the target is the search model, whose
+    // containers are reactive and must not be replaced by raw values.
     if (query) {
-        target.query = query;
+        target.query.length = 0;
+        target.query.push(...query);
     }
     if (searchItems) {
-        target.searchItems = searchItems;
+        for (const key in target.searchItems) {
+            delete target.searchItems[key];
+        }
+        Object.assign(target.searchItems, searchItems);
     }
 
     target.searchPanelInfo = searchPanelInfo;
@@ -209,6 +215,9 @@ const FACET_TYPES = {
 export class SearchModel extends EventBus {
     query = proxy([]);
     searchItems = proxy({});
+
+    _groupByState = signal.Object({ defaultGroupBy: undefined, globalGroupBy: [] });
+    _groupBy = computed(() => (this.searchMenuTypes.has("groupBy") ? this._getGroupBy() : []));
 
     constructor(env, services, args) {
         super();
@@ -491,17 +500,27 @@ export class SearchModel extends EventBus {
         return [...this.sections.values()].filter((s) => s.type === "filter");
     }
 
+    get defaultGroupBy() {
+        return this._groupByState().defaultGroupBy;
+    }
+
+    set defaultGroupBy(groupBy) {
+        this._groupByState().defaultGroupBy = groupBy;
+    }
+
+    get globalGroupBy() {
+        return this._groupByState().globalGroupBy;
+    }
+
+    set globalGroupBy(groupBy) {
+        this._groupByState().globalGroupBy = groupBy;
+    }
+
     /**
      * @returns {string[]}
      */
     get groupBy() {
-        if (!this.searchMenuTypes.has("groupBy")) {
-            return [];
-        }
-        if (!this._groupBy) {
-            this._groupBy = this._getGroupBy();
-        }
-        return deepCopy(this._groupBy);
+        return deepCopy(this._groupBy());
     }
 
     /**
@@ -590,20 +609,6 @@ export class SearchModel extends EventBus {
     clearQuery() {
         this.query.length = 0;
         this.orderByCount = false;
-        this._notify();
-    }
-
-    /**
-     * Removes filter, field and favorite facets but keeps groupBy ones
-     */
-    clearFilters() {
-        this.blockNotification = true;
-        this.facets.forEach((facet) => {
-            if (facet.type !== "groupBy") {
-                this.deactivateGroup(facet.groupId);
-            }
-        });
-        this.blockNotification = false;
         this._notify();
     }
 
@@ -715,7 +720,7 @@ export class SearchModel extends EventBus {
      */
     deactivateGroup(groupId) {
         if (groupId === DEFAULT_GROUPBY_ID) {
-            delete this.defaultGroupBy;
+            this.defaultGroupBy = undefined;
             this._notify();
             return;
         }
@@ -728,7 +733,7 @@ export class SearchModel extends EventBus {
      * @returns {Object}
      */
     exportState() {
-        const state = {};
+        const state = { query: [], searchItems: {} };
         execute(mapToArray, this, state);
         return state;
     }
@@ -1059,7 +1064,7 @@ export class SearchModel extends EventBus {
         if (searchItem.type !== "dateFilter" && searchItem.type !== "parentFilter") {
             return;
         }
-        const generatorIds = generatorId ? [generatorId] : searchItem.defaultGeneratorIds;
+        const generatorIds = generatorId ? [generatorId] : searchItem.defaultGeneratorIds || [];
         for (const generatorId of generatorIds) {
             const index = this.query.findIndex(
                 (queryElem) =>
@@ -1685,6 +1690,8 @@ export class SearchModel extends EventBus {
                 type: "relativeFilter",
                 fieldName: dateFilterItem.fieldName,
                 fieldType: dateFilterItem.fieldType,
+                endFieldName: dateFilterItem.endFieldName,
+                endFieldType: dateFilterItem.endFieldType,
                 description: dateFilterItem.description,
                 options: getRelativeFilterOptions(),
                 groupNumber: dateFilterItem.groupNumber,
@@ -2762,7 +2769,6 @@ export class SearchModel extends EventBus {
     _reset() {
         this._context = null;
         this._domain = null;
-        this._groupBy = null;
         this._orderBy = null;
     }
 

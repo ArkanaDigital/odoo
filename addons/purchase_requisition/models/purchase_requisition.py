@@ -110,11 +110,6 @@ class PurchaseRequisition(models.Model):
             requisition.name = self.env['ir.sequence'].with_company(requisition.company_id).next_by_code(code)
         return res
 
-    def unlink(self):
-        # Draft requisitions could have some requisition lines.
-        self.line_ids.unlink()
-        return super().unlink()
-
     def action_cancel(self):
         # try to set all associated quotations to cancel state
         for requisition in self:
@@ -129,8 +124,6 @@ class PurchaseRequisition(models.Model):
     def action_confirm(self):
         self.ensure_one()
         product_lines = self.line_ids.filtered(lambda line: not line.display_type)
-        if not product_lines:
-            raise UserError(_("You cannot confirm agreement '%(agreement)s' because it does not contain any product lines.", agreement=self.name))
         if self.requisition_type == 'blanket_order':
             for requisition_line in product_lines:
                 if requisition_line.price_unit <= 0.0:
@@ -261,10 +254,10 @@ class PurchaseRequisitionLine(models.Model):
         for line in self:
             if line.requisition_id.state != 'draft' or line.requisition_id.requisition_type != 'purchase_template' or not line.requisition_id.vendor_id or not line.product_id:
                 continue
-            seller = line.product_id._select_seller(
+            seller_info = line.product_id._select_seller(
                 partner_id=line.requisition_id.vendor_id, quantity=line.product_qty,
                 date=line.requisition_id.date_start, uom_id=line.uom_id)
-            line.price_unit = seller.price if seller else line.product_id.standard_price
+            line.price_unit = seller_info['price'] if seller_info else line.product_id.standard_price
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -311,10 +304,10 @@ class PurchaseRequisitionLine(models.Model):
             'price_unit': 0.0,
         }
 
-    def unlink(self):
+    def _delete_extra(self):
+        yield from super()._delete_extra()
         to_unlink = self.filtered(lambda r: r.requisition_id.state not in ['draft', 'cancel', 'done'])
-        to_unlink.supplier_info_ids.unlink()
-        return super().unlink()
+        yield to_unlink.supplier_info_ids
 
     def _create_supplier_info(self):
         self.ensure_one()

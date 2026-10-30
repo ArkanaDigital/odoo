@@ -1,8 +1,7 @@
 import { registry } from "@web/core/registry";
 import { _t } from "@web/core/l10n/translation";
-import { computeComboItems } from "./utils/compute_combo_items";
 import { PosOrderAccounting } from "./accounting/pos_order_accounting";
-import { getStrNotes } from "./utils/order_change";
+import { getStrNotes, receiptLineGrouper, sortLinesByCategory } from "./utils/order_change";
 
 const { DateTime } = luxon;
 
@@ -197,6 +196,10 @@ export class PosOrder extends PosOrderAccounting {
         return this.is_refund === true;
     }
 
+    get isSelfOrder() {
+        return this.source === "mobile" || this.source === "kiosk";
+    }
+
     get adjustableTipLine() {
         return this.payment_ids.find((p) => p.canBeAdjusted());
     }
@@ -245,16 +248,6 @@ export class PosOrder extends PosOrderAccounting {
         return true;
     }
 
-    getOrderline(id) {
-        const orderlines = this.lines;
-        for (let i = 0; i < orderlines.length; i++) {
-            if (orderlines[i].id === id) {
-                return orderlines[i];
-            }
-        }
-        return null;
-    }
-
     getLastOrderline() {
         const orderlines = this.lines;
         return this.lines.at(orderlines.length - 1);
@@ -294,14 +287,10 @@ export class PosOrder extends PosOrderAccounting {
         );
         for (const pLine of combo_parent_lines) {
             const { childLineFree, childLineExtra } = this.getFreeAndExtraChildLines(pLine);
-            attributes_prices[pLine.uuid] = computeComboItems(
-                pLine.product_id,
+            attributes_prices[pLine.uuid] = pLine.product_id.getComboPrice(
                 childLineFree,
-                pricelist,
-                this.models["decimal.precision"].getAll(),
-                this.models["product.template.attribute.value"].getAllBy("id"),
                 childLineExtra,
-                this.currency
+                pricelist
             );
         }
         const combo_children_lines = this.lines.filter(
@@ -450,6 +439,10 @@ export class PosOrder extends PosOrderAccounting {
         if ((payment_method.payment_interface && !this.isRefund) || payment_method.useBankQrCode) {
             newPaymentLine.setPaymentStatus("pending");
         }
+        if (payment_method.type === "pay_later") {
+            this.setToInvoice(true);
+        }
+
         return { status: true, data: newPaymentLine };
     }
 
@@ -554,7 +547,8 @@ export class PosOrder extends PosOrderAccounting {
     }
 
     getPartnerName() {
-        return this.partner_id ? this.partner_id.name : "";
+        // An address contact may have no name of its own.
+        return this.partner_id?.name || this.partner_id?.parent_name || "";
     }
 
     getCardHolderName() {
@@ -664,9 +658,12 @@ export class PosOrder extends PosOrderAccounting {
 
     // NOTE: Overrided in pos_loyalty to put loyalty rewards at this end of array.
     getOrderlines() {
+        const lines = this.config?.iface_group_by_categ
+            ? sortLinesByCategory(this.lines)
+            : this.lines;
         const regularLines = [];
         const serviceFeeLines = [];
-        for (const line of this.lines) {
+        for (const line of lines) {
             (line.isServiceFeeLine() ? serviceFeeLines : regularLines).push(line);
         }
         return [...regularLines, ...serviceFeeLines];
@@ -674,18 +671,6 @@ export class PosOrder extends PosOrderAccounting {
 
     get floatingOrderName() {
         return this.floating_order_name || this.tracking_number.toString() || "";
-    }
-
-    sortBySequenceAndCategory(a, b) {
-        const seqA = a.product_id?.pos_categ_ids[0]?.sequence ?? 0;
-        const seqB = b.product_id?.pos_categ_ids[0]?.sequence ?? 0;
-        const pos_categ_id_A = a.product_id?.pos_categ_ids[0]?.id ?? 0;
-        const pos_categ_id_B = b.product_id?.pos_categ_ids[0]?.id ?? 0;
-
-        if (seqA !== seqB) {
-            return seqA - seqB;
-        }
-        return pos_categ_id_A - pos_categ_id_B;
     }
 
     get discountLines() {
@@ -713,23 +698,6 @@ export class PosOrder extends PosOrderAccounting {
     }
     setInternalNote(note) {
         this.internal_note = note || "";
-    }
-
-    get lastPrints() {
-        return this.print_history || [];
-    }
-    pushLastPrints(data) {
-        if (!this.print_history) {
-            this.print_history = [];
-        }
-        this.print_history.push({
-            addedQuantity: data.addedQuantity,
-            noteChange: data.noteChange,
-            noteUpdate: data.noteUpdate,
-            removedQuantity: data.removedQuantity,
-            internal_note: data.internal_note,
-            general_customer_note: data.general_customer_note,
-        });
     }
 
     get showChange() {
@@ -769,8 +737,14 @@ export class PosOrder extends PosOrderAccounting {
                 customer_note: getStrNotes(line?.getCustomerNote?.() || false),
                 pos_categ_id: product.pos_categ_ids[0]?.id || 0,
                 pos_categ_sequence: product.pos_categ_ids[0]?.sequence || 0,
-                group: (!opts.hideCourse && line?.getCourse?.()) || false,
-                combo_line_ids: line?.combo_line_ids,
+                group:
+                    (!opts.hideCourse && line?.getCourse?.()) ||
+                    receiptLineGrouper.getGroup(line) ||
+                    false,
+                combo_line_ids: line?.combo_line_ids?.map((l) => ({
+                    id: l.id,
+                    product_id: l.product_id.id,
+                })),
                 combo_parent_uuid: line?.combo_parent_id?.uuid,
                 uom_is_base_unit: line?.product_id?.uom_id?.id == line?.config?._unit_uom_id,
             },
@@ -993,7 +967,8 @@ export class PosOrder extends PosOrderAccounting {
     }
 
     get remainingDueAmount() {
-        return this.orderCurrency.convert(this.hasRemainingDue ? this.remainingDue : this.change);
+        const amount = this.hasRemainingDue ? this.remainingDue : this.change;
+        return this.convertAmountToCurrency(amount, this.orderCurrency);
     }
 
     get remainingDueLabel() {

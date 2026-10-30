@@ -1,13 +1,14 @@
 import { defineCrmLivechatModels } from "@crm_livechat/../tests/crm_livechat_test_helpers";
 import { describe, test } from "@odoo/hoot";
+import { waitForNone } from "@odoo/hoot-dom";
 import {
     click,
     contains,
-    insertText,
     openDiscuss,
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
+import { insertTextInComposer } from "@mail/../tests/mail_test_helpers_composer";
 import { Command, serverState } from "@web/../tests/web_test_helpers";
 
 describe.current.tags("desktop");
@@ -30,9 +31,9 @@ test("Can open lead from internal link", async () => {
     });
     await start();
     await openDiscuss(channelId);
-    await insertText(".o-mail-Composer-input", "/lead My Lead");
+    await insertTextInComposer(".o-mail-Composer", "/lead My Lead");
     await click(".o-mail-Composer button[title='Send']:enabled");
-    await contains(".o-mail-ChatWindow", { count: 0 });
+    await waitForNone(".o-mail-ChatWindow");
     await click('.o-mail-NotificationMessage a[data-oe-model="crm.lead"]');
     await contains(".o-mail-ChatWindow-header", { text: "Visitor" });
     await contains(".o_form_view .o_last_breadcrumb_item span", { text: "My Lead" });

@@ -1,4 +1,4 @@
-import { Store } from "@mail/core/common/store_service";
+import { Store } from "@mail/core/common/store_plugin";
 import { fields } from "@mail/model/misc";
 import { useSequential } from "@mail/utils/common/hooks";
 import { rpc } from "@web/core/network/rpc";
@@ -9,7 +9,6 @@ import { patch } from "@web/core/utils/patch";
 const StorePatch = {
     setup() {
         super.setup(...arguments);
-        this.channels = this.makeCachedFetchData("channels_as_member");
         this.hasHiddenChannelsFetcher = this.makeCachedFetchData("has_hidden_channels");
         this.fetchSsearchConversationsSequential = useSequential();
         this.fetchMostPopularChannelsFetcher = this.makeCachedFetchData(

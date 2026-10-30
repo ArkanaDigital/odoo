@@ -13,6 +13,21 @@
                 </button>
             </t>
         </div>
+        <t t-set="mobile_additional_action" position="replace">
+            <t
+                t-set="mobile_additional_action"
+                t-value="sale_order.with_user(env.user).sudo()._is_portal_return_allowed()"/>
+        </t>
+        <a id="mobile_feedback_button" position="before">
+            <button
+                t-if="mobile_additional_action"
+                t-attf-class="btn btn-light o_return_button#{'' if mobile_has_primary_action else ' flex-grow-1'}"
+                t-att-data-sale-order-id="sale_order.id"
+                t-att-data-access-token="access_token"
+            >
+                <i class="oi me-1" data-icon="reply"/>Return
+            </button>
+        </a>
     </template>
 
     <template
@@ -92,50 +107,6 @@
                 </div>
             </div>
         </div>
-    </template>
-
-    <template
-        id="sale_stock.portal_my_orders"
-        name="Portal Orders Shipping Status Column"
-        inherit_id="sale.portal_my_orders"
-    >
-        <th name="order_total" position="before">
-            <th class="text-end" name="order_delivery">Shipping Status</th>
-        </th>
-        <td name="order_amount_total" position="before">
-            <td class="text-end" name="order_delivery_status">
-                <span
-                    t-if="order.delivery_status == 'pending'"
-                    class="badge rounded-pill text-bg-warning"
-                >
-                    Not Delivered
-                </span>
-                <span
-                    t-elif="order.delivery_status == 'started'"
-                    class="badge rounded-pill text-bg-primary"
-                >
-                    Started
-                </span>
-                <span
-                    t-elif="order.delivery_status == 'partial'"
-                    class="badge rounded-pill text-bg-info"
-                >
-                    Partially Delivered
-                </span>
-                <span
-                    t-elif="order.delivery_status == 'full'"
-                    class="badge rounded-pill text-bg-success"
-                >
-                    Delivered
-                </span>
-                <span
-                    t-else=""
-                    class="badge rounded-pill text-bg-danger"
-                >
-                    Not Available
-                </span>
-            </td>
-        </td>
     </template>
 
 </odoo>

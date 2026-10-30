@@ -8,7 +8,6 @@ from odoo.tests.common import users
 
 
 @tagged('multi_company')
-@tagged('at_install', '-post_install')  # LEGACY at_install
 class TestCRMLeadMultiCompany(TestCrmCommon):
 
     @classmethod
@@ -248,7 +247,7 @@ class TestCRMLeadMultiCompany(TestCrmCommon):
 
         # user_sales_manager cannot read it due to MC rules
         with self.assertRaises(AccessError):
-            lead.with_user(self.user_sales_manager).read(['name'])
+            lead.with_user(self.user_sales_manager).fetch(['name'])
 
     @users('user_sales_manager_mc')
     def test_lead_mc_company_form_progressives_setup(self):

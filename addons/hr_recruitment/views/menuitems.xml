@@ -5,7 +5,7 @@
         id="menu_hr_recruitment_root"
         web_icon="hr_recruitment,static/description/icon.png"
         groups="hr_recruitment.group_hr_recruitment_user,hr_recruitment.group_hr_recruitment_interviewer"
-        sequence="210"/>
+        sequence="205"/>
 
         <menuitem
             name="Applications"
@@ -171,6 +171,13 @@
                     id="menu_hr_department"
                     parent="menu_hr_recruitment_config_employees"
                     action="action_hr_department"/>
+
+                <menuitem
+                    id="hr_recruitment_skill_type_menu"
+                    name="Skill Types"
+                    parent="menu_hr_recruitment_config_employees"
+                    action="hr.hr_skill_type_action"
+                    sequence="35"/>
 
             <menuitem
                 id="menu_hr_recruitment_config_activities"

@@ -54,6 +54,36 @@ class TestNotifySecurityUpdate(MailCommon):
             subject='Security Update: Password Changed',
         )
 
+    @users('admin')
+    def test_security_update_recipient_lang(self):
+        self.env['res.lang']._activate_lang('fr_BE')
+        user = self.user_employee
+        user.lang = 'fr_BE'
+
+        view = self.env.ref('mail.account_security_alert')
+        # Disable inherited template to avoid error
+        inherit_views = self.env['ir.ui.view'].search([
+            ('inherit_id', '=', view.id),
+        ])
+        inherit_views.active = False
+        view.with_context(lang='en_US').arch = '<div>mail in EN</div>'
+        view.update_field_translations('arch_db', {
+           'fr_BE': {
+                'mail in EN': 'email en FR',
+            }
+        })
+
+        with self.mock_mail_gateway():
+            user.write({'password': 'newpassword'})
+
+        # Limitation for now, subject is still in the sender language
+        self.assertSentEmail(
+            '"YourTestCompany" <your.company@example.com>',
+            [user.email_formatted],
+            subject='Security Update: Password Changed',
+            body_content='<div>email en FR</div>'
+        )
+
 
 @tagged('mail_tools', 'res_users')
 class TestUser(MailCommon):
@@ -120,6 +150,31 @@ class TestUser(MailCommon):
         self.assertTrue(admin._is_portal())
         self.assertEqual(admin.notification_type, 'email')
         self.assertNotIn(self.env.ref('mail.group_mail_notification_type_inbox'), admin.group_ids)
+
+    def test_notification_type_preserves_user_role(self):
+        # MailCommon grants template editing to all internal users, which implies regular access.
+        self.env['ir.config_parameter'].set_bool('mail.restrict.template.rendering', True)
+        inbox_group = self.env.ref('mail.group_mail_notification_type_inbox')
+        regular_group = self.env.ref('base.group_user_regular')
+        for role, groups in [
+            ('light_user', 'base.group_user'),
+            ('regular_user', 'base.group_user,base.group_user_regular'),
+        ]:
+            with self.subTest(role=role):
+                user = mail_new_test_user(
+                    self.env,
+                    login=f'notification_{role}',
+                    groups=groups,
+                    notification_type='email',
+                )
+                self.assertEqual(user.role, role)
+                self.assertEqual(regular_group in user.all_group_ids, role == 'regular_user')
+                for notification_type in ('inbox', 'email'):
+                    user.with_user(user).write({'notification_type': notification_type})
+                    self.assertEqual(user.notification_type, notification_type)
+                    self.assertEqual(user.role, role)
+                    self.assertEqual(inbox_group in user.group_ids, notification_type == 'inbox')
+                    self.assertEqual(regular_group in user.all_group_ids, role == 'regular_user')
 
     @freeze_time("2025-06-18 08:45:12")
     def test_out_of_office(self):
@@ -251,6 +306,15 @@ class TestUserSettings(MailCommon):
         })
         result = self.env['res.users.settings']._find_or_create_for_user(self.user_employee)
         self.assertEqual(result, settings, "Correct mail user settings should be returned")
+
+    @users("employee")
+    def test_res_users_settings_format_skips_volumes(self):
+        settings = self.user_employee.res_users_settings_id
+        settings.set_volume_setting(self.partner_admin.id, 0.3)
+        res = settings._res_users_settings_format()
+        self.assertIn("channel_notifications", res)
+        self.assertNotIn("volume_settings_ids", res)
+        self.assertNotIn("volumes", res)
 
     @users('employee')
     def test_set_res_users_settings_should_send_notification_on_bus(self):

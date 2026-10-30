@@ -1,6 +1,7 @@
 import {
+    actionPanel,
     click,
-    contains,
+    contains as mailContains,
     defineMailModels,
     insertText,
     listenStoreFetch,
@@ -14,8 +15,8 @@ import {
     triggerHotkey,
     waitStoreFetch,
 } from "@mail/../tests/mail_test_helpers";
-import { describe, expect, test } from "@odoo/hoot";
-import { Command, getService, onRpc, serverState } from "@web/../tests/web_test_helpers";
+import { describe, expect, test, waitFor, waitForNone } from "@odoo/hoot";
+import { Command, contains, getService, onRpc, serverState } from "@web/../tests/web_test_helpers";
 
 import { pick } from "@web/core/utils/objects";
 
@@ -48,8 +49,8 @@ test("can create a new channel", async () => {
         "/mail/messaging_menu/initialize_counters",
         "/mail/messaging_menu/discuss.channel/load_more",
     ]);
-    await contains(".o-mail-Discuss");
-    await contains(".o-mail-NotificationItem:has(:text('abc'))", { count: 0 });
+    await waitFor(".o-mail-Discuss:count(1)");
+    await waitForNone(".o-mail-NotificationItem:has(:text('abc'))");
     await triggerHotkey("control+k");
     await insertText(".o_command_palette_search input[placeholder='Search conversations']", "abc");
     await expect.waitForSteps([
@@ -57,10 +58,10 @@ test("can create a new channel", async () => {
         `/discuss/search - {"term":""}`,
         `/discuss/search - {"term":"abc"}`,
     ]);
-    await click(".o-mail-DiscussCommand-nameContainer:text('Create Channel')");
-    await click("button:text(Create Channel)");
-    await contains(".o-mail-MessagingMenuItem:has(:text('abc'))");
-    await contains(".o-mail-Message", { count: 0 });
+    await contains(".o-mail-DiscussCommand-nameContainer:text('Create Channel'):count(1)").click();
+    await contains("button:text(Create Channel):count(1)").click();
+    await waitFor(".o-mail-MessagingMenuItem:has(:text('abc')):count(1)");
+    await waitForNone(".o-mail-Message");
     const [channelId] = pyEnv["discuss.channel"].search([["name", "=", "abc"]]);
     const [selfMember] = pyEnv["discuss.channel.member"].search_read([
         ["channel_id", "=", channelId],
@@ -95,11 +96,11 @@ test("can create a read-only channel", async () => {
     await openDiscuss();
     await triggerHotkey("control+k");
     await insertText(".o_command_palette input", "abc");
-    await click("a:text('Create Channel abc')");
-    await click("input[type='checkbox'][name='readonly']");
+    await contains("a:text('Create Channel abc'):count(1)").click();
+    await contains("input[type='checkbox'][name='readonly']:count(1)").click();
     await triggerHotkey("Enter");
-    await contains(".o-mail-MessagingMenuItem:has(:text('abc'))");
-    await contains(".o-mail-Message", { count: 0 });
+    await waitFor(".o-mail-MessagingMenuItem:has(:text('abc')):count(1)");
+    await waitForNone(".o-mail-Message");
     const [channelId] = pyEnv["discuss.channel"].search([["name", "=", "abc"]]);
     const channel = pyEnv["discuss.channel"].browse(channelId)[0];
     expect(channel.is_readonly).toBe(true);
@@ -138,18 +139,18 @@ test("can make a DM chat", async () => {
     ]);
     await openDiscuss();
     await waitStoreFetch(["/mail/messaging_menu/discuss.channel/load_more"]);
-    await contains(".o-mail-Discuss");
-    await contains(".o-mail-MessagingMenuItem:has(:text('Mario'))", { count: 0 });
+    await waitFor(".o-mail-Discuss:count(1)");
+    await waitForNone(".o-mail-MessagingMenuItem:has(:text('Mario'))");
     await triggerHotkey("control+k");
-    await contains(".o_command_name", { count: 2 });
+    await waitFor(".o_command_name:count(2)");
     await insertText(
         ".o_command_palette_search input[placeholder='Search conversations']",
         "mario"
     );
-    await contains(".o_command_name", { count: 2 });
-    await click(".o_command_name:text('Mario')");
-    await contains(".o-mail-MessagingMenuItem:has(:text('Mario'))");
-    await contains(".o-mail-Message", { count: 0 });
+    await waitFor(".o_command_name:count(2)");
+    await contains(".o_command_name:text('Mario'):count(1)").click();
+    await waitFor(".o-mail-MessagingMenuItem:has(:text('Mario')):count(1)");
+    await waitForNone(".o-mail-Message");
     const [channelId] = pyEnv["discuss.channel"].search([["name", "=", "Mario, Mitchell Admin"]]);
     await waitStoreFetch(
         [
@@ -179,20 +180,22 @@ test("can create a group chat conversation", async () => {
     await start();
     await openDiscuss();
     await triggerHotkey("control+k");
-    await click(".o_command_name:text(Mario)");
-    await contains(".o-mail-DiscussContent-threadName[title='Mario']");
-    await click("[title='Invite People']");
-    await click(".o-discuss-ChannelInvitation-selectable:has(:text(Luigi))");
-    await click("button:text('Create Group Chat')");
-    await contains(".o-mail-MessagingMenuItem:has(:text('Mitchell Admin, Mario, and Luigi");
+    await contains(".o_command_name:text(Mario):count(1)").click();
+    await waitFor(".o-mail-DiscussContent-threadName[title='Mario']:count(1)");
+    await contains("[title='Invite People']:count(1)").click();
+    await contains(".o-discuss-ChannelInvitation-selectable:has(:text(Luigi)):count(1)").click();
+    await contains("button:text('Create Group Chat'):count(1)").click();
+    await waitFor(
+        ".o-mail-MessagingMenuItem:has(:text('Mitchell Admin, Mario, and Luigi')):count(1)"
+    );
 });
 
 test("mobile chat search should allow to create group chat", async () => {
     patchUiSize({ size: SIZES.SM });
     await start();
     await openDiscuss();
-    await click("button:text('Chat')");
-    await contains(".modal-title:text('New Chat')");
+    await contains("button:text('Chat'):count(1)").click();
+    await waitFor(".modal-title:text('New Chat'):count(1)");
 });
 
 test("Chat is pinned on other tabs when joined", async () => {
@@ -204,15 +207,15 @@ test("Chat is pinned on other tabs when joined", async () => {
     await triggerHotkey("control+k");
     const env2 = await start({ asTab: true, waitUntilSubscribe: false });
     await openDiscuss(undefined, { target: env2 });
-    await contains(`${env1.selector} .o_command_name`, { count: 2 });
+    await waitFor(`${env1.selector} .o_command_name:count(2)`);
     await insertText(
         `${env1.selector} .o_command_palette_search input[placeholder='Search conversations']`,
         "Jer"
     );
-    await contains(`${env1.selector} .o_command_name`, { count: 2 });
-    await click(`${env1.selector} .o_command_name:text('Jerry Golay')`);
-    await contains(`${env1.selector} .o-mail-MessagingMenuItem:has(:text('Jerry Golay'))`);
-    await contains(`${env2.selector} .o-mail-MessagingMenuItem:has(:text('Jerry Golay'))`);
+    await waitFor(`${env1.selector} .o_command_name:count(2)`);
+    await contains(`${env1.selector} .o_command_name:text('Jerry Golay'):count(1)`).click();
+    await waitFor(`${env1.selector} .o-mail-MessagingMenuItem:has(:text('Jerry Golay')):count(1)`);
+    await waitFor(`${env2.selector} .o-mail-MessagingMenuItem:has(:text('Jerry Golay')):count(1)`);
 });
 
 test("Auto-open OdooBot chat when opening discuss for the first time", async () => {
@@ -228,7 +231,7 @@ test("Auto-open OdooBot chat when opening discuss for the first time", async () 
     });
     await start();
     await openDiscuss();
-    await contains(".o-mail-DiscussContent-threadName", { value: "OdooBot" });
+    await mailContains(".o-mail-DiscussContent-threadName", { value: "OdooBot" });
 });
 
 test("no conversation selected when opening non-existing channel in discuss", async () => {
@@ -236,8 +239,8 @@ test("no conversation selected when opening non-existing channel in discuss", as
     pyEnv["discuss.channel"].create({ name: "General" });
     await start();
     await openDiscuss(200); // non-existing id
-    await contains("h4:text('No conversation selected.')");
-    await click(".o-mail-MessagingMenu-tab[data-id='channel']"); // check no crash
+    await waitFor("h4:text('No conversation selected.'):count(1)");
+    await contains(".o-mail-MessagingMenu-tab[data-id='channel']:count(1)").click(); // check no crash
 });
 
 test("can access portal partner profile from avatar popover", async () => {
@@ -265,10 +268,10 @@ test("can access portal partner profile from avatar popover", async () => {
     await click(".o-mail-Message-avatar", {
         parent: [".o-mail-Message:has(:text('Joel'))"],
     });
-    await contains(".o-mail-avatar-card-name:text('Joel')");
-    await click("button:text('View Profile')");
-    await contains(".o_form_view");
-    await contains(".o_field_widget[name='name'] .o_input", { value: "Joel" });
+    await waitFor(".o-mail-avatar-card-name:text('Joel'):count(1)");
+    await contains("button:text('View Profile'):count(1)").click();
+    await waitFor(".o_form_view:count(1)");
+    await mailContains(".o_field_widget[name='name'] .o_input", { value: "Joel" });
 });
 
 test("clicking chat correspondent avatars opens avatar card", async () => {
@@ -286,15 +289,15 @@ test("clicking chat correspondent avatars opens avatar card", async () => {
     });
     await start();
     await openDiscuss(channelId);
-    await contains(".o-mail-Composer-input:focus");
-    await click(".o-mail-DiscussContent-threadAvatar.cursor-pointer");
-    await contains(".o_avatar_card");
-    await contains(".o-mail-avatar-card-name:text('Mario')");
-    await contains(".o_card_user_infos > a:text('mario@example.com')");
-    await click(".o-mail-Thread-avatar.cursor-pointer");
-    await contains(".o_avatar_card");
-    await contains(".o-mail-avatar-card-name:text('Mario')");
-    await contains(".o_card_user_infos > a:text('mario@example.com')");
+    await waitFor(".o-mail-Composer-html:focus:count(1)");
+    await contains(".o-mail-DiscussContent-threadAvatar.cursor-pointer:count(1)").click();
+    await waitFor(".o_avatar_card:count(1)");
+    await waitFor(".o-mail-avatar-card-name:text('Mario'):count(1)");
+    await waitFor(".o_card_user_infos > a:text('mario@example.com'):count(1)");
+    await contains(".o-mail-Thread-avatar.cursor-pointer:count(1)").click();
+    await waitFor(".o_avatar_card:count(1)");
+    await waitFor(".o-mail-avatar-card-name:text('Mario'):count(1)");
+    await waitFor(".o_card_user_infos > a:text('mario@example.com'):count(1)");
 });
 
 test("Preserve letter case and accents when creating channel from sidebar", async () => {
@@ -305,9 +308,9 @@ test("Preserve letter case and accents when creating channel from sidebar", asyn
         ".o_command_palette_search input[placeholder='Search conversations']",
         "Crème brûlée Fan Club"
     );
-    await click(".o-mail-DiscussCommand-nameContainer:text('Create Channel')");
-    await click("button:text(Create Channel)");
-    await contains(".o-mail-DiscussContent-threadName", { value: "Crème brûlée Fan Club" });
+    await contains(".o-mail-DiscussCommand-nameContainer:text('Create Channel'):count(1)").click();
+    await contains("button:text(Create Channel):count(1)").click();
+    await mailContains(".o-mail-DiscussContent-threadName", { value: "Crème brûlée Fan Club" });
 });
 
 test("Create channel must have a name", async () => {
@@ -315,10 +318,10 @@ test("Create channel must have a name", async () => {
     await openDiscuss();
     await triggerHotkey("control+k");
     await insertText(".o_command_palette input", "abc");
-    await click(".o-mail-DiscussCommand-nameContainer:text('Create Channel')");
+    await contains(".o-mail-DiscussCommand-nameContainer:text('Create Channel'):count(1)").click();
     await insertText("input[placeholder='Channel name']:value(abc)", "", { replace: true });
     await triggerHotkey("Enter");
-    await contains(".invalid-feedback:text('Channel must have a name.')");
+    await waitFor(".invalid-feedback:text('Channel must have a name.'):count(1)");
 });
 
 test("Can join accessible channel via thread action", async () => {
@@ -334,8 +337,8 @@ test("Can join accessible channel via thread action", async () => {
         tag: "mail.action_discuss",
         type: "ir.actions.client",
     });
-    await contains(".o-mail-ActionPanel:has(.o-mail-ActionPanel-header:contains('Members'))");
-    await contains(".o-discuss-ChannelMember", { count: 0 });
-    await click("[title='Join Channel']");
-    await contains(".o-discuss-ChannelMember:text('Mitchell Admin')");
+    await waitFor(`${actionPanel("Members")}:count(1)`);
+    await waitForNone(".o-discuss-ChannelMember");
+    await contains("[title='Join Channel']:count(1)").click();
+    await waitFor(".o-discuss-ChannelMember:text('Mitchell Admin'):count(1)");
 });

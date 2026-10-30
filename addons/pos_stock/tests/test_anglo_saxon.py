@@ -140,18 +140,30 @@ class TestAngloSaxonFlow(TestAngloSaxonCommon):
         """
         # check fifo Costing Method of product.category
         self.product.categ_id.property_cost_method = 'fifo'
-        self.product.standard_price = 5.0
-        self.env['stock.quant'].with_context(inventory_mode=True).create({
+        move = self.env['stock.move'].create({
             'product_id': self.product.id,
-            'inventory_quantity': 5.0,
-            'location_id': self.warehouse.lot_stock_id.id,
-        }).action_apply_inventory()
-        self.product.standard_price = 1.0
-        self.env['stock.quant'].with_context(inventory_mode=True).create({
+            'location_id': self.env.ref('stock.stock_location_suppliers').id,
+            'location_dest_id': self.warehouse.lot_stock_id.id,
+            'product_uom_qty': 5,
+            'picking_type_id': self.warehouse.in_type_id.id,
+            'value_manual': 5 * 5,
+            'price_unit': 5,
+        })
+        move.quantity = move.product_uom_qty
+        move.picked = True
+        move._action_done()
+        move = self.env['stock.move'].create({
             'product_id': self.product.id,
-            'inventory_quantity': 10.0,
-            'location_id': self.warehouse.lot_stock_id.id,
-        }).action_apply_inventory()
+            'location_id': self.env.ref('stock.stock_location_suppliers').id,
+            'location_dest_id': self.warehouse.lot_stock_id.id,
+            'product_uom_qty': 5,
+            'picking_type_id': self.warehouse.in_type_id.id,
+            'value_manual': 5 * 1,
+            'price_unit': 1,
+        })
+        move.quantity = move.product_uom_qty
+        move.picked = True
+        move._action_done()
         self.assertEqual(self.product.total_value, 30, "Value should be (5*5 + 5*1) = 30")
         self.assertEqual(self.product.virtual_available, 10)
         self.pos_config.open_ui()
@@ -414,8 +426,8 @@ class TestAngloSaxonFlow(TestAngloSaxonCommon):
             'name': 'Test Pricelist',
             'item_ids': [
                 Command.create({
-                    'compute_price': 'percentage',
-                    'percent_price': '5.0',
+                    'compute_price': 'discount',
+                    'price_discount': '5.0',
                     'min_quantity': 0,
                     'applied_on': '3_global',
                 })
@@ -453,7 +465,7 @@ class TestAngloSaxonFlow(TestAngloSaxonCommon):
         invoice = self.pos_order_pos0._generate_pos_order_invoice()
         self.assertTrue('Price discount from 100.00 to 95.00' in invoice.invoice_line_ids.filtered(lambda l: l.display_type == "line_note").display_name)
         product_line = invoice.invoice_line_ids.filtered(
-            lambda line: line.display_type == "product" and line.name == self.product.name,
+            lambda line: line.product_id == self.product,
         )
         self.assertEqual(product_line.price_unit, 95)  # Only pricelist applies
         self.assertEqual(product_line.discount, 5)  # Disount is reflected

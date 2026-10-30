@@ -1,17 +1,16 @@
-import { Reactive } from "@web/core/utils/reactive";
+import { Mutex } from "@web/core/utils/concurrency";
 import { ConnectionLostError, RPCError, rpc } from "@web/core/network/rpc";
 import { _t } from "@web/core/l10n/translation";
 import { formatCurrency as webFormatCurrency } from "@web/core/currency";
-import { markup } from "@odoo/owl";
+import { markup, proxy, usePlugin } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { registry } from "@web/core/registry";
 import { cookie } from "@web/core/browser/cookie";
-import { formatDateTime, serializeDateTime } from "@web/core/l10n/dates";
+import { serializeDateTime } from "@web/core/l10n/dates";
 import { TimeoutPopup } from "@pos_self_order/app/components/timeout_popup/timeout_popup";
 import { NetworkConnectionLostPopup } from "@pos_self_order/app/components/network_connectionLost_popup/network_connectionLost_popup";
 import { UnavailableProductsDialog } from "@pos_self_order/app/components/unavailable_product_dialog/unavailable_product_dialog";
 import {
-    constructFullProductName,
     random5Chars,
     isValidPhone,
     isValidEmail,
@@ -20,40 +19,33 @@ import {
 } from "@point_of_sale/utils";
 import { getOrderLineValues } from "./card_utils";
 import { initLNA } from "@point_of_sale/app/utils/init_lna";
-import { GeneratePrinterData } from "@point_of_sale/app/utils/printer/generate_printer_data";
 import { SnoozeTracker } from "@point_of_sale/app/models/utils/snooze_tracker";
 import { InfoPopup } from "@pos_self_order/app/components/info_popup/info_popup";
 import { ComboSuggestion } from "@point_of_sale/app/models/utils/combo_suggestion";
 import { session } from "@web/session";
+import { PosDataPlugin } from "@point_of_sale/app/plugins/pos_data_plugin";
+import { PosTicketPrinterPlugin } from "@point_of_sale/app/plugins/pos_ticket_printer_plugin";
 
 const { DateTime } = luxon;
 
-export class SelfOrder extends Reactive {
-    static serviceDependencies = [
-        "notification",
-        "router",
-        "pos_data",
-        "pos_ticket_printer",
-        "barcode",
-        "bus_service",
-        "dialog",
-    ];
+export class SelfOrder {
+    static serviceDependencies = ["notification", "router", "barcode", "bus_service", "dialog"];
 
     constructor(...args) {
-        super();
-        this.ready = this.setup(...args).then(() => this);
+        const self = proxy(this);
+        self.ready = self.setup(...args).then(() => self);
+        return self;
     }
 
-    async setup(
-        env,
-        { notification, router, pos_ticket_printer, barcode, bus_service, dialog, pos_data }
-    ) {
+    async setup(env, { notification, router, barcode, bus_service, dialog }) {
+        this.data = usePlugin(PosDataPlugin);
+        this.ticketPrinter = usePlugin(PosTicketPrinterPlugin);
+        this.ticketPrinter.init(env);
+
         // services
         this.notification = notification;
         this.router = router;
-        this.data = pos_data;
         this.env = env;
-        this.ticketPrinter = pos_ticket_printer;
         this.barcode = barcode;
         this.bus = bus_service;
         this.dialog = dialog;
@@ -73,6 +65,7 @@ export class SelfOrder extends Reactive {
         this.rpcLoading = false;
         this.paymentError = false;
         this.selectedOrderUuid = null;
+        this.orderSyncMutex = new Mutex();
         this.ordering = false;
         this.orderTakeAwayState = {};
         this.orderSubscribtion = new Set();
@@ -124,6 +117,7 @@ export class SelfOrder extends Reactive {
             if (hasNewProducts) {
                 this.initProducts();
             }
+            this.availableCategories = this.getAvailableCategories();
         });
         if (this.config.self_ordering_mode === "kiosk") {
             this.data.connectWebSocket("STATUS", ({ status }) => {
@@ -137,6 +131,9 @@ export class SelfOrder extends Reactive {
             });
             this.data.connectWebSocket("PAYMENT_STATUS", ({ payment_result, data }) => {
                 if (payment_result === "Success") {
+                    const [orderData] = data["pos.order"];
+                    const localOrder = this.models["pos.order"].get(orderData.id);
+                    orderData.partner_id = localOrder?.raw.partner_id || false;
                     this.models.connectNewData(data);
                     const order = this.models["pos.order"].find(
                         (o) => o.access_token === data["pos.order"][0].access_token
@@ -198,9 +195,25 @@ export class SelfOrder extends Reactive {
      * scanned another QR code after creating the order.
      */
     get currentTable() {
+        if (this.config.self_ordering_service_mode === "dynamic_qr") {
+            const order = this.currentOrder;
+            return order.self_ordering_table_id || order.table_id || null;
+        }
         const tableIdentifier = this.router.getTableIdentifier();
         const table = this.models["restaurant.table"].find((t) => t.identifier === tableIdentifier);
         return table || null;
+    }
+
+    get currentTableIdentifier() {
+        if (this.config.self_ordering_service_mode === "dynamic_qr") {
+            const order = this.currentOrder;
+            return order.self_ordering_table_id?.identifier || order.table_id?.identifier || null;
+        }
+        return this.router.getTableIdentifier() ?? null;
+    }
+
+    get isDynamicQrBlocked() {
+        return this.config.self_ordering_service_mode === "dynamic_qr" && !this.ordering;
     }
 
     get selfService() {
@@ -218,8 +231,10 @@ export class SelfOrder extends Reactive {
         let now = luxon.DateTime.now();
         now = now.hour + now.minute / 60;
         const availableCategories = this.productCategories
-            .filter(
-                (c) => this.productByCategIds[c.id]?.length > 0 || c.associatedProducts?.length > 0
+            .filter((c) =>
+                (c.associatedProducts || this.productByCategIds[c.id] || []).some(
+                    (p) => p.self_order_available
+                )
             )
             .sort((a, b) => a.sequence - b.sequence);
         return availableCategories.filter((c) => {
@@ -240,6 +255,23 @@ export class SelfOrder extends Reactive {
     computeAvailableCategories() {
         this.availableCategories = this.getAvailableCategories();
         this.currentCategory = this.availableCategories[0];
+    }
+
+    get topCategories() {
+        const topCategories = [];
+        for (const category of this.availableCategories) {
+            let topCategory = category;
+            for (const parent of category.allParents || []) {
+                if (!parent.self_order_available) {
+                    break;
+                }
+                topCategory = parent;
+            }
+            if (!topCategories.includes(topCategory)) {
+                topCategories.push(topCategory);
+            }
+        }
+        return topCategories.sort((a, b) => a.sequence - b.sequence);
     }
 
     isCategoryAvailable(categId) {
@@ -328,6 +360,7 @@ export class SelfOrder extends Reactive {
                 options.categories[date].subCategories[slot.periode].options.push({
                     id: slot.datetime.toFormat("yyyy-MM-dd HH:mm:ss"),
                     name: this.getTime(slot.datetime),
+                    disabled: slot.isFull,
                 });
             }
         }
@@ -348,7 +381,7 @@ export class SelfOrder extends Reactive {
         try {
             const presetAvailabilities = await rpc(`/pos-self-order/get-slots`, {
                 access_token: this.access_token,
-                preset_id: this.currentOrder?.preset_id?.id,
+                preset_id: preset.id,
             });
             const localUsage = orderUsageUTCtoLocalUtil(presetAvailabilities.usage_utc);
             preset.computeAvailabilities(localUsage);
@@ -379,7 +412,6 @@ export class SelfOrder extends Reactive {
         customValues = {},
         comboValues = {}
     ) {
-        const product = productTemplate.product_variant_ids[0];
         this.resetTip();
         const values = getOrderLineValues(
             this,
@@ -391,11 +423,6 @@ export class SelfOrder extends Reactive {
             comboValues
         );
         const newLine = this.models["pos.order.line"].create(values);
-        newLine.full_product_name = constructFullProductName(
-            newLine,
-            this.models["product.template.attribute.value"].getAllBy("id"),
-            product.name
-        );
         const lineToMerge = this.currentOrder.lines.find(
             (l) => l.canBeMergedWith(newLine) && l.id !== newLine.id
         );
@@ -458,7 +485,7 @@ export class SelfOrder extends Reactive {
 
         // When no payment methods redirect to confirmation page
         // the client will be able to pay at counter
-        if (!this.hasPaymentMethod()) {
+        if (!(this.hasPaymentMethod() && order.priceIncl)) {
             let screenMode = "pay";
 
             if (orderHasChanges) {
@@ -481,9 +508,11 @@ export class SelfOrder extends Reactive {
     }
 
     get currentOrder() {
-        const currentOrder = this.getOrder();
-        if (currentOrder) {
-            return currentOrder;
+        if (this.selectedOrderUuid) {
+            const currentOrder = this.models["pos.order"].getBy("uuid", this.selectedOrderUuid);
+            if (currentOrder && this.isOrderAvailable(currentOrder)) {
+                return currentOrder;
+            }
         }
 
         const existingOrder = this.models["pos.order"].find((o) => this.isOrderAvailable(o));
@@ -492,6 +521,10 @@ export class SelfOrder extends Reactive {
             return existingOrder;
         }
         return this.createNewOrder();
+    }
+
+    getOrder() {
+        return this.currentOrder;
     }
 
     isOrderAvailable(order) {
@@ -505,15 +538,6 @@ export class SelfOrder extends Reactive {
             (isPaid && isZeroAmount && isKiosk) ||
             (isPaid && this.router.activeSlot === "confirmation")
         );
-    }
-
-    getOrder() {
-        const order = this.models["pos.order"].getBy("uuid", this.selectedOrderUuid);
-        if (order && this.isOrderAvailable(order)) {
-            return order;
-        } else {
-            return null;
-        }
     }
 
     createNewOrder() {
@@ -552,9 +576,12 @@ export class SelfOrder extends Reactive {
     }
 
     initProducts() {
-        this.productCategories = this.config.limit_categories
+        const categories = this.config.limit_categories
             ? this.config.iface_available_categ_ids
             : this.models["pos.category"].getAll();
+        // Categories unavailable in self order are never displayed in the menu. Their products
+        // are still loaded so that they remain selectable as combo choices.
+        this.productCategories = categories.filter((c) => c.self_order_available);
         this.productByCategIds = this.models["product.template"].getAllBy("pos_categ_ids");
 
         const excludedProductTemplateIds = new Set(
@@ -672,9 +699,28 @@ export class SelfOrder extends Reactive {
             this.config.self_ordering_mode !== "consultation" &&
             (this.session || this.models["pos.preset"].filter((p) => p.use_timing).length > 0)
         ) {
-            await this.getUserDataFromServer();
-            this.ordering = true;
-            if (!this.isSessionOpened) {
+            if (this.config.self_ordering_service_mode === "dynamic_qr") {
+                this.selectedOrderUuid = null;
+                this.ordering = false;
+                const orderIdentifier = this.router.getOrderIdentifier();
+                if (orderIdentifier) {
+                    await this.getUserDataFromServer([orderIdentifier], {
+                        pushOrphanedLines: false,
+                    });
+                    const order = this.models["pos.order"].find(
+                        (o) => o.access_token === orderIdentifier
+                    );
+                    if (order?.state === "draft") {
+                        this.selectedOrderUuid = order.uuid;
+                        this.ordering = true;
+                    }
+                }
+            } else {
+                await this.getUserDataFromServer();
+                this.ordering = true;
+            }
+
+            if (!this.isSessionOpened && !this.isDynamicQrBlocked) {
                 this.dialog.add(InfoPopup, {
                     text: _t(
                         "The shop is currently closed but you can still place an order for later."
@@ -787,6 +833,10 @@ export class SelfOrder extends Reactive {
     }
 
     async sendDraftOrderToServer() {
+        return this.orderSyncMutex.exec(() => this._sendDraftOrderToServer());
+    }
+
+    async _sendDraftOrderToServer() {
         const order = this.currentOrder;
         const hasTipLine = this.config.tip_product_id && order.lines.some((l) => l.isTipLine());
         // tip is excluded from `changes`, so a tip-only update still needs a sync
@@ -796,7 +846,7 @@ export class SelfOrder extends Reactive {
 
         try {
             this.currentOrder.setOrderPrices();
-            const tableIdentifier = this.router.getTableIdentifier();
+            const tableIdentifier = this.currentTableIdentifier;
             let uuid = this.selectedOrderUuid;
             if (this.shouldUpdateLastOrderChange()) {
                 this.currentOrder.updateLastOrderChange();
@@ -832,8 +882,12 @@ export class SelfOrder extends Reactive {
         }
     }
 
-    async getUserDataFromServer(tokens = []) {
-        const tableIdentifier = this.router.getTableIdentifier([]);
+    async getUserDataFromServer(tokens = [], opts = {}) {
+        return this.orderSyncMutex.exec(() => this._getUserDataFromServer(tokens, opts));
+    }
+
+    async _getUserDataFromServer(tokens = [], { pushOrphanedLines = true } = {}) {
+        const tableIdentifier = this.currentTableIdentifier;
         const dbAccessToken = this.models["pos.order"]
             .filter((o) => o.state === "draft" && o.isSynced && o.access_token)
             .map((order) => ({
@@ -854,6 +908,8 @@ export class SelfOrder extends Reactive {
             return;
         }
 
+        const pendingDeltas = this._computePendingDeltas();
+
         try {
             const data = await rpc(`/pos-self-order/get-user-data/`, {
                 access_token: this.access_token,
@@ -861,23 +917,43 @@ export class SelfOrder extends Reactive {
                 table_identifier: tableIdentifier,
             });
             const result = this.models.connectNewData(data);
-            const openOrder = result["pos.order"]?.find((o) => o.state === "draft");
-            if (openOrder && this.router.activeSlot !== "confirmation") {
-                this.selectedOrderUuid = openOrder.uuid;
 
-                // Remove all other open orders in draft and add orderline in the current order
-                const lineCmd = [];
-                for (const order of this.models["pos.order"].filter((o) => o.state === "draft")) {
-                    if (order.uuid !== openOrder.uuid) {
-                        lineCmd.push(...order.lines);
+            let openOrder = null;
+            if (tokens.length === 0) {
+                openOrder = result["pos.order"]?.find((o) => o.state === "draft");
+            } else {
+                openOrder = tokens
+                    .map((token) =>
+                        result["pos.order"]?.find(
+                            (o) => o.state === "draft" && o.access_token === token
+                        )
+                    )
+                    .find(Boolean);
+            }
+            if (openOrder) {
+                if (this.router.activeSlot !== "confirmation") {
+                    this.selectedOrderUuid = openOrder.uuid;
+
+                    // Remove all other open orders in draft and add orderline in the current order
+                    const lineCmd = [];
+                    for (const order of this.models["pos.order"].filter(
+                        (o) =>
+                            o.state === "draft" &&
+                            o.uuid !== openOrder.uuid &&
+                            !tokens.includes(o.access_token)
+                    )) {
+                        if (pushOrphanedLines) {
+                            lineCmd.push(...order.lines);
+                        }
                         order.delete();
+                    }
+
+                    if (pushOrphanedLines) {
+                        openOrder.update({ lines: [["link", ...lineCmd]] });
                     }
                 }
 
-                openOrder.update({
-                    lines: [["link", lineCmd]],
-                });
-                openOrder.recomputeChanges();
+                this._reapplyPendingDeltas(openOrder, pendingDeltas);
             }
             this.data.debouncedSynchronizeLocalDataInIndexedDB();
         } catch (error) {
@@ -886,6 +962,85 @@ export class SelfOrder extends Reactive {
                 this.models["pos.order"].map((order) => order.access_token)
             );
         }
+    }
+
+    /** Pending local qty edits not yet synced, keyed by line, to reapply after a refresh. */
+    _computePendingDeltas() {
+        const pendingDeltas = new Map();
+        for (const line of this.models["pos.order.line"].filter((l) => l.isSynced)) {
+            const delta = line.getPendingQtyDelta();
+            if (delta) {
+                pendingDeltas.set(line, delta);
+            }
+        }
+        return pendingDeltas;
+    }
+
+    /** Reapplies pending deltas on top of the refreshed qty, removing lines dropped to 0 or below. */
+    _reapplyPendingDeltas(openOrder, pendingDeltas) {
+        const refreshedBaselines = new Map();
+        for (const [line, delta] of pendingDeltas) {
+            if (line.order_id?.uuid !== openOrder.uuid) {
+                continue;
+            }
+            const refreshedQty = line.qty;
+            const newQty = refreshedQty + delta;
+            if (newQty <= 0) {
+                openOrder.removeOrderline(line);
+            } else {
+                line.qty = newQty;
+                refreshedBaselines.set(line.uuid, refreshedQty);
+            }
+        }
+
+        openOrder.recomputeChanges();
+        for (const [uuid, refreshedQty] of refreshedBaselines) {
+            if (openOrder.uiState.lineChanges[uuid]) {
+                openOrder.uiState.lineChanges[uuid].qty = refreshedQty;
+            }
+        }
+    }
+
+    /** Snapshot of the order's state, synced lines and general note, to detect server-side changes. */
+    _syncedOrderSnapshot(order) {
+        return JSON.stringify([
+            order.state,
+            order.general_customer_note,
+            order.lines
+                .filter((l) => l.isSynced)
+                .map((l) => [l.id, l.product_id.id, l.qty, l.price_unit])
+                .sort((a, b) => a[0] - b[0]),
+        ]);
+    }
+
+    /** Refreshes the order and warns if it changed server-side, instead of paying silently. */
+    async canProceedToPay() {
+        const order = this.currentOrder;
+        if (!order.access_token) {
+            return true;
+        }
+        const before = this._syncedOrderSnapshot(order);
+        this.rpcLoading = true;
+        try {
+            await this.getUserDataFromServer([order.access_token]);
+        } catch (error) {
+            this.handleErrorNotification(error, [order.access_token]);
+            return false;
+        } finally {
+            this.rpcLoading = false;
+        }
+
+        const refreshedOrder = this.models["pos.order"].getBy("uuid", this.selectedOrderUuid);
+        const changed = refreshedOrder && this._syncedOrderSnapshot(refreshedOrder) !== before;
+
+        if (this.selectedOrderUuid !== order.uuid || changed) {
+            this.notification.add(
+                _t("Your order was just updated. Please review your cart before paying."),
+                { type: "warning" }
+            );
+            return false;
+        }
+        return true;
     }
 
     isOrder() {
@@ -1050,20 +1205,13 @@ export class SelfOrder extends Reactive {
         return this.config.self_ordering_mode === "mobile" && order.state === "paid";
     }
     async downloadReceipt(order) {
+        if (!order.id || typeof order.id !== "number") {
+            return;
+        }
+
+        const safeToken = encodeURIComponent(order.access_token);
         const link = document.createElement("a");
-        const currentDate = formatDateTime(luxon.DateTime.now(), {
-            format: "MM_dd_yyyy-HH_mm_ss",
-        });
-        const companyName = this.company.name.replaceAll(" ", "_");
-        link.download = `${companyName}-${currentDate}.png`;
-
-        const template = "point_of_sale.pos_order_receipt";
-        const generator = new GeneratePrinterData({ models: this.data.models, order });
-        const data = generator.generateReceiptData();
-        const iframe = await this.ticketPrinter.generateIframe(template, data);
-        const image = await this.ticketPrinter.generateImage(iframe);
-
-        link.href = image.toDataURL().replace("data:image/jpeg;base64,", "");
+        link.href = `/pos-self-order/receipt/${order.id}?access_token=${safeToken}`;
         link.click();
     }
 
@@ -1074,7 +1222,11 @@ export class SelfOrder extends Reactive {
             presets = presets.filter((preset) => preset.use_timing);
         }
 
-        return this.router.getTableIdentifier() != null || this.kioskMode
+        if (this.config.self_ordering_service_mode === "dynamic_qr") {
+            return presets.filter((preset) => preset.service_at === "table");
+        }
+
+        return this.currentTableIdentifier !== null || this.kioskMode
             ? presets
             : presets.filter((preset) => preset.service_at !== "table");
     }
@@ -1087,7 +1239,7 @@ export class SelfOrder extends Reactive {
     }
 
     getPendingPaymentLine(provider) {
-        const currentPaymentLine = this.getOrder()?.getSelectedPaymentline();
+        const currentPaymentLine = this.currentOrder.getSelectedPaymentline();
         return currentPaymentLine?.payment_method_id?.payment_provider === provider
             ? currentPaymentLine
             : null;

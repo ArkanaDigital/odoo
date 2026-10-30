@@ -1,4 +1,7 @@
+import { usePlugin } from "@odoo/owl";
 import { Plugin } from "@html_editor/plugin";
+import { selectElements } from "@html_editor/utils/dom_traversal";
+import { BootstrapInstance } from "@web/core/utils/bootstrap_plugin";
 import { registry } from "@web/core/registry";
 import { patch } from "@web/core/utils/patch";
 
@@ -44,6 +47,7 @@ export class PopupVisibilityPlugin extends Plugin {
     };
 
     setup() {
+        this.bootstrap = usePlugin(BootstrapInstance);
         this.addDomListener(this.editable, "click", (ev) => {
             // Note: links are excluded here so that internal modal buttons do
             // not close the popup as we want to allow edition of those buttons.
@@ -93,7 +97,7 @@ export class PopupVisibilityPlugin extends Plugin {
 
     toggleModal(targetEl, show) {
         const modalEl = targetEl.querySelector(".modal");
-        const modalInstance = this.window.Modal.getOrCreateInstance(modalEl);
+        const modalInstance = this.bootstrap.getOrCreateInstance(this.window.Modal, modalEl);
         modalEl.dispatchEvent(new Event("transitionend"));
         // Ensures Bootstrap events are triggered even if the popup is
         // still transitioning.
@@ -105,17 +109,28 @@ export class PopupVisibilityPlugin extends Plugin {
         }
     }
 
-    cleanForSave(rootEl) {
+    cleanForSave(rootEl, { saveSnippet } = {}) {
         // Hide the popups manually, as we cannot rely on the `onTargetHide`
         // flow since the cleaned popup is a clone and is not in the DOM.
         for (const modalEl of rootEl.querySelectorAll(".s_popup .modal.show")) {
+            if (saveSnippet && rootEl === modalEl.closest(".s_popup")) {
+                continue;
+            }
             modalEl.parentElement.dataset.invisible = "1";
-            // Do not call .hide() directly, because it is queued whereas
-            // .dispose() is not.
+            // Do not call `.hide()`, because it is queued (parts of its effects
+            // happens asynchronously and delayed).
             modalEl.classList.remove("show");
-            this.window.Modal.getOrCreateInstance(modalEl)._hideModal();
-            this.window.Modal.getInstance(modalEl).dispose();
+            this.bootstrap.getOrCreateInstance(this.window.Modal, modalEl)._hideModal();
         }
+
+        // Delete all empty popups upon save
+        for (const popupEl of selectElements(rootEl, ".s_popup")) {
+            const isPopupEmpty = !popupEl.querySelector(".oe_structure > *:not(.s_popup_close)");
+            if (isPopupEmpty) {
+                popupEl.remove();
+            }
+        }
+
         return rootEl;
     }
 

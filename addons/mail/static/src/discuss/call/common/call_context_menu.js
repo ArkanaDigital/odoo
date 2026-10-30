@@ -1,8 +1,8 @@
 import { Component, onMounted, onWillUnmount, proxy, types, usePlugin, useProps } from "@odoo/owl";
 
-import { browser } from "@web/core/browser/browser";
 import { _t } from "@web/core/l10n/translation";
 import { rpc } from "@web/core/network/rpc";
+import { UIPlugin } from "@web/core/ui/ui_plugin";
 import { useService } from "@web/core/utils/hooks";
 
 import { CONNECTION_TYPES } from "@mail/discuss/call/common/rtc_service";
@@ -23,6 +23,7 @@ export class CallContextMenu extends Component {
     setup() {
         super.setup();
         this.store = useService("mail.store");
+        this.ui = usePlugin(UIPlugin);
         this.props = useProps({
             rtcSession: types.instanceOf(this.store["discuss.channel.rtc.session"]),
         });
@@ -39,9 +40,9 @@ export class CallContextMenu extends Component {
                 return;
             }
             this.updateStats();
-            this.updateStatsTimeout = browser.setInterval(() => this.updateStats(), 3000);
+            this.updateStatsTimeout = window.setInterval(() => this.updateStats(), 3000);
         });
-        onWillUnmount(() => browser.clearInterval(this.updateStatsTimeout));
+        onWillUnmount(() => window.clearInterval(this.updateStatsTimeout));
     }
 
     get isSelf() {
@@ -62,7 +63,7 @@ export class CallContextMenu extends Component {
         return this.props.rtcSession.isLocallyMuted;
     }
 
-    /** @returns {string} label for the volume-icon mute toggle, reflecting the current state. */
+    /** @returns label for the volume-icon mute toggle, reflecting the current state. */
     get muteLabel() {
         return this.isLocallyMuted ? _t("Unmute") : _t("Mute");
     }
@@ -83,7 +84,6 @@ export class CallContextMenu extends Component {
             channel_id: channelId,
             member_id: memberId,
         });
-        this.env.inCallDropdown?.close();
     }
 
     togglePin() {
@@ -92,7 +92,6 @@ export class CallContextMenu extends Component {
         } else {
             this.channel?.pin(this.props.rtcSession);
         }
-        this.env.inCallDropdown?.close();
     }
 
     toggleLocallyMute() {
@@ -117,7 +116,7 @@ export class CallContextMenu extends Component {
 
     /**
      * @param {string} candidateType
-     * @returns {string} a formatted string that describes the connection type e.g: "prflx (STUN)"
+     * @returns a formatted string that describes the connection type e.g: "prflx (STUN)"
      */
     formatProtocol(candidateType) {
         if (!candidateType) {

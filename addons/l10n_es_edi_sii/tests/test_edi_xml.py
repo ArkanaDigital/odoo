@@ -41,6 +41,34 @@ class TestEdiXmls(TestEsEdiCommon):
     def _mock_sii_webservice_batch(self, document, communication_type, info_list):
         return {doc: (True, {'csv': 'MOCK_CSV', 'response_message': 'Correcto'}) for doc in document}
 
+    def test_invoice_type_reverts_to_f1_when_growing_past_simplified_limit(self):
+        """A simplified invoice (F2) for a VAT-registered EU customer must revert to F1 once it
+        grows past the simplified-invoice limit."""
+        invoice = self._create_invoice_es(
+            partner_id=self.partner_a.id,  # BE, has a VAT number
+            invoice_line_ids=[{'price_unit': 100.0, 'tax_ids': [Command.set(self._get_tax_by_xml_id('s_iva21b').ids)]}],
+            l10n_es_invoice_type='F2',
+        )
+        self.assertEqual(invoice.l10n_es_invoice_type, 'F2')
+
+        invoice.invoice_line_ids = [Command.create({
+            'product_id': self.product_a.id,
+            'price_unit': 1000.0,
+            'tax_ids': [Command.set(self._get_tax_by_xml_id('s_iva21b').ids)],
+        })]
+        self.assertEqual(invoice.l10n_es_invoice_type, 'F1')
+
+    def test_invoice_type_manual_value_not_overridden_without_country(self):
+        """A manually-set refund reason for a customer with no country set (so the VAT/amount
+        heuristic never applies at all) must not be touched, regardless of amount."""
+        refund = self._create_invoice_es(
+            move_type='out_refund',
+            partner_id=self.partner_b.id,  # has a VAT number but no country_id set
+            invoice_line_ids=[{'price_unit': 1000.0, 'tax_ids': [Command.set(self._get_tax_by_xml_id('s_iva21b').ids)]}],
+            l10n_es_invoice_type='R1',
+        )
+        self.assertEqual(refund.l10n_es_invoice_type, 'R1')
+
     def test_sii_send_batches_multiple_documents(self):
         invoice_1 = self._create_invoice_es(
             partner_id=self.partner_b.id,
@@ -69,7 +97,7 @@ class TestEdiXmls(TestEsEdiCommon):
         refund = self._create_invoice_es(
             move_type='out_refund', partner_id=self.partner_b.id,
             invoice_line_ids=[{'tax_ids': [Command.set(self._get_tax_by_xml_id('s_iva21b').ids)]}],
-            l10n_es_sii_refund_reason='R1',
+            l10n_es_invoice_type='R1',
         )
         moves = invoice | refund
         moves.action_post()
@@ -153,6 +181,85 @@ class TestEdiXmls(TestEsEdiCommon):
                 'ImporteTotal': 110.0,
             },
         })
+
+    def test_012_out_invoice_foreign_partner_passport_uses_idtype_03(self):
+        """ Wiring check: a non-EU partner with a Pasaporte set must reach the SII JSON as IDOtro/03,
+        and (having an IDOtro) must use the per-operation-type desglose branch. """
+        partner_passport = self.env['res.partner'].create({
+            'name': 'Foreign Partner (Passport)',
+            'country_id': self.env.ref('base.us').id,
+            'l10n_es_passport': 'X1234567',
+        })
+        invoice = self._create_invoice_es(
+            partner_id=partner_passport.id,
+            invoice_line_ids=[
+                {'price_unit': 100.0, 'tax_ids': [Command.set(self._get_tax_by_xml_id('s_iva10b').ids)]},
+                {'price_unit': 200.0, 'tax_ids': [Command.set(self._get_tax_by_xml_id('s_iva21s').ids)]},
+            ],
+        )
+        with patch(
+            'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
+            autospec=True,
+            side_effect=self._mock_sii_webservice,
+        ):
+            json_file = self._send_sii_and_get_json(invoice)
+        factura = json_file['FacturaExpedida']
+        self.assertEqual(factura['Contraparte']['IDOtro'], {
+            'IDType': '03',
+            'ID': 'X1234567',
+            'CodigoPais': 'US',
+        })
+        self.assertIn('DesgloseTipoOperacion', factura['TipoDesglose'])
+
+    def test_013_out_invoice_eu_partner_without_vat_is_not_idtype_02(self):
+        """ Regression guard at the full-invoice level: an EU partner without VAT must not be
+        reported as IDOtro/02. Forced non-simplified: below `l10n_es_simplified_invoice_limit`
+        a no-VAT EU partner otherwise auto-flags the invoice as simplified, which omits
+        'Contraparte' entirely (see test_014) - not what we want to check here. """
+        partner_eu_no_vat = self.env['res.partner'].create({
+            'name': 'EU Partner (no VAT)',
+            'country_id': self.env.ref('base.be').id,
+        })
+        invoice = self._create_invoice_es(
+            partner_id=partner_eu_no_vat.id,
+            l10n_es_invoice_type='F1',
+            invoice_line_ids=[
+                {'price_unit': 100.0, 'tax_ids': [Command.set(self._get_tax_by_xml_id('s_iva10b').ids)]},
+            ],
+        )
+        self.assertEqual(invoice.l10n_es_invoice_type, 'F1')
+        with patch(
+            'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
+            autospec=True,
+            side_effect=self._mock_sii_webservice,
+        ):
+            json_file = self._send_sii_and_get_json(invoice)
+        id_otro = json_file['FacturaExpedida']['Contraparte']['IDOtro']
+        self.assertNotEqual(id_otro['IDType'], '02')
+        self.assertEqual(id_otro, {'IDType': '06', 'ID': 'NO_DISPONIBLE', 'CodigoPais': 'BE'})
+
+    def test_014_out_invoice_eu_partner_without_vat_below_limit_is_auto_simplified(self):
+        """ Documents existing (pre-task) behavior: a low-amount invoice to a no-VAT EU partner is
+        auto-flagged simplified, so 'Contraparte' (and thus the new IDOtro logic) never appears.
+        Caught this while writing test_013 - worth pinning down explicitly. """
+        partner_eu_no_vat = self.env['res.partner'].create({
+            'name': 'EU Partner (no VAT, small amount)',
+            'country_id': self.env.ref('base.be').id,
+        })
+        invoice = self._create_invoice_es(
+            partner_id=partner_eu_no_vat.id,
+            invoice_line_ids=[
+                {'price_unit': 100.0, 'tax_ids': [Command.set(self._get_tax_by_xml_id('s_iva10b').ids)]},
+            ],
+        )
+        self.assertTrue(invoice.l10n_es_invoice_type in ('F2', 'R5'))
+        with patch(
+            'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
+            autospec=True,
+            side_effect=self._mock_sii_webservice,
+        ):
+            json_file = self._send_sii_and_get_json(invoice)
+        self.assertNotIn('Contraparte', json_file['FacturaExpedida'])
 
     def test_020_out_invoice_s_iva10b_s_iva0_ns(self):
         """ The ns tax is a special case with l10n_es_type ignore and should not appear in what we send"""
@@ -297,7 +404,7 @@ class TestEdiXmls(TestEsEdiCommon):
                 {'price_unit': 100.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('s_iva10b').ids)]},
                 {'price_unit': 200.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('s_iva21s').ids)]},
             ],
-            l10n_es_sii_refund_reason='R1'
+            l10n_es_invoice_type='R1'
         )
         with patch(
             'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
@@ -425,7 +532,7 @@ class TestEdiXmls(TestEsEdiCommon):
                 {'price_unit': 100.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('s_iva0_sp_i').ids)]},
                 {'price_unit': 200.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('s_iva0_g_i').ids)]},
             ],
-            l10n_es_sii_refund_reason='R1'
+            l10n_es_invoice_type='R1'
         )
         with patch(
             'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
@@ -538,7 +645,7 @@ class TestEdiXmls(TestEsEdiCommon):
                 {'price_unit': 100.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('s_iva0_sp_i').ids)]},
                 {'price_unit': 200.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('s_iva0_g_i').ids)]},
             ],
-            l10n_es_sii_refund_reason='R1'
+            l10n_es_invoice_type='R1'
         )
         with patch(
             'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
@@ -597,7 +704,7 @@ class TestEdiXmls(TestEsEdiCommon):
                 {'price_unit': 200.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('s_iva0_sp_i').ids)]},
                 {'price_unit': 400.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('s_iva0_g_i').ids)]},
             ],
-            l10n_es_sii_refund_reason='R1'
+            l10n_es_invoice_type='R1'
         )
         with patch(
             'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
@@ -706,7 +813,7 @@ class TestEdiXmls(TestEsEdiCommon):
             partner_id=self.partner_b.id,
             l10n_es_registration_date='2019-01-02',
             invoice_line_ids=[{'price_unit': 100.0, 'tax_ids': [(6, 0, self._get_tax_by_xml_id('p_iva10_bc').ids)]}],
-            l10n_es_sii_refund_reason='R4'
+            l10n_es_invoice_type='R4'
         )
         with patch(
             'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
@@ -1001,7 +1108,7 @@ class TestEdiXmls(TestEsEdiCommon):
                     'tax_ids': [(6, 0, (self._get_tax_by_xml_id('p_iva10_bc') + self._get_tax_by_xml_id('p_irpf1')).ids)],
                 },
             ],
-            l10n_es_sii_refund_reason='R4'
+            l10n_es_invoice_type='R4'
         )
         with patch(
             'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
@@ -1053,7 +1160,7 @@ class TestEdiXmls(TestEsEdiCommon):
                     'tax_ids': [(6, 0, (self._get_tax_by_xml_id('p_iva10_bc') + self._get_tax_by_xml_id('p_irpf1')).ids)],
                 },
             ],
-            l10n_es_sii_refund_reason='R4'
+            l10n_es_invoice_type='R4'
         )
         with patch(
             'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',
@@ -1203,7 +1310,7 @@ class TestEdiXmls(TestEsEdiCommon):
                     'tax_ids': [(6, 0, self._get_tax_by_xml_id('p_iva21_ic_bc').ids)],
                 },
             ],
-            l10n_es_sii_refund_reason='R4'
+            l10n_es_invoice_type='R4'
         )
         with patch(
             'odoo.addons.l10n_es_edi_sii.models.l10n_es_edi_sii_document.L10nEsEdiSiiDocument._post_to_agency',

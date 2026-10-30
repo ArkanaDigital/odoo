@@ -16,11 +16,7 @@ class TestHrFleetDriver(common.TransactionCase):
             'name': 'Test Employee'
         })
 
-        cls.test_user = cls.env['res.users'].create({
-            'login': 'test',
-            'name': 'The King',
-            'email': 'noop@example.com',
-        })
+        cls.test_user = cls.env.ref('base.test_user')
 
         cls.brand = cls.env["fleet.vehicle.model.brand"].create({
             "name": "Audi",
@@ -70,7 +66,7 @@ class TestHrFleetDriver(common.TransactionCase):
         self.assertEqual(self.car2.driver_id.id, False)
 
     def test_driver_employee_multi_company(self):
-        other_company = self.env['res.company'].create({
+        other_company = self.add_company('base.test_company', {
             'name': 'Other Company'
         })
         test_employee2 = self.env['hr.employee'].with_company(other_company).create({
@@ -221,3 +217,17 @@ class TestHrFleetDriver(common.TransactionCase):
             'departure_reason_id': self.env.ref('hr.departure_fired').id,
         }]).action_register()
         self.assertFalse(self.car.driver_id, "Car was not unassigned after employee's departure")
+
+    def test_driver_employee_other_company(self):
+        other_company = self.add_company('base.test_company')
+        car = self.env['fleet.vehicle'].create({
+            'model_id': self.model.id,
+            'company_id': other_company.id,
+            'driver_id': self.test_employee.work_contact_id.id,
+            'future_driver_id': self.test_employee.work_contact_id.id,
+        })
+        self.assertEqual(car.driver_employee_id, self.test_employee)
+        self.assertEqual(car.future_driver_employee_id, self.test_employee)
+
+        assignation_log = self.env['fleet.vehicle.assignation.log'].search([('vehicle_id', '=', car.id)])
+        self.assertEqual(assignation_log.driver_employee_id, self.test_employee)

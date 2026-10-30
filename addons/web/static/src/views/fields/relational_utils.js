@@ -4,6 +4,7 @@ import {
     proxy,
     signal,
     t,
+    untrack,
     usePlugin,
     useProps,
     useScope,
@@ -25,7 +26,7 @@ import { createElement, parseXML } from "@web/core/utils/xml";
 import { extractFieldsFromArchInfo, useRecordObserver } from "@web/model/relational_model/utils";
 import { render, useEnv, useLayoutEffect, useSubEnv } from "@web/owl2/utils";
 import { FormArchParser } from "@web/views/form/form_arch_parser";
-import { loadSubViews, useFormViewInDialog } from "@web/views/form/form_controller";
+import { loadSubViews } from "@web/views/form/form_controller";
 import { FormRenderer } from "@web/views/form/form_renderer";
 import { computeViewClassName, isNull } from "@web/views/utils";
 import { ViewButton } from "@web/views/view_button/view_button";
@@ -176,8 +177,9 @@ export function useSpecialData(loadFn) {
 
     /** @type {{ data: Record<string, T> }} */
     const result = proxy({ data: {} });
-    useRecordObserver(async (record, props) => {
-        result.data = await loadFn(ormWithCache, { ...props, record });
+    useRecordObserver(async () => {
+        const currentProps = untrack(() => ({ ...props }));
+        result.data = await loadFn(ormWithCache, currentProps);
     });
     onWillUpdateProps(async (nextProps) => {
         // useRecordObserver callback is not called when the record doesn't change
@@ -773,7 +775,6 @@ export class X2ManyFieldDialog extends Component {
                 () => [this.record.isInEdition]
             );
         }
-        useFormViewInDialog();
     }
 
     get dialogProps() {
@@ -785,6 +786,10 @@ export class X2ManyFieldDialog extends Component {
                 this.ui.size <= SIZES.XS ? " o_xxs_form_view" : ""
             }`,
         };
+        const dialogSize = this.archInfo.xmlDoc.getAttribute("dialog_size");
+        if (dialogSize) {
+            props.size = dialogSize;
+        }
         if (!this.record.isNew) {
             props.onExpand = async (_ev, newWindow) => {
                 await this.save({ saveAndNew: false });
@@ -828,7 +833,7 @@ export class X2ManyFieldDialog extends Component {
                 await this.props.save(this.record);
                 if (saveAndNew) {
                     await this.record.switchMode("readonly");
-                    this.record = await this.props.addNew();
+                    this.record = await this.props.addNew(this.record);
                 }
             } else {
                 return false;
@@ -913,6 +918,7 @@ export function useOpenX2ManyRecord({
     updateRecord,
     saveRecord,
     isMany2Many,
+    getAddContext,
 }) {
     const viewService = useService("view");
     const ui = useService("ui");
@@ -974,7 +980,11 @@ export function useOpenX2ManyRecord({
                 archInfo,
                 record,
                 controls,
-                addNew: () => getList().extendRecord(params),
+                addNew: (prevRecord) =>
+                    getList().extendRecord({
+                        ...params,
+                        context: { ...params.context, ...getAddContext?.(prevRecord) },
+                    }),
                 save: (rec) => {
                     if (isDuplicate && rec.id === record.id) {
                         return updateRecord(rec);

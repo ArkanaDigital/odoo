@@ -69,6 +69,7 @@ class TestCreateEvents(TestCommon):
         self.assertEqual(len(new_records), 1)
         self.assert_odoo_event(new_records, self.expected_odoo_event_from_outlook)
         self.assertEqual(new_records.user_id, self.organizer_user)
+        self.assertEqual(new_records.calendar_id, self.organizer_user._find_or_create_primary_calendar())
         self.assertEqual(new_records.need_sync_m, False)
 
     @patch.object(MicrosoftCalendarService, 'get_events')
@@ -611,7 +612,7 @@ class TestCreateEvents(TestCommon):
         ]
         record = self.env['calendar.event'].search(search_domain)
         self.assertTrue(record, "The time off event should exist.")
-        self.assertEqual(record.name, "Marc Demo on Time Off : 1 days",
+        self.assertEqual(record.name, "Marc Demo on Time Off : 1 day",
                         "The event name should match the employee's time off description.")
         self.assertEqual(record.start_date, datetime(2020, 1, 15).date(),
                         "The start date should match the time off request.")

@@ -1,17 +1,116 @@
-import { Store } from "@mail/core/common/store_service";
+import { Store } from "@mail/core/common/store_plugin";
 import { fields, Record } from "@mail/model/export";
 
-import { browser } from "@web/core/browser/browser";
 import { deserializeDateTime } from "@web/core/l10n/dates";
-import { user } from "@web/core/user";
 import { rpc } from "@web/core/network/rpc";
 import { _t } from "@web/core/l10n/translation";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
+
+/** @import { AwaitChatHubInit } from "@mail/core/common/chat_hub_model" */
 
 const { DateTime } = luxon;
 
 export class ChannelMember extends Record {
     static _name = "discuss.channel.member";
+    /**
+     * Delay after which the new message separator shown in a displayed channel
+     * no longer marks what is new to the user: a received message can move it,
+     * and leaving the page hides it once everything is read.
+     */
+    static NEW_MESSAGE_SEPARATOR_STALE_DELAY = 2 * 60 * 1000;
+
+    setup() {
+        super.setup(...arguments);
+        this.onChange(
+            () => [this.channel_id],
+            (channel_id) => {
+                if (!channel_id) {
+                    this.delete();
+                }
+            },
+            { immediate: true, initialRun: false }
+        );
+        this.onChange(
+            () => [this.channelAsTyping],
+            (channelAsTyping) => {
+                if (!channelAsTyping) {
+                    clearTimeout(this.typingTimeoutId);
+                }
+            },
+            { immediate: true, initialRun: false }
+        );
+        this.onChange(
+            () => [this.is_pinned],
+            () => {
+                // The channel pin state follows self member only: reacting to the other
+                // members makes Discuss leave a channel that is still displayed.
+                this.channelAsSelf?.onPinStateUpdated();
+            },
+            { immediate: true, initialRun: false }
+        );
+        this.onChange(
+            () => [this.message_unread_counter, this.channel_id?.isDisplayed],
+            function onChangeMessageUnreadCounter(messageUnreadCounter, isDisplayed) {
+                if (
+                    messageUnreadCounter === 0 ||
+                    !isDisplayed ||
+                    this.channel_id?.scrollTop !== "bottom" ||
+                    this.channel_id.markedAsUnread ||
+                    !this.channel_id.isFocused
+                ) {
+                    this.message_unread_counter_ui = messageUnreadCounter;
+                }
+            },
+            { immediate: true }
+        );
+        this.onChange(
+            () => [this.new_message_separator, this.channel_id?.isDisplayed],
+            function onChangeNewMessageSeparator(newMessageSeparator, isDisplayed) {
+                if (!isDisplayed) {
+                    this.new_message_separator_ui = newMessageSeparator;
+                }
+            },
+            { immediate: true }
+        );
+        this.onChange(
+            () => {
+                const isDisplayed = Boolean(this.channel_id?.isDisplayed);
+                return [isDisplayed, isDisplayed && this.channel_id.firstUnreadMessage];
+            },
+            function onChangeDisplayedFirstUnreadMessage(isDisplayed) {
+                if (isDisplayed) {
+                    this.newMessageSeparatorUiDt = DateTime.now();
+                }
+            },
+            { immediate: true }
+        );
+        this.onChange(
+            () => [this.isTyping],
+            function onChangeIsTyping(isTyping) {
+                window.clearTimeout(this.typingTimeoutId);
+                if (isTyping) {
+                    this.registerTypingTimeout();
+                }
+            },
+            { immediate: true }
+        );
+        this.onChange(
+            () => [this.is_typing_dt],
+            function onChangeIsTypingDt(isTypingDt) {
+                window.clearTimeout(this.typingTimeoutId);
+                if (
+                    !isTypingDt ||
+                    DateTime.now().diff(isTypingDt).milliseconds > Store.OTHER_LONG_TYPING
+                ) {
+                    this.isTyping = false;
+                }
+                if (this.isTyping) {
+                    this.registerTypingTimeout();
+                }
+            },
+            { immediate: true }
+        );
+    }
 
     /** @type {string} */
     create_date;
@@ -26,22 +125,13 @@ export class ChannelMember extends Record {
     invitation_sent_dt = fields.Datetime();
     /** @type {boolean} */
     is_favorite;
-    is_pinned = fields.Attr(undefined, {
-        compute() {
-            return (
-                !this.unpin_dt ||
-                (this.last_interest_dt && this.last_interest_dt >= this.unpin_dt) ||
-                (this.channel_id?.last_interest_dt &&
-                    this.channel_id?.last_interest_dt >= this.unpin_dt)
-            );
-        },
-        /** @this {import("models").ChannelMember} */
-        onUpdate() {
-            // The channel pin state follows self member only: reacting to the other
-            // members makes Discuss leave a channel that is still displayed.
-            this.channelAsSelf?.onPinStateUpdated();
-        },
-    });
+    is_pinned = this.computed(
+        () =>
+            !this.unpin_dt ||
+            (this.last_interest_dt && this.last_interest_dt >= this.unpin_dt) ||
+            (this.channel_id?.last_interest_dt &&
+                this.channel_id?.last_interest_dt >= this.unpin_dt)
+    );
     last_interest_dt = fields.Datetime();
     last_seen_dt = fields.Datetime();
     guest_id = fields.One("mail.guest");
@@ -63,64 +153,33 @@ export class ChannelMember extends Record {
         },
     });
     seen_message_id = fields.One("mail.message");
-    hideUnreadBanner = false;
-    message_unread_counter = fields.Attr(0, {
-        /** @this {import("models").ChannelMember} */
-        onUpdate() {
-            if (
-                this.message_unread_counter === 0 ||
-                !this.channel_id?.isDisplayed ||
-                this.channel_id?.scrollTop !== "bottom" ||
-                this.channel_id.markedAsUnread ||
-                !this.channel_id.isFocused
-            ) {
-                this.message_unread_counter_ui = this.message_unread_counter;
-            }
-        },
-    });
+    message_unread_counter = 0;
     message_unread_counter_ui = 0;
     message_unread_counter_bus_id = 0;
     mute_until_dt = fields.Datetime();
-    new_message_separator = fields.Attr(null, {
-        /** @this {import("models").ChannelMember} */
-        onUpdate() {
-            if (!this.channel_id?.isDisplayed) {
-                this.new_message_separator_ui = this.new_message_separator;
-            }
-        },
-    });
+    new_message_separator = null;
     new_message_separator_ui = null;
-    isTyping = fields.Attr(false, {
-        onUpdate() {
-            browser.clearTimeout(this.typingTimeoutId);
-            if (this.isTyping) {
-                this.registerTypingTimeout();
-            }
-        },
-    });
+    /**
+     * ⚠️ {@link AwaitChatHubInit}
+     *
+     * When the message above which the separator is shown in the UI last
+     * changed while its channel is displayed, or when its channel was last
+     * displayed.
+     *
+     * @type {luxon.DateTime|undefined}
+     */
+    newMessageSeparatorUiDt;
+    isTyping = false;
     get isTypingUi() {
         if (this.channel_id.self_member_id?.mute_until_dt) {
             return false;
         }
         return this.isTyping;
     }
-    is_typing_dt = fields.Datetime({
-        onUpdate() {
-            browser.clearTimeout(this.typingTimeoutId);
-            if (
-                !this.is_typing_dt ||
-                DateTime.now().diff(this.is_typing_dt).milliseconds > Store.OTHER_LONG_TYPING
-            ) {
-                this.isTyping = false;
-            }
-            if (this.isTyping) {
-                this.registerTypingTimeout();
-            }
-        },
-    });
+    is_typing_dt = fields.Datetime();
     /** To be patched in test, to detect when this timeout is registered. */
     registerTypingTimeout() {
-        this.typingTimeoutId = browser.setTimeout(
+        this.typingTimeoutId = window.setTimeout(
             () => (this.isTyping = false),
             this.typingTimeoutDuration
         );
@@ -130,9 +189,6 @@ export class ChannelMember extends Record {
             return this.isTyping ? this.channel_id : undefined;
         },
         eager: true,
-        onDelete() {
-            browser.clearTimeout(this.typingTimeoutId);
-        },
     });
     /** @type {number} */
     typingTimeoutId;
@@ -220,13 +276,6 @@ export class ChannelMember extends Record {
     hasSeen(message) {
         return this.persona.eq(message.author) || this.seen_message_id?.id >= message.id;
     }
-    get lastSeenDt() {
-        return this.last_seen_dt
-            ? this.last_seen_dt.toLocaleString(DateTime.TIME_24_SIMPLE, {
-                  locale: user.lang,
-              })
-            : undefined;
-    }
 
     get isInvitationPending() {
         return Boolean(this.invitation_sent_dt);
@@ -240,9 +289,66 @@ export class ChannelMember extends Record {
         return Boolean(this.store.self?.eq(this.persona));
     }
 
+    /**
+     * ⚠️ {@link AwaitChatHubInit}
+     *
+     * Whether the new message separator shown in the UI should move above the
+     * given message, just received from someone else.
+     *
+     * The separator is kept after the channel is marked as read, so that new
+     * messages keep their context. Once everything is read, it moves when the
+     * user is away from Odoo, or when it has been shown for a while and the
+     * message is not seen right away or follows a silence.
+     *
+     * @param {import("models").Message} message
+     */
+    shouldMoveNewMessageSeparatorUi(message) {
+        const channel = this.channel_id;
+        if (!channel?.isDisplayed) {
+            return false;
+        }
+        if (this.new_message_separator_ui === 0) {
+            return true;
+        }
+        if (
+            channel.markedAsUnread ||
+            this.message_unread_counter > 0 ||
+            (message.isNotification &&
+                message.subtype_id !== this.store.mt_important_notification) ||
+            message.id < this.new_message_separator_ui
+        ) {
+            return false;
+        }
+        if (!this.store.env.services.presence.isOdooFocused()) {
+            return true;
+        }
+        const delay = ChannelMember.NEW_MESSAGE_SEPARATOR_STALE_DELAY;
+        if (DateTime.now().diff(this.newMessageSeparatorUiDt).milliseconds < delay) {
+            return false;
+        }
+        if (!channel.isFocused || channel.scrollTop !== "bottom") {
+            return true;
+        }
+        const previousMessage = channel.messages.findLast((m) => m.persistent && m.id < message.id);
+        return (
+            !previousMessage ||
+            message.datetime.diff(previousMessage.datetime).milliseconds >= delay
+        );
+    }
+
+    /**
+     * Hide the new message separator shown in the UI when it only marks read
+     * messages. It is shown again above the next received message.
+     */
+    hideReadNewMessageSeparatorUi() {
+        if (this.message_unread_counter === 0 && !this.channel_id?.markedAsUnread) {
+            this.new_message_separator_ui = this.new_message_separator;
+        }
+    }
+
     async resendInvitation() {
         await rpc("/discuss/channel/member/resend_invitation", { member_id: this.id });
-        this.store.env.services.notification.add(
+        this.store.notification.add(
             _t("Invitation sent again to %(member_name)s.", { member_name: this.name }),
             { type: "success" }
         );

@@ -7,8 +7,7 @@ declare module "plugins" {
     import { FormOptionShared } from "@website/builder/plugins/form/form_option_plugin";
     import { ImageHoverShared } from "@website/builder/plugins/image/image_hover_plugin";
     import { MenuDataShared } from "@website/builder/plugins/menu_data_plugin";
-    import { can_have_hover_effect_predicates } from "@website/builder/plugins/options/animate_option";
-    import { AnimateOptionShared, on_hover_animation_mode_cleaned_handlers, on_hover_animation_mode_applied_handlers } from "@website/builder/plugins/options/animate_option_plugin";
+    import { AnimateOptionShared, can_have_hover_effect_predicates, can_have_scroll_effect_predicates, on_hover_animation_mode_cleaned_handlers, on_hover_animation_mode_applied_handlers } from "@website/builder/plugins/options/animate_option_plugin";
     import { WebsiteBackgroundVideoShared } from "@website/builder/plugins/options/background_option_plugin";
     import { CardImageOptionShared } from "@website/builder/plugins/options/card_image_option_plugin";
     import { ChartOptionShared } from "@website/builder/plugins/options/chart_option_plugin";
@@ -33,9 +32,10 @@ declare module "plugins" {
     import { theme_options, ThemeTabShared } from "@website/builder/plugins/theme/theme_tab_plugin";
     import { MediaTranslationShared } from "@website/builder/plugins/translation/options/media_translation_plugin";
     import { TranslateWebpageOptionShared } from "@website/builder/plugins/translation/options/translate_webpage_option_plugin";
-    import { on_get_dirty_translations_handlers, on_nodes_marked_translatable_handlers, TranslationShared } from "@website/builder/plugins/translation/translation_plugin";
-    import { WebsiteSaveShared } from "@website/builder/plugins/website_save_plugin";
+    import { on_nodes_marked_translatable_handlers, TranslationShared } from "@website/builder/plugins/translation/translation_plugin";
+    import { save_element_context_processors } from "@website/builder/plugins/website_save_plugin";
     import { force_background_translation_state_selectors } from "@website/builder/plugins/translation/repeat_translation_state_plugin";
+    import { ValueHistoryShared } from "@website/builder/plugins/value_history_plugin";
     import { WebsiteBridgeShared } from "@website/builder/plugins/website_bridge_plugin";
 
     interface SharedMethods {
@@ -64,12 +64,12 @@ declare module "plugins" {
         themeTab: ThemeTabShared;
         translateWebpageOption: TranslateWebpageOptionShared;
         translation: TranslationShared;
+        valueHistory: ValueHistoryShared;
         websiteBackgroundVideoPlugin: WebsiteBackgroundVideoShared;
         websiteFont: WebsiteFontShared;
         websiteFormOption: FormOptionShared;
         websitePageConfigOptionPlugin: WebsitePageConfigOptionShared;
         websiteParallaxPlugin: WebsiteParallaxShared;
-        websiteSavePlugin: WebsiteSaveShared;
         websiteBridge: WebsiteBridgeShared;
     }
 
@@ -80,7 +80,6 @@ declare module "plugins" {
         // Handlers
         on_content_manually_updated_handlers: on_content_manually_updated_handlers;
         on_dynamic_snippet_template_updated_handlers: on_dynamic_snippet_template_updated_handlers;
-        on_get_dirty_translations_handlers: on_get_dirty_translations_handlers;
         on_hover_animation_mode_cleaned_handlers: on_hover_animation_mode_cleaned_handlers;
         on_hover_animation_mode_applied_handlers: on_hover_animation_mode_applied_handlers;
         on_nodes_marked_translatable_handlers: on_nodes_marked_translatable_handlers;
@@ -89,9 +88,11 @@ declare module "plugins" {
 
         // Predicates
         can_have_hover_effect_predicates: can_have_hover_effect_predicates;
+        can_have_scroll_effect_predicates: can_have_scroll_effect_predicates;
 
         // Processors
         reorder_items_processors: reorder_items_processors;
+        save_element_context_processors: save_element_context_processors;
 
         // Providers
         floating_snippet_scope_providers: floating_snippet_scope_providers;

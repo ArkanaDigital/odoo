@@ -14,11 +14,6 @@ export const RATING = Object.freeze({
     BAD: 1,
 });
 
-export const ODOO_VERSION_KEY = `${location.origin.replace(
-    /:\/{0,2}/g,
-    "_"
-)}_im_livechat.odoo_version`;
-
 const OPERATOR_STORAGE_KEY = "im_livechat_previous_operator";
 
 export class LivechatService {
@@ -31,13 +26,13 @@ export class LivechatService {
     /**
      * @param {import("@web/env").OdooEnv} env
      * @param {{
-     * "mail.store": import("@mail/core/common/store_service").Store
+     * "mail.store": import("@mail/core/common/store_plugin").Store
      * }} services
      */
     setup(env, services) {
         this.env = env;
-        this.notificationService = services.notification;
         this.store = services["mail.store"];
+        this.notificationService = this.store.notification;
         this.initializedPromise = new Promise((r) => (this._resolveInitializedPromise = r));
     }
 
@@ -166,7 +161,7 @@ export class LivechatService {
 }
 
 export const livechatService = {
-    dependencies: ["mail.store", "notification"],
+    dependencies: ["mail.store"],
     start(env, services) {
         const livechat = proxy(new LivechatService(env, services));
         if (canLoadLivechat()) {

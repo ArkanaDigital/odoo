@@ -1,9 +1,14 @@
+import { t, useProps } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { Attachment, FileSelector, IMAGE_MIMETYPES } from "./file_selector";
 import { renderToElement } from "@web/core/utils/render";
 
 export class DocumentAttachment extends Attachment {
     static template = "html_editor.DocumentAttachment";
+
+    documentAttachmentProps = useProps({
+        selectAttachment: t.function(),
+    });
 }
 
 export class DocumentSelector extends FileSelector {
@@ -29,7 +34,7 @@ export class DocumentSelector extends FileSelector {
 
     get attachmentsDomain() {
         const domain = super.attachmentsDomain;
-        domain.push(["mimetype", "not in", IMAGE_MIMETYPES]);
+        domain.push(["mimetype", "not in", IMAGE_MIMETYPES], ["url", "not =like", "/web/font/%"]);
         // The assets should not be part of the documents.
         // All assets begin with '/web/assets/', see _get_asset_template_url().
         domain.unshift("&", "|", ["url", "=", null], "!", ["url", "=like", "/web/assets/%"]);
@@ -106,6 +111,8 @@ export function renderStaticFileBox(
     rootSpan.classList.add("o_file_box", "o-contenteditable-false");
     rootSpan.contentEditable = false;
     rootSpan.dataset.attachmentId = id;
+    const parts = filename.split(".");
+    rootSpan.dataset.extension = parts.length > 1 ? parts.pop() : "";
     const bannerElement = renderToElement("html_editor.StaticFileBox", {
         fileModel: { filename, mimetype, downloadUrl },
     });

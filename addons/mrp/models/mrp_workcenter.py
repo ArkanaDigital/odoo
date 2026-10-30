@@ -25,8 +25,14 @@ class MrpWorkcenter(models.Model):
     _inherit = ['mail.thread', 'resource.mixin']
     _check_company_auto = True
 
+    _barcode_company_uniq = models.Constraint(
+        'unique (barcode, company_id)',
+        'The barcode for a workcenter must be unique per company.',
+    )
+
     # resource
     name = fields.Char('Work Center', related='resource_id.name', store=True, readonly=False)
+    barcode = fields.Char('Barcode', help='Scan to select the workcenter in shopfloor.', copy=False)
     time_efficiency = fields.Float('Time Efficiency', related='resource_id.time_efficiency', default=100, store=True, readonly=False)
     active = fields.Boolean('Active', related='resource_id.active', default=True, store=True, readonly=False)
 
@@ -289,6 +295,9 @@ class MrpWorkcenter(models.Model):
         if self.working_state != 'blocked':
             raise exceptions.UserError(_("It has already been unblocked."))
         times = self.env['mrp.workcenter.productivity'].search([('workcenter_id', '=', self.id), ('date_end', '=', False)])
+        self.sudo().message_post(
+            body=self.env._("Work Center Unblocked")
+        )
         times.write({'date_end': datetime.now()})
         return True
 
@@ -379,8 +388,8 @@ class MrpWorkcenter(models.Model):
                     start_interval = start_interval or start
                     interval_minutes = (stop - start).total_seconds() / 60
                     while (interval := Intervals([(start_interval or start, start + timedelta(minutes=min(remaining, interval_minutes)), _records)])) \
-                      and (conflict := interval & workorder_intervals or interval & extra_leaves_slots_intervals):
-                        (_start, start, _records) = conflict._items[0]  # restart available interval at conflicting interval stop
+                      and (conflict := workorder_intervals.overlapping_with(interval) or extra_leaves_slots_intervals.overlapping_with(interval)):
+                        start = min(max(conflict_stop for _start, conflict_stop, _records in conflict), stop)  # restart available interval at conflicting interval stop
                         interval_minutes = (stop - start).total_seconds() / 60
                         start_interval, remaining = start if interval_minutes else None, duration
                     if float_compare(interval_minutes, remaining, precision_digits=3) >= 0:
@@ -397,8 +406,8 @@ class MrpWorkcenter(models.Model):
                     stop_interval = stop_interval or stop
                     interval_minutes = (stop - start).total_seconds() / 60
                     while (interval := Intervals([(stop - timedelta(minutes=min(remaining, interval_minutes)), stop_interval or stop, _records)])) \
-                      and (conflict := interval & workorder_intervals or interval & extra_leaves_slots_intervals):
-                        (stop, _stop, _records) = conflict._items[0]  # restart available interval at conflicting interval start
+                      and (conflict := workorder_intervals.overlapping_with(interval) or extra_leaves_slots_intervals.overlapping_with(interval)):
+                        stop = max(min(conflict_start for conflict_start, _stop, _records in conflict), start)  # restart available interval at conflicting interval start
                         interval_minutes = (stop - start).total_seconds() / 60
                         stop_interval, remaining = stop if interval_minutes else None, duration
                     if float_compare(interval_minutes, remaining, precision_digits=3) >= 0:
@@ -425,7 +434,8 @@ class MrpWorkcenter(models.Model):
             }
         return res
 
-    def _get_capacity(self, product, unit, default_capacity=1):
+    def _get_capacity(self, product, unit, bom):
+        default_capacity = bom.uom_id._compute_quantity(bom.product_qty, unit, round=False) or 1
         capacity = self.capacity_ids.sorted(lambda c: (
             not (c.product_id == product and c.uom_id == product.uom_id),
             not (not c.product_id and c.uom_id == unit),
@@ -434,7 +444,7 @@ class MrpWorkcenter(models.Model):
         if capacity and capacity.product_id in [product, self.env['product.product']] and capacity.uom_id in [product.uom_id, unit]:
             if float_is_zero(capacity.capacity, 0):
                 return (default_capacity, capacity.time_start, capacity.time_stop)
-            return (capacity.uom_id._compute_quantity(capacity.capacity, unit), capacity.time_start, capacity.time_stop)
+            return (capacity.uom_id._compute_quantity(capacity.capacity, unit, round=False), capacity.time_start, capacity.time_stop)
         return (default_capacity, self.time_start, self.time_stop)
 
 
@@ -584,6 +594,9 @@ class MrpWorkcenterProductivity(models.Model):
     def button_block(self):
         self.ensure_one()
         self.workcenter_id.order_ids.end_all()
+        self.workcenter_id.sudo().message_post(
+            body=self.env._("Work Center Blocked: %s", self.loss_id.display_name)
+        )
 
     def _loss_type_change(self):
         self.ensure_one()

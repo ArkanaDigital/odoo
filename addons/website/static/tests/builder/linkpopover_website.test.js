@@ -1,19 +1,27 @@
-import { expect, test } from "@odoo/hoot";
-import { click, press, waitFor, waitForNone, queryOne } from "@odoo/hoot-dom";
-import { animationFrame } from "@odoo/hoot-mock";
+import { base64Img, setupEditor } from "@html_editor/../tests/_helpers/editor";
 import { cleanLinkArtifacts } from "@html_editor/../tests/_helpers/format";
 import { getContent, setContent, setSelection } from "@html_editor/../tests/_helpers/selection";
-import { base64Img, setupEditor } from "@html_editor/../tests/_helpers/editor";
-import { contains, onRpc, serverState, patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { insertText } from "@html_editor/../tests/_helpers/user_actions";
+import { HtmlField } from "@html_editor/fields/html_field";
 import {
     click as mailClick,
     mailModels,
     openFormView,
     start,
 } from "@mail/../tests/mail_test_helpers";
-import { insertText } from "@html_editor/../tests/_helpers/user_actions";
-import { HtmlField } from "@html_editor/fields/html_field";
-import { browser } from "@web/core/browser/browser";
+import {
+    animationFrame,
+    click,
+    expect,
+    press,
+    queryOne,
+    test,
+    waitFor,
+    waitForNone,
+} from "@odoo/hoot";
+import { contains, onRpc, serverState } from "@web/../tests/web_test_helpers";
+import { location } from "@web/core/browser/browser";
+import { patch } from "@web/core/utils/patch";
 import {
     defineWebsiteModels,
     setupWebsiteBuilder,
@@ -155,7 +163,7 @@ test("LinkPopover opens in full composer", async () => {
             <field name="body" type="html" widget="html_composer_message"/>
         </form>`,
     };
-    patchWithCleanup(HtmlField.prototype, {
+    patch(HtmlField.prototype, {
         onEditorLoad(editor) {
             htmlEditor = editor;
             return super.onEditorLoad(...arguments);
@@ -165,10 +173,10 @@ test("LinkPopover opens in full composer", async () => {
     await openFormView("res.partner", serverState.partnerId);
     await mailClick("button", { text: "Log note" });
     await mailClick("button[title='Open Full Composer']");
-    await waitFor(".odoo-editor-editable");
+    await waitFor(".modal .odoo-editor-editable");
     htmlEditor.editable.focus();
     await insertText(htmlEditor, "test");
-    const node = queryOne(".odoo-editor-editable div");
+    const node = queryOne(".modal .odoo-editor-editable div");
     setSelection({ anchorNode: node, anchorOffset: 0, focusNode: node, focusOffset: 1 });
     await mailClick(".o-we-toolbar [data-icon='link']");
     await waitFor(".o-we-linkpopover");
@@ -177,7 +185,7 @@ test("LinkPopover opens in full composer", async () => {
 });
 
 test("link redirection should be prefixed for url of website pages only", async () => {
-    patchWithCleanup(browser, {
+    patch(window, {
         open(url) {
             expect.step("website page url prefixed");
             expect(url.pathname.startsWith("/@")).toBe(true);
@@ -218,16 +226,16 @@ test("link redirection should be prefixed for url of website pages only", async 
 });
 
 test("link redirection should not be prefixed when the current page is not a website page", async () => {
-    patchWithCleanup(browser, {
+    patch(window, {
         open(url) {
             expect.step("website page url prefixed");
             expect(url.pathname.startsWith("/@")).toBe(true);
         },
-        location: {
-            // simulating being on a non-website page (eg. backend) by using /odoo/ URL
-            href: browser.location.origin + "/odoo/contactus",
-            hostname: browser.location.hostname,
-        },
+    });
+    patch(location, {
+        // simulating being on a non-website page (eg. backend) by using /odoo/ URL
+        href: location.origin + "/odoo/contactus",
+        hostname: location.hostname,
     });
     onRpc("/html_editor/link_preview_internal", () => ({}));
     onRpc("/contactus", () => ({}));

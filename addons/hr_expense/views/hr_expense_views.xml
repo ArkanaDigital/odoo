@@ -29,11 +29,11 @@
                            groups="analytic.group_analytic_accounting"
                            readonly="not (is_editable or can_edit_account)"
                            options="{'product_field': 'product_id', 'business_domain': 'expense'}"/>
-                    <field name="account_id" optional="hide" groups="account.group_account_readonly"
+                    <field name="account_id" optional="hide" groups="account.group_account_invoice"
                            readonly="not (is_editable or can_edit_account)"/>
-                    <field name="journal_id" optional="hide" groups="account.group_account_readonly"
+                    <field name="journal_id" optional="hide" groups="account.group_account_invoice"
                            readonly="True"/>
-                    <field name="payment_method_line_id" optional="hide" groups="account.group_account_readonly"
+                    <field name="payment_method_line_id" optional="hide" groups="account.group_account_invoice"
                            readonly="not is_editable"/>
                     <field name="manager_id" optional="hide" readonly="not is_editable"/>
                     <field name="company_id" optional="show" groups="base.group_multi_company" readonly="True"/>
@@ -41,10 +41,10 @@
                            options="{'currency_field': 'company_currency_id', 'field_digits': True}" readonly="True"/>
                     <field name="quantity" optional="hide" readonly="not is_editable or not product_has_cost"/>
                     <field name="tax_ids" optional="hide" widget="many2many_tax_tags"
-                           groups="account.group_account_invoice,account.group_account_readonly"
+                           groups="account.group_account_invoice"
                            readonly="not is_editable or not product_has_cost"/>
                     <field name="tax_amount" sum="Total Taxes" readonly="True"
-                           optional="hide" groups="account.group_account_invoice,account.group_account_readonly"/>
+                           optional="hide" groups="account.group_account_invoice"/>
                     <field name="nb_attachment" widget="nb_attachment" nolabel="1" readonly="True"/>
                     <field name="total_amount" sum="Total Amount" widget='monetary'
                            readonly="not is_editable or product_has_cost"
@@ -105,16 +105,12 @@
                             invisible="nb_attachment == 0 or state != 'draft'" data-hotkey="v"/>
                     <button name="action_approve" string="Approve" type="object" data-hotkey="q" context="{'validate_analytic': True}"
                             invisible="nb_attachment == 0 or not can_approve or state != 'submitted'" class="oe_highlight o_expense_approve_highlight"/>
-                    <button name="action_post" string="Post" type="object" data-hotkey="y" class="oe_highlight o_expense_post_highlight"
-                            invisible="nb_attachment == 0 or state != 'approved'" groups="account.group_account_invoice"/>
 
                     <widget name="attach_document" string="Attach Receipt" action="attach_document" highlight="1" invisible="nb_attachment &gt;= 1"/>
                     <button name="action_submit" string="Submit" type="object" class="o_expense_submit"
                             invisible="nb_attachment &gt;= 1 or state != 'draft'" data-hotkey="v"/>
                     <button name="action_approve" string="Approve" type="object" data-hotkey="q" context="{'validate_analytic': True}"
                             invisible="nb_attachment &gt;= 1 or not can_approve or state != 'submitted'" class="o_expense_approve"/>
-                    <button name="action_post" string="Post" type="object" data-hotkey="y" class="o_expense_post"
-                            invisible="nb_attachment  &gt;= 1 or state != 'approved'" groups="account.group_account_invoice"/>
 
                     <button name="action_refuse" string="Refuse" invisible="state not in ('submitted', 'approved')" type="object"
                             groups="hr_expense.group_hr_expense_team_approver" class="o_expense_refuse" data-hotkey="x"/>
@@ -148,19 +144,29 @@
                 <div class="alert alert-warning" role="alert" name="warning_expense_job_position_limit"
                     invisible="state not in ('draft', 'submitted') or not is_own_expense or not is_expense_exceeding_job_position_limit">
                     Your job position has a limit of
-                    <field name="expense_job_position_limit_amount_currency"
+                    <field name="expense_job_position_limit_amount"
+                           widget="monetary"
+                           options="{'currency_field': 'company_currency_id'}"
+                           class="oe_inline"/>
+                    <span invisible="not is_multiple_currency">(<field name="expense_job_position_limit_amount_currency"
                            widget="monetary"
                            options="{'currency_field': 'currency_id'}"
-                           class="oe_inline"/>
+                           class="oe_inline"/>)
+                    </span>
                     for this expense. You may not be fully reimbursed!
                 </div>
                 <div class="alert alert-warning" role="alert" name="warning_manager_expense_job_position_limit"
                     invisible="state not in ('draft', 'submitted') or not can_approve or is_own_expense or not is_expense_exceeding_job_position_limit">
                     This expense exceeds the limit of
-                    <field name="expense_job_position_limit_amount_currency"
+                    <field name="expense_job_position_limit_amount"
+                           widget="monetary"
+                           options="{'currency_field': 'company_currency_id'}"
+                           class="oe_inline"/>
+                    <span invisible="not is_multiple_currency">(<field name="expense_job_position_limit_amount_currency"
                            widget="monetary"
                            options="{'currency_field': 'currency_id'}"
-                           class="oe_inline"/>
+                           class="oe_inline"/>)
+                    </span>
                     defined for this job position.
                     <div class="mt-1">
                         <button name="action_cap_reimbursement_to_policy"
@@ -169,6 +175,10 @@
                                 class="btn btn-link p-0"
                                 invisible="state != 'submitted'"/>
                     </div>
+                </div>
+                <div class="alert alert-warning" role="alert" name="warning_existing_bill_reference_missing"
+                    invisible="not has_existing_bill or (has_existing_bill and existing_bill_id) or state != 'submitted'">
+                    The expense existing bill is not linked, please reference it before approving.
                 </div>
 
                 <sheet>
@@ -195,7 +205,7 @@
                             class="oe_stat_button"
                             icon="menu"
                             type="object"
-                            invisible="not account_move_id or payment_mode == 'own_account'"
+                            invisible="not account_move_id or (payment_mode != 'company_account' and not (existing_bill_id or has_existing_bill))"
                             groups="account.group_account_invoice">
                             <div class="o_stat_info">
                                 <span class="o_stat_text">Payment</span>
@@ -300,18 +310,17 @@
                             <field name="manager_id" widget="many2one_avatar_user" readonly="state != 'draft'" placeholder="Auto-validation"/>
                             <field name="department_id" invisible="1" readonly="not is_editable"
                                    context="{'default_company_id': company_id}"/>
-                            <field name="vendor_id" invisible="payment_mode != 'company_account'" readonly="not is_editable"/>
+                            <field name="vendor_id" readonly="not is_editable"/>
 
-                            <label for="has_existing_bill" invisible="payment_mode != 'company_account'"/>
-                            <div class="d-flex flex-column flex-lg-row" invisible="payment_mode != 'company_account'">
+                            <label for="has_existing_bill"/>
+                            <div class="d-flex flex-column flex-lg-row">
                                 <field name="has_existing_bill"
                                        string="Existing Bill"
                                        widget="boolean_radio"
-                                       invisible="payment_mode != 'company_account'"
                                        options="{'no_label_element_id': 'direct_expense', 'yes_label_element_id': 'match_bill', 'first_element': false}"
                                        readonly="not is_editable"
                                        style="width: 60%"
-                                       groups="account.group_account_readonly"/>
+                                       groups="account.group_account_invoice"/>
                                 <template id="direct_expense">No (Direct Expense)</template>
                                 <template id="match_bill">Yes (Match to Bill)</template>
 
@@ -321,10 +330,10 @@
                                        style="margin-bottom: calc(0.25rem + var(--fieldWidget-margin-bottom))"
                                        nolabel="1"
                                        placeholder="Select Bill..."
-                                       context="{'name_as_amount_residual': 1, 'list_view_ref': 'hr_expense.view_move_list_expense'}"
-                                       readonly="not is_editable"
+                                       context="{'name_as_amount_total': 1, 'list_view_ref': 'hr_expense.view_move_list_expense'}"
+                                       readonly="not is_editable or state not in ['draft', 'submitted']"
                                        options="{'no_create': True}"
-                                       groups="account.group_account_readonly"/>
+                                       groups="account.group_account_invoice"/>
                             </div>
 
                             <field name="account_id" options="{'no_create': True}"
@@ -338,12 +347,11 @@
                                             ('company_ids', 'parent_of', company_id)
                                         ]
                                    "
-                                   groups="account.group_account_readonly"
+                                   groups="account.group_account_invoice"
                                    readonly="not (is_editable or can_edit_account)"
                                    context="{'default_company_id': company_id}"/>
                             <field name="payment_method_line_id"
                                    options="{'no_open': True, 'no_create': True}"
-                                   invisible="payment_mode != 'company_account'"
                                    readonly="not is_editable"
                                    required="payment_mode == 'company_account'"/>
                             <field name="analytic_distribution"
@@ -506,7 +514,7 @@
                     <filter string="To Submit" name="draft" domain="[('state', '=', 'draft')]"/>
                     <filter string="Waiting Approval" name="submitted" domain="[('state', '=', 'submitted')]"/>
                     <filter string="To Post" name="approved" domain="[('state', '=', 'approved')]"/>
-                    <filter string="Waiting Reimbursement" name="to_pay" domain="[('state', '=', 'approved'), ('payment_mode', '=', 'own_account')]"/>
+                    <filter string="Waiting Reimbursement" name="to_pay" domain="[('state', 'in', ('approved', 'posted')), ('payment_mode', '=', 'own_account')]"/>
                     <separator />
                     <filter string="Expense Date" name="date" date="date"/>
                     <separator/>
@@ -633,7 +641,7 @@
             <field name="res_model">hr.expense</field>
             <field name="view_mode">graph,pivot,list,form</field>
             <field name="search_view_id" ref="hr_expense_view_search_with_panel"/>
-            <field name="context">{ 'searchpanel_default_state': ["draft", "submitted", "approve", "posted", "in_payment", "paid"] }</field>
+            <field name="context">{ 'searchpanel_default_state': ["draft", "submitted", "approved", "posted", "in_payment", "paid"] }</field>
             <field name="help" type="html">
                 <p class="o_view_nocontent_empty_folder">
                     No data yet!
@@ -726,7 +734,4 @@
         <menuitem id="menu_hr_product" name="Expense Products" parent="menu_hr_expense_configuration"
             action="hr_expense_product" groups="hr_expense.group_hr_expense_manager" sequence="10"/>
 
-        <menuitem id="menu_hr_expense_account_employee_expenses" name="Employee Expenses" sequence="22"
-                  parent="account.menu_finance_payables" groups="hr_expense.group_hr_expense_user"
-                  action="action_hr_expense_account"/>
 </odoo>

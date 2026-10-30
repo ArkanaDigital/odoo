@@ -12,9 +12,11 @@ import {
     useEffect,
     usePlugin,
     useScope,
+    useProps,
+    t,
 } from "@odoo/owl";
 import { loadBundle } from "@web/core/assets";
-import { browser } from "@web/core/browser/browser";
+import { location } from "@web/core/browser/browser";
 import { isBrowserChrome, isBrowserMicrosoftEdge } from "@web/core/browser/feature_detection";
 import { router } from "@web/core/browser/router";
 import { DebugModePlugin } from "@web/core/debug_mode_plugin";
@@ -30,8 +32,7 @@ import { useBus, useService } from "@web/core/utils/hooks";
 import { renderToElement } from "@web/core/utils/render";
 import { getScrollingElement } from "@web/core/utils/scrolling";
 import { redirect } from "@web/core/utils/urls";
-import { useSubEnv } from "@web/owl2/utils";
-import { standardActionServiceProps } from "@web/webclient/actions/action_service";
+import { standardActionServiceProps } from "@web/webclient/actions/action_plugin";
 import { AddPageDialog } from "@website/components/dialog/add_page_dialog";
 import { ResourceEditor } from "@website/components/resource_editor/resource_editor";
 import { CreatePageMessage } from "./create_page_message";
@@ -49,13 +50,13 @@ export class WebsiteBuilderClientAction extends Component {
         ResourceEditor,
         CreatePageMessage,
     };
-    static props = {
+    props = useProps({
         ...standardActionServiceProps,
-        editTranslations: { type: Boolean, optional: true },
-        enableEditor: { type: Boolean, optional: true },
-        path: { type: String, optional: true },
-        websiteId: { type: [Number, { value: false }], optional: true },
-    };
+        editTranslations: t.boolean().optional(),
+        enableEditor: t.boolean().optional(),
+        path: t.string().optional(),
+        websiteId: t.or([t.number(), t.literal(false)]).optional(),
+    });
 
     static extractProps(action) {
         return {
@@ -87,13 +88,8 @@ export class WebsiteBuilderClientAction extends Component {
         this.cleanups = [];
 
         this.snippetsTemplate = "website.snippets";
-        // Track iframe navigation state
-        this.isNavigatingToAnotherPage = null;
 
         this.containerRef = signal.ref();
-        useSubEnv({
-            builderRef: this.containerRef,
-        });
         this.state = proxy({ isEditing: false, showSidebar: true, key: 1, is404: false });
         this.websiteContext = proxy(this.websiteService.context);
 
@@ -119,9 +115,7 @@ export class WebsiteBuilderClientAction extends Component {
         onWillDestroy(disposeToggleMobileEffect);
 
         this.overlayRef = signal.ref();
-        useSubEnv({
-            localOverlayContainerKey: uniqueId("website"),
-        });
+        this.localOverlayContainerKey = uniqueId("website");
         this.websitePreviewRef = signal.ref();
 
         onWillStart(async () => {
@@ -260,6 +254,7 @@ export class WebsiteBuilderClientAction extends Component {
                     },
                 },
             },
+            localOverlayContainerKey: this.localOverlayContainerKey,
         };
         return { translation: this.translation, builderProps };
     }
@@ -306,8 +301,8 @@ export class WebsiteBuilderClientAction extends Component {
         this.blockIframe();
 
         // Wait for navigation to complete if currently navigating
-        if (this.isNavigatingToAnotherPage) {
-            await this.isNavigatingToAnotherPage.promise;
+        if (this.websiteService.isNavigatingToAnotherPage) {
+            await this.websiteService.isNavigatingToAnotherPage.promise;
         }
 
         await this.loadIframeAndBundles(true);
@@ -438,9 +433,9 @@ export class WebsiteBuilderClientAction extends Component {
         this.websiteService.hideLoader();
         this.lastPageURL = iframe.contentWindow.location.href;
 
-        if (this.isNavigatingToAnotherPage) {
-            this.isNavigatingToAnotherPage.resolve();
-            this.isNavigatingToAnotherPage = null;
+        if (this.websiteService.isNavigatingToAnotherPage) {
+            this.websiteService.isNavigatingToAnotherPage.resolve();
+            this.websiteService.isNavigatingToAnotherPage = null;
         }
     }
 
@@ -496,7 +491,10 @@ export class WebsiteBuilderClientAction extends Component {
                     ) {
                         // This scenario triggers a navigation inside the iframe.
                         this.websiteService.websiteRootInstance = undefined;
-                        this.isNavigatingToAnotherPage = Promise.withResolvers();
+                        if (this.websiteService.isNavigatingToAnotherPage) {
+                            this.websiteService.isNavigatingToAnotherPage.resolve();
+                        }
+                        this.websiteService.isNavigatingToAnotherPage = Promise.withResolvers();
                     }
                 }
             }
@@ -504,7 +502,7 @@ export class WebsiteBuilderClientAction extends Component {
             if (url) {
                 ev.preventDefault();
                 try {
-                    browser.location.assign(url);
+                    location.assign(url);
                 } catch {
                     this.notification.add(_t("%s is not a valid URL.", url), {
                         title: _t("Invalid URL"),
@@ -558,7 +556,7 @@ export class WebsiteBuilderClientAction extends Component {
     waitForIframeReady() {
         return new Promise((resolve) => {
             const doc = this.websiteContent().contentDocument;
-            if (doc.body.hasAttribute("is-ready")) {
+            if (doc.body.getAttribute("is-ready") === "true") {
                 resolve();
             } else {
                 const observer = new MutationObserver(() => {
@@ -597,13 +595,20 @@ export class WebsiteBuilderClientAction extends Component {
         this.setIframeLoaded();
         this.websiteService.websiteRootInstance = undefined;
         if (url) {
-            const urlObj = new URL(url, this.websiteContent().contentWindow.location);
+            const baseUrl = new URL(this.websiteContent().contentWindow.location);
+            const urlObj = new URL(url, baseUrl);
             const pathSegments = urlObj.pathname.split("/").map(encodeURIComponent);
             const encodedPath = pathSegments.join("/");
-            this.websiteContent().contentWindow.location.href = new URL(
-                encodedPath,
-                this.websiteContent().contentWindow.location
-            );
+            const newUrl = new URL(encodedPath, baseUrl);
+            if(newUrl.origin !== baseUrl.origin) {
+                console.error("Tried to change the iframe's origin. Reloading instead")
+                this.websiteContent().contentWindow.location.reload();
+            } else {
+                if (history.state?.skipRouteChange) {
+                    history.pushState({}, "", newUrl);
+                }
+                this.websiteContent().contentWindow.location.href = newUrl;
+            }
         } else {
             this.websiteContent().contentWindow.location.reload();
         }
@@ -734,12 +739,12 @@ export class WebsiteBuilderClientAction extends Component {
     }
 
     get aceEditorWidth() {
-        const storedWidth = browser.localStorage.getItem("ace_editor_width");
+        const storedWidth = localStorage.getItem("ace_editor_width");
         return storedWidth ? parseInt(storedWidth) : 720;
     }
 
     onResourceEditorResize(width) {
-        browser.localStorage.setItem("ace_editor_width", width);
+        localStorage.setItem("ace_editor_width", width);
     }
 
     get translation() {

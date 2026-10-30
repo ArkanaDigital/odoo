@@ -3,7 +3,6 @@ import {
     clickOnSave,
     clickOnSnippet,
 } from "@website/js/tours/tour_utils";
-import { stepUtils } from "@web_tour/tour_utils";
 import { registry } from "@web/core/registry";
 
 /**
@@ -11,7 +10,6 @@ import { registry } from "@web/core/registry";
  */
 registry.category("web_tour.tours").add("blog_tags", {
     steps: () => [
-        stepUtils.waitIframeIsReady(),
         {
             content: "Go to the 'Post Test' blog",
             trigger: ":iframe article[name=blog_post] a:contains('Post Test')",
@@ -22,7 +20,7 @@ registry.category("web_tour.tours").add("blog_tags", {
             trigger: ":iframe h1.o_wblog_post_name",
         },
         ...clickOnEditAndWaitEditMode(),
-        ...clickOnSnippet("#o_wblog_post_top .o_wblog_post_page_cover"),
+        ...clickOnSnippet("#o_wblog_post_main"),
         {
             content: "Open tag dropdown",
             trigger: "[data-label='Tags'] button.o_select_menu_toggler",
@@ -47,7 +45,7 @@ registry.category("web_tour.tours").add("blog_tags", {
             trigger: ":iframe #o_wblog_post_content .badge:contains('testtag')",
         },
         ...clickOnEditAndWaitEditMode(),
-        ...clickOnSnippet("#o_wblog_post_top .o_wblog_post_page_cover"),
+        ...clickOnSnippet("#o_wblog_post_main"),
         {
             content: "Remove tag",
             trigger:
@@ -75,13 +73,13 @@ registry.category("web_tour.tours").add("blog_tags", {
             trigger: ":iframe html[data-view-xmlid='website_blog.blog_post_short']",
         },
         {
-            content: "Click on the adventure tag",
-            trigger: ":iframe a[href^='/blog/tag/adventure'].o_post_link_js_loaded",
+            content: "Click on 'Tour Tag 1'",
+            trigger: ":iframe a[href^='/blog/tag/tour-tag-1-'].o_post_link_js_loaded",
             run: "click",
         },
         {
             content: "Verify we are still on the backend",
-            trigger: ":iframe span:contains(adventure) i[data-icon='sell']",
+            trigger: ":iframe .o_filter_tag:contains('Tour Tag 1') i[data-icon='sell']",
         },
     ],
 });

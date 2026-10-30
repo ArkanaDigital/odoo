@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import collections.abc
-import itertools
 import typing
 from difflib import unified_diff
 from hashlib import sha256
@@ -14,10 +13,9 @@ from psycopg2.extras import Json as PsycopgJson
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.logging import COLOR_PATTERN, DEFAULT, GREEN, RED
 from odoo.tools import SQL, config, html_normalize, html_sanitize, html2plaintext, is_html_empty, plaintext2html, sql
-from odoo.tools.constants import PREFETCH_MAX
 from odoo.tools.misc import OrderedSet, SENTINEL, Sentinel
 from odoo.tools.sql import pattern_to_translated_trigram_pattern, value_to_translated_trigram_pattern
-from odoo.tools.translate import StoredTranslations, ParsedTranslation, html_translate
+from odoo.tools.translate import StoredTranslations, ParsedTranslation, html_translate, mark_as_copy
 
 from .fields import Field, _logger
 from .utils import COLLECTION_TYPES, SQL_OPERATORS, expand_ids
@@ -30,7 +28,6 @@ if typing.TYPE_CHECKING:
 class BaseString(Field[str | typing.Literal[False]]):
     """ Abstract class for string fields. """
     translate: bool | Callable[[Callable[[str], str | None], str], str] = False  # whether the field is translated
-    size = None                         # maximum size of values (deprecated)
     is_text = True
     falsy_value = ''
 
@@ -50,16 +47,16 @@ class BaseString(Field[str | typing.Literal[False]]):
     def _description_translate(self, env):
         return bool(self.translate)
 
-    def setup_related(self, model):
-        super().setup_related(model)
-        if self.store and self.translate:
-            _logger.warning("Translated stored related field (%s) will not be computed correctly in all languages", self)
+    def _setup(self, model):
+        super()._setup(model)
+        if self.related and self.store and self.translate:
+            self._setup_warning("translated stored related field  will not be computed correctly in all languages")
 
     def get_depends(self, model):
         if self.translate and self.store:
             dep, dep_ctx = super().get_depends(model)
             if dep_ctx:
-                _logger.warning("Translated stored fields (%s) cannot depend on context", self)
+                self._setup_warning("translated stored fields cannot depend on context")
             return dep, ()
         return super().get_depends(model)
 
@@ -138,7 +135,6 @@ class BaseString(Field[str | typing.Literal[False]]):
             return converted
 
         value = value.decode() if isinstance(value, bytes) else str(value)
-        value = value[:self.size]
         if validate:
             return self._validated_cache_value(value, records.env)
         return value
@@ -232,10 +228,10 @@ class BaseString(Field[str | typing.Literal[False]]):
         if isinstance(value, StoredTranslations):
             return value.copy()
         complete_translations_types = (type(None), StoredTranslations)
-        records_to_fetch = record.browse(itertools.islice((
+        records_to_fetch = record.browse(
             id_ for id_ in expand_ids(record.id, record._prefetch_ids)
             if not isinstance(field_cache.get(id_, SENTINEL), complete_translations_types)
-        ), PREFETCH_MAX))
+        )
         # refetch field values for all languages
         records_to_fetch.invalidate_recordset([self.name])
         records_to_fetch.with_context(prefetch_langs=True).fetch([self.name])
@@ -500,6 +496,10 @@ class Char(BaseString):
     """ Basic string field, can be length-limited, usually displayed as a
     single-line string in clients.
 
+    :param bool|callable copy: whether the field value should be copied when the
+        record is duplicated; default like in base field definition except that
+        a normal field named "name" will default to ``copy=mark_as_copy('name')``.
+
     :param int size: the maximum size of values stored for that field
 
     :param bool trim: states whether the value is trimmed or not (by default,
@@ -519,11 +519,19 @@ class Char(BaseString):
     """
     type = 'char'
     trim: bool = True                   # whether value is trimmed (only by web client and base_import)
+    size: int | None = None             # maximum size of values
 
     def _setup_attrs__(self, model_class, name):
         super()._setup_attrs__(model_class, name)
-        assert self.size is None or isinstance(self.size, int), \
-            "Char field %s with non-integer size %r" % (self, self.size)
+        if self.size is not None and not isinstance(self.size, int):
+            raise TypeError(f"{self}: non-integer size {self.size!r}")
+
+    def _get_attrs(self, model_class, name):
+        attrs = super()._get_attrs(model_class, name)
+        if self.name in ('name', 'x_name') and attrs.get('translate', False) in (True, False) and 'copy' not in attrs:
+            # default name fields are copied with "(copy)" suffix
+            attrs['copy'] = mark_as_copy(self.name)
+        return attrs
 
     @property
     def _column_type(self):
@@ -531,7 +539,7 @@ class Char(BaseString):
         assert size is None or type(size) is int, "size must be an integer"
         return ('varchar', f'varchar({size})' if size and size > 0 else 'varchar')
 
-    def update_db_column(self, model, column):
+    def update_db_column(self, model, column, init_value=None):
         if (
             column and self.column_type[0] == 'varchar' and
             column['udt_name'] == 'varchar' and column['character_maximum_length'] and
@@ -539,7 +547,7 @@ class Char(BaseString):
         ):
             # the column's varchar size does not match self.size; convert it
             sql.convert_column(model.env.cr, model._table, self.name, self.stored_sql_column_type)
-        super().update_db_column(model, column)
+        super().update_db_column(model, column, init_value)
 
     _related_size = property(attrgetter('size'))
     _related_trim = property(attrgetter('trim'))
@@ -564,8 +572,8 @@ class Char(BaseString):
 
 
 class Text(BaseString):
-    """ Very similar to :class:`Char` but used for longer contents, does not
-    have a size and usually displayed as a multiline text box.
+    """ Very similar to :class:`Char` but used for longer contents, usually
+    displayed as a multiline text box.
 
     :param translate: enable the translation of the field's values; use
         ``translate=True`` to translate field values as a whole; ``translate``

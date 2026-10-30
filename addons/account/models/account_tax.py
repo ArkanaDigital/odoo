@@ -3,9 +3,7 @@ from odoo.exceptions import UserError, ValidationError
 from odoo.fields import Command, Domain
 from odoo.tools import frozendict, groupby, html2plaintext, is_html_empty, split_every, SQL
 from odoo.tools.float_utils import float_is_zero, float_repr, float_round, float_compare
-from odoo.tools.misc import clean_context, formatLang
-from odoo.tools.translate import html_translate, adapt_translated_field_value, mark_as_copy
-
+from odoo.tools.translate import html_translate, adapt_translated_field_value
 from collections import defaultdict
 from collections.abc import Iterable
 from markupsafe import Markup
@@ -32,23 +30,6 @@ class AccountTaxGroup(models.Model):
     name = fields.Char(required=True, translate=True)
     sequence = fields.Integer(default=10)
     company_id = fields.Many2one('res.company', required=True, default=lambda self: self.env.company)
-    tax_payable_account_id = fields.Many2one(
-        comodel_name='account.account',
-        check_company=True,
-        domain="[('account_type', '=', 'liability_payable'), ('non_trade', '=', True)]",
-        string='Tax Payable Account',
-        help="Tax current account used as a counterpart to the Tax Closing Entry when in favor of the authorities.")
-    tax_receivable_account_id = fields.Many2one(
-        comodel_name='account.account',
-        check_company=True,
-        domain="[('account_type', '=', 'asset_receivable'), ('non_trade', '=', True)]",
-        string='Tax Receivable Account',
-        help="Tax current account used as a counterpart to the Tax Closing Entry when in favor of the company.")
-    advance_tax_payment_account_id = fields.Many2one(
-        comodel_name='account.account',
-        check_company=True,
-        string='Tax Advance Account',
-        help="Downpayments posted on this account will be considered by the Tax Closing Entry.")
     country_id = fields.Many2one(
         string="Country",
         comodel_name='res.country',
@@ -63,19 +44,6 @@ class AccountTaxGroup(models.Model):
         translate=True,
     )
     pos_receipt_label = fields.Char(string='PoS receipt label')
-
-    @api.constrains('tax_payable_account_id', 'tax_receivable_account_id')
-    def _constrains_payable_receivable_account(self):
-        for tax_group in self:
-            if tax_group.tax_payable_account_id and tax_group.tax_payable_account_id.account_type != 'liability_payable':
-                raise UserError(self.env._("You must select a payable account for 'Tax Payable Account'."))
-            if tax_group.tax_receivable_account_id and tax_group.tax_receivable_account_id.account_type != 'asset_receivable':
-                raise UserError(self.env._("You must select a receivable account for 'Tax Receivable Account'."))
-            if (
-                (tax_group.tax_payable_account_id and not tax_group.tax_payable_account_id.non_trade)
-                or (tax_group.tax_receivable_account_id and not tax_group.tax_receivable_account_id.non_trade)
-            ):
-                raise UserError(self.env._("You must use non-trade accounts for tax groups."))
 
     @api.depends('company_id')
     def _compute_country_id(self):
@@ -92,7 +60,7 @@ class AccountTax(models.Model):
     _rec_names_search = ('name', 'description', 'invoice_label')
     _check_company_domain = models.check_company_domain_parent_of
 
-    name = fields.Char(string='Tax Name', required=True, translate=True, tracking=True, copy=mark_as_copy('name'))
+    name = fields.Char(string='Tax Name', required=True, translate=True, tracking=True)
     type_tax_use = fields.Selection(TYPE_TAX_USE, string='Tax Type', required=True, default="sale", tracking=True,
         help="Determines where the tax is selectable. Note: 'None' means a tax can't be used by itself, however it can still be used in a group. 'adjustment' is used to perform tax adjustment.")
     tax_scope = fields.Selection([('service', 'Services'), ('consu', 'Goods')], string="Tax Scope")
@@ -348,7 +316,7 @@ class AccountTax(models.Model):
     @api.depends('company_id', 'company_id.domestic_fiscal_position_id', 'fiscal_position_ids')
     def _compute_is_domestic(self):
         for tax in self:
-            tax.is_domestic = not tax.fiscal_position_ids or tax.company_id.domestic_fiscal_position_id in tax.fiscal_position_ids
+            tax.is_domestic = not tax.fiscal_position_ids or tax.company_id.domestic_fiscal_position_id in tax.fiscal_position_ids._origin
 
     @api.depends('fiscal_position_ids')
     def _compute_display_alternative_taxes_field(self):
@@ -363,11 +331,14 @@ class AccountTax(models.Model):
 
     @api.depends('account_move_line_ids', 'account_reconcile_model_line_ids')
     def _compute_is_used(self):
-        self.sudo().search([
+        used_taxes = set(self.sudo().search([
+            ('id', 'in', self.ids),
             '|',
             ('account_move_line_ids', '!=', False),
             ('account_reconcile_model_line_ids', '!=', False),
-        ]).is_used = True
+        ]))
+        for tax in self:
+            tax.is_used = tax in used_taxes
 
     @api.depends('is_used', 'repartition_line_ids.account_id', 'repartition_line_ids.sequence', 'repartition_line_ids.factor_percent', 'repartition_line_ids.use_in_tax_closing', 'repartition_line_ids.tag_ids')
     def _compute_repartition_lines_str(self):
@@ -640,7 +611,12 @@ class AccountTax(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         self.env.cr.cache.pop('retrieved_tax_map', None)
-        context = clean_context(self.env.context)
+        # Remove all 'default_*' keys from the context except 'default_type_tax_use'
+        # so that taxes quick-created from views retain the expected tax type.
+        context = {
+            k: v for k, v in self.env.context.items()
+            if not k.startswith('default_') or k == 'default_type_tax_use'
+        }
         context.update({
             'mail_create_nosubscribe': True,  # At create or message_post, do not subscribe the current user to the record thread
             'mail_auto_subscribe_no_notify': True,  # Do no notify users set as followers of the mail thread
@@ -1490,7 +1466,8 @@ class AccountTax(models.Model):
     def _reverse_quantity_base_line_extra_tax_data(self, extra_tax_data):
         """ Reverse all sign in extra_tax_data using the quantity.
 
-        [!] Only added python-side.
+        [!] Mirror of the same method in account_tax.js.
+        PLZ KEEP BOTH METHODS CONSISTENT WITH EACH OTHERS.
 
         :param extra_tax_data: The manual taxes data stored on records.
         :return: The extra_tax_data but reversed.
@@ -2803,6 +2780,9 @@ class AccountTax(models.Model):
                                                     If there is no amount added, the key is not in the result.
             cash_rounding_base_amount:              The delta added by 'cash_rounding' expressed in local currency.
                                                     If there is no amount added, the key is not in the result.
+            has_biggest_tax_cash_rounding:          Flag indicating the delta added by 'cash_rounding' has been added to the
+                                                    tax group having the biggest tax amount.
+                                                    If there is no amount added, the key is not in the result.
             subtotals:                              A list of subtotal (like "Untaxed Amount"), each one being a python dictionary
                                                     containing:
                 base_amount_currency:                   The base amount expressed in foreign currency.
@@ -2991,6 +2971,7 @@ class AccountTax(models.Model):
                         (subtotal, tax_group)
                         for subtotal in tax_totals_summary['subtotals']
                         for tax_group in subtotal['tax_groups']
+                        if not currency.is_zero(tax_group['tax_amount_currency'])
                     ]
 
                     if all_subtotal_tax_group:
@@ -3004,6 +2985,7 @@ class AccountTax(models.Model):
                         max_subtotal['tax_amount'] += cash_rounding_base_amount
                         tax_totals_summary['tax_amount_currency'] += cash_rounding_base_amount_currency
                         tax_totals_summary['tax_amount'] += cash_rounding_base_amount
+                        tax_totals_summary['has_biggest_tax_cash_rounding'] = True
                     else:
                         # Failed to apply the cash rounding since there is no tax.
                         cash_rounding_base_amount_currency = 0.0
@@ -5015,8 +4997,8 @@ class AccountTax(models.Model):
     def _fix_tax_included_price_company(self, price, prod_taxes, line_taxes, company_id, document_tax_mode=None):
         if company_id:
             #To keep the same behavior as in _compute_tax_id
-            prod_taxes = prod_taxes.filtered(lambda tax: tax.company_id == company_id)
-            line_taxes = line_taxes.filtered(lambda tax: tax.company_id == company_id)
+            prod_taxes = prod_taxes._filter_taxes_by_company(company_id)
+            line_taxes = line_taxes._filter_taxes_by_company(company_id)
         return self._fix_tax_included_price(price, prod_taxes, line_taxes, document_tax_mode)
 
     def _get_description_plaintext(self):
@@ -5078,6 +5060,53 @@ class AccountTax(models.Model):
         return {'criteria': criteria}
 
     @api.model
+    def _import_retrieve_tax_from_fixed_allowance_charge(self, tax_values):
+        if tax_values.get('amount_type') != 'fixed':
+            return
+
+        invoice = tax_values.get('invoice_predictive', {}).get('invoice')
+        company_id = invoice.company_id.id if invoice else self.env.company.id
+        calculated_amount = tax_values.get('amount', 0.0)
+        reason = (tax_values.get('name') or '').strip().lower()
+        type_tax_use = tax_values.get('type_tax_use')
+
+        # ignore values param as it has a flawed static_domain, but we have to use it in the function signature
+        def search_fixed_tax_fuzzy(values):
+            candidate_taxes = self.search([
+                ('company_id', 'in', [company_id, False]),
+                ('amount_type', '=', 'fixed'),
+                ('type_tax_use', '=', type_tax_use),
+                ('amount', '>=', calculated_amount - 0.01),
+                ('amount', '<=', calculated_amount + 0.01),
+            ])
+
+            if not candidate_taxes:
+                return self
+
+            if len(candidate_taxes) == 1:
+                return candidate_taxes[0]
+
+            for tax in candidate_taxes:
+                tax_name = tax.name.strip().lower()
+                if reason in tax_name or tax_name in reason:
+                    return tax
+            return self
+
+        cache_key = (
+            company_id,
+            type_tax_use,
+            calculated_amount,
+            reason,
+        )
+
+        return {
+            'criteria': [{
+                'search_method': search_fixed_tax_fuzzy,
+                'cache_key': cache_key,
+            }],
+        }
+
+    @api.model
     def _import_retrieve_tax(self, search_plan, company, tax_values_list):
         cache = self.env.cr.cache.setdefault('retrieved_tax_map', {}).setdefault(company.id, {})
 
@@ -5088,19 +5117,27 @@ class AccountTax(models.Model):
             tax_domain = (
                Domain('amount_type', '=', tax_values['amount_type'])
                & Domain('type_tax_use', '=', tax_values['type_tax_use'])
-               & Domain('amount', '=', tax_values['amount'])
             )
+            ubl_cii_tax_category_code = 'ubl_cii_tax_category_code' in self._fields and tax_values.get('ubl_cii_tax_category_code')
+            if tax_values['amount'] or ubl_cii_tax_category_code != 'AE':
+                tax_domain &= Domain('amount', '=', tax_values['amount'])
+            else:
+                # Reverse charge taxes can be reported as 0% in the document even though the
+                # tax itself isn't, so ignore the amount and rely on the category code instead.
+                tax_domain &= Domain('ubl_cii_tax_category_code', '=', 'AE')
             orders = ['sequence', 'id']
             if name := tax_values.get('name'):
                 tax_domain &= Domain('name', '=', name)
             if tax_exigibility := tax_values.get('tax_exigibility'):
                 tax_domain &= Domain('tax_exigibility', '=', tax_exigibility)
-            if (
-                (ubl_cii_tax_category_code := tax_values.get('ubl_cii_tax_category_code'))
-                and 'ubl_cii_tax_category_code' in self._fields
-            ):
-                tax_domain &= Domain('ubl_cii_tax_category_code', 'in', (ubl_cii_tax_category_code, False))
+            if ubl_cii_tax_category_code:
+                allowed_tax_category_codes = [ubl_cii_tax_category_code, False]
+                if company.vat_disabled and ubl_cii_tax_category_code != 'O':
+                    allowed_tax_category_codes.append('O')
+                tax_domain &= Domain('ubl_cii_tax_category_code', 'in', allowed_tax_category_codes)
                 orders.insert(0, 'ubl_cii_tax_category_code')
+            if extra_domain := tax_values.get("extra_domain"):
+                tax_domain &= Domain(extra_domain)
 
             for plan in search_plan:
                 tax = None

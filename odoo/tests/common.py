@@ -9,6 +9,7 @@ import base64
 import binascii
 import concurrent.futures
 import contextlib
+import contextvars
 import difflib
 import importlib
 import inspect
@@ -69,6 +70,7 @@ from odoo.http.session import (
 )
 from odoo.http.session import Session as OdooHttpSession
 from odoo.orm.environments import CacheLayer
+from odoo.orm.model_classes import is_model_definition
 from odoo.modules.registry import Registry
 from odoo.sql_db import Cursor
 from odoo.tools import SQL, DotDict, config, file_open, float_compare, mute_logger, profiler
@@ -114,6 +116,8 @@ DEFAULT_SUCCESS_SIGNAL = 'test successful'
 TEST_CURSOR_COOKIE_NAME = 'test_request_key'
 
 DISABLE_TIMEOUTS = str2bool(os.getenv('ODOO_TEST_DISABLE_TIMEOUT', '0'))
+
+_allowed_create_models = contextvars.ContextVar('allowed_create_models', default=frozenset())
 
 IGNORED_MSGS = re.compile(r"""
     failed\ to\ fetch  # base error
@@ -591,6 +595,7 @@ class BaseCase(case.TestCase):
 
     _registry_patched = False
     _registry_readonly_enabled = True
+    _monitored_create_models = (('res.company', 'stats'),)
     test_cursor_lock_timeout: int = 3600 if DISABLE_TIMEOUTS else 20
 
     @classmethod
@@ -672,6 +677,19 @@ class BaseCase(case.TestCase):
 
     def cursor(self):
         return self.registry.cursor()
+
+    @classmethod
+    @contextmanager
+    def allow_model_create(cls, *model_names: str):
+        """Temporarily allow creates on models guarded as expensive in tests."""
+        unknown = set(model_names) - {model for model, action in cls._monitored_create_models if action == 'raise'}
+        if unknown:
+            raise ValueError(f"Models are not guarded against create: {', '.join(sorted(unknown))}")
+        token = _allowed_create_models.set(_allowed_create_models.get() | frozenset(model_names))
+        try:
+            yield
+        finally:
+            _allowed_create_models.reset(token)
 
     @property
     def uid(self):
@@ -1154,9 +1172,10 @@ class BaseCase(case.TestCase):
             return
         http_request_required_key = self.http_request_key
         # Read from the raw transmitted cookies rather than request.cookies.
-        # The latter can be cleared by a handler (e.g. downgrade_to_public_user
-        # in livechat CORS flows) before a new cursor is opened, which would
-        # incorrectly fail this check even though the cookie was sent by the test.
+        # The latter can be cleared by a handler (e.g. the force_guest auth
+        # method in livechat CORS flows) before a new cursor is opened, which
+        # would incorrectly fail this check even though the cookie was sent by
+        # the test.
         http_request_key = request.httprequest.cookies.get(TEST_CURSOR_COOKIE_NAME)
         if http_request_key != http_request_required_key:
             expected = http_request_required_key
@@ -1394,12 +1413,70 @@ class TransactionCase(BaseCase):
         cls.env = api.Environment(cls.cr, api.SUPERUSER_ID, {})
         cls.env.transaction._wrote__ = True  # isolate tests: avoid propagating cache on rollback
 
-        # speedup CryptContext. Many user an password are done during tests, avoid spending time hasing password with many rounds
+        def guard_create(original_create, model_name, action):
+            if action == 'raise':
+                @wraps(original_create)
+                def guarded_create(self, vals_list):
+                    if self._name != model_name:
+                        return original_create(self, vals_list)
+                    if model_name not in _allowed_create_models.get():
+                        raise AssertionError(
+                            f"Creating {model_name} records is disabled during tests because it is expensive. "
+                            "Reuse test data, or use allow_model_create() around the smallest necessary block."
+                        )
+                    records = original_create(self, vals_list)
+                    return records
+            elif action == 'stats':
+                @wraps(original_create)
+                def guarded_create(self, vals_list):
+                    if self._name != model_name:
+                        return original_create(self, vals_list)
+                    start = real_time()
+                    records = original_create(self, vals_list)
+                    caller = inspect.stack()[1]
+                    formated_caller = f"{caller.filename}:{caller.lineno} in {caller.function}"
+                    create_time = real_time() - start
+                    if cls.registry._assertion_report:
+                        cls.registry._assertion_report.call_stats[f'{model_name}.create'].add_call(create_time)
+                    _logger.info('Create of %s took %s in %s', model_name, create_time, formated_caller)
+                    return records
+            return guarded_create
+
+        for model_name, action in cls._monitored_create_models:
+            if model_name not in cls.registry:
+                raise ValueError(f"Unknown model guarded against create: {model_name}")
+            model_class = cls.registry[model_name]
+            # walk up the MRO to find the class that actually owns `create`
+            create_owner = next(
+                base for base in model_class.__mro__
+                if is_model_definition(base) and 'create' in base.__dict__
+            )
+            cls.startClassPatcher(patch.object(
+                create_owner,
+                'create',
+                guard_create(create_owner.create, model_name, action),
+            ))
+
+        # speedup CryptContext. Many password-type logins are done during tests, avoid spending time hashing password with many rounds
         def _crypt_context(self):  # noqa: ARG001
-            return CryptContext(
+            cryptCtx = CryptContext(
                 ['pbkdf2_sha512', 'plaintext'],
                 pbkdf2_sha512__rounds=1,
             )
+            # The modified hash configuration causes rotation of the in-database password hash values.
+            # Rotating password hashes mid-test causes session_id rotation leading into indeterministic 'user not logged in' errors.
+            # Never returning a replacement hash prevents this problem.
+            original_verify_and_update = cryptCtx.verify_and_update
+
+            def mock_verify_and_update(*args, **kwargs):
+                valid, replacement_hash = original_verify_and_update(*args, **kwargs)
+                if replacement_hash:
+                    _logger.info("Surpressing hash update in CryptContext override")
+                return valid, None
+
+            cryptCtx.verify_and_update = mock_verify_and_update
+            return cryptCtx
+
         cls._crypt_context_patcher = patch('odoo.addons.base.models.res_users.ResUsersPatchedInTest._crypt_context', _crypt_context)
         cls.startClassPatcher(cls._crypt_context_patcher)
 
@@ -1459,6 +1536,21 @@ class TransactionCase(BaseCase):
             transaction.ormcaches__[name] = CacheLayer(layer)
 
     @classmethod
+    def add_class_company(cls, xmlid, values=None):
+        company = cls.env.ref(xmlid).sudo()
+        if values:
+            company.write(values)
+        cls.env.user.company_ids += company | company.child_ids
+        return company
+
+    def add_company(self, xmlid, values=None):
+        company = self.env.ref(xmlid).sudo()
+        if values:
+            company.write(values)
+        self.env.user.company_ids += company | company.child_ids
+        return company
+
+    @classmethod
     @contextmanager
     def mock_datetime_and_now(cls, mock_dt):
         """ Used when synchronization date (using env.cr.now()) is important
@@ -1495,22 +1587,22 @@ class TransactionCase(BaseCase):
             case_instance = self
 
             def _patched_run_wkhtmltopdf(self, args):
+                http_request_key = case_instance.http_request_key
                 with (
-                    patch.object(case_instance, 'http_request_key', 'wkhtmltopdf'),
                     release_test_lock(),
                     patch('odoo.tests.common._disable_flushing_cursor', True),
                 ):
-                    args = ['--cookie', TEST_CURSOR_COOKIE_NAME, 'wkhtmltopdf', *args]
+                    args = ['--cookie', TEST_CURSOR_COOKIE_NAME, http_request_key, *args]
                     return old_run_wkhtmltopdf(self, args)
 
             report_model = self.env.registry['ir.actions.report']
             try:
-                old_run_wkhtmltopdf = report_model._run_wkhtmltopdf
+                old_run_wkhtmltopdf = report_model._run_wkhtmltopdf__
             except AttributeError:
                 pass
             else:
                 stack.enter_context(
-                    patch.object(report_model, '_run_wkhtmltopdf', _patched_run_wkhtmltopdf),
+                    patch.object(report_model, '_run_wkhtmltopdf__', _patched_run_wkhtmltopdf),
                 )
             yield
 
@@ -2629,22 +2721,22 @@ class HttpCase(TransactionCase):
         case_instance = self
 
         def _patched_run_wkhtmltopdf(self, args):
+            http_request_key = case_instance.http_request_key
             with (
-                patch.object(case_instance, 'http_request_key', 'wkhtmltopdf'),
                 release_test_lock(),
                 patch('odoo.tests.common._disable_flushing_cursor', True),
             ):
-                args = ['--cookie', TEST_CURSOR_COOKIE_NAME, 'wkhtmltopdf', *args]
+                args = ['--cookie', TEST_CURSOR_COOKIE_NAME, http_request_key, *args]
                 return old_run_wkhtmltopdf(self, args)
 
         report_model = self.env.registry['ir.actions.report']
         try:
-            old_run_wkhtmltopdf = report_model._run_wkhtmltopdf
+            old_run_wkhtmltopdf = report_model._run_wkhtmltopdf__
         except AttributeError:
             pass
         else:
             self.startPatcher(
-                patch.object(report_model, '_run_wkhtmltopdf', _patched_run_wkhtmltopdf),
+                patch.object(report_model, '_run_wkhtmltopdf__', _patched_run_wkhtmltopdf),
             )
 
     @contextmanager

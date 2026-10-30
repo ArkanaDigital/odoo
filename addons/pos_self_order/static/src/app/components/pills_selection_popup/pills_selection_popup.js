@@ -20,7 +20,7 @@ import { getDisplayDateInfo } from "@point_of_sale/utils";
  *         [subCategoryId]: {
  *           id: string,
  *           name: string,
- *           options: Array<{ id: string, name: string }>
+ *           options: Array<{ id: string, name: string, disabled: boolean }>
  *         }
  *      }
  *   }
@@ -63,10 +63,6 @@ export class PillsSelectionPopup extends Component {
         return category ? Object.values(category.subCategories) : [];
     }
 
-    get getSelectedCategoryOptions() {
-        return this.props.options.options[this.state.selectedCategoryId] || [];
-    }
-
     confirmSelection() {
         this.props.getPayload(this.state.selectedOptionId);
         this.props.close();
@@ -83,10 +79,6 @@ export class PillsSelectionPopup extends Component {
 
     get isTimeSelection() {
         return this.props.selectionType == "time";
-    }
-
-    get isTableSelection() {
-        return this.props.selectionType == "table";
     }
 
     getCategoryInfo(category) {

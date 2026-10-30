@@ -6,6 +6,7 @@ import { animationFrame, click, leave, press, queryOne } from "@odoo/hoot-dom";
 import { advanceTime } from "@odoo/hoot-mock";
 
 import { onceAllImagesLoaded } from "@website/utils/images";
+import { startInteractionsWithSnippet } from "../helpers";
 
 setupInteractionWhiteList([
     "website.gallery_slider",
@@ -18,59 +19,16 @@ describe.current.tags("interaction_dev");
 
 const SLIDE_DURATION = 1000;
 
-// TODO Obtain rendering from `website.s_images_gallery` template ?
-function getDefaultGallery(bsRide = false, bsInterval = 0, showPopup = false) {
-    return /*xml*/ `
-        <div id="wrapwrap">
-            <section class="s_image_gallery o_slideshow pt24 pb24 s_image_gallery_controllers_outside s_image_gallery_controllers_outside_arrows_right s_image_gallery_indicators_dots s_image_gallery_arrows_default ${
-                showPopup ? " o_image_popup" : ""
-            }" data-vcss="002" data-columns="3">
-                <div class="o_container_small overflow-hidden">
-                    <div id="slideshow_sample" class="carousel carousel-dark slide" data-bs-ride="${bsRide}" data-bs-interval="${bsInterval}">
-                        <div class="o_carousel_controllers">
-                            <button class="o_carousel_pause o_snippet_not_selectable o_not_editable btn z-2" t-attf-aria-controls="slideshow_sample" title="Pause slides">
-                                <span class="o_carousel_pause_icon oi oi-filled" data-icon="pause" aria-hidden="true"/>
-                                <span class="visually-hidden">Pause slides</span>
-                            </button>
-                            <button class="carousel-control-prev o_not_editable" contenteditable="false" data-bs-target="#slideshow_sample" data-bs-slide="prev" aria-label="Previous" title="Previous">
-                                <span class="carousel-control-prev-icon" aria-hidden="true"/>
-                                <span class="visually-hidden">Previous</span>
-                            </button>
-                            <div class="carousel-indicators">
-                                <button type="button" data-bs-target="#slideshow_sample" data-bs-slide-to="0" class="active" aria-selected="true">
-                                    <span class="visually-hidden">Slide 1 of 3</span>
-                                    <img class="object-fit-cover w-100 h-100" aria-hidden="true" src="/web/image/website.landscape_md_5"/>
-                                </button>
-                                <button type="button" data-bs-target="#slideshow_sample" data-bs-slide-to="1" aria-selected="true">
-                                    <span class="visually-hidden">Slide 2 of 3</span>
-                                    <img class="object-fit-cover w-100 h-100" aria-hidden="true" src="/web/image/website.set_2_square_md_1"/>
-                                </button>
-                                <button type="button" data-bs-target="#slideshow_sample" data-bs-slide-to="2" aria-selected="true">
-                                    <span class="visually-hidden">Slide 3 of 3</span>
-                                    <img class="object-fit-cover w-100 h-100" aria-hidden="true" src="/web/image/website.landscape_md_1"/>
-                                </button>
-                            </div>
-                            <button class="carousel-control-next o_not_editable" contenteditable="false" data-bs-target="#slideshow_sample" data-bs-slide="next" aria-label="Next" title="Next">
-                                <span class="carousel-control-next-icon" aria-hidden="true"/>
-                                <span class="visually-hidden">Next</span>
-                            </button>
-                        </div>
-                        <div class="carousel-inner">
-                            <div class="carousel-item active">
-                                <img class="img img-fluid d-block mh-100 mw-100 mx-auto rounded object-fit-cover" src="/web/image/website.landscape_md_5" data-name="Image" data-index="0" alt=""/>
-                            </div>
-                            <div class="carousel-item">
-                                <img class="img img-fluid d-block mh-100 mw-100 mx-auto rounded object-fit-cover" src="/web/image/website.set_2_square_md_1" data-name="Image" data-index="1" alt=""/>
-                            </div>
-                            <div class="carousel-item">
-                                <img class="img img-fluid d-block mh-100 mw-100 mx-auto rounded object-fit-cover" src="/web/image/website.landscape_md_1" data-name="Image" data-index="2" alt=""/>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-        </div>
-    `;
+function processGallerySnippet(bsRide = false, bsInterval = 0, showPopup = false) {
+    return (html) => {
+        const galleryEl = html.querySelector(".s_image_gallery");
+        galleryEl.classList.toggle("o_image_popup", showPopup);
+        const carouselEl = galleryEl.querySelector(".carousel");
+        Object.assign(carouselEl.dataset, {
+            bsRide,
+            bsInterval,
+        });
+    };
 }
 
 // TODO Obtain rendering from `website.gallery.s_image_gallery_mirror.lightbox` template ?
@@ -81,7 +39,7 @@ const defaultLightbox = /*xml*/ `
         <div style="margin: 0 12px;" id="slideshow_3" class="carousel slide" data-bs-ride="false" data-bs-interval="0">
             <div class="o_carousel_controllers">
                 <button class="carousel-control-prev o_we_no_overlay o_not_editable" contenteditable="false" data-bs-slide="prev" aria-label="Previous" title="Previous" data-bs-target="#slideshow_3">
-                    <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                    <span class="carousel-control-prev-icon" role="img" aria-hidden="true"></span>
                     <span class="visually-hidden">Previous</span>
                 </button>
                 <div class="carousel-indicators s_image_gallery_indicators_bars">
@@ -111,7 +69,7 @@ const defaultLightbox = /*xml*/ `
                     </button>
                 </div>
                 <button class="carousel-control-next o_we_no_overlay o_not_editable" contenteditable="false" data-bs-slide="next" aria-label="Next" title="Next" data-bs-target="#slideshow_3">
-                    <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                    <span class="carousel-control-next-icon" role="img" aria-hidden="true"></span>
                     <span class="visually-hidden">Next</span>
                 </button>
             </div>
@@ -167,7 +125,7 @@ const defaultOldLightbox = `
             </div>
             <ul class="carousel-indicators">
                 <li class="o_indicators_left text-center d-none" aria-label="Previous" title="Previous">
-                    <i class="oi" data-icon="chevron_backward"></i>
+                    <i class="oi" data-icon="chevron_backward" role="img" aria-hidden="true"></i>
                 </li>
                 <li data-bs-target="#slideshow_3" data-bs-slide-to="0" class="" style="background-image: url(/web/image/website.set_2_square_md_1)"></li>
                 <li data-bs-target="#slideshow_3" data-bs-slide-to="1" style="background-image: url(/web/image/website.set_2_square_md_3)" class=""></li>
@@ -175,7 +133,7 @@ const defaultOldLightbox = `
                 <li data-bs-target="#slideshow_3" data-bs-slide-to="3" style="background-image: url(/web/image/website.set_2_square_md_4)" class="active" aria-current="true"></li><li data-bs-target="#slideshow_3" data-bs-slide-to="4" style="background-image: url(/web/image/website.set_2_square_md_6)"></li>
                 <li data-bs-target="#slideshow_3" data-bs-slide-to="5" style="background-image: url(/web/image/website.set_2_square_md_2)" class=""></li>
                 <li class="o_indicators_right text-center d-none" aria-label="Next" title="Next">
-                    <i class="oi" data-icon="chevron_forward"></i>
+                    <i class="oi" data-icon="chevron_forward" role="img" aria-hidden="true"></i>
                 </li>
             </ul>
         </div>
@@ -204,7 +162,9 @@ test("gallery_slider does nothing if there is no o_slideshow s_image_gallery", a
 });
 
 test("gallery_slider interaction on image gallery", async () => {
-    const { core } = await startInteractions(getDefaultGallery());
+    const { core } = await startInteractionsWithSnippet("s_image_gallery", {
+        processHTML: processGallerySnippet(),
+    });
     expect(core.interactions).toHaveLength(1);
     await animationFrame();
     await onceAllImagesLoaded(getFixture());
@@ -266,7 +226,9 @@ test("gallery_slider interaction on old lightbox", async () => {
 });
 
 test("carousel autoplay pauses while lightbox is open and resumes after closing", async () => {
-    const { core } = await startInteractions(getDefaultGallery("carousel", 500, true));
+    const { core } = await startInteractionsWithSnippet("s_image_gallery", {
+        processHTML: processGallerySnippet("carousel", 500, true),
+    });
     expect(core.interactions).toHaveLength(2);
     expect(".carousel .carousel-item:nth-child(1)").toHaveClass("active");
     expect(".carousel .carousel-item:nth-child(2)").not.toHaveClass("active");

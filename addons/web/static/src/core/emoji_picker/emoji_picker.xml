@@ -3,7 +3,7 @@
 
 <t t-name="web.EmojiPicker">
     <div
-        t-attf-class="o-EmojiPicker d-flex flex-column justify-content-center rounded-3 {{ this.props.class }}"
+        t-attf-class="o-EmojiPicker d-flex flex-column justify-content-center {{ this.props.class }}"
         t-att-class="{ 'align-items-center': !this.emojisLoaded, 'h-100': this.props.mobile }"
         t-on-click="this.onClick"
         t-on-keydown="this.onKeydown"
@@ -14,9 +14,9 @@
         </t>
         <t t-else="">
             <div class="o-EmojiPicker-search d-flex align-items-center mx-2 mt-2 rounded">
-                <span class="o-EmojiPicker-searchContour d-flex mx-1 w-100 rounded o-active align-items-center justify-content-center border border-secondary bg-view">
-                    <i class="oi ps-2 py-1 fs-7 rounded-start-0 rounded-3 o-active opacity-50" data-icon="search" title="Search..." role="img" aria-label="Search..."/>
+                <span class="o-EmojiPicker-searchContour d-flex mx-1 w-100 rounded-pill o-active align-items-center justify-content-center border bg-view">
                     <t t-call="web.EmojiPicker.searchInput"/>
+                    <i class="oi order-first ps-2 py-1 fs-7 rounded-start-0 rounded-3 o-active opacity-50" data-icon="search" title="Search..." role="img" aria-label="Search..."/>
                     <button t-if="this.searchTerm()" class="btn btn-sm btn-link p-0 px-1 opacity-50 opacity-100-hover" title="Clear search" t-on-click="this.clearSearch">
                         <i class="oi oi-filled" data-icon="cancel"/>
                     </button> 
@@ -55,7 +55,7 @@
                 </t>
             </div>
             <div
-                class="o-EmojiPicker-navbar d-flex flex-shrink-0 w-100 align-items-center justify-content-center overflow-auto px-1 gap-1 border-top border-secondary"
+                class="o-EmojiPicker-navbar d-flex flex-shrink-0 w-100 align-items-center justify-content-center overflow-auto px-1 gap-1 border-top"
                 t-att-class="{ 'opacity-0': !this.emojiNavbarRepr() }"
                 t-ref="this.navbarRef"
             >
@@ -152,7 +152,7 @@
 
 <t t-name="web.EmojiPicker.searchInput">
     <input
-        class="form-control border-0 flex-grow-1 rounded-3 rounded-end-0 o-active lh-1"
+        class="form-control border-0 flex-grow-1 rounded-pill o-active lh-1"
         t-att-placeholder="this.placeholder"
         t-model="this.searchTerm"
         t-ref="this.autofocusRef"

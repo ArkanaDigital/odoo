@@ -9,35 +9,35 @@ import { queryAll } from "@odoo/hoot-dom";
 defineWebsiteModels();
 
 beforeEach(async () => {
-    await setupWebsiteBuilderWithSnippet("s_donation");
+    await setupWebsiteBuilderWithSnippet("s_donation", { loadIframeBuilderTemplates: true });
 });
 
 test("display/hide donation options", async () => {
     await contains(":iframe .s_donation").click();
     expect(queryAll(":iframe .s_donation_btn")).not.toBeEmpty();
     expect(":iframe .s_donation_donate_btn").toBeVisible();
-    await contains(".hb-row[data-label='Display Options'] input").click();
+    await contains(".o_hb_row[data-label='Display Options'] input").click();
     expect(queryAll(":iframe .s_donation_btn")).toBeEmpty();
     expect(":iframe .s_donation_donate_btn").toBeVisible();
-    await contains(".hb-row[data-label='Display Options'] input").click();
+    await contains(".o_hb_row[data-label='Display Options'] input").click();
     expect(queryAll(":iframe .s_donation_btn")).not.toBeEmpty();
 });
 
 test("display/hide prefilled options", async () => {
     await contains(":iframe .s_donation").click();
     expect(":iframe .s_donation_prefilled_buttons").not.toBeEmpty();
-    await contains(".hb-row[data-label='Pre-filled Options'] input").click();
+    await contains(".o_hb_row[data-label='Pre-filled Options'] input").click();
     expect(":iframe .s_donation_prefilled_buttons").toHaveInnerHTML("");
     expect(":iframe .s_donation_range_slider_wrap").toBeVisible();
-    await contains(".hb-row[data-label='Pre-filled Options'] input").click();
+    await contains(".o_hb_row[data-label='Pre-filled Options'] input").click();
     expect(":iframe .s_donation_prefilled_buttons").not.toBeEmpty();
 });
 
 test("display/hide donation descriptions options", async () => {
     await contains(":iframe .s_donation").click();
     expect(queryAll(":iframe .s_donation_btn_description")).not.toBeEmpty();
-    await contains(".hb-row[data-label='Descriptions'] input").click();
+    await contains(".o_hb_row[data-label='Descriptions'] input").click();
     expect(queryAll(":iframe .s_donation_btn_description")).toBeEmpty();
-    await contains(".hb-row[data-label='Descriptions'] input").click();
+    await contains(".o_hb_row[data-label='Descriptions'] input").click();
     expect(queryAll(":iframe .s_donation_btn_description")).not.toBeEmpty();
 });

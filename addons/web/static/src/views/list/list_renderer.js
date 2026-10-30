@@ -11,10 +11,12 @@ import { registry } from "@web/core/registry";
 import { useAutofocus, useBus, useService } from "@web/core/utils/hooks";
 import { useSortable } from "@web/core/utils/sortable_owl";
 import { getTabableElements } from "@web/core/utils/ui";
+import { getAggregateCurrencyId } from "@web/model/currency_aggregates";
 import { AGGREGATABLE_FIELD_TYPES, combineModifiers } from "@web/model/relational_model/utils";
 import { onWillRender, render } from "@web/owl2/utils";
 import { Field, getPropertyFieldInfo } from "@web/views/fields/field";
 import { getTooltipInfo } from "@web/views/fields/field_tooltip";
+import { getMultiDragRecordIds, startMultiDrag, stopMultiDrag } from "@web/views/multi_drag";
 import {
     TOUCH_SELECTION_THRESHOLD,
     computeAggregatedValue,
@@ -36,11 +38,11 @@ import {
     onWillUnmount,
     proxy,
     signal,
-    status,
     t,
     useListener,
     usePlugin,
     useProps,
+    useScope,
 } from "@odoo/owl";
 import { getCurrencyRates } from "@web/core/currency";
 import { DebugModePlugin } from "@web/core/debug_mode_plugin";
@@ -96,12 +98,44 @@ function containsActiveElement(parent) {
     return parent !== activeElement && parent.contains(activeElement);
 }
 
+const READONLY_COLUMN_GROUP_FIELD =
+    ".o_column_group_field.o_readonly_modifier, .o_readonly_modifier > .o_column_group_field";
+
+/**
+ * Tabable elements of a cell, or of a single one of its column group fields,
+ * ignoring those of readonly column group fields, e.g. the link of a readonly
+ * many2one.
+ *
+ * @param {HTMLElement} parent
+ */
+function getEditableTabableElements(parent) {
+    return getTabableElements(parent).filter((el) => !el.closest(READONLY_COLUMN_GROUP_FIELD));
+}
+
 /**
  * @param {HTMLTableCellElement} cell
  * @param {number} index
  */
 function getElementToFocus(cell, index) {
-    return getTabableElements(cell).at(index) || cell;
+    return getEditableTabableElements(cell).at(index) || cell;
+}
+
+/**
+ * A cell may display several fields (column group), in which case it is only
+ * readonly when all of them are.
+ *
+ * @param {HTMLTableCellElement} cell
+ */
+function hasOnlyReadonlyFields(cell) {
+    const fields = [...cell.children];
+    return (
+        fields.length > 0 &&
+        fields.every(
+            (el) =>
+                el.classList.contains("o_readonly_modifier") ||
+                el.matches(READONLY_COLUMN_GROUP_FIELD)
+        )
+    );
 }
 
 export const listRendererProps = {
@@ -154,6 +188,8 @@ export class ListRenderer extends Component {
     optionalActiveFields = proxy(this.props.optionalActiveFields || {});
 
     debugMode = usePlugin(DebugModePlugin);
+
+    scope = useScope();
 
     setup() {
         this.uiService = useService("ui");
@@ -246,8 +282,16 @@ export class ListRenderer extends Component {
         });
         useAutofocus({ ref: this.groupInputRef });
         let dataRowId;
-        let dataGroupId;
         this.resequencePromise = Promise.resolve();
+        this.multiDragRecordIds = null;
+        // a record must leave the edition to be dragged along with the selection
+        const getEditedRecordToDrag = (el) => {
+            const editedRecord = this.props.list.editedRecord;
+            const { id } = el.closest(".o_row_draggable").dataset;
+            return getMultiDragRecordIds(this.props.list, id)?.includes(editedRecord?.id)
+                ? editedRecord
+                : null;
+        };
         useSortable({
             enable: () => this.canResequenceRows,
             // Params
@@ -256,15 +300,34 @@ export class ListRenderer extends Component {
             handle: ".o_handle_cell",
             cursor: "grabbing",
             placeholderClasses: ["d-table-row"],
+            preventDrag: (el) => {
+                // pending changes are the user's to commit, not the drag's
+                const record = getEditedRecordToDrag(el);
+                return Boolean(record && (record.dirty || this.lastIsDirty));
+            },
             // Hooks
+            onWillStartDrag: ({ element }) => {
+                if (getEditedRecordToDrag(element)) {
+                    this.props.list.leaveEditMode();
+                }
+            },
             onDragStart: (params) => {
                 const { element } = params;
                 dataRowId = element.dataset.id;
-                dataGroupId = this.props.list.isGrouped && element.dataset.groupId;
-                return this.sortStart(params);
+                // sets the width of the cells, so it must be done before hiding them
+                this.sortStart(params);
+                this.multiDragRecordIds = getMultiDragRecordIds(this.props.list, dataRowId);
+                if (this.multiDragRecordIds) {
+                    startMultiDrag(this.tableRef(), element, this.multiDragRecordIds, {
+                        recordSelector: ".o_data_row",
+                        placeholderTag: "td",
+                        placeholderClass: "fw-bold d-flex align-items-center flex-fill text-nowrap",
+                        leadingChildSelector: ".o_list_record_selector, .o_handle_cell",
+                    });
+                }
             },
             onDragEnd: (params) => this.sortStop(params),
-            onDrop: (params) => this.sortDrop(dataRowId, dataGroupId, params),
+            onDrop: (params) => this.sortDrop(dataRowId, params),
         });
 
         if (this.env.searchModel) {
@@ -324,7 +387,7 @@ export class ListRenderer extends Component {
             // HACK: we need to wait for the next tick to be sure that the Field components are patched.
             // OWL don't wait the patch for the children components if the children trigger a patch by himself.
             await Promise.resolve();
-            if (status(this) === "destroyed") {
+            if (this.scope.isDestroyed()) {
                 return;
             }
             if (this.activeElement !== this.uiService.activeElement) {
@@ -483,7 +546,7 @@ export class ListRenderer extends Component {
         return {
             readonly:
                 this.props.readonly ||
-                this.isCellReadonly(column, record) ||
+                this.isFieldReadonly(column, record) ||
                 this.isRecordReadonly(record) ||
                 (column.widget === "handle" && !this.canResequenceRows),
         };
@@ -588,7 +651,7 @@ export class ListRenderer extends Component {
             if (column.type === "column_group") {
                 const hasEditable = column.fields.some(
                     (f) =>
-                        !this.isCellReadonly(f, this.editedRecord()) &&
+                        !this.isFieldReadonly(f, this.editedRecord()) &&
                         !this.evalInvisible(f.invisible, this.editedRecord()) &&
                         (!f.optional || this.optionalActiveFields[f.name])
                 );
@@ -601,7 +664,7 @@ export class ListRenderer extends Component {
                         const subFieldEl = cell.querySelector(
                             `[data-field-name='${targetFieldName}']`
                         );
-                        toFocus = subFieldEl && getTabableElements(subFieldEl).at(0);
+                        toFocus = subFieldEl && getEditableTabableElements(subFieldEl).at(0);
                     }
                     toFocus = toFocus || (cell && getElementToFocus(cell, forward ? 0 : -1));
                     if (toFocus && cell !== toFocus) {
@@ -617,7 +680,7 @@ export class ListRenderer extends Component {
             }
             // in findNextFocusableOnRow test is done by using classList
             // refactor
-            if (!this.isCellReadonly(column, this.editedRecord())) {
+            if (!this.isFieldReadonly(column, this.editedRecord())) {
                 const cell = this.tableRef().querySelector(
                     `.o_selected_row td[data-column-id='${column.id}']`
                 );
@@ -826,29 +889,39 @@ export class ListRenderer extends Component {
             if (type === "monetary" || widget === "monetary") {
                 const currencyField = this.getCurrencyField(aggColumn);
                 if (currencyField in this.props.list.activeFields) {
-                    if (this.props.list.isGrouped && !this.props.list.selection.length) {
-                        currencyId = values.find((v) => v[currencyField]?.length)?.[
-                            currencyField
-                        ][0];
+                    const isGroupAggregate =
+                        this.props.list.isGrouped && !this.props.list.selection.length;
+                    if (isGroupAggregate) {
+                        const group = values.find((v) => v[currencyField]?.length);
+                        currencyId = group && getAggregateCurrencyId(field, group[currencyField]);
                     } else {
                         currencyId = values[0][currencyField] && values[0][currencyField].id;
                     }
                     if (func && type === "monetary") {
                         const currencies = this.getFieldCurrencies(aggColumn);
-                        // in case of multiple currencies, convert values into default currency using conversion rates
-                        if (currencies.size > 1) {
+                        if (
+                            isGroupAggregate &&
+                            values.some(
+                                (v) =>
+                                    v[currencyField]?.length &&
+                                    !getAggregateCurrencyId(field, v[currencyField])
+                            )
+                        ) {
+                            // a group mixing currencies has an aggregate that can't be converted
+                            currencyId = undefined;
+                        } else if (currencies.size > 1) {
+                            // in case of multiple currencies, convert values into default currency using conversion rates
                             multiCurrency = true;
                             currencyId = user.activeCompany.currency_id;
                             for (const i in values) {
-                                let currency = values[i][currencyField].id;
-                                if (
-                                    this.props.list.isGrouped &&
-                                    !this.props.list.selection.length
-                                ) {
-                                    currency =
-                                        values[i][currencyField].length > 1
-                                            ? currencyId
-                                            : values[i][currencyField][0];
+                                const currencyValue = values[i][currencyField];
+                                if (!currencyValue) {
+                                    continue;
+                                }
+                                let currency = currencyValue.id;
+                                if (isGroupAggregate) {
+                                    // a group aggregate may already be converted
+                                    currency = getAggregateCurrencyId(field, currencyValue);
                                 }
                                 if (currency !== currencyId) {
                                     fieldValues[i] *= currency
@@ -895,7 +968,7 @@ export class ListRenderer extends Component {
         }
         if (this.props.list.isGrouped && !this.props.list.selection.length) {
             return values.reduce((set, value) => {
-                value[currencyField].forEach((c) => {
+                value[currencyField]?.forEach((c) => {
                     set.add(c);
                 });
                 return set;
@@ -957,15 +1030,14 @@ export class ListRenderer extends Component {
         };
         if (field.type === "monetary") {
             const currencies = group.aggregates[field.currency_field];
-            if (currencies.length > 1 && aggregateValue !== false) {
-                formatOptions.currencyId = user.activeCompany.currency_id;
+            formatOptions.currencyId = getAggregateCurrencyId(field, currencies);
+            if (formatOptions.currencyId && currencies.length > 1 && aggregateValue !== false) {
                 return {
                     value: formatter ? formatter(aggregateValue, formatOptions) : aggregateValue,
                     multiCurrency: true,
                     rawValue: aggregateValue,
                 };
             }
-            formatOptions.currencyId = currencies[0];
         }
         return {
             value: formatter ? formatter(aggregateValue, formatOptions) : aggregateValue,
@@ -1013,9 +1085,15 @@ export class ListRenderer extends Component {
         return this.columns;
     }
 
+    // a stacked column takes the alignment of its first sub-field
     isNumericColumn(column) {
-        const { type } = this.fields[column.name];
-        return ["float", "integer", "monetary"].includes(type);
+        if (column.type === "column_group") {
+            return this.isNumericColumn(column.fields[0]);
+        }
+        return (
+            column.type === "field" &&
+            ["float", "integer", "monetary"].includes(this.fields[column.name].type)
+        );
     }
 
     isRecordAvailable(record) {
@@ -1100,6 +1178,9 @@ export class ListRenderer extends Component {
             } else if (column.type === "column_group" || column.type === "field") {
                 classNames.push("o_field_cell");
             }
+            if (column.type === "column_group" && this.isNumericColumn(column)) {
+                classNames.push("o_list_number");
+            }
             if (column.type === "field") {
                 if (column.attrs && column.attrs.class && this.canUseFormatter(column, record)) {
                     classNames.push(column.attrs.class);
@@ -1115,23 +1196,37 @@ export class ListRenderer extends Component {
             this.cellClassByColumn[column.id] = classNames;
         }
         const classNames = [...this.cellClassByColumn[column.id]];
+        // The cell takes the modifiers of the field it displays, a column group
+        // displaying a lone field included. When it stacks several of them, the cell
+        // takes none and each field styles itself (see getColumnGroupFieldClasses).
+        let cellField = null;
         if (column.type === "field") {
-            if (evaluateBooleanExpr(column.required, record.evalContextWithVirtualIds)) {
+            cellField = column;
+        } else if (column.type === "column_group") {
+            const visibleFields = this.getVisibleColumnGroupFields(column, record);
+            if (visibleFields.length > 1) {
+                classNames.push("o_stacked_fields");
+            } else {
+                cellField = visibleFields[0] || null;
+            }
+        }
+        if (cellField) {
+            if (evaluateBooleanExpr(cellField.required, record.evalContextWithVirtualIds)) {
                 classNames.push("o_required_modifier");
             }
-            if (record.isFieldInvalid(column.name)) {
+            if (record.isFieldInvalid(cellField.name)) {
                 classNames.push("o_invalid_cell");
             }
-            if (this.isCellReadonly(column, record)) {
+            if (this.isFieldReadonly(cellField, record)) {
                 classNames.push("o_readonly_modifier");
             }
-            if (this.canUseFormatter(column, record)) {
-                classNames.push(...this.getDecorationClassNames(column, record));
+            if (this.canUseFormatter(cellField, record)) {
+                classNames.push(...this.getDecorationClassNames(cellField, record));
             }
             if (
                 record.isInEdition &&
                 this.editedRecord() &&
-                this.isCellReadonly(column, this.editedRecord())
+                this.isFieldReadonly(cellField, this.editedRecord())
             ) {
                 classNames.push("text-muted");
             } else if (this.isRecordAvailable(record)) {
@@ -1145,7 +1240,7 @@ export class ListRenderer extends Component {
      * @param {Column} column
      * @param {RelationalRecord} record
      */
-    isCellReadonly(column, record) {
+    isFieldReadonly(column, record) {
         return !!(
             this.isRecordReadonly(record) ||
             (column.relatedPropertyField && record.selected && record.model.multiEdit) ||
@@ -1177,22 +1272,79 @@ export class ListRenderer extends Component {
     }
 
     /**
+     * Only use a tooltip template if we're in debug mode (advanced tooltip) or
+     * if the field has an help message. If not, the tooltip will only display
+     * the field's label. By not defining a template, we allow the tooltip
+     * service to decide not to display the tooltip if its content is the same as
+     * the column header.
+     *
+     * @param {Column} column
+     * @returns {string | undefined }
+     */
+    getColumnTooltipTemplate(column) {
+        if (this.debugMode.isActive()) {
+            return "web.FieldTooltip";
+        }
+        // the help can be defined in the arch, or on the field itself (same
+        // resolution as in getTooltipInfo)
+        if (column.help ?? this.fields[column.name].help) {
+            return "web.ListHeaderHelpTooltip";
+        }
+    }
+
+    /**
      * Classes to apply on the element displaying a given field of a column group.
-     * When the field is displayed by the Field component, that component already
-     * applies the arch class and the decorations itself.
+     * The modifiers and decorations only go there when several fields are stacked,
+     * a lone field has them on its cell (see getCellClass). When the field is
+     * displayed by the Field component, that component already applies the arch
+     * class and the decorations itself.
      *
      * @param {Column} fieldInfo
      * @param {RelationalRecord} record
+     * @param {boolean} isStacked
      */
-    getColumnGroupFieldClasses(fieldInfo, record) {
-        if (!this.canUseFormatter(fieldInfo, record)) {
-            return "";
+    getColumnGroupFieldClasses(fieldInfo, record, isStacked) {
+        const classNames = [];
+        const canUseFormatter = this.canUseFormatter(fieldInfo, record);
+        if (isStacked) {
+            if (evaluateBooleanExpr(fieldInfo.required, record.evalContextWithVirtualIds)) {
+                classNames.push("o_required_modifier");
+            }
+            if (record.isFieldInvalid(fieldInfo.name)) {
+                classNames.push("o_invalid_cell");
+            }
+            if (this.isFieldReadonly(fieldInfo, record)) {
+                classNames.push("o_readonly_modifier");
+                if (record.isInEdition) {
+                    classNames.push("text-muted");
+                }
+            }
+            if (canUseFormatter) {
+                classNames.push(...this.getDecorationClassNames(fieldInfo, record));
+            }
         }
-        const classNames = this.getDecorationClassNames(fieldInfo, record);
-        if (this.getFieldClass(fieldInfo)) {
+        if (canUseFormatter && this.getFieldClass(fieldInfo)) {
             classNames.push(this.getFieldClass(fieldInfo));
         }
         return classNames.join(" ");
+    }
+
+    /**
+     * @param {Column} column
+     * @param {RelationalRecord} record
+     */
+    getVisibleColumnGroupFields(column, record) {
+        return column.fields.filter((fieldInfo) =>
+            this.isColumnGroupFieldVisible(column, fieldInfo, record)
+        );
+    }
+
+    isColumnGroupFieldVisible(column, fieldInfo, record) {
+        return (
+            !this.evalInvisible(fieldInfo.invisible, record) &&
+            fieldInfo.name in record.data &&
+            !(fieldInfo.optional && !this.optionalActiveFields[fieldInfo.name])
+        );
     }
 
     /**
@@ -1474,7 +1626,7 @@ export class ListRenderer extends Component {
                     (!column.widget || column.widget === "boolean")
                 ) {
                     if (
-                        !this.isCellReadonly(column, record) &&
+                        !this.isFieldReadonly(column, record) &&
                         !this.evalInvisible(column.invisible, record)
                     ) {
                         await record.update({ [column.name]: !record.data[column.name] });
@@ -1696,10 +1848,7 @@ export class ListRenderer extends Component {
             if (!c.classList.contains("o_data_cell")) {
                 continue;
             }
-            if (
-                c.firstElementChild &&
-                c.firstElementChild.classList.contains("o_readonly_modifier")
-            ) {
+            if (hasOnlyReadonlyFields(c)) {
                 continue;
             }
             const toFocus = getElementToFocus(c, 0);
@@ -1723,10 +1872,7 @@ export class ListRenderer extends Component {
             if (!c.classList.contains("o_data_cell")) {
                 continue;
             }
-            if (
-                c.firstElementChild &&
-                c.firstElementChild.classList.contains("o_readonly_modifier")
-            ) {
+            if (hasOnlyReadonlyFields(c)) {
                 continue;
             }
             const toFocus = getElementToFocus(c, -1);
@@ -2461,24 +2607,26 @@ export class ListRenderer extends Component {
      * @param {HTMLElement} [params.parent]
      * @param {HTMLElement} [params.previous]
      */
-    async sortDrop(dataRowId, dataGroupId, { element, previous }) {
+    async sortDrop(dataRowId, { element, previous }) {
         element.classList.remove("o_row_draggable");
+        const recordIds = this.multiDragRecordIds || [dataRowId];
+        // rows hidden by this same multi drag are still in the DOM, but can't be a reference
+        while (previous && recordIds.includes(previous.dataset.id)) {
+            previous = previous.previousElementSibling;
+        }
         const refId = previous ? previous.dataset.id : null;
         try {
-            if (dataGroupId) {
+            if (this.props.list.isGrouped) {
                 if (!previous?.dataset?.groupId) {
                     return;
                 }
-                this.resequencePromise = this.props.list.moveRecord(
-                    dataRowId,
-                    dataGroupId,
+                this.resequencePromise = this.props.list.moveRecords(
+                    recordIds,
                     refId,
                     previous.dataset.groupId
                 );
             } else {
-                this.resequencePromise = this.props.list.resequence(dataRowId, refId, {
-                    handleField: this.props.list.handleField,
-                });
+                this.resequencePromise = this.props.list.resequence(recordIds, refId);
             }
             await this.resequencePromise;
         } finally {
@@ -2515,6 +2663,13 @@ export class ListRenderer extends Component {
      * @param {HTMLElement} [params.group]
      */
     sortStop({ element }) {
+        if (this.multiDragRecordIds) {
+            this.multiDragRecordIds = null;
+            // `onDrop` isn't awaited before `onDragEnd`, so this runs right after the
+            // synchronous part of `sortDrop`: the rows are back in their new position
+            // in the model by then, and all reappear there at the next render
+            stopMultiDrag(this.tableRef());
+        }
         for (const cell of element.querySelectorAll("td")) {
             cell.style.width = null;
         }

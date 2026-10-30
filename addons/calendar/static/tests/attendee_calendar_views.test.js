@@ -1,6 +1,6 @@
-import { defineCalendarModels } from "@calendar/../tests/calendar_test_helpers";
+import { defineCalendarModels, togglePartnerFilter } from "@calendar/../tests/calendar_test_helpers";
 import { beforeEach, expect, queryAllTexts, test } from "@odoo/hoot";
-import { waitFor } from "@odoo/hoot-dom";
+import { waitFor, waitForNone } from "@odoo/hoot-dom";
 import { mockDate } from "@odoo/hoot-mock";
 import {
     contains,
@@ -16,8 +16,11 @@ import {
     clickEvent,
     expandCalendarView,
     findDateColumn,
+    findTimeGridColumn,
     findTimeRow,
+    toggleFilter,
 } from "@web/../tests/views/calendar/calendar_test_helpers";
+import { getColor } from "@web/views/calendar/utils";
 import { user } from "@web/core/user";
 
 defineCalendarModels();
@@ -32,10 +35,12 @@ const arch = /*xml*/ `
         date_stop="stop"
         all_day="allday"
         mode="month"
+        color="partner_ids"
     >
-        <field name="partner_ids" options="{'block': True, 'icon': 'group', 'icon_class': 'oi-filled'}"/>
+        <field name="partner_ids" options="{'block': True, 'icon': 'group', 'icon_class': 'oi-filled'}"
             filters="1" widget="many2manyattendeeexpandable" write_model="calendar.filters"
-            write_field="partner_id" filter_field="partner_checked" avatar_field="avatar_128"/>
+            write_field="partner_id" filter_field="active" avatar_field="avatar_128"/>
+        <field name="calendar_id" write_model="calendar.user" write_field="calendar_id" filters="1" filter_field="is_filter_checked"/>
         <field name="partner_id" string="Organizer" options="{'icon': 'person'}"/>
         <field name="user_id"/>
         <field name="start"/>
@@ -54,7 +59,7 @@ async function selectTimeStart(startDateTime) {
 
     const startColRect = startCol.getBoundingClientRect();
     const startRowRect = startRow.getBoundingClientRect();
-    await contains(startRow).click({
+    await contains(findTimeGridColumn(startDate)).click({
         position: {
             x: startColRect.x + startColRect.width / 2,
             y: startRowRect.y + 1,
@@ -78,9 +83,17 @@ beforeEach(async () => {
         { partner_id: partnerId_1 },
         { partner_id: partnerId_2 },
     ]);
+    serverData.calendarIds = pyEnv["calendar.calendar"].create([
+        { name: "Primary Calendar" },
+        { name: "Secondary Calendar" },
+    ])
+    pyEnv["calendar.user"].create([
+        { calendar_id: serverData.calendarIds[0], user_id: serverState.userId, is_filter_checked: true, is_filter_active: true, is_primary: true },
+        { calendar_id: serverData.calendarIds[1], user_id: serverState.userId, is_filter_checked: true, is_filter_active: true, is_primary: false },
+    ])
     pyEnv["calendar.filters"].create([
-        { partner_id: partnerId_1, partner_checked: true, user_id: serverState.userId },
-        { partner_id: partnerId_2, partner_checked: true, user_id: serverData.userId },
+        { active: true, partner_id: partnerId_1, user_id: serverState.userId },
+        { active: true, partner_id: partnerId_2, user_id: serverData.userId },
     ]);
     pyEnv["calendar.event"].create([
         {
@@ -89,6 +102,7 @@ beforeEach(async () => {
             stop: "2016-12-11 01:00:00",
             attendee_ids: serverData.attendeeIds,
             partner_ids: [serverState.partnerId, partnerId_1, partnerId_2],
+            calendar_id: serverData.calendarIds[0],
         },
         {
             name: "event 2",
@@ -97,6 +111,14 @@ beforeEach(async () => {
             attendee_ids: [serverData.attendeeIds[0], serverData.attendeeIds[1]],
             partner_ids: [serverState.partnerId, partnerId_1],
         },
+        {
+            name: "secondary calendar event",
+            start: "2016-12-13 10:55:05",
+            stop: "2016-12-13 14:55:05",
+            attendee_ids: [serverData.attendeeIds[0]],
+            partner_ids: [serverState.partnerId],
+            calendar_id: serverData.calendarIds[1],
+        }
     ]);
     // Create activities on different models
     pyEnv["mail.activity"].create([
@@ -176,7 +198,7 @@ test("Linked record rendering", async () => {
         res_model_id: modelId,
     });
     await mountView({ type: "calendar", resModel: "calendar.event", arch });
-    expect(".o_calendar_renderer .o_calendar_current .fc-view").toHaveCount(1);
+    expect(".o_calendar_renderer .o_calendar_current .o_calendar_fc_view").toHaveCount(1);
 
     await changeScale("week");
     await clickEvent(eventId);
@@ -201,8 +223,8 @@ test("Default duration rendering", async () => {
         confirm: false,
     });
     await contains(".o-calendar-quick-create--create-btn").click();
-    // This new event is the third
-    await clickEvent(3);
+    // This new event is the fourth
+    await clickEvent(4);
     expect("div[name='start'] div").toHaveText("Dec 15, 3:00 PM");
     expect("div[name='stop'] div").toHaveText("Dec 15, 6:15 PM", {
         message: "The duration should be 3.25 hours",
@@ -240,23 +262,27 @@ test("Activity events rendering and popover", async () => {
 
     // Check activity events rendering (3 activity events: overdue, today and planned)
     // Done activities and other users activities are not displayed.
-    expect(".fc-event.o_activity_event").toHaveCount(3);
-    expect("td[data-date='2016-12-11'] .o_activity_event:contains('Activity 1')").toHaveCount(1);
+    expect(".o_calendar_event.o_activity_event").toHaveCount(3);
     expect(
-        "td[data-date='2016-12-12'] .o_activity_event:contains('2 pending activities')"
+        ".o_calendar_day[data-date='2016-12-11'] .o_activity_event:contains('Activity 1')"
     ).toHaveCount(1);
-    expect("td[data-date='2016-12-13'] .o_activity_event:contains('Activity 5')").toHaveCount(1);
+    expect(
+        ".o_calendar_day[data-date='2016-12-12'] .o_activity_event:contains('2 pending activities')"
+    ).toHaveCount(1);
+    expect(
+        ".o_calendar_day[data-date='2016-12-13'] .o_activity_event:contains('Activity 5')"
+    ).toHaveCount(1);
     // Check activity calendar side panel filter
     expect(".o_calendar_sidepanel input#show_activities_checkbox").toHaveProperty("checked", true);
     await contains(".o_calendar_sidepanel input#show_activities_checkbox").click(); // Hide activities
     expect.verifySteps(["calendar_hide_activities"]); // Does not fetch activities
-    expect(".fc-event.o_activity_event").toHaveCount(0);
+    expect(".o_calendar_event.o_activity_event").toHaveCount(0);
     await contains(".o_calendar_sidepanel input#show_activities_checkbox").click(); // Show activities
     expect.verifySteps(["calendar_show_activities", "calendar_fetch_activities"]);
-    expect(".fc-event.o_activity_event").toHaveCount(3);
+    expect(".o_calendar_event.o_activity_event").toHaveCount(3);
     // Check activity popover rendering
     await clickEvent("activity-event-2016-12-12");
-    await waitFor(".o_cw_activity_popover .o-mail-ActivityListPopoverItem");
+    await waitFor(".o_calendar_activity_popover .o-mail-ActivityListPopoverItem");
     expect(queryAllTexts(".o-mail-ActivityListPopoverItem-name")).toEqual([
         "Activity 2",
         "Activity 3",
@@ -276,8 +302,8 @@ test("Activity events rendering and popover", async () => {
     expect.verifySteps(["action_reschedule_tomorrow", "calendar_fetch_activities"]);
     expect(a3_selector).toHaveCount(0);
     // Check activity popover auto closing (no activity left for the day) and calendar view update
-    expect(".o_cw_activity_popover").toHaveCount(0);
-    expect(".fc-event.o_activity_event").toHaveCount(2);
+    expect(".o_calendar_activity_popover").toHaveCount(0);
+    expect(".o_calendar_event.o_activity_event").toHaveCount(2);
     // Check activity records have been updated
     // Activity 2: Archived and set done
     // Activity 3: Rescheduled
@@ -286,4 +312,113 @@ test("Activity events rendering and popover", async () => {
     expect(a2.state).toBe("done");
     const a3 = pyEnv["mail.activity"].browse(3)[0];
     expect(a3.date_deadline).toBe("2016-12-13");
+});
+
+test.tags("desktop");
+test("Filter events by primary/secondary calendar", async () => {
+    onRpc("res.users", "has_group", () => true);
+    onRpc("res.partner", "get_attendee_detail", () => []);
+    onRpc("res.users", "get_calendar_model_data", () => ({
+        credential_status: {},
+        sync_status: {},
+        sync_email: false,
+        default_duration: 1,
+    }));
+    onRpc("res.users", "read", ({ args, kwargs }) => {
+        if (args[0][0] === user.userId && (args[1]).includes("calendar_ids")) {
+            return [{ id: user.userId, calendar_ids: serverData.calendarIds }];
+        }
+    });
+
+    await mountView({ type: "calendar", resModel: "calendar.event", arch });
+    // Uncheck every filter
+    await toggleFilter("calendar_id", serverData.calendarIds[0]);
+    await toggleFilter("calendar_id", serverData.calendarIds[1]);
+
+    expect(".o_event:not(.o_activity_event)").toHaveCount(0, {
+        message: "no events should be displayed when all filters are unchecked",
+    });
+
+    // Check the primary calendar filter only.
+    await toggleFilter("calendar_id", serverData.calendarIds[0]);
+    expect(".o_event:not(.o_activity_event)").toHaveCount(2, {
+        message: "should show events in the primary calendar plus events attended by the user that are not in their calendars",
+    });
+    expect(queryAllTexts(".o_event .o_event_title")).toEqual(["event 1", "event 2"]);
+
+    // Check the secondary calendar filter.
+    await toggleFilter("calendar_id", serverData.calendarIds[1]);
+    expect(".o_event:not(.o_activity_event)").toHaveCount(3, {
+        message: "the event in the secondary calendar should now also be displayed",
+    });
+    expect(queryAllTexts(".o_event:not(.o_activity_event) .o_event_title")).toEqual([
+        "event 1",
+        "event 2",
+        "secondary calendar event",
+    ]);
+});
+
+test.tags("desktop");
+test("Attendee filters: 'Meet with' calendar filters + 'My calendar' filter", async () => {
+    const pyEnv = MockServer.current.env;
+    onRpc("res.users", "has_group", () => true);
+    onRpc("res.partner", "get_attendee_detail", () => []);
+    onRpc("res.users", "get_calendar_model_data", () => ({
+        credential_status: {},
+        sync_status: {},
+        sync_email: false,
+        default_duration: 1,
+    }));
+    await mountView({ type: "calendar", resModel: "calendar.event", arch });
+
+    // "Meet with" resets on every load.
+    expect(".o_calendar_filter[data-name=partner_ids] .o_tag").toHaveCount(0);
+    // deactivate calendars + no partner filters => no events.
+    await toggleFilter("calendar_id", serverData.calendarIds[0]);
+    await toggleFilter("calendar_id", serverData.calendarIds[1]);
+    expect(".o_calendar_event:not(.o_activity_event)").toHaveCount(0);
+
+    // Check that "Partner 1" already has an inactive calendar.filter record.
+    const [filter1Id] = pyEnv["calendar.filters"].search([
+        ["active", "in", [true, false]],
+        ["user_id", "=", serverState.userId],
+        ["partner_id", "=", serverData.partnerId_1],
+    ]);
+    const filter1 = pyEnv["calendar.filters"].browse(filter1Id)[0];
+    expect(filter1.active).toBe(false);
+
+    // Activating an existing partner filter.
+    await togglePartnerFilter("partner_ids", "Partner 1");
+    await waitFor(".o_calendar_filter[data-name=partner_ids] .o_tag");
+    expect(".o_calendar_filter[data-name=partner_ids] .o_tag").toHaveText("Partner 1");
+    expect(".o_calendar_filter[data-name=partner_ids] .o_tag").toHaveClass(
+        `o_tag_color_${getColor(serverData.partnerId_1)}`  // tag color should match partner's.
+    );
+    expect(filter1.active).toBe(true);
+    expect(".o_calendar_event:not(.o_activity_event)").toHaveCount(2);
+
+    // Deactivating an existing partner filter.
+    await togglePartnerFilter("partner_ids", "Partner 1");
+    await waitForNone(".o_calendar_filter[data-name=partner_ids] .o_tag");
+    expect(filter1.active).toBe(false);
+    expect(".o_calendar_event:not(.o_activity_event)").toHaveCount(0);
+
+    // Activating a new partner filter (calendar.filter record to create).
+    const [filter2Id] = pyEnv["calendar.filters"].search([
+        ["user_id", "=", serverState.userId],
+        ["partner_id", "=", serverData.partnerId_2],
+    ]);
+    expect(filter2Id).toBe(undefined);
+    await togglePartnerFilter("partner_ids", "Partner 2");
+    await waitFor(".o_calendar_filter[data-name=partner_ids] .o_tag");
+    expect(".o_calendar_filter[data-name=partner_ids] .o_tag").toHaveText("Partner 2");
+    expect(".o_calendar_filter[data-name=partner_ids] .o_tag").toHaveClass(
+        `o_tag_color_${getColor(serverData.partnerId_2)}`  // tag color should match partner's.
+    );
+    const [filter2] = pyEnv["calendar.filters"].search_read([
+        ["user_id", "=", serverState.userId],
+        ["partner_id", "=", serverData.partnerId_2],
+    ]);
+    expect(filter2.active).toBe(true);
+    expect(".o_calendar_event:not(.o_activity_event)").toHaveCount(1);
 });

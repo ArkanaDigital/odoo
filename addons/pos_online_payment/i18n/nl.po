@@ -8,9 +8,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 18.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-24 17:42+0000\n"
-"PO-Revision-Date: 2026-06-19 13:29+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-09-04 17:45+0000\n"
+"PO-Revision-Date: 2026-09-09 13:52+0000\n"
+"Last-Translator: Bren Driesen <brdri@odoo.com>\n"
 "Language-Team: Dutch <https://translate.odoo.com/projects/odoo-master/"
 "pos_online_payment/nl/>\n"
 "Language: nl\n"
@@ -18,11 +18,23 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
-msgid "<span class=\"visually-hidden\">Loading...</span>"
+msgid ""
+"<i class=\"oi me-2\" data-icon=\"lock\"/>Payment secured · Don't close this "
+"window"
+msgstr ""
+
+#. module: pos_online_payment
+#: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
+msgid "<span class=\"text-500\">Order</span>"
+msgstr ""
+
+#. module: pos_online_payment
+#: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
+msgid "<span class=\"text-500\">Total</span>"
 msgstr ""
 
 #. module: pos_online_payment
@@ -76,7 +88,7 @@ msgstr "Toegestane providers"
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
 msgid "Almost there!"
-msgstr ""
+msgstr "Bijna klaar!"
 
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pay_confirmation
@@ -130,7 +142,7 @@ msgstr ""
 #: model:ir.model.fields,field_description:pos_online_payment.field_pos_payment__display_name
 #: model:ir.model.fields,field_description:pos_online_payment.field_pos_payment_method__display_name
 msgid "Display Name"
-msgstr "Weergavenaam"
+msgstr "Schermnaam"
 
 #. module: pos_online_payment
 #: model:ir.model.fields,field_description:pos_online_payment.field_pos_payment_method__has_an_online_payment_provider
@@ -164,6 +176,15 @@ msgstr "Ongeldige online betalingen"
 #: code:addons/pos_online_payment/static/src/app/utils/order_payment_validation.js:0
 msgid "Invoice could not be generated"
 msgstr "Kon de factuur niet genereren"
+
+#. module: pos_online_payment
+#. odoo-python
+#: code:addons/pos_online_payment/controllers/payment_portal.py:0
+msgid ""
+"It looks like a payment for this order is already being processed — maybe "
+"from this device, maybe from another. If you continue, you risk to pay the "
+"order twice. Only continue if you're sure the earlier attempt was abandoned."
+msgstr ""
 
 #. module: pos_online_payment
 #: model:ir.model.fields,field_description:pos_online_payment.field_pos_order__next_online_payment_amount
@@ -296,6 +317,11 @@ msgid "Point of Sale Payment Method"
 msgstr "Kassa betaalmethode"
 
 #. module: pos_online_payment
+#: model:ir.module.module,shortdesc:base.module_pos_online_payment
+msgid "Point of Sale online payment"
+msgstr ""
+
+#. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pay_confirmation
 msgid "Processed by"
 msgstr "Verwerkt door"
@@ -308,7 +334,7 @@ msgstr "Server foutmelding"
 
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
-msgid "Skip <i class=\"fa fa-long-arrow-right ms-1\"/>"
+msgid "Skip <i class=\"oi ms-1\" data-icon=\"east\"/>"
 msgstr ""
 
 #. module: pos_online_payment
@@ -535,7 +561,7 @@ msgstr "Bijgewerkte online betalingen"
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
 msgid "We're confirming your payment."
-msgstr ""
+msgstr "We bevestigen je betaling."
 
 #. module: pos_online_payment
 #. odoo-javascript
@@ -553,14 +579,13 @@ msgstr "Je hebt geen"
 msgid ""
 "You should receive an email confirming your payment within a few minutes.<br/"
 ">\n"
-"                            Don't hesitate to contact us if you don't "
-"receive it."
+"                        Don't hesitate to contact us if you don't receive it."
 msgstr ""
 
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
 msgid "Your payment is on its way!"
-msgstr ""
+msgstr "Je betaling is in behandeling!"
 
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_method_view_form_inherit_pos_online_payment
@@ -571,17 +596,3 @@ msgstr "betaalprovider"
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_method_view_form_inherit_pos_online_payment
 msgid "to allow online payments."
 msgstr "geactiveerd om online betalingen toe te staan."
-
-#~ msgid "Point of Sale Session"
-#~ msgstr "Kassa sessie"
-
-#~ msgid "The partner of the POS online payment (id=%d) could not be found"
-#~ msgstr ""
-#~ "De partner van de kassa online betaling (id=%d) kon niet worden gevonden"
-
-#~ msgid ""
-#~ "Use this payment method for online payments (payments made on a web page "
-#~ "with online payment providers)"
-#~ msgstr ""
-#~ "Gebruik deze betaalmethode voor online betalingen (betalingen uitgevoerd "
-#~ "op een webpagina met online betaalproviders)"

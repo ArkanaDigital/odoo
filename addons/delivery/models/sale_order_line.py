@@ -1,6 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from odoo import api, fields, models
+from odoo.fields import Domain
 
 
 class SaleOrderLine(models.Model):
@@ -25,13 +26,20 @@ class SaleOrderLine(models.Model):
                 line.product_uom_qty, line.product_id.uom_id
             )
 
-    def unlink(self):
-        self.filtered("is_delivery").order_id.filtered("carrier_id").carrier_id = False
-        return super().unlink()
+    @api.ondelete(at_uninstall=False)
+    def _unlink_remove_carrier(self):
+        self.filtered("is_delivery").order_id.carrier_id = False
 
     def _is_delivery(self):
         self.ensure_one()
         return self.is_delivery
+
+    def _get_accrual_domain(self, date=False):
+        """ Reused by account.accrued.orders.wizard and stock_account's
+        Stock Valuation report. """
+        domain = super()._get_accrual_domain(date)
+        domain = Domain.AND([domain, [('is_delivery', '=', False)]])
+        return domain
 
     def _get_invalid_delivery_weight_lines(self):
         """Retrieve lines containing physical products with no weight defined."""

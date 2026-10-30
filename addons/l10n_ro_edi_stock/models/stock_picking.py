@@ -366,17 +366,21 @@ class Picking(models.Model):
             else:
                 picking.l10n_ro_edi_stock_document_uit = False
 
-    @api.depends('company_id.account_fiscal_country_id.code')
+    @api.depends('batch_id', 'company_id', 'company_id.account_fiscal_country_id.code', 'picking_type_code')
     def _compute_l10n_ro_edi_stock_enable(self):
         for picking in self:
-            picking.l10n_ro_edi_stock_enable = picking.picking_type_code != 'internal' and picking.company_id.account_fiscal_country_id.code == 'RO'
+            picking.l10n_ro_edi_stock_enable = (
+                not picking.batch_id
+                and picking.picking_type_code != 'internal'
+                and picking.company_id.country_id.code == 'RO'
+            )
 
     @api.depends('l10n_ro_edi_stock_enable', 'state', 'l10n_ro_edi_stock_state')
     def _compute_l10n_ro_edi_stock_enable_send(self):
         for picking in self:
             picking.l10n_ro_edi_stock_enable_send = (
                     picking.l10n_ro_edi_stock_enable
-                    and picking.state == 'done'
+                    and picking.state in ('assigned', 'done')
                     and picking.l10n_ro_edi_stock_state in (False, 'stock_sending_failed')
                     and not picking._l10n_ro_edi_stock_get_last_document('stock_validated')
             )
@@ -430,22 +434,29 @@ class Picking(models.Model):
 
     @api.model
     def _l10n_ro_edi_stock_validate_carrier_filter(self, picking):
-        # To be overridden by stock.picking.batch
-        return picking.l10n_ro_edi_stock_enable
+        if self.env.user.has_group('stock.group_stock_picking_batch'):
+            # Override for when the batch picking calls this function to validate the carriers
+            validate_carrier = self.env.context.get('l10n_ro_edi_stock_validate_carrier', False)
+            return (
+                picking.company_id.account_fiscal_country_id.code == 'RO'
+                and (picking.l10n_ro_edi_stock_enable or validate_carrier)
+            )
+        else:
+            return picking.l10n_ro_edi_stock_enable
 
     @api.model
     def _l10n_ro_edi_stock_validate_data(self, data: dict):
         errors = []
 
         # API access token
-        if not data['company_id'].l10n_ro_edi_access_token:
+        if not data['company_id'].sudo().l10n_ro_edi_access_token:
             errors.append(_('Romanian access token not found. Please generate or fill it in the settings.'))
 
         # carrier partner fields
         partner = data['transport_partner_id']
         missing_carrier_partner_fields = []
 
-        if not partner.vat:
+        if not partner.has_vat:
             missing_carrier_partner_fields.append(_("VAT"))
 
         if not partner.city:
@@ -520,6 +531,26 @@ class Picking(models.Model):
                         partner = data['picking_type_id'].warehouse_id.partner_id if location == 'start' else data['partner_id']
                     case 'incoming':
                         partner = data['picking_type_id'].warehouse_id.partner_id if location == 'end' else data['partner_id']
+                    case 'dropship':
+                        first_move = data["stock_move_ids"][:1]
+                        vendor = first_move.purchase_line_id.order_id.partner_id
+                        partner = vendor if location == "start" else first_move.partner_id
+
+                        if location != "start" and partner.is_company:
+                            if vendor.country_id.code != 'RO':
+                                # Vendor is foreign -> partner must self-declare, not the RO company
+                                errors.append(_(
+                                    "Declaration in the name of other registered Romanian B2B Customers is not "
+                                    "supported. %(partner)s must declare the eTransport itself.",
+                                    partner=partner.name,
+                                ))
+                            else:
+                                #  Vendor is domestic (B2B) -> vendor declares
+                                errors.append(_(
+                                    "Declaration on behalf of the supplier is not required for domestic dropshipping. "
+                                    "%(vendor)s, as the supplier, must handle the eTransport declaration.",
+                                    vendor=vendor.name,
+                                ))
                     case _other:
                         errors.append(_("Invalid picking type %(type_code)s", type_code=_other))
                         continue
@@ -549,7 +580,7 @@ class Picking(models.Model):
             errors = []
         self.ensure_one()
 
-        if not self.company_id.l10n_ro_edi_access_token:
+        if not self.company_id.sudo().l10n_ro_edi_access_token:
             errors.append(_('Romanian access token not found. Please generate or fill it in the settings.'))
             return errors
 
@@ -800,14 +831,18 @@ class Picking(models.Model):
         """
         Returns the data necessary to render the eTransport template
         """
-        commercial_partner = data['partner_id'].commercial_partner_id
+        commercial_partner = (
+            data["partner_id"]
+            if data["picking_type_id"].code != "dropship"
+            else data["stock_move_ids"][:1].purchase_line_id.order_id.partner_id
+        ).commercial_partner_id
         transport_partner = data['transport_partner_id']
         company_id = data['company_id']
         scheduled_date = data['scheduled_date'].date()
         name = data['name']
         commercial_partner_code = None
 
-        if commercial_partner.vat:
+        if commercial_partner.has_vat:
             commercial_partner_code = self._l10n_ro_edi_stock_get_cod(commercial_partner)
         elif self.l10n_ro_edi_stock_operation_type == '30':
             commercial_partner_code = 'PF'
@@ -873,6 +908,12 @@ class Picking(models.Model):
                             partner = data['picking_type_id'].warehouse_id.partner_id if loc == 'start' else data['partner_id']
                         case 'incoming':
                             partner = data['picking_type_id'].warehouse_id.partner_id if loc == 'end' else data['partner_id']
+                        case 'dropship':
+                            partner = (
+                                data["stock_move_ids"][:1].purchase_line_id.order_id.partner_id
+                                if loc == "start"
+                                else data["stock_move_ids"][:1].partner_id
+                            )
 
                     template_data['notificare'][key]['locatie'] = {
                         'codJudet': STATE_CODES[partner.state_id.code],

@@ -96,8 +96,9 @@ class CalendarRecurrence(models.Model):
 
     name = fields.Char(compute='_compute_name', store=True)
     base_event_id = fields.Many2one(
-        'calendar.event', ondelete='set null', copy=False)  # store=False ?
+        'calendar.event', ondelete='set null', index='btree', copy=False)  # store=False ?
     calendar_event_ids = fields.One2many('calendar.event', 'recurrence_id')
+    calendar_id = fields.Many2one(related='base_event_id.calendar_id', string='Calendar')
     event_tz = fields.Selection(
         _tz_get, string='Timezone',
         default=lambda self: self.env.context.get('tz') or self.env.user.tz)
@@ -119,6 +120,7 @@ class CalendarRecurrence(models.Model):
     weekday = fields.Selection(WEEKDAY_SELECTION, string='Weekday')
     byday = fields.Selection(BYDAY_SELECTION, string='By day')
     until = fields.Date('Repeat Until')
+    # TODO master: remove, it is not set anymore (see _setup_alarms)
     trigger_id = fields.Many2one('ir.cron.trigger')
 
     _month_day = models.Constraint("""CHECK (
@@ -216,7 +218,7 @@ class CalendarRecurrence(models.Model):
     def _inverse_rrule(self):
         for recurrence in self:
             if recurrence.rrule:
-                values = self._rrule_parse(recurrence.rrule, recurrence.dtstart)
+                values = recurrence._rrule_parse(recurrence.rrule, recurrence.dtstart)
                 recurrence.with_context(dont_notify=True).write(values)
 
     def _reconcile_events(self, ranges):
@@ -304,13 +306,10 @@ class CalendarRecurrence(models.Model):
         if not result:
             return
         events = self.env['calendar.event'].browse(value['event_id'] for value in result)
-        triggers_by_events = events._setup_alarms()
-        for vals in result:
-            trigger_id = triggers_by_events.get(vals['event_id'])
-            if not trigger_id:
-                continue
-            recurrence = self.env['calendar.recurrence'].browse(vals['recurrence_id'])
-            recurrence.trigger_id = trigger_id
+        # Do not link the trigger to the recurrence: when run by the reminder cron, writing
+        # trigger_id waits on the lock taken by the cron runner when it deletes the fired
+        # trigger, and the job deadlocks.
+        events._setup_alarms()
 
     def _split_from(self, event, recurrence_values=None):
         """Stops the current recurrence at the given event and creates a new one starting
@@ -346,7 +345,7 @@ class CalendarRecurrence(models.Model):
         events = self._get_events_from(event.start)
         detached_events = self._detach_events(events)
         if not self.calendar_event_ids:
-            self.with_context(archive_on_error=True).unlink()
+            self.unlink()
             return detached_events
 
         if event.allday:
@@ -390,8 +389,13 @@ class CalendarRecurrence(models.Model):
 
         return str(self._get_rrule()) if self.rrule_type else ''
 
-    @api.model
-    def _rrule_parse(self, rule_str, date_start):
+    def _rrule_parse(self, rule_str, date_start, until_tz=None):
+        """
+        Parse a RRULE string into recurrence field values.
+        :param rule_str: the iCalendar RRULE string to parse.
+        :param date_start: start of the recurrence.
+        :param until_tz: timezone the UNTIL boundary must be expressed in.
+        """
         # LUL TODO clean this mess
         data = {}
         day_list = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
@@ -413,6 +417,9 @@ class CalendarRecurrence(models.Model):
         data['count'] = rule._count
         data['interval'] = rule._interval
         data['until'] = rule._until
+        if data['until'] and data['until'].tzinfo:
+            until_tz = until_tz or (ZoneInfo(self.event_tz) if len(self) == 1 and self.event_tz else None)
+            data['until'] = data['until'].astimezone(until_tz).date() if until_tz else data['until'].date()
         # Repeat weekly
         if rule._byweekday:
             for weekday in day_list:
@@ -643,3 +650,7 @@ class CalendarRecurrence(models.Model):
             (event.stop_date < today if event.allday else event.stop < now)
             for event in self.calendar_event_ids
         )
+
+    def _before_calendar_cascade_unlink(self):
+        """Override this method to perform actions before the cascade unlink of the recurrence when deleting a calendar."""
+        return

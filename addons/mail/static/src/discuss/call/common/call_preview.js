@@ -1,5 +1,4 @@
-import { useLayoutEffect } from "@web/owl2/utils";
-import { Action, ACTION_TAGS } from "@mail/core/common/action";
+import { Action, ACTION_TAGS, PANEL_CONTAINER_TYPE } from "@mail/core/common/action";
 import { ActionList } from "@mail/core/common/action_list";
 import {
     cameraOnAction,
@@ -11,6 +10,7 @@ import { CallPermissionDialog } from "@mail/discuss/call/common/call_permission_
 import { CallSettingsDialog } from "@mail/discuss/call/common/call_settings";
 import { DeviceSelect } from "@mail/discuss/call/common/device_select";
 import { closeStream } from "@mail/utils/common/misc";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 
 import {
     Component,
@@ -18,13 +18,16 @@ import {
     onWillDestroy,
     proxy,
     signal,
-    status,
     types,
     useOnChange,
+    usePlugin,
     useProps,
+    useScope,
 } from "@odoo/owl";
 
 import { _t } from "@web/core/l10n/translation";
+import { NotificationPlugin } from "@web/core/notifications/notification_plugin";
+import { UIPlugin } from "@web/core/ui/ui_plugin";
 import { useService } from "@web/core/utils/hooks";
 
 export class CallPreview extends Component {
@@ -33,8 +36,21 @@ export class CallPreview extends Component {
 
     audioRef = signal.ref();
     videoRef = signal.ref();
+    /**
+     * The preview has no panel of its own: the quick settings open theirs in a dropdown above it.
+     *
+     * @type {import("@mail/core/common/action_list").ActionPanelContainer}
+     */
+    panelContainer = {
+        type: PANEL_CONTAINER_TYPE.DROPDOWN,
+        position: "top-end",
+        menuClass: "p-1 overflow-x-hidden",
+    };
+
+    scope = useScope();
 
     setup() {
+        this.ancestors = useAncestors();
         this.props = useProps({
             activateCamera: types.number().optional(),
             activateMicrophone: types.number().optional(),
@@ -49,12 +65,19 @@ export class CallPreview extends Component {
                 .optional(),
         });
         this.dialog = useService("dialog");
-        this.notification = useService("notification");
+        this.notification = usePlugin(NotificationPlugin);
         this.rtc = useService("discuss.rtc");
         this.store = useService("mail.store");
-        this.ui = useService("ui");
+        this.ui = usePlugin(UIPlugin);
         this.state = proxy({ audioStream: null, blurManager: null, videoStream: null });
-        useLayoutEffect(
+        useOnChange(
+            () => [
+                this.videoRef(),
+                this.audioRef(),
+                this.state.audioStream,
+                this.state.videoStream,
+                this.state.blurManager?.stream,
+            ],
             (videoEl, audioEl, audioStream, videoStream, blurStream) => {
                 if (audioEl && !audioEl.srcObject && audioStream) {
                     audioEl.srcObject = audioStream;
@@ -62,14 +85,7 @@ export class CallPreview extends Component {
                 if (videoEl && !videoEl.srcObject && videoStream) {
                     videoEl.srcObject = blurStream ?? videoStream;
                 }
-            },
-            () => [
-                this.videoRef(),
-                this.audioRef(),
-                this.state.audioStream,
-                this.state.videoStream,
-                this.state.blurManager?.stream,
-            ]
+            }
         );
         if (this.hasRtcSupport) {
             useOnChange(
@@ -147,21 +163,21 @@ export class CallPreview extends Component {
                 closeStream(this.state.audioStream);
                 closeStream(this.state.videoStream);
             });
-            useLayoutEffect(
+            useOnChange(
+                () => [this.props.activateCamera],
                 (activateCamera) => {
                     if (activateCamera > 0 && !this.state.videoStream) {
                         this.enableCamera();
                     }
-                },
-                () => [this.props.activateCamera]
+                }
             );
-            useLayoutEffect(
+            useOnChange(
+                () => [this.props.activateMicrophone],
                 (activateMicrophone) => {
                     if (activateMicrophone > 0 && !this.state.audioStream) {
                         this.enableMicrophone();
                     }
-                },
-                () => [this.props.activateMicrophone]
+                }
             );
         }
     }
@@ -173,7 +189,7 @@ export class CallPreview extends Component {
     }
 
     get inWelcomePageMobile() {
-        return this.env.inWelcomePage && this.ui.isSmall;
+        return this.ancestors.inWelcomePage && this.ui.isSmall();
     }
 
     actions = computed(() => {
@@ -211,6 +227,7 @@ export class CallPreview extends Component {
         const callAudioActions = [
             new Action({
                 id: "toggle-microphone",
+                ancestors: this.ancestors,
                 owner: this,
                 definition: muteActionUpdated,
                 store: this.store,
@@ -219,6 +236,7 @@ export class CallPreview extends Component {
         const callVideoActions = [
             new Action({
                 id: "toggle-camera",
+                ancestors: this.ancestors,
                 owner: this,
                 definition: cameraOnActionUpdated,
                 store: this.store,
@@ -228,6 +246,7 @@ export class CallPreview extends Component {
             callVideoActions.push(
                 new Action({
                     id: "video-blur",
+                    ancestors: this.ancestors,
                     owner: this,
                     definition: videoBlurAction,
                     store: this.store,
@@ -237,6 +256,7 @@ export class CallPreview extends Component {
             callAudioActions.push(
                 new Action({
                     id: "audio-settings",
+                    ancestors: this.ancestors,
                     owner: this,
                     definition: quickActionSettings,
                     store: this.store,
@@ -245,6 +265,7 @@ export class CallPreview extends Component {
             callVideoActions.push(
                 new Action({
                     id: "video-settings",
+                    ancestors: this.ancestors,
                     owner: this,
                     definition: quickVideoSettings,
                     store: this.store,
@@ -265,7 +286,7 @@ export class CallPreview extends Component {
         this.state.audioStream = await navigator.mediaDevices.getUserMedia({
             audio: this.store.settings.audioConstraints,
         });
-        if (status(this) === "destroyed") {
+        if (this.scope.isDestroyed()) {
             closeStream(this.state.audioStream);
             return;
         }
@@ -310,7 +331,7 @@ export class CallPreview extends Component {
         this.state.videoStream = await navigator.mediaDevices.getUserMedia({
             video: this.store.settings.cameraConstraints,
         });
-        if (status(this) === "destroyed") {
+        if (this.scope.isDestroyed()) {
             closeStream(this.state.videoStream);
             return;
         }
@@ -371,14 +392,6 @@ export class CallPreview extends Component {
         }
         this.state.blurManager?.close();
         this.state.blurManager = undefined;
-    }
-
-    toggleBlur() {
-        if (this.state.blurManager) {
-            this.disableBlur();
-            return;
-        }
-        this.enableBlur();
     }
 
     onClickSettings() {

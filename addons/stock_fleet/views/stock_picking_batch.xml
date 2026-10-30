@@ -24,7 +24,7 @@
     <record id="stock_picking_batch_form" model="ir.ui.view">
         <field name="name">stock.picking.batch.form.inherit.stock.fleet</field>
         <field name="model">stock.picking.batch</field>
-        <field name="inherit_id" ref="stock_picking_batch.stock_picking_batch_form"/>
+        <field name="inherit_id" ref="stock.stock_picking_batch_form"/>
         <field name="arch" type="xml">
             <xpath expr="//group[@id='batch_delivery_data']" position="after">
                 <group invisible="not has_dispatch_management">
@@ -56,7 +56,7 @@
     <record id="stock_picking_batch_tree" model="ir.ui.view">
         <field name="name">stock.picking.batch.list.inherit.stock.fleet</field>
         <field name="model">stock.picking.batch</field>
-        <field name="inherit_id" ref="stock_picking_batch.stock_picking_batch_tree"/>
+        <field name="inherit_id" ref="stock.stock_picking_batch_tree"/>
         <field name="arch" type="xml">
             <data>
                 <field name="user_id" position="attributes">
@@ -76,7 +76,7 @@
     <record id="stock_picking_batch_filter" model="ir.ui.view">
         <field name="name">stock.picking.batch.filter.inherit.stock.fleet</field>
         <field name="model">stock.picking.batch</field>
-        <field name="inherit_id" ref="stock_picking_batch.stock_picking_batch_filter"/>
+        <field name="inherit_id" ref="stock.stock_picking_batch_filter"/>
         <field name="arch" type="xml">
             <field name="user_id" position="after">
                 <field name="vehicle_id"/>
@@ -87,7 +87,6 @@
                 <filter name="group_by_vehicle_id" string="Vehicle" context="{'group_by':'vehicle_id'}"/>
                 <filter name="group_by_vehicle_category_id" string="Vehicle Category" context="{'group_by':'vehicle_category_id'}"/>
                 <filter name="group_by_scheduled_date" string="Scheduled Date" context="{'group_by':'scheduled_date'}"/>
-                <filter name="group_by_picking_type_id" string="Operation Type" context="{'group_by':'picking_type_id'}"/>
                 <filter name="group_by_dock_id" string="Dock Location" context="{'group_by':'dock_id'}" groups="stock.group_stock_multi_locations"/>
             </xpath>
             <xpath expr="//filter[@name='done']" position="after">
@@ -105,7 +104,7 @@
     <record id="stock_picking_batch_card" model="ir.ui.view">
         <field name="name">stock.picking.batch.card.inherit.stock.fleet</field>
         <field name="model">stock.picking.batch</field>
-        <field name="inherit_id" ref="stock_picking_batch.stock_picking_batch_card"/>
+        <field name="inherit_id" ref="stock.stock_picking_batch_card"/>
         <field name="arch" type="xml">
             <data>
                 <xpath expr="//field[@name='company_id']" position="after">

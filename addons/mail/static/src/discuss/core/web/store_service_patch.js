@@ -1,4 +1,4 @@
-import { Store } from "@mail/core/common/store_service";
+import { Store } from "@mail/core/common/store_plugin";
 import { AvatarCard } from "@mail/core/web/avatar_card/avatar_card";
 import { compareDatetime } from "@mail/utils/common/misc";
 
@@ -12,13 +12,13 @@ const StorePatch = {
     },
     /** @returns {import("models").DiscussChannel[]} */
     getSelfRecentChannels() {
-        return Object.values(this["discuss.channel"].records)
+        return [...this["discuss.channel"].records.values()]
             .filter((channel) => channel.self_member_id)
             .sort((a, b) => compareDatetime(b.lastInterestDt, a.lastInterestDt) || b.id - a.id);
     },
     onLinkFollowed(fromThread) {
         super.onLinkFollowed(...arguments);
-        if (!this.env.services.ui.isSmall && fromThread?.channel) {
+        if (!this.ui.isSmall() && fromThread?.channel) {
             fromThread.open({ focus: false });
         }
     },
@@ -28,7 +28,7 @@ const StorePatch = {
      * @param {number} id
      */
     onClickPartnerMention(ev, id) {
-        this.env.services.popover.add(ev.target, AvatarCard, {
+        this.popover.add(ev.target, AvatarCard, {
             id,
             model: "res.partner",
         });

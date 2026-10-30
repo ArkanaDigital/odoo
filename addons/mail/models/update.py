@@ -3,6 +3,7 @@
 import contextlib
 import datetime
 import logging
+import json
 from ast import literal_eval
 
 import requests
@@ -35,9 +36,13 @@ class Publisher_WarrantyContract(AbstractModel):
         if "share" in Users._fields:
             nbr_share_users = Users.search_count([("share", "=", True), ('active', '=', True)])
             nbr_active_share_users = Users.search_count([("share", "=", True), ("login_date", ">=", limit_date), ('active', '=', True)])
+        nbr_light_users = Users.search_count([("role", "=", "light_user"), ("active", "=", True)])
+        nbr_active_light_users = Users.search_count([
+            ("role", "=", "light_user"), ("login_date", ">=", limit_date), ("active", "=", True),
+        ])
         user = self.env.user
         domain = [('application', '=', True), ('state', 'in', ['installed', 'to upgrade', 'to remove'])]
-        apps = self.env['ir.module.module'].sudo().search_read(domain, ['name'])
+        apps = self.env['ir.module.module'].sudo().search_fetch(domain, ['name'])
 
         enterprise_code = IrParamSudo.get_str('database.enterprise_code')
 
@@ -48,12 +53,14 @@ class Publisher_WarrantyContract(AbstractModel):
             "nbr_active_users": nbr_active_users,
             "nbr_share_users": nbr_share_users,
             "nbr_active_share_users": nbr_active_share_users,
+            "nbr_light_users": nbr_light_users,
+            "nbr_active_light_users": nbr_active_light_users,
             "dbname": self.env.cr.dbname,
             "db_create_date": db_create_date,
             "version": release.version,
             "language": user.lang,
             "web_base_url": web_base_url,
-            "apps": [app['name'] for app in apps],
+            "apps": [app.name for app in apps],
             "enterprise_code": enterprise_code,
         }
         if user.partner_id.company_id:
@@ -67,7 +74,7 @@ class Publisher_WarrantyContract(AbstractModel):
         Utility method to send a publisher warranty get logs messages.
         """
         msg = self._get_message()
-        arguments = {'arg0': str(msg), "action": "update"}
+        arguments = {'arg0': json.dumps(msg), "action": "update"}
 
         url = config.get("publisher_warranty_url")
 

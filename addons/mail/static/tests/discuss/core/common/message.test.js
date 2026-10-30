@@ -1,14 +1,13 @@
 import {
-    click,
-    contains,
     defineMailModels,
     setupChatHub,
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
 
-import { describe, test } from "@odoo/hoot";
+import { describe, test, waitFor } from "@odoo/hoot";
 import { getOrigin } from "@web/core/utils/urls";
+import { contains } from "@web/../tests/web_test_helpers";
 
 describe.current.tags("desktop");
 defineMailModels();
@@ -38,14 +37,14 @@ test("clicking message link does not swap open chat window", async () => {
     });
     setupChatHub({ opened: [rdId, supportId] });
     await start();
-    await contains(".o-mail-ChatWindow:eq(0) .o-mail-ChatWindow-header:contains(R&D)");
-    await contains(".o-mail-ChatWindow:eq(1) .o-mail-ChatWindow-header:contains(Support)");
-    await click("a.o_message_redirect:contains(R&D)");
-    await contains(".o-mail-Message.o-highlighted:contains(Hello R&D)");
-    await contains(".o-mail-ChatWindow:eq(0) .o-mail-ChatWindow-header:contains(R&D)");
-    await contains(".o-mail-ChatWindow:eq(1) .o-mail-ChatWindow-header:contains(Support)");
-    await click("a.o_message_redirect:contains(Support)");
-    await contains(".o-mail-Message.o-highlighted:contains(Hello from there)");
-    await contains(".o-mail-ChatWindow:eq(0) .o-mail-ChatWindow-header:contains(R&D)");
-    await contains(".o-mail-ChatWindow:eq(1) .o-mail-ChatWindow-header:contains(Support)");
+    await waitFor(".o-mail-ChatWindow:eq(0) .o-mail-ChatWindow-header:contains(R&D):count(1)");
+    await waitFor(".o-mail-ChatWindow:eq(1) .o-mail-ChatWindow-header:contains(Support):count(1)");
+    await contains("a.o_message_redirect:contains(R&D):count(1)").click();
+    await waitFor(".o-mail-Message.o-highlighted:contains(Hello R&D):count(1)");
+    await waitFor(".o-mail-ChatWindow:eq(0) .o-mail-ChatWindow-header:contains(R&D):count(1)");
+    await waitFor(".o-mail-ChatWindow:eq(1) .o-mail-ChatWindow-header:contains(Support):count(1)");
+    await contains("a.o_message_redirect:contains(Support):count(1)").click();
+    await waitFor(".o-mail-Message.o-highlighted:contains(Hello from there):count(1)");
+    await waitFor(".o-mail-ChatWindow:eq(0) .o-mail-ChatWindow-header:contains(R&D):count(1)");
+    await waitFor(".o-mail-ChatWindow:eq(1) .o-mail-ChatWindow-header:contains(Support):count(1)");
 });

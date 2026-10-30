@@ -39,10 +39,10 @@ patch(AttendeeCalendarModel.prototype, {
     /**
      * Initialize a Full Calendar library event with the activities for the day.
      */
-    normalizeActivityEventRecord(day, activities) {
+    normalizeActivityEventRecord(day, activities, colorIndex = 0) {
         const event = {
             id: `activity-event-${day.toISODate()}`,
-            colorIndex: user.partnerId || 0,
+            colorIndex,
             duration: 1,
             start: day,
             // "end" needed even for all day events to represent it on the calendar.
@@ -72,12 +72,14 @@ patch(AttendeeCalendarModel.prototype, {
         }
         // Retrieves user pending activities for the current calendar date range
         // Done activities are archived and therefore excluded by default.
+        // Meeting activities are excluded as they are already present as events
         const activities = await this.orm.webSearchRead(
             "mail.activity",
             [
                 ["date_deadline", ">=", serializeDate(data.range.start)],
                 ["date_deadline", "<=", serializeDate(data.range.end)],
                 ["user_id", "=", user.userId],
+                ["calendar_event_id", "=", false],
             ],
             {
                 specification: {
@@ -96,11 +98,13 @@ patch(AttendeeCalendarModel.prototype, {
             (acc[key] ||= []).push(activity);
             return acc;
         }, {});
+        const primaryCalendar = data.filterSections?.calendar_id?.filters?.find((f) => f.isPrimary);
         const activityEvents = {};
         for (const [date, activities] of Object.entries(activitiesPerDueDate)) {
             const activityEvent = this.normalizeActivityEventRecord(
                 deserializeDate(date),
-                activities
+                activities,
+                primaryCalendar?.colorIndex,
             );
             activityEvents[activityEvent.id] = activityEvent;
         }

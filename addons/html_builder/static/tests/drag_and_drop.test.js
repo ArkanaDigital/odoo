@@ -1,6 +1,8 @@
 import { expect, getFixture, test } from "@odoo/hoot";
-import { contains, patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { queryOne } from "@odoo/hoot-dom";
+import { contains } from "@web/../tests/web_test_helpers";
 import { localization } from "@web/core/l10n/localization";
+import { patch } from "@web/core/utils/patch";
 import {
     getDragHelper,
     getDragMoveHelper,
@@ -25,7 +27,7 @@ test("Drag and drop basic test", async () => {
 
     await contains(":iframe section.section-1").click();
     expect(".overlay .o_overlay_options .o_move_handle.o_draggable").toHaveCount(1);
-    expect(".o-website-builder_sidebar [data-icon='undo']").not.toBeEnabled();
+    expect(".o_website_builder_sidebar [data-icon='undo']").not.toBeEnabled();
 
     const { moveTo, drop } = await contains(".o_overlay_options .o_move_handle").drag();
     expect(":iframe .oe_drop_zone").toHaveCount(2);
@@ -40,12 +42,12 @@ test("Drag and drop basic test", async () => {
     expect(":iframe .oe_drop_zone").toHaveCount(0);
     expect(":iframe section.section-1:nth-child(2)").toHaveCount(1);
     await waitForEndOfOperation();
-    expect(".o-website-builder_sidebar [data-icon='undo']").toBeEnabled();
+    expect(".o_website_builder_sidebar [data-icon='undo']").toBeEnabled();
 });
 
 test("Can drop a snippet outside a dropzone in a rtl language", async () => {
     // Simulate rtl
-    patchWithCleanup(localization, { direction: "rtl" });
+    patch(localization, { direction: "rtl" });
     // Visual styling to run the test in debug.
     getFixture().style.setProperty("direction", "rtl");
     const dropzoneSelectors = {
@@ -66,4 +68,48 @@ test("Can drop a snippet outside a dropzone in a rtl language", async () => {
     await drop(getDragHelper());
     await waitForSnippetDialog();
     expect(".o_add_snippet_dialog").toHaveCount(1);
+});
+
+test("Dragging the last element out of a snippet removes the snippet", async () => {
+    // Setup a DOM with two simulated snippets.
+    const dropzoneSelectors = {
+        selector: ".inner_column",
+        dropNear: ".inner_column",
+    };
+
+    const { getEditor } = await setupHTMLBuilder(
+        `
+            <section class="s_mock_snippet_1">
+                <div class="inner_column"><p>Content 1</p></div>
+            </section>
+            <section class="s_mock_snippet_2">
+                <div class="inner_column"><p>Content 2</p></div>
+            </section>
+        `,
+        { dropzoneSelectors }
+    );
+    expect(":iframe section").toHaveCount(2);
+
+    const draggedColumnEl = queryOne(":iframe section.s_mock_snippet_1 .inner_column");
+    await contains(":iframe section.s_mock_snippet_1 .inner_column").click();
+    expect(".overlay .o_overlay_options .o_move_handle.o_draggable").toHaveCount(1);
+    expect(".o_hb_snippets_top_actions [data-icon='undo']").not.toBeEnabled();
+
+    // Drag the child out of snippet 1 and verify the snippet has been removed.
+    const { moveTo, drop } = await contains(".o_overlay_options .o_move_handle").drag();
+    await moveTo(":iframe section.s_mock_snippet_2 .oe_drop_zone");
+    await drop(getDragMoveHelper());
+    await waitForEndOfOperation();
+    expect(":iframe section.s_mock_snippet_1").toHaveCount(0);
+    expect(":iframe section.s_mock_snippet_2 .inner_column").toHaveCount(2);
+
+    // Check if the dragged element stays activated even though its old parent
+    // snippet was removed during the drop.
+    expect(getEditor().shared.builderOptions.getTarget()).toBe(draggedColumnEl);
+
+    // Check undoing
+    expect(".o_hb_snippets_top_actions [data-icon='undo']").toBeEnabled();
+    await contains(".o_hb_snippets_top_actions [data-icon='undo']").click();
+    expect(":iframe section").toHaveCount(2);
+    expect(":iframe section.s_mock_snippet_1 .inner_column").toHaveCount(1);
 });

@@ -1,4 +1,4 @@
-import { test } from "@odoo/hoot";
+import { expect, test } from "@odoo/hoot";
 import { mockDate } from "@odoo/hoot-mock";
 import { patchWithCleanup } from "@web/../tests/web_test_helpers";
 import { setupSelfPosEnv } from "@pos_self_order/../tests/unit/utils";
@@ -586,16 +586,9 @@ test("self_kiosk_each_table_takeaway_out: table mode, order, close, URL validati
     await Utils.clickBtn("Order Now");
     await Utils.clickCategory("Miscellaneous");
     await Utils.checkIsDisabledBtn("Checkout");
-    const order = store.currentOrder;
-    const selfInvoicingURL = `${order.config._base_url}/pos/ticket`;
-    if (!selfInvoicingURL || selfInvoicingURL.includes("undefined")) {
-        throw new Error(`Invalid self invoicing URL (contains undefined): ${selfInvoicingURL}`);
-    }
-    try {
-        new URL(selfInvoicingURL);
-    } catch {
-        throw new Error(`Invalid self invoicing URL: ${selfInvoicingURL}`);
-    }
+    const selfInvoicingURL = `${store.currentOrder.config._base_url}/pos/ticket`;
+    expect(selfInvoicingURL).not.toInclude("undefined");
+    expect(new URL(selfInvoicingURL)).toBeInstanceOf(URL);
 });
 
 test("self_kiosk_each_counter_takeaway_in: counter mode multi-category, total check", async () => {
@@ -1326,6 +1319,65 @@ test("self_order_mobile_special_products_category: special products category hid
     await Utils.isProductNotDisplayed("Special 1");
 });
 
+test("self_order_hidden_category: hidden category is out of the menu but stays in combos", async () => {
+    const store = await setupSelfPosEnv("mobile", "counter", "each", {}, true);
+    store.models["pos.category"].get(200).self_order_available = false;
+    store.initProducts();
+    store.computeAvailableCategories();
+    await Utils.clickOrderNow();
+    await Utils.selectLocation("Test-Takeout");
+    Utils.checkIsNoCategoryBtn("Miscellaneous");
+    await Utils.isProductNotDisplayed("Combo Product 1");
+    // The products of a hidden category remain selectable as combo choices.
+    await Utils.clickCategory("Combos");
+    await Utils.clickProduct("Office Combo");
+    await Utils.isProductDisplayed("Combo Product 1");
+});
+
+test("self_order_hidden_child_category: hidden child category is out of the kiosk menu", async () => {
+    const store = await setupSelfPosEnv(
+        "kiosk",
+        "counter",
+        "each",
+        {
+            limit_categories: true,
+            iface_available_categ_ids: [203, 204, 205],
+            use_presets: false,
+            available_preset_ids: [],
+        },
+        true
+    );
+    store.models["pos.category"].get(205).self_order_available = false;
+    store.initProducts();
+    store.computeAvailableCategories();
+    await Utils.clickOrderNow();
+    await Utils.clickChildCategory("Test Child Category 1");
+    Utils.checkIsNoChildCategoryBtn("Test Child Category 2");
+});
+
+test("self_order_restricted_child_category: the parent of a restricted category is displayed", async () => {
+    await setupSelfPosEnv(
+        "kiosk",
+        "counter",
+        "each",
+        {
+            limit_categories: true,
+            iface_available_categ_ids: [204],
+            use_presets: false,
+            available_preset_ids: [],
+        },
+        true
+    );
+    await Utils.clickOrderNow();
+    // "Test Child Category 1" is the only available category, it is reached through its parent.
+    await Utils.checkCategoryBtn("Test Category");
+    Utils.checkIsNoChildCategoryBtn("Test Child Category 2");
+    // The parent only gives access to the products of the available child category.
+    await Utils.isProductNotDisplayed("Pepsi");
+    await Utils.clickChildCategory("Test Child Category 1");
+    await Utils.clickProduct("Coca-Cola");
+});
+
 test("self_order_mobile_no_access_token: no access token hides order button", async () => {
     const store = await setupSelfPosEnv("mobile", "table", "each", {}, true);
     store.access_token = null;
@@ -1376,7 +1428,7 @@ test("test_slot_limit_orders: slot limit order test", async () => {
     await Utils.clickProduct("Free");
     await Utils.clickBtn("Checkout");
     await Utils.clickBtn("Order");
-    await Utils.checkSlotUnavailable("12:00");
+    await Utils.checkSlotDisabled("12:00");
 });
 
 test("test_self_order_preset_btn: check preset button displays correct preset", async () => {

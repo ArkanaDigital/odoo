@@ -8,21 +8,26 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 18.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-10 17:39+0000\n"
-"PO-Revision-Date: 2026-06-21 19:55+0000\n"
+"POT-Creation-Date: 2026-08-28 17:44+0000\n"
+"PO-Revision-Date: 2026-08-31 13:42+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Korean <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Korean <https://translate.odoo.com/projects/odoo-s19-4/"
 "payment_xendit/ko/>\n"
 "Language: ko\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: payment_xendit
 #: model:payment.method,name:payment_xendit.payment_method_7eleven
 msgid "7Eleven"
+msgstr ""
+
+#. module: payment_xendit
+#: model:ir.module.module,summary:base.module_payment_xendit
+msgid "A payment provider for Indonesian and the Philippines."
 msgstr ""
 
 #. module: payment_xendit
@@ -256,6 +261,11 @@ msgid "Payment Provider"
 msgstr "결제대행업체"
 
 #. module: payment_xendit
+#: model:ir.module.module,shortdesc:base.module_payment_xendit
+msgid "Payment Provider: Xendit"
+msgstr ""
+
+#. module: payment_xendit
 #: model:ir.model,name:payment_xendit.model_payment_transaction
 msgid "Payment Transaction"
 msgstr "지불 거래"
@@ -417,8 +427,3 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:payment_xendit.inline_form
 msgid "john.smith@example.com"
 msgstr "john.smith@example.com"
-
-#~ msgid ""
-#~ "An error occurred during the processing of your payment (%s). Please try "
-#~ "again."
-#~ msgstr "결제를 처리하는 동안 오류가 발생했습니다 (%s). 다시 시도해 주세요."

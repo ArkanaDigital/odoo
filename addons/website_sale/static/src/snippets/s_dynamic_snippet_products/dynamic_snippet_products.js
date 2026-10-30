@@ -4,6 +4,30 @@ import { registry } from "@web/core/registry";
 export class DynamicSnippetProducts extends DynamicSnippetCarousel {
     static selector = ".s_dynamic_snippet_products";
 
+    setup() {
+        super.setup();
+        if (this.el.classList.contains("s_dynamic_snippet_products_grid")) {
+            this.templateKey = "website_sale.s_dynamic_snippet.grid.layout";
+        }
+    }
+
+    async willStart() {
+        const superWillStart = super.willStart();
+        const mainObject = this.services.website_page.mainObject;
+        if (
+            this.el.dataset.productCategoryId === "current" &&
+            mainObject.model === "product.template"
+        ) {
+            const readResult = await this.services.orm.read(
+                mainObject.model,
+                [mainObject.id],
+                ["public_categ_ids"]
+            );
+            this.categoryOfCurrentProduct = readResult[0]?.public_categ_ids[0];
+        }
+        return superWillStart;
+    }
+
     /**
      * Gets the category search domain
      */
@@ -12,22 +36,17 @@ export class DynamicSnippetProducts extends DynamicSnippetCarousel {
         let productCategoryId = this.el.dataset.productCategoryId;
         if (productCategoryId && productCategoryId !== "all") {
             if (productCategoryId === "current") {
-                productCategoryId = parseInt(document.querySelector(
-                    ".js_product [data-product-category-id]"
-                )?.dataset?.productCategoryId);
+                productCategoryId = this.categoryOfCurrentProduct;
+                const mainObject = this.services.website_page.mainObject;
                 if (!productCategoryId) {
-                    const mainObject = this.services.website_page.mainObject;
                     if (mainObject.model === "product.public.category") {
                         productCategoryId = mainObject.id;
                     }
                 }
                 if (!productCategoryId) {
                     // Try with categories from product, unfortunately the category hierarchy is not matched with this approach
-                    const productTemplateId = parseInt(document.querySelector(
-                        ".js_product [data-product-template-id]"
-                    )?.dataset?.productTemplateId);
-                    if (productTemplateId) {
-                        searchDomain.push(["public_categ_ids.product_tmpl_ids", "=", productTemplateId]);
+                    if (mainObject.model === "product.template") {
+                        searchDomain.push(["public_categ_ids.product_tmpl_ids", "=", mainObject.id]);
                     }
                 }
             }
@@ -92,7 +111,7 @@ export class DynamicSnippetProducts extends DynamicSnippetCarousel {
             }
             searchDomain.push(...nameDomain);
         }
-        if (!this.el.dataset.showVariants) {
+        if (!this.el.dataset.splitVariants) {
             searchDomain.push("hide_variants");
         }
         return searchDomain;
@@ -101,12 +120,21 @@ export class DynamicSnippetProducts extends DynamicSnippetCarousel {
     /**
      * @override
      */
+    getQWebRenderOptions() {
+        const dataset = this.el.dataset;
+        return Object.assign(super.getQWebRenderOptions(...arguments), {
+            gridColumns: parseInt(dataset.gridColumns) || 4,
+            mobileColumns: parseInt(dataset.mobileColumns) || 2,
+        });
+    }
+
+    /**
+     * @override
+     */
     getRpcParameters() {
-        const productTemplateId = parseInt(document.querySelector(
-            ".js_product [data-product-template-id]"
-        )?.dataset?.productTemplateId);
+        const mainObject = this.services.website_page.mainObject;
         return Object.assign(super.getRpcParameters(...arguments), {
-            productTemplateId: productTemplateId || undefined,
+            productTemplateId: mainObject.model === "product.template" ? mainObject.id : undefined,
         });
     }
 }

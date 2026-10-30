@@ -17,7 +17,7 @@ export class PosPayment extends Base {
 
     initState() {
         super.initState();
-        this.uiState = { qrCode: null, initStateDate: DateTime.now() };
+        this.uiState = { initStateDate: DateTime.now() };
     }
 
     get config() {
@@ -35,24 +35,12 @@ export class PosPayment extends Base {
         );
     }
 
-    getQrPopupProps(customerDisplay = false) {
-        return customerDisplay
-            ? {
-                  qrCode: this.uiState.qrCode,
-                  amount: this.getAmount(),
-                  provider: this.payment_provider,
-                  isCustomerDisplay: true,
-                  footer: false,
-              }
-            : {
-                  qrCode: this.qr_code,
-                  amount: formatCurrency(this.getAmount(), this.currency),
-                  provider: this.payment_provider,
-              };
-    }
-
-    updateCustomerDisplayQrCode(qrCode) {
-        this.uiState.qrCode = qrCode;
+    getQrPopupProps() {
+        return {
+            qrCode: this.qr_code,
+            amount: formatCurrency(this.amount_currency || this.getAmount(), this.currency),
+            provider: this.payment_provider,
+        };
     }
 
     /**
@@ -91,15 +79,20 @@ export class PosPayment extends Base {
 
     setAmount(value, currency = this.pos_order_id.currency) {
         this.pos_order_id.assertEditable();
+        const orderCurrency = this.pos_order_id.currency;
 
-        if (currency != this.pos_order_id.currency) {
+        if (currency.id !== orderCurrency.id) {
             this.amount_currency = parseFloat(value) || 0;
-            this.amount = this.pos_order_id.currency.round(
-                this.currency.convertToDefaultCurrency(this.amount_currency)
+            const amountInCompanyCurrency = this.currency.convertToDefaultCurrency(
+                this.amount_currency
             );
+            this.amount = orderCurrency.round(orderCurrency.convert(amountInCompanyCurrency));
         } else {
-            this.amount = this.pos_order_id.currency.round(parseFloat(value) || 0);
-            this.amount_currency = this.currency.convert(this.amount);
+            this.amount = orderCurrency.round(parseFloat(value) || 0);
+            this.amount_currency = this.pos_order_id.convertAmountToCurrency(
+                this.amount,
+                this.currency
+            );
         }
     }
 
@@ -129,8 +122,8 @@ export class PosPayment extends Base {
             : false;
     }
 
-    setCashierReceipt(value) {
-        this.cashier_receipt = value;
+    isForceDoneAllowed() {
+        return true;
     }
 
     isElectronic() {

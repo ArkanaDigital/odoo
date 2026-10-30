@@ -87,7 +87,7 @@ patch(PosStore.prototype, {
         const count = await makeAwaitable(this.dialog, NumberPopup, {
             startingValue: currentOrder.customer_count,
             feedback: (buffer) => {
-                const value = this.env.utils.formatCurrency(
+                const value = this.formatCurrency(
                     currentOrder?.amountPerGuest(parseInt(buffer, 10) || 0) || 0
                 );
                 return value ? `${value} / ${_t("Guest")}` : "";
@@ -229,7 +229,6 @@ patch(PosStore.prototype, {
             sourceOrder.removeAllServiceFeeLines();
         }
         const mergedCourses = this.mergeCourses(sourceOrder, destOrder);
-        const sourceLastPrint = sourceOrder.lastPrints.at(-1);
         // Sum the guest counts from both orders
         const totalGuests = sourceOrder.getCustomerCount() + destOrder.getCustomerCount();
         destOrder.setCustomerCount(totalGuests);
@@ -283,40 +282,6 @@ patch(PosStore.prototype, {
                     }
                 });
             }
-        }
-        const destLastPrint = destOrder.lastPrints.at(-1);
-        const combinedPrint = {
-            addedQuantity: [
-                ...(destLastPrint?.addedQuantity || []),
-                ...(sourceLastPrint?.addedQuantity || []),
-            ],
-            removedQuantity: [
-                ...(destLastPrint?.removedQuantity || []),
-                ...(sourceLastPrint?.removedQuantity || []),
-            ],
-            noteUpdate: [
-                ...(destLastPrint?.noteUpdate || []),
-                ...(sourceLastPrint?.noteUpdate || []),
-            ],
-            noteChange: destLastPrint?.noteChange || sourceLastPrint?.noteChange || false,
-        };
-        if (destLastPrint?.internal_note || sourceLastPrint?.internal_note) {
-            combinedPrint.internal_note =
-                destLastPrint?.internal_note || sourceLastPrint?.internal_note;
-        }
-        if (destLastPrint?.general_customer_note || sourceLastPrint?.general_customer_note) {
-            combinedPrint.general_customer_note =
-                destLastPrint?.general_customer_note || sourceLastPrint?.general_customer_note;
-        }
-        if (
-            combinedPrint.addedQuantity.length ||
-            combinedPrint.removedQuantity.length ||
-            combinedPrint.noteUpdate.length ||
-            combinedPrint.noteChange ||
-            combinedPrint.internal_note ||
-            combinedPrint.general_customer_note
-        ) {
-            destOrder.pushLastPrints(combinedPrint);
         }
         // Re-apply the fee on the merged base before syncing. The courses are only
         // settled above, so the fee can be pinned to the last one.
@@ -449,7 +414,7 @@ patch(PosStore.prototype, {
         }
         return order;
     },
-    createOrderIfNeeded(data) {
+    createOrderIfNeeded(data = {}) {
         if (this.config.module_pos_restaurant && !data["table_id"]) {
             let order = this.models["pos.order"].find(
                 (order) => order.isDirectSale && !order.isSynced
@@ -505,7 +470,7 @@ patch(PosStore.prototype, {
     },
     async reprintOrder() {
         const order = this.getOrder();
-        await this.sendOrderInPreparation(order, { explicitReprint: true });
+        await this.ticketPrinter.reprintOrderChanges({ order });
         this.showDefault();
     },
     async getServerOrders() {
@@ -771,7 +736,7 @@ patch(PosStore.prototype, {
     },
     prepareOrderTransfer(order, destinationTable) {
         const originalTable = order.table_id;
-        this.alert.dismiss();
+        this.alert.remove();
 
         if (destinationTable.rootTable.id === originalTable?.id) {
             this.setOrder(order);
@@ -1019,10 +984,6 @@ patch(PosStore.prototype, {
 
     set currentFloor(floor) {
         this.floorPlan?.selectFloorById(floor?.id);
-    },
-
-    get showEditPlanButton() {
-        return true;
     },
 
     get showSaveOrderButton() {

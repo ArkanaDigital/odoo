@@ -1,4 +1,4 @@
-import { mountComponent } from "@html_editor/others/embedded_component_utils";
+import { useRootComponents } from "@html_editor/others/embedded_component_utils";
 import { readonlySyntaxHighlightingEmbedding } from "@html_editor/others/embedded_components/core/syntax_highlighting/readonly_syntax_highlighting";
 
 import { AttachmentList } from "@mail/core/common/attachment_list";
@@ -13,17 +13,19 @@ import { Poll } from "@mail/core/common/poll";
 import { PollResult } from "@mail/core/common/poll_result";
 import { RelativeTime } from "@mail/core/common/relative_time";
 import { groupAttachments } from "@mail/utils/common/attachments";
-import { htmlToTextContentInline } from "@mail/utils/common/format";
 
 import {
     Component,
     computed,
+    onMounted,
+    onPatched,
+    onWillUnmount,
     proxy,
+    shallowEqual,
     signal,
-    status,
     t,
-    untrack,
-    useApp,
+    useOnChange,
+    usePlugin,
     useProps,
 } from "@odoo/owl";
 import { MessageSearchState } from "@mail/core/common/message_search_hook";
@@ -33,10 +35,10 @@ import { Dropdown } from "@web/core/dropdown/dropdown";
 import { useDropdownState } from "@web/core/dropdown/dropdown_hooks";
 import { _t } from "@web/core/l10n/translation";
 import { usePopover } from "@web/core/popover/popover_hook";
+import { UIPlugin } from "@web/core/ui/ui_plugin";
 import { useService } from "@web/core/utils/hooks";
 import { createElementWithContent } from "@web/core/utils/html";
 import { nbsp } from "@web/core/utils/strings";
-import { getOrigin } from "@web/core/utils/urls";
 import { useMessageActions } from "./message_actions";
 import { discussComponentRegistry } from "./discuss_component_registry";
 import { NotificationMessage } from "./notification_message";
@@ -45,14 +47,25 @@ import {
     propComputed,
     useForwardRefsToParent,
     useLongPress,
+    useRightClickMenu,
 } from "@mail/utils/common/hooks";
-import { ActionList } from "@mail/core/common/action_list";
-import { loadCssFromBundle } from "@mail/utils/common/misc";
+import { ActionList, CircleInlineAction } from "@mail/core/common/action_list";
+import { assignGetter, loadCssFromBundle } from "@mail/utils/common/misc";
 import { MessageContextMenu } from "@mail/core/common/message_context_menu";
 import { Priority } from "@mail/core/common/priority";
-import { useLayoutEffect, useSubEnv } from "@web/owl2/utils";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 import { isEventHandled, markEventHandled } from "@web/core/utils/misc";
 import { renderToElement } from "@web/core/utils/render";
+import { computedShallowEqual } from "@mail/utils/common/signal";
+import { PANEL_CONTAINER_TYPE } from "@mail/core/common/action";
+import { QuickReactionAction } from "@mail/core/common/quick_reaction_menu";
+
+/** Button of the dropdown of the actions that do not fit in the quick actions of a message. */
+class MoreMessageInlineAction extends CircleInlineAction {
+    get classObj() {
+        return { ...super.classObj, "o-mail-Message-moreAction": true };
+    }
+}
 
 export class Message extends Component {
     // This is the darken version of #71639e
@@ -78,17 +91,19 @@ export class Message extends Component {
     };
     static template = "mail.Message";
 
-    app = useApp();
-
-    /**
-     * @type {boolean} Whether the right-click drodpown is being closed.
-     * Useful to detect when close comes from another right-click on the same message,
-     * in order to show the browser right-click instead.
-     */
-    isRightClickDropdownOngoingClose = false;
+    rootComponents = useRootComponents();
 
     setup() {
         super.setup();
+        this.ancestors = useAncestors({
+            inMessage: assignGetter(
+                {},
+                {
+                    isAlignedRight: () => this.isAlignedRight,
+                    message: () => this.props.message,
+                }
+            ),
+        });
         this.nbsp = nbsp;
         this.store = useService("mail.store");
         this.props = useProps({
@@ -111,25 +126,18 @@ export class Message extends Component {
         );
         this.popover = usePopover(this.constructor.components.Popover, { position: "top" });
         this.state = proxy({
+            shouldRenderActions: false,
             isHovered: false,
             isClicked: false,
             expandOptions: false,
             emailHeaderOpen: false,
         });
-        this.rightClickDropdownState = useDropdownState({
-            onClose: async () => {
-                if (this.isRightClickDropdownOngoingClose) {
-                    return; // onClose can be called more than once. Limiting to a single onClose to prevent race-condition in tests.
-                }
-                this.props.messageSelection?.clearSelected();
-                this.isRightClickDropdownOngoingClose = true;
-                await new Promise((resolve) => setTimeout(() => requestAnimationFrame(resolve)));
-                this.isRightClickDropdownOngoingClose = false;
-                delete this.rootRef().dataset.rightClicking;
-            },
-        });
-        this.rightClickAnchor = signal.ref();
         this.rootRef = signal.ref(HTMLDivElement);
+        this.rightClickMenu = useRightClickMenu(this.rootRef, {
+            extraMenuProps: () => ({ message: this.message, thread: this.props.thread }),
+            onClose: () => this.props.messageSelection?.clearSelected(),
+            onContextMenu: (...args) => this.onContextMenu(...args),
+        });
         if (isMobileOS()) {
             useLongPress(this.rootRef, {
                 action: () => this.openMobileActions(),
@@ -139,30 +147,29 @@ export class Message extends Component {
         useForwardRefsToParent("messageRefs", (props) => props.message.id, this.rootRef);
         this.messageBody = signal.ref(HTMLDivElement);
         this.messageContentRef = signal.ref(HTMLDivElement);
+        this.richBodyRef = signal.ref(HTMLDivElement);
         this.messageActions = useMessageActions(this.messageActionsParams);
         this.shadowBody = signal.ref(HTMLDivElement);
         this.shadowRoot = signal(null, { type: t.ref(ShadowRoot) });
         this.dialog = useService("dialog");
-        this.ui = useService("ui");
+        this.ui = usePlugin(UIPlugin);
         this.openReactionMenu = this.openReactionMenu.bind(this);
         this.optionsDropdown = useDropdownState();
         this.isActive = computed(() => Boolean(this._isActive));
-        useSubEnv({
-            inMessage: true,
-            message: this.props.message,
-            alignedRight: this.isAlignedRight,
-        });
-        useLayoutEffect(
-            () => {
-                if (this.shadowBody()) {
-                    this.shadowRoot.set(this.shadowBody().attachShadow({ mode: "open" }));
+        useOnChange(
+            () => [this.shadowBody()],
+            (shadowBody) => {
+                if (shadowBody) {
+                    this.shadowRoot.set(shadowBody.attachShadow({ mode: "open" }));
                     const color = this.store.isOdooWhiteTheme ? "dark" : "white";
                     loadCssFromBundle(this.shadowRoot(), "mail.assets_message_email");
                     const shadowStyle = document.createElement("style");
                     shadowStyle.textContent = `
                     * {
-                        background-color: transparent !important;
                         color: ${color} !important;
+                    }
+                    *:not(.o-mail-ellipsis) {
+                        background-color: transparent !important;
                     }
                     a, a * {
                         color: ${this.constructor.SHADOW_LINK_COLOR} !important;
@@ -176,6 +183,18 @@ export class Message extends Component {
                 `;
                     if (!this.store.isOdooWhiteTheme) {
                         this.shadowRoot().appendChild(shadowStyle);
+                    }
+                    if (isMobileOS()) {
+                        // Equivalent to .o-disable-safari-native-long-press
+                        const touchCalloutStyle = document.createElement("style");
+                        touchCalloutStyle.textContent = `
+                        * {
+                            -webkit-touch-callout: none !important;
+                            -webkit-user-select: none !important;
+                            user-select: none !important;
+                        }
+                    `;
+                        this.shadowRoot().appendChild(touchCalloutStyle);
                     }
                     const ellipsisStyle = document.createElement("style");
                     ellipsisStyle.textContent = `
@@ -202,12 +221,18 @@ export class Message extends Component {
                 `;
                     this.shadowRoot().appendChild(ellipsisStyle);
                 }
-            },
-            () => [untrack(this.shadowBody)]
+            }
         );
-        useLayoutEffect(
-            () => {
-                const shadowRoot = this.shadowRoot();
+        useOnChange(
+            () => [
+                this.shadowRoot(),
+                this.message.showTranslation,
+                this.message.richTranslationValue,
+                this.props.messageSearch?.searchTerm,
+                this.message.richBody,
+                this.isEditing,
+            ],
+            (shadowRoot) => {
                 if (shadowRoot) {
                     const bodyEl = createElementWithContent(
                         "span",
@@ -225,34 +250,59 @@ export class Message extends Component {
                         shadowRoot.removeChild(bodyEl);
                     };
                 }
-            },
-            () => [
-                this.shadowRoot(),
-                this.message.showTranslation,
-                this.message.richTranslationValue,
-                this.props.messageSearch?.searchTerm,
-                this.message.richBody,
-                this.isEditing,
-            ]
+            }
         );
-        useLayoutEffect(
-            () => {
-                const roots = this.isEditing
-                    ? []
-                    : this.prepareMessageBody(this.messageBody()) ?? [];
-                return () => {
-                    for (const root of roots) {
-                        root.destroy();
-                    }
-                };
-            },
-            () => [
-                this.isEditing,
-                this.message.richBody,
-                this.props.messageSearch?.searchTerm,
-                untrack(this.messageBody),
-            ]
-        );
+        // prepared on the patched body: it renders the content these dependencies describe
+        let preparedFor;
+        let bodyRoots = [];
+        const destroyBodyRoots = () => {
+            for (const root of bodyRoots) {
+                root.destroy();
+            }
+            bodyRoots = [];
+        };
+        const prepareRenderedBody = () => {
+            const current = {
+                isEditing: this.isEditing,
+                richBody: this.message.richBody,
+                searchTerm: this.props.messageSearch?.searchTerm,
+                bodyEl: this.messageBody(),
+            };
+            if (shallowEqual(current, preparedFor)) {
+                return;
+            }
+            preparedFor = current;
+            destroyBodyRoots();
+            bodyRoots = this.isEditing ? [] : this.prepareMessageBody(this.messageBody()) ?? [];
+        };
+        onMounted(prepareRenderedBody);
+        onPatched(prepareRenderedBody);
+        onWillUnmount(destroyBodyRoots);
+    }
+
+    /** @type {import("@mail/core/common/action_list").GetActionComponent} */
+    getActionComponent({ action, inline }) {
+        if (!inline) {
+            return undefined;
+        }
+        if (action.id === "reaction" && !isMobileOS()) {
+            return QuickReactionAction;
+        }
+        return action.definition.isMoreAction ? MoreMessageInlineAction : CircleInlineAction;
+    }
+
+    /**
+     * The menu of "Expand" opens beside the message, away from its side.
+     *
+     * @type {import("@mail/core/common/action").PanelContainer}
+     */
+    get actionPanelContainer() {
+        const side = this.isAlignedRight ? "left" : "right";
+        return {
+            type: PANEL_CONTAINER_TYPE.DROPDOWN,
+            menuClass: "o-mail-Message-moreMenu",
+            position: `${side}-${this.message.threadAsNewest ? "end" : "start"}`,
+        };
     }
 
     get messageActionsParams() {
@@ -265,7 +315,7 @@ export class Message extends Component {
 
     // components have no getter memoization: explicit computeds, so each
     // piece re-runs only when its deps change and keeps a stable identity
-    quickActions = computed(() => {
+    quickActions = computedShallowEqual(() => {
         const allActions = this.messageActions.actions;
         return allActions.slice(
             0,
@@ -275,7 +325,7 @@ export class Message extends Component {
         );
     });
 
-    moreMenuActions = computed(() => {
+    moreMenuActions = computedShallowEqual(() => {
         const allActions = this.messageActions.actions;
         return allActions.length > this.quickActionCount
             ? allActions.slice(this.quickActionCount - 1)
@@ -287,20 +337,12 @@ export class Message extends Component {
         return moreActions?.length
             ? this.messageActions.more(this.messageActionsParams, {
                   actions: moreActions,
-                  dropdownMenuClass: "o-mail-Message-moreMenu",
-                  dropdownPosition: this.isAlignedRight
-                      ? this.message.threadAsNewest
-                          ? "left-end"
-                          : "left-start"
-                      : this.message.threadAsNewest
-                      ? "right-end"
-                      : "right-start",
                   name: _t("Expand"),
               })
             : undefined;
     });
 
-    actions = computed(() => {
+    actions = computedShallowEqual(() => {
         const moreAction = this.moreAction();
         const actions = moreAction
             ? [...this.quickActions(), moreAction]
@@ -313,18 +355,16 @@ export class Message extends Component {
 
     get attClass() {
         return {
-            "user-select-none o-isMobileOS": isMobileOS(),
+            "user-select-none o-disable-safari-native-long-press o-isMobileOS": isMobileOS(),
             [this.props.className]: true,
-            "pt-1": !this.props.squashed,
-            "o-pt-0_5": this.props.squashed,
-            "o-selfAuthored": this.message.isSelfAuthored && !this.env.messageCard,
+            "o-selfAuthored": this.message.isSelfAuthored && !this.ancestors.inMessageCardList,
             "o-selected":
                 this.props.message.composerAsReplyToMessage?.thread.eq(this.props.thread) ||
                 this.props.messageSelection?.isSelected(this.props.message),
             "o-squashed": this.props.squashed,
-            "mt-1": !this.props.squashed && this.props.thread && !this.env.messageCard,
-            "px-1": this.env.inChatWindow,
-            "o-actionMenuMobileOpen": this.ui.isSmall && this.optionsDropdown.isOpen,
+            "mt-2": !this.props.squashed && this.props.thread && !this.ancestors.inMessageCardList,
+            "px-1": this.ancestors.inChatWindow,
+            "o-actionMenuMobileOpen": this.ui.isSmall() && this.optionsDropdown.isOpen,
             "o-editing": this.isEditing,
         };
     }
@@ -334,6 +374,12 @@ export class Message extends Component {
             "object-fit-contain": this.props.message.author_id?.is_company,
             "object-fit-cover": !this.props.message.author_id?.is_company,
         };
+    }
+
+    get deliveryFailureText() {
+        return this.message.failureNotifications.length > 0
+            ? _t("Click to see delivery errors")
+            : "";
     }
 
     get isEditing() {
@@ -361,7 +407,7 @@ export class Message extends Component {
         const isNoteVisual = this.message.isNote || this.message.message_type === "notification";
         return {
             "p-1": isNoteVisual,
-            "fs-1": !this.isEditing && !this.env.inChatter && this.message.onlyEmojis,
+            "fs-1": !this.isEditing && !this.ancestors.inChatter && this.message.onlyEmojis,
             "mb-0": !isNoteVisual,
             "py-2": !isNoteVisual && !this.isEditing && this.showTextVisually,
             "pt-2 pb-1": !isNoteVisual && this.isEditing,
@@ -371,6 +417,56 @@ export class Message extends Component {
                 !this.isEditing && !isNoteVisual && !this.props.squashed,
             "flex-grow-1": this.isEditing,
             o_track: this.message.message_type === "tracking",
+        };
+    }
+
+    get richBodyAttClass() {
+        return {};
+    }
+
+    get headerAttClass() {
+        return { "mb-1": !this.message.isNote };
+    }
+
+    get contentContainerAttClass() {
+        return { "flex-row-reverse": this.isAlignedRight };
+    }
+
+    get textContentAttClass() {
+        return { "w-100": this.isEditing };
+    }
+
+    get bubbleColorAttClass() {
+        return {
+            "o-blue": this.message.bubbleColor === "blue",
+            "o-green": this.message.bubbleColor === "green",
+            "o-orange": this.message.bubbleColor === "orange",
+        };
+    }
+
+    get bubbleTailAttClass() {
+        return this.bubbleColorAttClass;
+    }
+
+    get bubbleAttClass() {
+        return {
+            "o-rounded-bubble": this.props.squashed,
+            "o-rounded-bottom-bubble": !this.props.squashed,
+            "o-rounded-start-bubble": !this.props.squashed && this.isAlignedRight,
+            "o-rounded-end-bubble": !this.props.squashed && !this.isAlignedRight,
+            ...this.bubbleColorAttClass,
+        };
+    }
+
+    get actionsAttClass() {
+        return {
+            "start-0": this.isAlignedRight,
+            "o-mt-0_5": this.message.bubbleColor && !this.isMobileOS,
+            "my-n2": !this.message.bubbleColor && !this.isMobileOS,
+            "gap-1": this.isMobileOS,
+            "mx-1": !this.isMobileOS,
+            invisible: !this.isActive() && !this.isMobileOS,
+            "o-expanded": this.optionsDropdown.isOpen,
         };
     }
 
@@ -386,7 +482,7 @@ export class Message extends Component {
         return (
             this.message.subtype_id?.description &&
             this.message.subtype_id.description.toLowerCase() !==
-                htmlToTextContentInline(this.message.body || "").toLowerCase()
+                this.message.bodyTextContentInline.toLowerCase()
         );
     }
 
@@ -414,14 +510,15 @@ export class Message extends Component {
         return (
             this.state.isHovered ||
             this.state.isClicked ||
-            this.emojiPicker?.isOpen ||
-            Boolean(this.moreAction()?.isActive)
+            (this.state.shouldRenderActions && Boolean(this.moreAction()?.isActive))
         );
     }
 
     get isAlignedRight() {
         return Boolean(
-            this.env.inChatWindow && this.props.message.isSelfAuthored && !this.env.messageCard
+            this.ancestors.inChatWindow &&
+                this.props.message.isSelfAuthored &&
+                !this.ancestors.inMessageCardList
         );
     }
 
@@ -438,6 +535,7 @@ export class Message extends Component {
     }
 
     onMouseenter() {
+        this.state.shouldRenderActions = true;
         this.state.isHovered = true;
     }
 
@@ -450,7 +548,7 @@ export class Message extends Component {
      * @returns {boolean}
      */
     get shouldDisplayAuthorName() {
-        if (!this.env.inChatWindow || this.env.messageCard) {
+        if (!this.ancestors.inChatWindow || this.ancestors.inMessageCardList) {
             return true;
         }
         if (this.message.isSelfAuthored) {
@@ -481,6 +579,7 @@ export class Message extends Component {
             if (this.state.isClicked) {
                 this.state.isClicked = false;
             } else {
+                this.state.shouldRenderActions = true;
                 this.state.isClicked = true;
                 document.body.addEventListener(
                     "click",
@@ -494,31 +593,21 @@ export class Message extends Component {
     }
 
     onContextMenu(ev) {
-        if (!document.getSelection()?.isCollapsed || isMobileOS()) {
-            // text selection by-passes message actions on right-click.
+        if (isMobileOS()) {
             // Mobile OS long press is handled with useLongPress()
             return;
         }
-        if (
-            ev.composedPath()[0].closest("a") ||
-            !this.props.hasActions ||
-            this.isEditing ||
-            this.rightClickDropdownState.isOpen ||
-            this.isRightClickDropdownOngoingClose
-        ) {
+        if (!this.hasActions || ev.composedPath()[0].closest("a")) {
             return;
         }
-        this.showRightClickMessageActions(ev);
+        if (!this.rightClickMenu.open(ev)) {
+            return;
+        }
+        this.onOpenRightClickMenu(ev);
     }
 
-    showRightClickMessageActions(ev) {
-        this.rootRef().dataset.rightClicking = true;
-        const el = this.rightClickAnchor();
-        el.style.left = ev.clientX + "px";
-        el.style.top = ev.clientY + "px";
-        this.rightClickDropdownState.open();
+    onOpenRightClickMenu() {
         this.props.messageSelection?.setSelected(this.props.message);
-        ev.preventDefault();
     }
 
     /** @param {HTMLElement} bodyEl */
@@ -532,21 +621,15 @@ export class Message extends Component {
         );
         const channelLinks = bodyEl.querySelectorAll("a.o_channel_redirect");
         this.store.handleValidChannelMention(Array.from(channelLinks));
-        for (const el of bodyEl.querySelectorAll(".o_message_redirect")) {
-            // only transform links targetting the same database
-            if (el.getAttribute("href")?.startsWith(getOrigin())) {
-                const message = this.store["mail.message"].get(el.dataset.oeId);
-                if (message?.thread?.displayName) {
-                    el.classList.add("o_message_redirect_transformed");
-                    el.replaceChildren(renderToElement("mail.Message.messageLink", { message }));
-                }
-            }
-        }
+        this.store.renderMessageLinks(bodyEl.querySelectorAll(".o_message_redirect"));
         return this.renderEmbeddedCodeBlocks(bodyEl);
     }
 
     /** @param {HTMLElement} bodyEl */
     renderEmbeddedCodeBlocks(bodyEl) {
+        if (this.message.hasEmailLikeBody) {
+            return [];
+        }
         const { name, Component, getProps } = readonlySyntaxHighlightingEmbedding;
         const selector = `[data-embedded='${name}']`;
         const embeddedElements = [...bodyEl.querySelectorAll(selector)];
@@ -562,17 +645,13 @@ export class Message extends Component {
             // from the pre node. If call replaceChildren() first, that content is gone,
             // so value becomes empty and highlighting loses the original code text.
             const props = getProps(el);
-            const { root, mountPromise } = mountComponent(
-                this.app,
+            const { root, mountPromise } = this.rootComponents.mount(
                 Component,
                 el,
                 props,
                 this.env,
                 {
                     onBeforeComplete: () => {
-                        if (status(this) === "destroyed") {
-                            return false;
-                        }
                         if (!el.isConnected) {
                             return false;
                         }
@@ -595,7 +674,7 @@ export class Message extends Component {
     getAvatarContainerAttClass() {
         return {
             "opacity-50": this.message.isPending,
-            "o-inChatWindow": this.env.inChatWindow,
+            "o-inChatWindow": this.ancestors.inChatWindow,
         };
     }
 
@@ -606,7 +685,7 @@ export class Message extends Component {
     getSidebarAttClass() {
         return {
             "align-items-start": !this.isAlignedRight,
-            "o-inChatWindow": this.env.inChatWindow,
+            "o-inChatWindow": this.ancestors.inChatWindow,
         };
     }
 
@@ -649,6 +728,10 @@ export class Message extends Component {
             !this.message.isSubjectSimilarToThreadName &&
             !this.message.isSubjectDefault
         );
+    }
+
+    get hasActions() {
+        return this.props.hasActions && this.message.hasActions && !this.isEditing;
     }
 }
 

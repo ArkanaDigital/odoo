@@ -1,5 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
+from unittest.mock import patch
+
 from odoo import fields
 from odoo.fields import Command
 from odoo.tests import tagged
@@ -22,7 +24,7 @@ class PoSSaleSyncCommon:
         self.main_pos_config.open_ui()
         session = self.main_pos_config.current_session_id
         currency = session.currency_id
-        payment_method = payment_method or self.main_pos_config.payment_method_ids[0]
+        payment_method = payment_method or self.main_pos_config.payment_method_ids.filtered(lambda pm: pm.type == 'cash')[:1]  # pick a usable one
         order_uuid = str(uuid.uuid4())
         amount_total = 0
         amount_tax = 0
@@ -128,6 +130,21 @@ class PoSSaleSyncCommon:
         return self._sync_paid_pos_order(
             down_payment_lines, partner=sale_order.partner_id, to_invoice=to_invoice)
 
+    def _settle_in_pos(self, sale_order):
+        pos_order_id = self._sync_paid_pos_order(
+            [{
+                'product': line.product_id,
+                'qty': line.product_uom_qty,
+                'price_unit': line.price_unit,
+                'extra_values': {
+                    'sale_order_line_id': line.id,
+                    'sale_order_origin_id': sale_order.id,
+                },
+            } for line in sale_order.order_line],
+            partner=sale_order.partner_id,
+        )
+        return self.env['pos.order'].browse(pos_order_id)
+
 
 class TestPoSSale(PoSSaleSyncCommon, TestPointOfSaleHttpCommon):
     _test_user_groups = None  # FIXME list needed groups
@@ -232,9 +249,10 @@ class TestPoSSale(PoSSaleSyncCommon, TestPointOfSaleHttpCommon):
         }], partner=partner_1)
         current_session = order.session_id
         payment_context = {"active_ids": order.ids, "active_id": order.id}
+        payment_method = current_session.payment_method_ids.filtered(lambda pm: pm.type == 'cash')[:1]  # pick a usable one
         order_payment = self.env['pos.make.payment'].with_context(**payment_context).create({
             'amount': order.amount_total,
-            'payment_method_id': current_session.payment_method_ids[0].id,
+            'payment_method_id': payment_method.id,
         })
         order_payment.with_context(**payment_context).check()
 
@@ -374,8 +392,8 @@ class TestPoSSale(PoSSaleSyncCommon, TestPointOfSaleHttpCommon):
         so.action_confirm()
 
         self.env['sale.advance.payment.inv'].sudo().create({
-            'advance_payment_method': 'fixed',
-            'fixed_amount': 20,
+            'advance_payment_method': 'downpayment',
+            'amount': 20,
             'sale_order_ids': so.ids,
         }).create_invoices()
         # Invoice the delivered part from the down payment
@@ -633,8 +651,8 @@ class TestPoSSale(PoSSaleSyncCommon, TestPointOfSaleHttpCommon):
             'active_id': sale_order.id,
             'default_journal_id': self.company_data['default_journal_sale'].id,
         }).create({
-            'advance_payment_method': 'fixed',
-            'fixed_amount': 100,
+            'advance_payment_method': 'downpayment',
+            'amount': 100,
         }).create_invoices()
 
         selected_groups = self.user.group_ids
@@ -843,6 +861,28 @@ class TestPoSSale(PoSSaleSyncCommon, TestPointOfSaleHttpCommon):
         self.assertFalse(invoice.invoice_payment_term_id)
 
         self.assertAlmostEqual(order.amount_total, invoice.amount_total, places=2, msg="Order and Invoice amounts do not match.")
+
+    def test_full_down_payment_so_still_listed(self):
+        """
+        Tests that a Sale Order fully paid by a down payment in the PoS is still listed, so it can be settled
+        """
+        product_a = self.env['product.product'].create({
+            'name': 'Product A',
+            'lst_price': 10.0,
+        })
+        so = self.env['sale.order'].sudo().create({
+            'name': 'Full Down Payment SO',
+            'partner_id': self.env['res.partner'].create({'name': 'Test Partner'}).id,
+            'order_line': [(0, 0, {
+                'product_id': product_a.id,
+                'product_uom_qty': 1,
+                'price_unit': product_a.lst_price,
+            })]
+        })
+        so.action_confirm()
+        self.main_pos_config.down_payment_product_id = self.env.ref("pos_sale.default_downpayment_product")
+        self.main_pos_config.open_ui()
+        self.start_pos_tour('test_full_down_payment_so_still_listed', login="accountman")
 
     def test_amount_to_invoice(self):
         """
@@ -1192,8 +1232,8 @@ class TestPoSSale(PoSSaleSyncCommon, TestPointOfSaleHttpCommon):
         }
 
         payment = self.env['sale.advance.payment.inv'].with_context(context).create({
-            'advance_payment_method': 'fixed',
-            'fixed_amount': 300,
+            'advance_payment_method': 'downpayment',
+            'amount': 300,
         })
         res = payment.create_invoices()
         invoice = self.env['account.move'].browse(res['res_id'])
@@ -1214,6 +1254,31 @@ class TestPoSSale(PoSSaleSyncCommon, TestPointOfSaleHttpCommon):
         invoice.action_post()
 
         self.assertEqual(sale_order.amount_unpaid, 0.0)
+
+    def test_settled_line_price_is_not_crossed_out(self):
+        """
+        The french module crosses out the price when the cashier changed it. The
+        price of a settled line comes from the sale order, so it must not be
+        crossed out.
+        """
+        if not self.env["ir.module.module"].search([("name", "=", "l10n_fr_pos_cert"), ("state", "=", "installed")]):
+            self.skipTest("l10n_fr_pos_cert module is required for this test")
+        self.main_pos_config.company_id.sudo().country_id = self.env.ref('base.fr')
+        product = self.env['product.product'].create({
+            'name': 'Test Product',
+            'available_in_pos': True,
+            'lst_price': 100.0,
+            'taxes_id': False,
+        })
+        self.env['sale.order'].create({
+            'partner_id': self.partner_a.id,
+            'order_line': [(0, 0, {
+                'product_id': product.id,
+                'product_uom_qty': 1,
+                'price_unit': product.lst_price,
+            })],
+        })
+        self.start_tour("/pos/ui?config_id=%d" % self.main_pos_config.id, 'test_settled_line_price_is_not_crossed_out', login="accountman")
 
     def test_advance_payment_with_extra_lines(self):
         so = self.env['sale.order'].sudo().create({
@@ -1236,7 +1301,7 @@ class TestPoSSale(PoSSaleSyncCommon, TestPointOfSaleHttpCommon):
         self.start_tour("/pos/ui?config_id=%d" % self.main_pos_config.id, 'PoSApplyDownpaymentWithExtraLine', login="accountman")
         self.assertEqual(so.amount_unpaid, 90)
 
-    def test_ensure_downpayment_product_in_multiple_company(self):
+    def test_ensure_default_products_in_multiple_company(self):
         if self.env['ir.module.module']._get('pos_hr').state != 'installed':
             self.skipTest("pos_hr module is required for this test")
 
@@ -1248,7 +1313,9 @@ class TestPoSSale(PoSSaleSyncCommon, TestPointOfSaleHttpCommon):
         self.env["pos.config"].with_company(branch).create({
             "name": "Branch Point of Sale"
         })
-        self.env['pos.config']._ensure_default_products()
+        records = self.env['pos.config'].search_read([], ["down_payment_product_id", "default_product_id"])
+        self.assertTrue(all(record['down_payment_product_id'] for record in records))
+        self.assertTrue(all(record['default_product_id'] for record in records))
 
     def test_amount_unpaid_with_refund_pos_order(self):
         product = self.env['product.product'].create({
@@ -1313,49 +1380,6 @@ class TestPoSSale(PoSSaleSyncCommon, TestPointOfSaleHttpCommon):
             "a positive refund line must be treated as negative in the computation",
         )
 
-    def test_for_ecommerce_postpaid_order_amount_unpaid_equals_amount_paid(self):
-        if self.env['ir.module.module']._get('website_sale_collect').state != 'installed':
-            self.skipTest("This test requires 'Click & Collect' module to be installed.")
-        partner_1 = self.env['res.partner'].create({'name': 'A Test Partner 1'})
-        self.env.user.group_ids += self.quick_ref('sales_team.group_sale_salesman')
-        product_a = self.env['product.product'].create({
-            'name': 'Product A',
-            'available_in_pos': True,
-            'lst_price': 10.0,
-        })
-        sale_order = self.env['sale.order'].create({
-            'partner_id': partner_1.id,
-            'order_line': [Command.create({
-                'product_id': product_a.id,
-                'product_uom_qty': 2,
-                'price_unit': product_a.lst_price
-            })]
-        })
-        provider = self.env['payment.provider'].create({
-            'name': 'Test',
-            'code': 'custom',
-            'custom_mode': 'on_site',
-        })
-        payment_method = self.env["payment.method"].create({
-            "name": "Payment method",
-            "code": "pay_on_site",
-            "provider_id": provider.id,
-        })
-        self.assertTrue(payment_method._is_postpaid())
-        self.env['payment.transaction'].create({
-            'provider_id': provider.id,
-            'payment_method_id': payment_method.id,
-            'amount': sale_order.amount_total,
-            'currency_id': sale_order.currency_id.id,
-            'partner_id': sale_order.partner_id.id,
-            'state': 'done',
-            'sale_order_ids': [Command.set(sale_order.ids)],
-        })
-        self.assertEqual(
-            sale_order.amount_unpaid, sale_order.amount_paid,
-            "The amount_unpaid for the SO should be equal to amount_paid after a postpaid transaction."
-        )
-
 
 @tagged('post_install', '-at_install')
 class TestPoSSalePayment(PoSSaleSyncCommon, TestPointOfSaleHttpCommon, PaymentCommon):
@@ -1366,6 +1390,15 @@ class TestPoSSalePayment(PoSSaleSyncCommon, TestPointOfSaleHttpCommon, PaymentCo
         """Ensure that the POS correctly handles Sale Orders where a down payment was processed
         via a payment transaction with the automatic invoicing setting enabled.
         """
+        # Disable account payment generation while keeping Sales' post-processing
+        self._disable_post_process_patcher()
+        self.startPatcher(
+            patch(
+                "odoo.addons.account_payment.models.payment_transaction.PaymentTransaction"
+                "._post_process",
+                autospec=True,
+            )
+        )
         self.product_a.available_in_pos = True
         self.env.company.sale_automatic_invoice = True
         self.partner_a.email = "test.customer@example.com"
@@ -1376,27 +1409,26 @@ class TestPoSSalePayment(PoSSaleSyncCommon, TestPointOfSaleHttpCommon, PaymentCo
                 'product_uom_qty': 1,
                 'price_unit': self.product_a.lst_price,
             })],
-            'require_signature': False,
             'prepayment_percent': 0.3,
         })
         # Manual downpayment invoice
         down_payment = self.env['sale.advance.payment.inv'].sudo().create({
-            'advance_payment_method': 'fixed',
-            'fixed_amount': 50,
+            'advance_payment_method': 'downpayment',
+            'amount': 50,
             'sale_order_ids': sale_order.ids,
         })
         down_payment.create_invoices()
         down_payment_invoices = sale_order.invoice_ids
         down_payment_invoices.action_post()
         # Online payment transaction for 30% downpayment
-        tx = self._create_transaction(
+        self._create_transaction(
                 flow='direct',
                 amount=sale_order.amount_total * sale_order.prepayment_percent,
                 sale_order_ids=[sale_order.id],
                 state='done',
                 reference='Test Transaction',
             )
-        self._run_post_processing(tx)
+        self._run_post_processing()
         self.main_pos_config.down_payment_product_id = self.env.ref("pos_sale.default_downpayment_product")
 
         # Both down payments are deducted when settling the order, which is
@@ -1454,3 +1486,88 @@ class TestPoSSalePayment(PoSSaleSyncCommon, TestPointOfSaleHttpCommon, PaymentCo
         so_downpayment_lines = invoice.invoice_line_ids.filtered('is_downpayment')
         self.assertTrue(so_downpayment_lines.is_downpayment)
         self.assertEqual(so_downpayment_lines.account_id.id, account.id)
+
+    def test_settled_so_invoice_keeps_so_customer_reference(self):
+        self.main_pos_config.open_ui()
+        product = self.desk_pad.product_variant_id
+        partner = self.env['res.partner'].create({'name': 'Test Partner Ref'})
+
+        def _settled_invoice(client_order_ref):
+            so = self.env['sale.order'].sudo().create({
+                'partner_id': partner.id,
+                'client_order_ref': client_order_ref,
+                'order_line': [Command.create({'product_id': product.id, 'product_uom_qty': 1})],
+            })
+            so.action_confirm()
+            pos_order = self.env['pos.order'].create({
+                'company_id': self.env.company.id,
+                'session_id': self.main_pos_config.current_session_id.id,
+                'partner_id': partner.id,
+                'lines': [Command.create({
+                    'product_id': product.id, 'price_unit': product.lst_price, 'qty': 1.0,
+                    'tax_ids': [], 'price_subtotal': product.lst_price,
+                    'price_subtotal_incl': product.lst_price,
+                    'sale_order_line_id': so.order_line[0].id,
+                    'sale_order_origin_id': so.id,
+                })],
+                'amount_total': product.lst_price, 'amount_tax': 0.0,
+                'amount_paid': 0.0, 'amount_return': 0.0,
+            })
+            pos_order.action_pos_order_invoice()
+            return so, pos_order, pos_order.account_move
+
+        so, pos_order, invoice = _settled_invoice('CUSTOMER-PO-12345')
+        self.assertEqual(invoice.ref, 'CUSTOMER-PO-12345')
+        self.assertEqual(invoice.invoice_origin, so.name)
+        self.assertIn(pos_order, invoice.pos_order_ids)
+
+        so, _, invoice = _settled_invoice(client_order_ref=False)
+        self.assertEqual(invoice.ref, so.name)
+
+    def test_consolidated_invoice_mixed_pos_and_so_orders(self):
+        self.main_pos_config.open_ui()
+        product = self.desk_pad.product_variant_id
+        partner = self.env['res.partner'].create({'name': 'Test Partner Mixed Consolidated'})
+
+        so = self.env['sale.order'].sudo().create({
+            'partner_id': partner.id,
+            'client_order_ref': 'PO-MIXED-999',
+            'order_line': [Command.create({'product_id': product.id, 'product_uom_qty': 1})],
+        })
+        so.action_confirm()
+
+        pos_order_so = self.env['pos.order'].create({
+            'company_id': self.env.company.id,
+            'session_id': self.main_pos_config.current_session_id.id,
+            'partner_id': partner.id,
+            'pos_reference': 'Order 00099-001-0001',
+            'lines': [Command.create({
+                'product_id': product.id, 'price_unit': product.lst_price, 'qty': 1.0,
+                'tax_ids': [], 'price_subtotal': product.lst_price,
+                'price_subtotal_incl': product.lst_price,
+                'sale_order_line_id': so.order_line[0].id,
+                'sale_order_origin_id': so.id,
+            })],
+            'amount_total': product.lst_price, 'amount_tax': 0.0,
+            'amount_paid': 0.0, 'amount_return': 0.0,
+        })
+
+        pos_order_pos_only = self.env['pos.order'].create({
+            'company_id': self.env.company.id,
+            'session_id': self.main_pos_config.current_session_id.id,
+            'partner_id': partner.id,
+            'pos_reference': 'Order 00099-001-0002',
+            'lines': [Command.create({
+                'product_id': product.id, 'price_unit': product.lst_price, 'qty': 1.0,
+                'tax_ids': [], 'price_subtotal': product.lst_price,
+                'price_subtotal_incl': product.lst_price,
+            })],
+            'amount_total': product.lst_price, 'amount_tax': 0.0,
+            'amount_paid': 0.0, 'amount_return': 0.0,
+        })
+
+        invoice = (pos_order_so | pos_order_pos_only)._generate_pos_order_invoice()
+        self.assertEqual(invoice.ref, 'PO-MIXED-999')
+        self.assertIn(so.name, invoice.invoice_origin)
+        self.assertIn('Order 00099-001-0002', invoice.invoice_origin)
+        self.assertEqual(set(invoice.pos_order_ids.ids), {pos_order_so.id, pos_order_pos_only.id})

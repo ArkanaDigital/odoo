@@ -2,19 +2,12 @@ import { DiscussContent } from "@mail/core/public_web/discuss_content";
 import { patch } from "@web/core/utils/patch";
 
 patch(DiscussContent.prototype, {
-    actionPanelAutoOpenFn() {
-        const livechatInfoAction = this.threadActions.actions.find((a) => a.id === "livechat-info");
+    autoOpenPanel() {
+        const livechatInfoAction = this.threadActions.get("livechat-info");
         if (livechatInfoAction && this.store.discuss.isLivechatInfoPanelOpenByDefault) {
-            livechatInfoAction.actionPanelOpen();
+            livechatInfoAction.openPanel();
         } else {
-            super.actionPanelAutoOpenFn();
+            super.autoOpenPanel();
         }
-    },
-    get threadDescriptionAttClass() {
-        return {
-            ...super.threadDescriptionAttClass,
-            "text-muted":
-                this.thread.channel?.livechat_status === "need_help" && this.thread.description,
-        };
     },
 });

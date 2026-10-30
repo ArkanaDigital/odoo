@@ -1,6 +1,6 @@
 import {
     click,
-    contains,
+    contains as mailContains,
     defineMailModels,
     openFormView,
     openKanbanView,
@@ -9,9 +9,10 @@ import {
     startServer,
     triggerHotkey,
 } from "@mail/../tests/mail_test_helpers";
-import { describe, expect, test } from "@odoo/hoot";
+import { describe, expect, test, waitFor, waitForNone } from "@odoo/hoot";
 import { registry } from "@web/core/registry";
 import { getOrigin } from "@web/core/utils/urls";
+import { contains } from "@web/../tests/web_test_helpers";
 
 defineMailModels();
 describe.current.tags("desktop");
@@ -40,11 +41,11 @@ test("many2many_avatar_user in kanban view", async () => {
     });
     expect(".o_kanban_record .o_field_many2many_avatar_user .o_m2m_avatar_empty").toHaveText("+3");
     await click(".o_kanban_record .o_field_many2many_avatar_user .o_quick_assign");
-    await contains(".o_popover > .o_field_tags > .o_tag", { count: 4 });
-    await contains(".o_popover > .o_field_tags > .o_tag:eq(0):text('Mario')");
-    await contains(".o_popover > .o_field_tags > .o_tag:eq(1):text('Yoshi')");
-    await contains(".o_popover > .o_field_tags > .o_tag:eq(2):text('Luigi')");
-    await contains(".o_popover > .o_field_tags > .o_tag:eq(3):text('Tapu')");
+    await waitFor(".o_popover > .o_field_tags > .o_tag:count(4)");
+    await waitFor(".o_popover > .o_field_tags > .o_tag:eq(0):text('Mario'):count(1)");
+    await waitFor(".o_popover > .o_field_tags > .o_tag:eq(1):text('Yoshi'):count(1)");
+    await waitFor(".o_popover > .o_field_tags > .o_tag:eq(2):text('Luigi'):count(1)");
+    await waitFor(".o_popover > .o_field_tags > .o_tag:eq(3):text('Tapu'):count(1)");
 });
 
 test('many2one_avatar_user widget edited by the smart action "Assign to..."', async () => {
@@ -59,19 +60,19 @@ test('many2one_avatar_user widget edited by the smart action "Assign to..."', as
     await openFormView("m2x.avatar.user", avatarUserId_1, {
         arch: "<form><field name='user_id' widget='many2one_avatar_user'/></form>",
     });
-    await contains(".o_field_many2one_avatar_user .o_external_button");
-    await contains(".o_field_many2one_avatar_user input", { value: "Mario" });
+    await waitFor(".o_field_many2one_avatar_user .o_external_button:count(1)");
+    await mailContains(".o_field_many2one_avatar_user input", { value: "Mario" });
     triggerHotkey("control+k");
     await click(".o_command:text('Assign to ... ALT + I')");
-    await contains(".o_command", { count: 6 });
-    await contains(".o_command:eq(0):text('Mitchell Admin')");
-    await contains(".o_command:eq(1):text('Public user')");
-    await contains(".o_command:eq(2):text('OdooBot')");
-    await contains(".o_command:eq(3):text('Mario')");
-    await contains(".o_command:eq(4):text('Luigi')");
-    await contains(".o_command:eq(5):text('Yoshi')");
+    await waitFor(".o_command:count(6)");
+    await waitFor(".o_command:eq(0):text('Mitchell Admin'):count(1)");
+    await waitFor(".o_command:eq(1):text('Public user'):count(1)");
+    await waitFor(".o_command:eq(2):text('OdooBot'):count(1)");
+    await waitFor(".o_command:eq(3):text('Mario'):count(1)");
+    await waitFor(".o_command:eq(4):text('Luigi'):count(1)");
+    await waitFor(".o_command:eq(5):text('Yoshi'):count(1)");
     await click(".o_command:text('Luigi')");
-    await contains(".o_field_many2one_avatar_user input", { value: "Luigi" });
+    await mailContains(".o_field_many2one_avatar_user input", { value: "Luigi" });
 });
 
 test('many2many_avatar_user widget edited by the smart action "Assign to..."', async () => {
@@ -86,23 +87,23 @@ test('many2many_avatar_user widget edited by the smart action "Assign to..."', a
     await openFormView("m2x.avatar.user", m2xAvatarUserId1, {
         arch: "<form><field name='user_ids' widget='many2many_avatar_user'/></form>",
     });
-    await contains(".o_tag_badge_text", { count: 2 });
-    await contains(".o_tag:eq(0) .o_tag_badge_text:text('Mario')");
-    await contains(".o_tag:eq(1) .o_tag_badge_text:text('Yoshi')");
+    await waitFor(".o_tag_badge_text:count(2)");
+    await waitFor(".o_tag:eq(0) .o_tag_badge_text:text('Mario'):count(1)");
+    await waitFor(".o_tag:eq(1) .o_tag_badge_text:text('Yoshi'):count(1)");
     triggerHotkey("control+k");
-    await contains(".o_command:text('Assign to ... ALT + I')");
+    await waitFor(".o_command:text('Assign to ... ALT + I'):count(1)");
     // Assign Luigi
     triggerHotkey("alt+i");
-    await contains(".o_command", { count: 4 });
-    await contains(".o_command:eq(0):text('Mitchell Admin')");
-    await contains(".o_command:eq(1):text('Public user')");
-    await contains(".o_command:eq(2):text('OdooBot')");
-    await contains(".o_command:eq(3):text('Luigi')");
-    await click(".o_command:text('Luigi')");
-    await contains(".o_tag_badge_text", { count: 3 });
-    await contains(".o_tag:eq(0) .o_tag_badge_text:text('Mario')");
-    await contains(".o_tag:eq(1) .o_tag_badge_text:text('Yoshi')");
-    await contains(".o_tag:eq(2) .o_tag_badge_text:text('Luigi')");
+    await waitFor(".o_command:count(4)");
+    await waitFor(".o_command:eq(0):text('Mitchell Admin'):count(1)");
+    await waitFor(".o_command:eq(1):text('Public user'):count(1)");
+    await waitFor(".o_command:eq(2):text('OdooBot'):count(1)");
+    await waitFor(".o_command:eq(3):text('Luigi'):count(1)");
+    await contains(".o_command:text('Luigi'):count(1)").click();
+    await waitFor(".o_tag_badge_text:count(3)");
+    await waitFor(".o_tag:eq(0) .o_tag_badge_text:text('Mario'):count(1)");
+    await waitFor(".o_tag:eq(1) .o_tag_badge_text:text('Yoshi'):count(1)");
+    await waitFor(".o_tag:eq(2) .o_tag_badge_text:text('Luigi'):count(1)");
 });
 
 test('many2one_avatar_user widget edited by the smart action "Assign to me" in form view', async () => {
@@ -115,15 +116,15 @@ test('many2one_avatar_user widget edited by the smart action "Assign to me" in f
     await openFormView("m2x.avatar.user", avatarUserId_1, {
         arch: "<form><field name='user_id' widget='many2one_avatar_user'/></form>",
     });
-    await contains(".o_field_many2one_avatar_user input", { value: "Mario" });
+    await mailContains(".o_field_many2one_avatar_user input", { value: "Mario" });
     await triggerHotkey("control+k");
-    await contains(".o_command:text('Assign to me ALT + SHIFT + I')");
+    await waitFor(".o_command:text('Assign to me ALT + SHIFT + I'):count(1)");
     await triggerHotkey("alt+shift+i");
-    await contains(".o_field_many2one_avatar_user input", { value: "Mitchell Admin" });
+    await mailContains(".o_field_many2one_avatar_user input", { value: "Mitchell Admin" });
     // Unassign me
     await triggerHotkey("control+k");
-    await click(".o_command:text('Unassign from me ALT + SHIFT + I')");
-    await contains(".o_field_many2one_avatar_user input", { value: "" });
+    await contains(".o_command:text('Unassign from me ALT + SHIFT + I'):count(1)").click();
+    await mailContains(".o_field_many2one_avatar_user input", { value: "" });
 });
 
 test('many2one_avatar_user widget edited by the smart action "Assign to me"', async () => {
@@ -136,16 +137,16 @@ test('many2one_avatar_user widget edited by the smart action "Assign to me"', as
     await openFormView("m2x.avatar.user", avatarUserId_1, {
         arch: "<form><field name='user_id' widget='many2one_avatar_user'/></form>",
     });
-    await contains(".o_field_many2one_avatar_user input", { value: "Mario" });
+    await mailContains(".o_field_many2one_avatar_user input", { value: "Mario" });
     triggerHotkey("control+k");
-    await contains(".o_command:text('Assign to me ALT + SHIFT + I')");
+    await waitFor(".o_command:text('Assign to me ALT + SHIFT + I'):count(1)");
     // Assign to me
     triggerHotkey("alt+shift+i");
-    await contains(".o_field_many2one_avatar_user input", { value: "Mitchell Admin" });
+    await mailContains(".o_field_many2one_avatar_user input", { value: "Mitchell Admin" });
     // Unassign from me
     triggerHotkey("control+k");
-    await click(".o_command:text('Unassign from me ALT + SHIFT + I')");
-    await contains(".o_field_many2one_avatar_user input", { value: "" });
+    await contains(".o_command:text('Unassign from me ALT + SHIFT + I'):count(1)").click();
+    await mailContains(".o_field_many2one_avatar_user input", { value: "" });
 });
 
 test('many2one_avatar_user widget edited by the smart action "Assign to me" in list view', async () => {
@@ -160,40 +161,48 @@ test('many2one_avatar_user widget edited by the smart action "Assign to me" in l
     await openListView("m2x.avatar.user", {
         arch: "<list multi_edit='1'><field name='user_id' widget='many2one_avatar_user'/></list>",
     });
-    await contains(".o_data_row:eq(0) .o_field_many2one_avatar_user .o_many2one:text('Luigi')");
-    await contains(".o_data_row:eq(1) .o_field_many2one_avatar_user .o_many2one:text('Mario')");
-    // Select all
-    await click(".o_list_table > thead .o_list_controller input");
-    await triggerHotkey("control+k");
-    await contains(".o_command:text('Assign to me ALT + SHIFT + I')");
-    // Assign me
-    await triggerHotkey("alt+shift+i");
-    // Multi-edit confirmation dialog
-    await contains(".o_dialog");
-    // Cancel
-    await click(".o_dialog .modal-footer button:eq(1)");
-    await contains(".o_data_row:eq(0) .o_field_many2one_avatar_user .o_many2one:text('Luigi')");
-    await contains(".o_data_row:eq(1) .o_field_many2one_avatar_user .o_many2one:text('Mario')");
-    // Assign me
-    await triggerHotkey("alt+shift+i");
-    // Multi-edit confirmation dialog
-    await contains(".o_dialog");
-    // Confirm
-    await click(".o_dialog .modal-footer button:eq(0)");
-    await contains(".o_dialog", { count: 0 });
-    await contains(
-        ".o_data_row:eq(0) .o_field_many2one_avatar_user .o_many2one:text('Mitchell Admin')"
+    await waitFor(
+        ".o_data_row:eq(0) .o_field_many2one_avatar_user .o_many2one:text('Luigi'):count(1)"
     );
-    await contains(
-        ".o_data_row:eq(1) .o_field_many2one_avatar_user .o_many2one:text('Mitchell Admin')"
+    await waitFor(
+        ".o_data_row:eq(1) .o_field_many2one_avatar_user .o_many2one:text('Mario'):count(1)"
+    );
+    // Select all
+    await contains(".o_list_table > thead .o_list_controller input:count(1)").click();
+    await triggerHotkey("control+k");
+    await waitFor(".o_command:text('Assign to me ALT + SHIFT + I'):count(1)");
+    // Assign me
+    await triggerHotkey("alt+shift+i");
+    // Multi-edit confirmation dialog
+    await waitFor(".o_dialog:count(1)");
+    // Cancel
+    await contains(".o_dialog .modal-footer button:eq(1):count(1)").click();
+    await waitFor(
+        ".o_data_row:eq(0) .o_field_many2one_avatar_user .o_many2one:text('Luigi'):count(1)"
+    );
+    await waitFor(
+        ".o_data_row:eq(1) .o_field_many2one_avatar_user .o_many2one:text('Mario'):count(1)"
+    );
+    // Assign me
+    await triggerHotkey("alt+shift+i");
+    // Multi-edit confirmation dialog
+    await waitFor(".o_dialog:count(1)");
+    // Confirm
+    await contains(".o_dialog .modal-footer button:eq(0):count(1)").click();
+    await waitForNone(".o_dialog");
+    await waitFor(
+        ".o_data_row:eq(0) .o_field_many2one_avatar_user .o_many2one:text('Mitchell Admin'):count(1)"
+    );
+    await waitFor(
+        ".o_data_row:eq(1) .o_field_many2one_avatar_user .o_many2one:text('Mitchell Admin'):count(1)"
     );
     // Unassign me
     await triggerHotkey("alt+shift+u");
     // Multi-edit confirmation dialog
-    await contains(".o_dialog");
+    await waitFor(".o_dialog:count(1)");
     // Confirm
-    await click(".o_dialog .modal-footer button:eq(0)");
-    await contains(".o_field_many2one_avatar_user .o_form_uri", { count: 0 });
+    await contains(".o_dialog .modal-footer button:eq(0):count(1)").click();
+    await waitForNone(".o_field_many2one_avatar_user .o_form_uri");
 });
 
 test('many2many_avatar_user widget edited by the smart action "Assign to me"', async () => {
@@ -209,24 +218,24 @@ test('many2many_avatar_user widget edited by the smart action "Assign to me"', a
     await openFormView("m2x.avatar.user", m2xAvatarUserId1, {
         arch: "<form><field name='user_ids' widget='many2many_avatar_user'/></form>",
     });
-    await contains(".o_tag_badge_text", { count: 2 });
-    await contains(".o_tag:eq(0) .o_tag_badge_text:text('Mario')");
-    await contains(".o_tag:eq(1) .o_tag_badge_text:text('Yoshi')");
+    await waitFor(".o_tag_badge_text:count(2)");
+    await waitFor(".o_tag:eq(0) .o_tag_badge_text:text('Mario'):count(1)");
+    await waitFor(".o_tag:eq(1) .o_tag_badge_text:text('Yoshi'):count(1)");
     triggerHotkey("control+k");
-    await contains(".o_command:text('Assign to me ALT + SHIFT + I')");
+    await waitFor(".o_command:text('Assign to me ALT + SHIFT + I'):count(1)");
     // Assign me
     triggerHotkey("alt+shift+i");
-    await contains(".o_tag_badge_text", { count: 3 });
-    await contains(".o_tag:eq(0) .o_tag_badge_text:text('Mario')");
-    await contains(".o_tag:eq(1) .o_tag_badge_text:text('Yoshi')");
-    await contains(".o_tag:eq(2) .o_tag_badge_text:text('Mitchell Admin')");
+    await waitFor(".o_tag_badge_text:count(3)");
+    await waitFor(".o_tag:eq(0) .o_tag_badge_text:text('Mario'):count(1)");
+    await waitFor(".o_tag:eq(1) .o_tag_badge_text:text('Yoshi'):count(1)");
+    await waitFor(".o_tag:eq(2) .o_tag_badge_text:text('Mitchell Admin'):count(1)");
     // Unassign me
     triggerHotkey("control+k");
-    await contains(".o_command:text('Unassign from me ALT + SHIFT + I')");
+    await waitFor(".o_command:text('Unassign from me ALT + SHIFT + I'):count(1)");
     triggerHotkey("alt+shift+i");
-    await contains(".o_tag_badge_text", { count: 2 });
-    await contains(".o_tag:eq(0) .o_tag_badge_text:text('Mario')");
-    await contains(".o_tag:eq(1) .o_tag_badge_text:text('Yoshi')");
+    await waitFor(".o_tag_badge_text:count(2)");
+    await waitFor(".o_tag:eq(0) .o_tag_badge_text:text('Mario'):count(1)");
+    await waitFor(".o_tag:eq(1) .o_tag_badge_text:text('Yoshi'):count(1)");
 });
 
 test("avatar_user widget displays the appropriate user image in list view", async () => {
@@ -242,8 +251,8 @@ test("avatar_user widget displays the appropriate user image in list view", asyn
         arch: "<list><field name='user_id' widget='many2one_avatar_user'/></list>",
     });
 
-    await contains(
-        `.o_m2o_avatar > img[data-src="/web/image/res.users/${userId}/avatar_128?unique=1676282400000"]`
+    await waitFor(
+        `.o_m2o_avatar > img[data-src="/web/image/res.users/${userId}/avatar_128?unique=1676282400000"]:count(1)`
     );
 });
 
@@ -264,8 +273,8 @@ test("avatar_user widget displays the appropriate user image in kanban view", as
             </kanban>
         `,
     });
-    await contains(
-        `.o_m2o_avatar > img[data-src="/web/image/res.users/${userId}/avatar_128?unique=1676282400000"]`
+    await waitFor(
+        `.o_m2o_avatar > img[data-src="/web/image/res.users/${userId}/avatar_128?unique=1676282400000"]:count(1)`
     );
 });
 
@@ -307,14 +316,14 @@ test("avatar card preview", async () => {
         `,
     });
     // Open card
-    await click(".o_m2o_avatar > img");
-    await contains(".o_avatar_card");
-    await contains(".o-mail-avatar-card-name:text('Mario')");
-    await contains(".o_card_user_infos > a:text('Mario@odoo.test')");
-    await contains(".o_card_user_infos > a:text('+78786987')");
+    await contains(".o_m2o_avatar > img:count(1)").click();
+    await waitFor(".o_avatar_card:count(1)");
+    await waitFor(".o-mail-avatar-card-name:text('Mario'):count(1)");
+    await waitFor(".o_card_user_infos > a:text('Mario@odoo.test'):count(1)");
+    await waitFor(".o_card_user_infos > a:text('+78786987'):count(1)");
     // Close card
-    await click(".o_action_manager");
-    await contains(".o_avatar_card", { count: 0 });
+    await contains(".o_action_manager:count(1)").click();
+    await waitForNone(".o_avatar_card");
 });
 
 test("avatar card preview (partner_id field)", async () => {
@@ -356,14 +365,14 @@ test("avatar card preview (partner_id field)", async () => {
         `,
     });
     // Open card
-    await click(".o_m2o_avatar > img");
-    await contains(".o_avatar_card");
-    await contains(".o-mail-avatar-card-name:text('Mario')");
-    await contains(".o_card_user_infos > a:text('Mario@odoo.test')");
-    await contains(".o_card_user_infos > a:text('+78786987')");
+    await contains(".o_m2o_avatar > img:count(1)").click();
+    await waitFor(".o_avatar_card:count(1)");
+    await waitFor(".o-mail-avatar-card-name:text('Mario'):count(1)");
+    await waitFor(".o_card_user_infos > a:text('Mario@odoo.test'):count(1)");
+    await waitFor(".o_card_user_infos > a:text('+78786987'):count(1)");
     // Close card
-    await click(".o_action_manager");
-    await contains(".o_avatar_card", { count: 0 });
+    await contains(".o_action_manager:count(1)").click();
+    await waitForNone(".o_avatar_card");
 });
 
 test("avatar_user widget displays the appropriate user image in form view", async () => {
@@ -377,8 +386,8 @@ test("avatar_user widget displays the appropriate user image in form view", asyn
     await openFormView("m2x.avatar.user", avatarUserId, {
         arch: "<form><field name='user_ids' widget='many2many_avatar_user'/></form>",
     });
-    await contains(
-        `.o_field_many2many_avatar_user.o_field_widget .o_avatar img[data-src="${getOrigin()}/web/image/res.users/${userId}/avatar_128?unique=1676282400000"]`
+    await waitFor(
+        `.o_field_many2many_avatar_user.o_field_widget .o_avatar img[data-src="${getOrigin()}/web/image/res.users/${userId}/avatar_128?unique=1676282400000"]:count(1)`
     );
 });
 
@@ -396,13 +405,13 @@ test("many2one_avatar_user widget in list view", async () => {
     await openListView("m2x.avatar.user", {
         arch: "<list><field name='user_id' widget='many2one_avatar_user'/></list>",
     });
-    await contains(".o_data_cell .o_many2one span");
-    await contains(".o_data_cell .o_many2one a", { count: 0 });
-    await click(".o_data_cell .o_m2o_avatar > img");
-    await contains(".o_avatar_card");
-    await contains(".o-mail-avatar-card-name:text('Mario')");
-    await contains(".o_card_user_infos > a:text('Mario@partner.com')");
-    await contains(".o_card_user_infos > a:text('+45687468')");
+    await waitFor(".o_data_cell .o_many2one span:count(1)");
+    await waitForNone(".o_data_cell .o_many2one a");
+    await contains(".o_data_cell .o_m2o_avatar > img:count(1)").click();
+    await waitFor(".o_avatar_card:count(1)");
+    await waitFor(".o-mail-avatar-card-name:text('Mario'):count(1)");
+    await waitFor(".o_card_user_infos > a:text('Mario@partner.com'):count(1)");
+    await waitFor(".o_card_user_infos > a:text('+45687468'):count(1)");
 });
 
 test("many2many_avatar_user widget in form view", async () => {
@@ -420,9 +429,9 @@ test("many2many_avatar_user widget in form view", async () => {
     await openFormView("m2x.avatar.user", avatarUserId, {
         arch: "<form><field name='user_ids' widget='many2many_avatar_user'/></form>",
     });
-    await click(".o_field_many2many_avatar_user .o_avatar img");
-    await contains(".o_avatar_card");
-    await contains(".o-mail-avatar-card-name:text('Mario')");
-    await contains(".o_card_user_infos > a:text('Mario@partner.com')");
-    await contains(".o_card_user_infos > a:text('+45687468')");
+    await contains(".o_field_many2many_avatar_user .o_avatar img:count(1)").click();
+    await waitFor(".o_avatar_card:count(1)");
+    await waitFor(".o-mail-avatar-card-name:text('Mario'):count(1)");
+    await waitFor(".o_card_user_infos > a:text('Mario@partner.com'):count(1)");
+    await waitFor(".o_card_user_infos > a:text('+45687468'):count(1)");
 });

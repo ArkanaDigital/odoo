@@ -1,13 +1,10 @@
-import { proxy, markup } from "@odoo/owl";
+import { proxy } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { Cache } from "@web/core/utils/cache";
 import { Plugin } from "@html_editor/plugin";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { redirect } from "@web/core/utils/urls";
-import {
-    FormOptionAddFieldButton,
-    FormOptionAddContentDropdown,
-} from "./form_option_add_field_button";
+import { FormOptionAddFieldButton } from "./form_option_add_field_button";
 import {
     deleteConditionalVisibility,
     findCircular,
@@ -41,7 +38,6 @@ import {
 import { SyncCache } from "@html_builder/utils/sync_cache";
 import { _t } from "@web/core/l10n/translation";
 import { omit } from "@web/core/utils/objects";
-import { renderToElement } from "@web/core/utils/render";
 import { selectElements } from "@html_editor/utils/dom_traversal";
 import { BuilderAction } from "@html_builder/core/builder_action";
 import { isSmallInteger } from "@html_builder/utils/utils";
@@ -114,17 +110,17 @@ export class FormOptionPlugin extends Plugin {
                 selector: ".s_website_form",
                 applyTo: "form",
                 props: {
-                    addField: (formEl) => this.addFieldToForm(formEl),
+                    addField: this.addField.bind(this),
                     tooltip: _t("Add a new field at the end"),
                 },
             },
             {
-                Component: FormOptionAddContentDropdown,
+                Component: FormOptionAddFieldButton,
                 selector: ".s_website_form_field",
                 exclude: ".s_website_form_dnone",
                 props: {
-                    addField: (fieldEl, config) => this.addSnippetAfterField(fieldEl, config),
-                    tooltip: _t("Add some content after this field"),
+                    addField: this.addField.bind(this),
+                    tooltip: _t("Add a new field after this one"),
                 },
             },
         ],
@@ -184,7 +180,7 @@ export class FormOptionPlugin extends Plugin {
             SetVisibilityAction,
             SetVisibilityDependencyAction,
             SetFormCustomFieldValueListAction,
-            PropertyAction,
+            PropertyAndAttributeValueAction,
             SetDependencyValueListAction,
             SetCustomErrorMessageAction,
             SetRequirementComparatorAction,
@@ -359,17 +355,10 @@ export class FormOptionPlugin extends Plugin {
             formInfo.formFields = await this.fetchModelRequiredFields(activeForm.model);
         }
         if (formInfo.formFields) {
-            const formatInfo = getDefaultFormat(el);
             await Promise.all(
-                formInfo.formFields.map((field) => {
-                    field.formatInfo = formatInfo;
-                    return this.fetchFieldRecords(field, formEl);
-                })
+                formInfo.formFields.map((field) => this.fetchFieldRecords(field, formEl))
             );
-            await this.fetchFormInfoFields(formInfo);
-            return formInfo;
         }
-        await this.fetchFormInfoFields(formInfo);
         return formInfo;
     }
     /**
@@ -404,14 +393,10 @@ export class FormOptionPlugin extends Plugin {
             hiddenEl.remove();
         }
         if (value || fieldName === "email_to") {
-            const hiddenField = renderToElement("website.form_field_hidden", {
-                field: {
-                    name: fieldName,
-                    value: value,
-                    dnone: true,
-                    formatInfo: {},
-                },
-            });
+            const hiddenField = this.dependencies.websiteBridge.renderToElement(
+                "website.form_field_hidden",
+                { field: { name: fieldName, value: value, dnone: true, formatInfo: {} } }
+            );
             el.querySelector(".s_website_form_submit").insertAdjacentElement(
                 "beforebegin",
                 hiddenField
@@ -429,7 +414,7 @@ export class FormOptionPlugin extends Plugin {
     async applyFormModel(el, activeForm, modelId, formInfo) {
         let oldFormInfo;
         if (modelId) {
-            const oldFormKey = activeForm.website_form_key;
+            const oldFormKey = activeForm?.website_form_key;
             if (oldFormKey) {
                 oldFormInfo = this.getRegistryFormInfo(oldFormKey);
             }
@@ -468,7 +453,10 @@ export class FormOptionPlugin extends Plugin {
                 const locationEl = el.querySelector(
                     ".s_website_form_submit, .s_website_form_recaptcha"
                 );
-                locationEl.insertAdjacentElement("beforebegin", renderField(_field));
+                locationEl.insertAdjacentElement(
+                    "beforebegin",
+                    renderField(_field, this.dependencies.websiteBridge.renderToElement)
+                );
             });
             // Special case: handle hidden fields separately.
             // In some forms (e.g., contact forms), the "email_to" field must be included as hidden.
@@ -504,15 +492,6 @@ export class FormOptionPlugin extends Plugin {
             }
         }
         await Promise.all(promises);
-    }
-    /**
-     * Ensures formInfo fields are fetched.
-     */
-    async fetchFormInfoFields(formInfo) {
-        if (formInfo.fields) {
-            const proms = formInfo.fields.map((field) => this.fetchFieldRecords(field));
-            await Promise.all(proms);
-        }
     }
     async fetchAuthorizedFields(formEl) {
         const { cacheKey, model, propertyOrigins } = getFormCacheKey(formEl);
@@ -568,47 +547,24 @@ export class FormOptionPlugin extends Plugin {
             }
         });
     }
-    addFieldToForm(formEl) {
+    addField(editingElement) {
+        const formEl = editingElement.closest("form");
         const field = getCustomField("char", this.dependencies.websiteBridge._t("Custom Text"));
         field.formatInfo = getDefaultFormat(formEl);
-        const fieldEl = renderField(field);
-        let locationEl = formEl.querySelector(".s_website_form_submit, .s_website_form_recaptcha");
-        if (!locationEl) {
-            locationEl = formEl.querySelector(".s_website_form_rows");
-            locationEl.insertAdjacentElement("beforeend", fieldEl);
+        const fieldEl = renderField(field, this.dependencies.websiteBridge.renderToElement);
+        if (editingElement === formEl) {
+            const locationEl = formEl.querySelector(
+                ".s_website_form_submit, .s_website_form_recaptcha"
+            );
+            if (locationEl) {
+                locationEl.insertAdjacentElement("beforebegin", fieldEl);
+            } else {
+                formEl.querySelector(".s_website_form_rows").append(fieldEl);
+            }
         } else {
-            locationEl.insertAdjacentElement("beforebegin", fieldEl);
+            editingElement.insertAdjacentElement("afterend", fieldEl);
         }
         this.dependencies.builderOptions.setNextTarget(fieldEl);
-    }
-    addSnippetAfterField(fieldEl, snippet) {
-        let newSnippetEl = null;
-        const formEl = fieldEl.closest("form");
-        if (snippet.id === "field") {
-            const field = getCustomField("char", this.dependencies.websiteBridge._t("Custom Text"));
-            field.formatInfo = getFieldFormat(fieldEl);
-            field.formatInfo.requiredMark = isRequiredMark(formEl);
-            field.formatInfo.optionalMark = isOptionalMark(formEl);
-            field.formatInfo.mark = getMark(formEl);
-            newSnippetEl = renderField(field);
-        } else {
-            newSnippetEl = document.createElement("div");
-            newSnippetEl.className =
-                "s_website_form_inner_content o_no_direct_child_drop col-lg-12";
-            const snippetConfig = this.config.snippetModel.getSnippetByName(
-                "snippet_content",
-                snippet.id
-            );
-            const defaultSnippetEl = snippetConfig.content.cloneNode(true);
-            newSnippetEl.appendChild(snippet.build?.(defaultSnippetEl) || defaultSnippetEl);
-        }
-        // WARNING: For now, inner snippets allowed between form fields
-        // do not need to be built. If additional blocks that require building
-        // are introduced in the future, make sure to handle them here as well,
-        // either via "on_snippet_dropped_handlers" or through a dedicated
-        // resource.
-        fieldEl.insertAdjacentElement("afterend", newSnippetEl);
-        this.dependencies.builderOptions.setNextTarget(newSnippetEl);
     }
     /**
      * To be used in load for any action that uses getActiveField or
@@ -650,6 +606,7 @@ export class FormOptionPlugin extends Plugin {
         const activeField = getActiveField(oldFieldEl, { fields });
         if (activeField.type !== field.type) {
             field.value = "";
+            field.propertyValue = "";
         }
         const targetEl = oldFieldEl.querySelector(".s_website_form_input");
         if (targetEl) {
@@ -681,7 +638,7 @@ export class FormOptionPlugin extends Plugin {
             }
         }
 
-        const fieldEl = renderField(field);
+        const fieldEl = renderField(field, this.dependencies.websiteBridge.renderToElement);
         replaceFieldElement(oldFieldEl, fieldEl);
     }
     readConditionalInputs({ fieldEl, formEl }) {
@@ -977,7 +934,7 @@ export class FormOptionPlugin extends Plugin {
         if (rootEl.matches("[data-name='Field']:not(.s_website_form_dnone)")) {
             // The root element is a single field - rerender it directly
             const { fields } = await this.loadFieldOptionData(rootEl);
-            rerenderField(rootEl, fields);
+            rerenderField(rootEl, this.dependencies.websiteBridge.renderToElement, fields);
         } else {
             // The root element may be a form or contain multiple forms -
             // rerender them all
@@ -990,7 +947,7 @@ export class FormOptionPlugin extends Plugin {
                 }
                 const { fields } = await this.loadFieldOptionData(formFieldsToRerender[0]);
                 for (const fieldEl of formFieldsToRerender) {
-                    rerenderField(fieldEl, fields);
+                    rerenderField(fieldEl, this.dependencies.websiteBridge.renderToElement, fields);
                 }
             }
         }
@@ -1229,7 +1186,7 @@ export class SelectAction extends BuilderAction {
         const models = this.dependencies.websiteFormOption.getModelsCache(el);
         const targetModelName = getModelName(el);
         const activeForm = models.find((m) => m.model === targetModelName);
-        return parseInt(modelId) === activeForm.id;
+        return parseInt(modelId) === activeForm?.id;
     }
 }
 // Select the value of a field (hidden) that will be used on the model as a preset.
@@ -1237,6 +1194,7 @@ export class SelectAction extends BuilderAction {
 export class AddActionFieldAction extends BuilderAction {
     static id = "addActionField";
     static dependencies = ["websiteFormOption"];
+    loadOnClean = true;
     async load({ editingElement: el }) {
         return this.dependencies.websiteFormOption.fetchAuthorizedFields(el);
     }
@@ -1250,25 +1208,20 @@ export class AddActionFieldAction extends BuilderAction {
             }
         }
         const fieldName = params.fieldName;
-        if (params.isSelect === "true") {
-            value = parseInt(value);
+        if (value && params.isSelect) {
+            value = JSON.parse(value).id;
         }
         this.dependencies.websiteFormOption.addHiddenField(el, value, fieldName);
     }
     // TODO clear ? if field is a boolean ?
     getValue({ editingElement: el, params }) {
-        const value = el.querySelector(
-            `.s_website_form_dnone input[name="${params.fieldName}"]`
-        )?.value;
-        const dataForValue = getParsedDataFor(el.id, el.ownerDocument)?.[params.fieldName];
-        if (dataForValue) {
-            return value || dataForValue;
+        const value =
+            el.querySelector(`.s_website_form_dnone input[name="${params.fieldName}"]`)?.value ||
+            getParsedDataFor(el.id, el.ownerDocument)?.[params.fieldName];
+        if (!value) {
+            return "";
         }
-        if (value) {
-            return value;
-        } else {
-            return params.isSelect ? "0" : "";
-        }
+        return params.isSelect ? JSON.stringify({ id: parseInt(value) }) : value;
     }
     isApplied({ editingElement, params, value }) {
         const currentValue = this.getValue({
@@ -1276,6 +1229,9 @@ export class AddActionFieldAction extends BuilderAction {
             params,
         });
         return currentValue === value;
+    }
+    clean(context) {
+        this.apply(context);
     }
 }
 export class PromptSaveRedirectAction extends BuilderAction {
@@ -1348,12 +1304,15 @@ export class MarkColorAction extends BuilderAction {
 
 export class OnSuccessAction extends BuilderAction {
     static id = "onSuccess";
+    static dependencies = ["websiteBridge"];
     apply({ editingElement: el, value }) {
         el.dataset.successMode = value;
         let messageEl = el.parentElement.querySelector(".s_website_form_end_message");
         if (value === "message") {
             if (!messageEl) {
-                messageEl = renderToElement("website.s_website_form_end_message");
+                messageEl = this.dependencies.websiteBridge.renderToElement(
+                    "website.s_website_form_end_message"
+                );
                 el.insertAdjacentElement("afterend", messageEl);
             }
         } else {
@@ -1388,11 +1347,13 @@ export class ToggleEndMessageAction extends BuilderAction {
 }
 export class FormToggleRecaptchaLegalAction extends BuilderAction {
     static id = "formToggleRecaptchaLegal";
+    static dependencies = ["websiteBridge"];
     apply({ editingElement: el }) {
         const labelWidth = el.querySelector(".s_website_form_label").style.width;
-        const legalEl = renderToElement("website.s_website_form_recaptcha_legal", {
-            labelWidth: labelWidth,
-        });
+        const legalEl = this.dependencies.websiteBridge.renderToElement(
+            "website.s_website_form_recaptcha_legal",
+            { labelWidth: labelWidth }
+        );
         legalEl.setAttribute("contentEditable", true);
         el.querySelector(".s_website_form_submit").insertAdjacentElement("beforebegin", legalEl);
     }
@@ -1415,8 +1376,8 @@ export class CustomFieldAction extends BuilderAction {
     apply({ editingElement: fieldEl, value, loadResult: fields }) {
         this.dependencies.websiteFormOption.clearValidationDataset(fieldEl);
         delete fieldEl.dataset.requirementComparator;
-        const oldLabel = markup(fieldEl.querySelector(".s_website_form_label_content").innerHTML);
-        const field = getCustomField(value, oldLabel);
+        const name = fieldEl.querySelector(".s_website_form_label_content").textContent;
+        const field = getCustomField(value, name);
         const isFieldRequired = field.required;
         const isCheckbox = (type) => type === "boolean";
 
@@ -1452,7 +1413,11 @@ export class ExistingFieldAction extends BuilderAction {
     apply({ editingElement: fieldEl, value, loadResult: fields }) {
         const field = fields[value];
         setActiveProperties(fieldEl, field);
+        delete field.label;
         field.type = getDefaultFieldType(field);
+        if (["email_cc", "email_to"].includes(value)) {
+            field.description = true;
+        }
         this.dependencies.websiteFormOption.replaceField(fieldEl, field, fields);
     }
     isApplied({ editingElement: fieldEl, value }) {
@@ -1586,18 +1551,24 @@ export class SetDescriptionAction extends BuilderAction {
         // This action is used for two scenarios:
         // 1. The target field is a checkbox: The field description will be set
         // with the position specified in the `value`.
-        // 2. Otherwise, the field description will be simply toggled.
-        const toggleMode = !value || value === "none" || !field.description;
+        // 2. Otherwise, the field description will be visibly toggled
+        // Non-visible descriptions will be removed on save
         field.formatInfo.textPosition = value;
-        if (toggleMode) {
-            // If enabled, the field description will be changed to the
-            // default one in qweb.
-            field.description = !field.description;
+        if (!field.description) {
+            if (value !== "none") {
+                // Will be changed to default description in qweb
+                field.description = true;
+            }
+        } else if (!value) {
+            // The description field is not a checkbox
+            field.description.classList.toggle("d-none");
+        } else {
+            field.description.classList.toggle("d-none", value === "none");
         }
         this.dependencies.websiteFormOption.replaceField(fieldEl, field, fields);
         const description = fieldEl.querySelector(".s_website_form_field_description")
             ?.childNodes[0];
-        if (description) {
+        if (description && !description.parentElement.classList.contains("d-none")) {
             if (!isPreviewing) {
                 this.editable.focus();
             }
@@ -1655,9 +1626,12 @@ export class SetEmptyPlaceholderAction extends BuilderAction {
 }
 export class SelectTextareaValueAction extends BuilderAction {
     static id = "selectTextareaValue";
+    static dependencies = ["valueHistory"];
     apply({ editingElement: fieldEl, value }) {
+        // Set the property first, because changing the attribute silently
+        // sets the value (the first time), messing the history
+        this.dependencies.valueHistory.setValue(fieldEl, value);
         fieldEl.textContent = value;
-        fieldEl.value = value;
     }
     getValue({ editingElement: fieldEl }) {
         return fieldEl.textContent;
@@ -1946,13 +1920,27 @@ export class SetDependencyValueListAction extends BuilderAction {
     }
 }
 
-export class PropertyAction extends BuilderAction {
-    static id = "property";
+export class PropertyAndAttributeValueAction extends BuilderAction {
+    static id = "propertyAndAttributeValue";
+    static dependencies = ["valueHistory"];
 
-    apply({ editingElement, params: { property, format } = {}, value }) {
-        editingElement[property] = format ? format(value) : value;
+    getValue({ editingElement }) {
+        return editingElement.getAttribute("value");
+    }
+    apply({ editingElement, params: { format } = {}, value }) {
+        // Set both the property and the attribute in this action (instead of
+        // using the `attributeAction` shortcut) to ensure the order between
+        // the two, because setting the `value` attribute changes the `value`
+        // property the first time (leading to bad history)
+        this.dependencies.valueHistory.setValue(editingElement, format ? format(value) : value);
+        if (value) {
+            editingElement.setAttribute("value", value);
+        } else {
+            editingElement.removeAttribute("value");
+        }
     }
 }
+
 export class SetMultipleFilesAction extends BuilderAction {
     static id = "setMultipleFiles";
     apply({ editingElement }) {

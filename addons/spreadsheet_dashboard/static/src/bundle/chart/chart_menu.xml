@@ -1,22 +1,13 @@
 <odoo>
-    <div t-name="spreadsheet_dashboard.ChartMenu" t-inherit="o-spreadsheet-ChartMenu"
-        t-inherit-mode="extension">
-        <xpath
-            expr="//t[@t-foreach='this.getMenuItems()']"
-            position="before">
-            <t t-set="granularity"
-                t-value="this.env.model.getters.getChartGranularity(this.props.chartId)?.granularity" />
-            <t t-if="this.env.model.getters.isDashboard() and granularity and this.granularityOptions.length">
-                <select t-on-change="this.onGranularitySelected"
-                    class="position-relative o-chart-dashboard-item w-auto form-select rounded py-0 px-1 text-muted"
-                    name="chart-granularity">
-                    <t t-foreach="this.granularityOptions" t-as="option" t-key="option.value">
-                        <option t-att-value="option.value"
-                            t-att-selected="option.value === granularity">
-                            <span t-out="option.label" />
-                        </option>
-                    </t>
-                </select>
+    <div t-name="spreadsheet_dashboard.ChartMenu" t-inherit="o-spreadsheet-ChartMenu" t-inherit-mode="extension">
+        <xpath expr="//t[@t-foreach='this.getMenuItems()']" position="before">
+            <t t-set="granularity" t-value="this.model().getters.getChartGranularity(this.props.chartId)?.granularity" />
+            <t t-if="this.model().getters.isDashboard() and granularity and this.granularityOptions.length">
+                <Select class="'position-relative o-chart-menu-item w-auto py-0 px-1 text-muted text-nowrap rounded border-0'"
+                        popoverClass="'w-auto'"
+                        values="this.granularityOptions"
+                        selectedValue="granularity"
+                        onChange.bind="this.onGranularitySelected" />
             </t>
         </xpath>
     </div>

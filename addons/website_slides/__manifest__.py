@@ -13,7 +13,7 @@ Featuring
 
  * Integrated course and lesson management
  * Fullscreen navigation
- * Support Youtube videos, Google documents, PDF, images, articles
+ * Support YouTube videos, Google documents, PDF, images, articles
  * Test knowledge with quizzes
  * Filter and Tag
  * Statistics
@@ -48,6 +48,7 @@ Featuring
         'views/website_slides_templates_lesson_embed.xml',
         'views/website_slides_templates_profile.xml',
         'views/website_slides_templates_utils.xml',
+        'views/website_slides_visitor_views.xml',
         'views/website_pages_views.xml',
         'views/slide_channel_add.xml',
         'views/website_slides_snippet_templates.xml',
@@ -77,7 +78,7 @@ Featuring
             'website_slides/static/src/core/**/*',
             'website_slides/static/src/slide_category_one2many_field.js',
             'website_slides/static/src/slide_category_list_renderer.js',
-            'website_slides/static/src/scss/slide_views.scss',
+            'website_slides/static/src/scss/slide_views.css',
             'website_slides/static/src/js/tours/slides_tour.js',
             'website_slides/static/src/js/components/**/*.js',
             'website_slides/static/src/views/**/*.js',
@@ -88,11 +89,10 @@ Featuring
             'website_slides/static/src/js/slides_course_service.js',
             'website_slides/static/src/js/utils.js',
             'website_slides/static/src/scss/website_slides.scss',
-            'website_slides/static/src/scss/website_slides_profile.scss',
+            'website_slides/static/src/scss/website_slides_profile.css',
             'website_slides/static/src/scss/slides_slide_fullscreen.scss',
             'website_slides/static/src/xml/website_slides_sidebar.xml',
             'website_slides/static/src/xml/website_slides_fullscreen.xml',
-            'website_slides/static/src/xml/slide_management.xml',
             'website_slides/static/src/xml/slide_course_join.xml',
             'website_slides/static/src/xml/slide_course_prerequisite.xml',
             'website_slides/static/src/xml/slide_quiz.xml',
@@ -114,6 +114,7 @@ Featuring
             'web/static/lib/bootstrap/scss/_maps.scss',
 
             ('include', 'web._assets_bootstrap_frontend'),
+            'web/static/src/scss/css_variables.scss',
 
             ('include', 'web.icons_fonts'),
             'web/static/src/module_loader.js',
@@ -126,8 +127,9 @@ Featuring
             'web/static/src/owl2/utils.js',
             'web/static/lib/owl/odoo_module.js',
 
-            'web/static/src/core/utils/transitions.scss',  # included early because used by other files
             'web/static/src/core/**/*',
+            ('remove', 'web/static/src/core/**/*.dark.scss'),
+            'web/static/src/css/**/*',
             'web/static/src/env.js',
             ('remove', 'web/static/src/core/emoji_picker/emoji_data.js'),
 

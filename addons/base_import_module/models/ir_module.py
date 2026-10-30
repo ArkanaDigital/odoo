@@ -34,7 +34,6 @@ MAX_FILE_SIZE = 100 * 1024 * 1024  # in megabytes
 class IrModuleModule(models.Model):
     _inherit = "ir.module.module"
 
-    imported = fields.Boolean(string="Imported Module")
     module_type = fields.Selection([
         ('official', 'Official Apps'),
         ('industries', 'Industries'),
@@ -45,15 +44,6 @@ class IrModuleModule(models.Model):
         help="Number of lines of code that may be billed under an Enterprise subscription."
             " For exact pricing details, please contact your account manager or visit odoo.com/pricing.",
     )
-
-    @api.model
-    @api.ormcache(cache='stable')
-    def _get_imported_module_names(self):
-        return OrderedSet(self.sudo().search_fetch([('imported', '=', True), ('state', '=', 'installed')], ['name']).mapped('name'))
-
-    def _get_modules_to_load_domain(self):
-        # imported modules are not expected to be loaded as regular modules
-        return super()._get_modules_to_load_domain() + [('imported', '=', False)]
 
     @api.model
     def _load_module_terms(self, modules, langs, overwrite=False):
@@ -386,6 +376,7 @@ class IrModuleModule(models.Model):
                         # call import module after rebinding to the new registry
                         env_sudo[self._name]._import_module(mod_name, path, force=force, with_demo=with_demo)
                     except Exception as e:
+                        self.env.transaction.invalidate_ormcache()  # _xmlid_lookup for test_import_zip_invalid_data
                         raise UserError(_(
                             "Error while importing module '%(module)s'.\n\n %(error_message)s \n\n",
                             module=mod_name, error_message=traceback.format_exc(),
@@ -397,12 +388,8 @@ class IrModuleModule(models.Model):
         # one. The rationale behind this is that an imported module *cannot* be
         # reinstalled anyway, as it requires the data files. Any attempt to
         # install it again will simply fail without trace.
-        # /!\ modules_to_delete must be calculated before calling super().module_uninstall(),
-        # because when uninstalling `base_import_module` the `imported` column will no longer be
-        # in the database but we'll still have an old registry that runs this code.
-        modules_to_delete = self.filtered('imported')
         res = super().module_uninstall()
-        if modules_to_delete:
+        if modules_to_delete := self.filtered('imported'):
             deleted_modules_names = modules_to_delete.mapped('name')
             _logger.info("deleting imported modules upon uninstallation: %s",
                          ", ".join(deleted_modules_names))
@@ -419,6 +406,9 @@ class IrModuleModule(models.Model):
                 'records': modules_list[:(limit or 80)],
             }
         else:
+            domain = Domain(domain).map_conditions(
+                lambda c: Domain.OR([c, [('module_type', '=', False)]]) if c.field_expr == 'module_type' else c
+            ).optimize(self)
             return super().web_search_read(domain, specification, offset=offset, limit=limit, order=order, count_limit=count_limit)
 
     def more_info(self):
@@ -525,12 +515,6 @@ class IrModuleModule(models.Model):
             return []
         except requests.exceptions.ConnectionError:
             return []
-
-    def button_upgrade(self):
-        res = super().button_upgrade()
-        # revert states for imported modules since they cannot be upgraded
-        self.search([('imported', '=', True), ('state', '=', 'to upgrade')]).state = 'installed'
-        return res
 
     def button_immediate_install_app(self):
         if not self.env.is_admin():

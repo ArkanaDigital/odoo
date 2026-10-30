@@ -1,7 +1,7 @@
 import { scrollFixedOffset, scrollTo } from "@html_builder/utils/scrolling";
 import { Interaction } from "@web/public/interaction";
 import { registry } from "@web/core/registry";
-import { browser } from "@web/core/browser/browser";
+import { location } from "@web/core/browser/browser";
 import { _t } from "@web/core/l10n/translation";
 import { verifyHttpsUrl } from "@website/utils/misc";
 import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
@@ -17,9 +17,6 @@ export class WebsiteBlog extends Interaction {
             "t-on-click.prevent": this.onNextBlogClick,
             "t-on-keydown": this.onNextBlogKeydown,
         },
-        "#o_wblog_post_content_jump": {
-            "t-on-click.prevent": this.onContentAnchorClick,
-        },
         ".o_twitter, .o_facebook, .o_linkedin, .o_google, .o_twitter_complete, .o_facebook_complete, .o_linkedin_complete, .o_google_complete":
             {
                 "t-on-click.prevent": this.onShareArticleClick,
@@ -34,6 +31,12 @@ export class WebsiteBlog extends Interaction {
 
     setup() {
         this.defaultPosition = this._isCompactListOrSplitGridView() ? 0 : 16;
+        // The sidebar becomes sticky once the scroll reaches the table of
+        // content.
+        if (this._hasBlogTableOfContent()) {
+            const blogToCEl = this.el.querySelector("#o_wblog_post_sidebar .o_wblog_toc");
+            this.defaultPosition -= blogToCEl.offsetTop;
+        }
         this.position = this.defaultPosition;
     }
 
@@ -74,11 +77,7 @@ export class WebsiteBlog extends Interaction {
         placeholder.style.minHeight = "100vh";
         this.insert(placeholder, this.el.querySelector("#o_wblog_next_container"), "beforeend");
         const nextUrl = verifyHttpsUrl(nextInfo.url);
-        await this.forumScrollAction(
-            blogNextContainerEl,
-            300,
-            () => (browser.location.href = nextUrl)
-        );
+        await this.forumScrollAction(blogNextContainerEl, 300, () => (location.href = nextUrl));
     }
     /**
      * @param {KeyboardEvent} ev
@@ -93,24 +92,10 @@ export class WebsiteBlog extends Interaction {
     /**
      * @param {MouseEvent} ev
      */
-    async onContentAnchorClick(ev) {
-        ev.stopImmediatePropagation();
-        const scrollTargetEl = document.querySelector(ev.currentTarget.hash);
-
-        await this.forumScrollAction(
-            scrollTargetEl,
-            500,
-            () => (browser.location.hash = "blog_content")
-        );
-    }
-
-    /**
-     * @param {MouseEvent} ev
-     */
     onShareArticleClick(ev) {
         let url = "";
         const blogPostTitle = document.querySelector(".o_wblog_post_name").textContent || "";
-        const articleURL = browser.location.href;
+        const articleURL = location.href;
         if (ev.currentTarget.classList.contains("o_twitter")) {
             const tweetText = _t("Amazing blog article: %(title)s! Check it live: %(url)s", {
                 title: blogPostTitle,
@@ -165,9 +150,20 @@ export class WebsiteBlog extends Interaction {
      */
     _isCompactListOrSplitGridView() {
         return (
-            this.el.querySelector(".o_wblog_compact_list_month_header") !== null ||
-            this.el.querySelector(".o_wblog_split_grid_view_container") !== null
+            !!this.el.querySelector(".o_wblog_compact_list_month_header") ||
+            !!this.el.querySelector(".o_wblog_split_grid_view_container")
         );
+    }
+
+    /**
+     * Checks if we are in a blog post with the table of content enabled in the
+     * sidebar.
+     *
+     * @private
+     * @returns {boolean}
+     */
+    _hasBlogTableOfContent() {
+        return !!this.el.querySelector("#o_wblog_post_sidebar .o_wblog_toc");
     }
 }
 

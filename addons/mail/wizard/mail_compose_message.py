@@ -4,6 +4,8 @@ import ast
 import datetime
 import json
 
+from markupsafe import Markup
+
 from odoo import _, api, fields, models, Command, tools
 from odoo.exceptions import UserError, ValidationError
 from odoo.fields import Domain
@@ -112,6 +114,7 @@ class MailComposeMessage(models.TransientModel):
         'Email Notification Layout',
         compute='_compute_email_layout_xmlid', readonly=False, store=True,
         copy=False, compute_sudo=False)
+    email_notification_allow_header = fields.Boolean(default=True)
     email_add_signature = fields.Boolean(
         'Add signature',
         compute='_compute_email_add_signature', readonly=False, store=True)
@@ -829,8 +832,21 @@ class MailComposeMessage(models.TransientModel):
             create_values.append(wizard._prepare_schedule_message_post_values(post_values))
         return self.env['mail.scheduled.message'].create(create_values)
 
+    def action_update_message(self):
+        self.ensure_one()
+        message = self.env['mail.message'].browse(self.env.context['default_message_id'])
+        record = self.env[message.model].browse(message.res_id)
+        record._message_update_content(
+            message,
+            body=self._get_body_with_full_composer_marker() or None,
+            attachment_ids=self.attachment_ids.ids,
+            partner_ids=self.partner_ids.ids,
+        )
+        return {'type': 'ir.actions.act_window_close'}
+
     def action_send_mail(self):
         """ Used for action button that do not accept arguments. """
+        self.env["mail.canned.response"]._update_last_used(self.env.context.get("canned_response_ids", []))
         self._action_send_mail(auto_commit=False)
         res_ids = self._evaluate_res_ids()
         record_name = False
@@ -877,12 +893,20 @@ class MailComposeMessage(models.TransientModel):
 
         return result_mails_su, result_messages
 
+    def _get_body_with_full_composer_marker(self):
+        self.ensure_one()
+        if is_html_empty(self.body) or 'data-o-mail-full-composer' in self.body:
+            return self.body
+        return Markup('<span data-o-mail-full-composer="1"></span>') + self.body
+
     def _action_send_mail_comment(self, res_ids):
         """ Send in comment mode. It calls message_post on model, or the generic
         implementation of it if not available (as message_notify). """
         self.ensure_one()
+        if self.env.context.get('is_full_composer'):
+            self.body = self._get_body_with_full_composer_marker()
         post_values_all = self._manage_mail_values(self._prepare_mail_values(res_ids))
-        ActiveModel = self.env[self.model] if self.model and hasattr(self.env[self.model], 'message_post') else self.env['mail.thread']
+        ActiveModel = (self.env[self.model] if self.model and hasattr(self.env[self.model], 'message_post') else self.env['mail.thread']).with_context(email_notification_allow_header=self.email_notification_allow_header)
         if self.composition_batch:
             # add context key to avoid subscribing the author
             ActiveModel = ActiveModel.with_context(
@@ -1035,30 +1059,46 @@ class MailComposeMessage(models.TransientModel):
         """Generate the values that will be used by send_mail to create either
          mail_messages or mail_mails depending on composition mode.
 
-        Some summarized information on generation: mail versus message fields
-        (or both), and static (never rendered) versus dynamic (raw or rendered).
+        Summarized information on generation: mail versus message fields
+        (or both), and static (never rendered) versus dynamic (raw or rendered)
+        versus post processed values (once other values are computed).
 
         MAIL
             STA - 'auto_delete',
             DYN - 'body_html',
-            STA - 'force_send',  (notify parameter)
-            STA - 'model',
-            DYN - 'recipient_ids',  (from partner_ids)
-            DYN - 'recipient_cc_ids',  (from partner_cc_ids)
-            DYN - 'res_id',
+            DYN - 'email_cc',                # from template
+            DYN - 'email_to',                # from template
+            POST- 'failure_type',            # error detection
+            STA - 'force_send',              # notify parameter (msg) / wizard parameter (mail)
+            DYN - 'headers',                 # record-based (for msg: see notification process)
             STA - 'is_notification',
+            POST- 'mailing_id',              # - mass_mailing
+            POST- 'mailing_trace_ids',       # - mass_mailing
+            STA - 'model',
+            DYN - 'recipient_ids',           # (from partner_ids)
+            DYN - 'recipient_cc_ids',        # (from partner_cc_ids)
+            DYN - 'res_id',
+            POST- 'state',                   # error detection
 
         MESSAGE
+            DYN - 'attachments',              # from 'report_template_ids', propagated for message_post processing
             DYN - 'body',
             STA - 'email_add_signature',
             STA - 'email_layout_xmlid',
-            DYN - 'force_email_lang',  # notify parameter
-            STA - 'record_alias_domain_id',  # monorecord only
-            STA - 'record_company_id',  # monorecord only
+            DYN - 'force_email_lang',        # notify parameter
+            STA - 'force_footer',            # notify parameter
+            STA - 'force_header',            # notify parameter
+            STA - 'mail_auto_delete',        # notify parameter
+            STA - 'model_description',       # notify parameter
+            STA - 'notify_author',           # notify parameter
+            STA - 'notify_author_mention',   # notify parameter
+            STA - 'notify_skip_followers',   # notify parameter
+            DYN - 'record_alias_domain_id',
+            DYN - 'record_company_id',
 
         BOTH
-            DYN - 'attachment_ids',
-            STA - 'author_id',  (to improve with template)
+            DYN - 'attachment_ids',          # also check 'attachments' for message
+            STA - 'author_id',
             DYN - 'email_from',
             STA - 'mail_activity_type_id',
             STA - 'mail_server_id',
@@ -1070,6 +1110,9 @@ class MailComposeMessage(models.TransientModel):
             DYN - 'scheduled_date',
             DYN - 'subject',
             STA - 'subtype_id',
+            STA - 'source_mailing_id',       # - mail_tracking_mass_mailing
+            STA - 'source_template_id',      # - mail_tracking
+            STA - 'source_view_id',          # - mail_tracking
 
         :param list res_ids: list of record IDs on which composer runs;
 
@@ -1255,7 +1298,7 @@ class MailComposeMessage(models.TransientModel):
                  'email_cc',
                  'partner_ids',
                  'partner_cc_ids',
-                 'report_template_ids',
+                 'report_template_ids',  # returned as 'attachments'
                  'scheduled_date',
                 ],
                 allow_suggested=(
@@ -1353,7 +1396,8 @@ class MailComposeMessage(models.TransientModel):
                 if self.template_id:
                     new_mail_message_values['email_add_signature'] = False
                 message_inmem = self.env['mail.message'].new(new_mail_message_values)
-                for _lang, render_values, recipients_group_data in record._notify_get_classified_recipients_iterator(
+                layout_record = record if isinstance(record, self.pool['mail.thread']) else self.env['mail.thread']
+                for _lang, render_values, recipients_group_data in layout_record._notify_get_classified_recipients_iterator(
                     message_inmem,
                     [{
                         'active': True,
@@ -1367,15 +1411,16 @@ class MailComposeMessage(models.TransientModel):
                         'share': True,
                         'type': 'customer',
                         'uid': False,
+                        'uids': [],
                         'ushare': False,
                     } for pid in all_recipient_ids],
                     model_description=False,  # force dynamic computation
                     force_email_lang=lang,
                 ):
-                    mail_body = record._notify_by_email_render_layout(
+                    mail_body = layout_record._notify_by_email_render_layout(
                         message_inmem,
                         recipients_group_data,
-                        render_values=render_values,
+                        render_values={**render_values, 'email_notification_allow_header': self.email_notification_allow_header},
                     )
                     mail_values['body_html'] = mail_body
 

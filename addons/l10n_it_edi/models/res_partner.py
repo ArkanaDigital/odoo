@@ -21,6 +21,15 @@ class ResPartner(models.Model):
              "associated with the office which, within the addressee administration, deals "
              "with receiving (and processing) the invoice.",
     )
+    # 20 character limit is also enforced in e-invoice ../data/invoice_it_template.xml
+    l10n_it_administration_reference = fields.Char(
+        string="Administration Reference",
+        size=20,
+        help="Administrative reference (Riferimento Amministrazione) code agreed "
+             "with the customer. Fill it in only when the recipient asks for it, "
+             "in order to register the invoice in their system. The allowed value "
+             "is between 1 to 20 characters (inclusive).",
+    )
 
     _l10n_it_codice_fiscale = models.Constraint(
         "CHECK(l10n_it_codice_fiscale IS NULL OR l10n_it_codice_fiscale = '' OR LENGTH(l10n_it_codice_fiscale) >= 11)",
@@ -75,7 +84,7 @@ class ResPartner(models.Model):
         # VAT number and country code
         normalized_vat = self.vat
         normalized_country = self.country_code
-        if has_vat := self.vat not in [False, '/', 'NA']:
+        if self.has_vat:
             normalized_vat = self.vat.replace(' ', '')
             if in_eu:
                 # If there is no country-code prefix, it's domestic to Italy
@@ -92,7 +101,7 @@ class ResPartner(models.Model):
         # If it has a codice fiscale (and no country), it's an Italian partner
         if not normalized_country and self.l10n_it_codice_fiscale:
             normalized_country = 'IT'
-        elif not has_vat and self.country_id and self.country_id.code != 'IT':
+        elif not self.has_vat and self.country_id and self.country_id.code != 'IT':
             if in_eu:
                 normalized_vat = '0000000'
             else:
@@ -140,7 +149,7 @@ class ResPartner(models.Model):
 
     @api.onchange('vat', 'country_id')
     def _l10n_it_onchange_vat(self):
-        if self.vat and (
+        if self.has_vat and (
             self.country_code == "IT"
             if self.country_code
             else self.vat.startswith("IT")
@@ -157,38 +166,57 @@ class ResPartner(models.Model):
 
     def _l10n_it_edi_export_check(self, checks=None):
         checks = checks or ['partner_vat_codice_fiscale_missing', 'partner_address_missing']
+        single_views = [(False, 'form')]
+        list_view = self.env.ref('l10n_it_edi.res_partner_tree_l10n_it', raise_if_not_found=False)
+        multi_views = [(list_view.id if list_view else False, 'list'), (False, 'form')]
+
+        def build_error(errors, key, message, invalid_records):
+            views = single_views if len(invalid_records) == 1 else multi_views
+            errors[f"l10n_it_edi_{key}"] = {
+                'message': message,
+                'action_text': self.env._("View Partner(s)"),
+                'action': invalid_records._get_records_action(name=self.env._("Check Partner(s)"), views=views),
+            }
+
         fields_to_check = {
             'partner_vat_missing': {
                 'fields': [('vat',)],
-                'message': _("Partner(s) should have a VAT number."),
+                'message': self.env._("Partner(s) should have a VAT number."),
             },
             'partner_vat_codice_fiscale_missing': {
                 'fields': [('vat', 'l10n_it_codice_fiscale')],
-                'message': _("Partner(s) should have a VAT number or Codice Fiscale."),
+                'message': self.env._("Partner(s) should have a VAT number or Codice Fiscale."),
             },
             'partner_country_missing': {
                 'fields': [('country_id',)],
-                'message': _("Partner(s) should have a Country when used for simplified invoices."),
+                'message': self.env._("Partner(s) should have a Country when used for simplified invoices."),
             },
             'partner_address_missing': {
                 'fields': [('street', 'street2'), ('zip',), ('city',), ('country_id',)],
-                'message': _("Partner(s) should have a complete address, verify their Street, City, Zipcode and Country."),
+                'message': self.env._("Partner(s) should have a complete address, verify their Street, City, Zipcode and Country."),
+            },
+            'partner_simplified': {
+                'checks': [
+                    lambda partner: partner._l10n_it_edi_is_italian(),
+                    lambda partner: not partner._l10n_it_edi_is_public_administration(),
+                ],
+                'message': self.env._(
+                    "Simplified Invoices (TD07, TD08, TD09) can only be used with domestic partners"
+                    " that do not belong to the Public Administration."
+                    " Please issue an ordinary invoice instead."
+                ),
             },
         }
         selected_checks = {k: v for k, v in fields_to_check.items() if k in checks}
-        single_views = [(False, 'form')]
-        list_view = (self.env.ref('l10n_it_edi.res_partner_tree_l10n_it', raise_if_not_found=False))
-        multi_views = [(list_view.id if list_view else False, 'list'), (False, 'form')]
+
         errors = {}
         for key, check in selected_checks.items():
-            for fields_tuple in check['fields']:
+            for fields_tuple in check.get('fields', []):
                 if invalid_records := self.filtered(lambda record: not any(record[field] for field in fields_tuple)):
-                    views = single_views if len(invalid_records) == 1 else multi_views
-                    errors[f"l10n_it_edi_{key}"] = {
-                        'message': check['message'],
-                        'action_text': _("View Partner(s)"),
-                        'action': invalid_records._get_records_action(name=_("Check Partner(s)"), views=views),
-                    }
+                    build_error(errors, key, check['message'], invalid_records)
+            for check_func in check.get('checks', []):
+                if invalid_records := self.filtered(lambda record: not check_func(record)):
+                    build_error(errors, key, check['message'], invalid_records)
         return errors
 
     @api.depends('l10n_it_codice_fiscale')

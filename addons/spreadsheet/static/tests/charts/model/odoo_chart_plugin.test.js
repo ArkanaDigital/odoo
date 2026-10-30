@@ -19,7 +19,7 @@ import {
     patchWithCleanup,
 } from "@web/../tests/web_test_helpers";
 import * as spreadsheet from "@odoo/o-spreadsheet";
-
+import { makeStoreWithModel } from "@spreadsheet/../tests/helpers/stores";
 import { user } from "@web/core/user";
 import {
     getBasicServerData,
@@ -32,6 +32,7 @@ import { createSheet, deleteSheet, setGlobalFilterValue } from "../../helpers/co
 
 const { chartDataSourceRegistry } = spreadsheet.registries;
 const { toZone } = spreadsheet.helpers;
+const { ClipboardStore } = spreadsheet.stores;
 
 const cumulativeDateServerData = getBasicServerData();
 cumulativeDateServerData.models.partner.records = [
@@ -93,7 +94,7 @@ const fakeActionService = {
     doAction: async (request, options = {}) => {
         if (request.type === "ir.actions.act_window") {
             expect.step("do-action");
-            expect(request).toEqual(action);
+            expect(request).toMatchObject(action);
         }
     },
     loadAction(actionRequest) {
@@ -108,7 +109,7 @@ defineSpreadsheetModels();
 defineSpreadsheetActions();
 
 test("Can add an Odoo Bar chart", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "bar" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "bar" });
     const sheetId = model.getters.getActiveSheetId();
     expect(model.getters.getChartIds(sheetId).length).toBe(1);
     const chartId = model.getters.getChartIds(sheetId)[0];
@@ -118,7 +119,7 @@ test("Can add an Odoo Bar chart", async () => {
 });
 
 test("Can add an Odoo Line chart", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "line" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "line" });
     const sheetId = model.getters.getActiveSheetId();
     expect(model.getters.getChartIds(sheetId).length).toBe(1);
     const chartId = model.getters.getChartIds(sheetId)[0];
@@ -128,7 +129,7 @@ test("Can add an Odoo Line chart", async () => {
 });
 
 test("Can add an Odoo Pie chart", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "pie" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "pie" });
     const sheetId = model.getters.getActiveSheetId();
     expect(model.getters.getChartIds(sheetId).length).toBe(1);
     const chartId = model.getters.getChartIds(sheetId)[0];
@@ -258,7 +259,7 @@ test("Odoo line chart runtime loads the data", async () => {
 });
 
 test("Area charts are supported", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "line" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "line" });
     await waitForDataLoaded(model);
     const sheetId = model.getters.getActiveSheetId();
     const chartId = model.getters.getChartIds(sheetId)[0];
@@ -506,7 +507,7 @@ test("Can undo/redo an Odoo chart creation", async () => {
 });
 
 test("charts with no legend", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "pie" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "pie" });
     insertChartInSpreadsheet(model, "bar");
     insertChartInSpreadsheet(model, "line");
     const sheetId = model.getters.getActiveSheetId();
@@ -562,7 +563,7 @@ test("charts with no legend", async () => {
 });
 
 test("Bar chart with stacked attribute is supported", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "bar" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "bar" });
     const sheetId = model.getters.getActiveSheetId();
     const chartId = model.getters.getChartIds(sheetId)[0];
     const definition = model.getters.getChartDefinition(chartId);
@@ -599,7 +600,8 @@ test("Bar chart with stacked attribute is supported", async () => {
 });
 
 test("Can copy/paste Odoo chart", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "pie" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "pie" });
+    makeStoreWithModel(model, ClipboardStore);
     const sheetId = model.getters.getActiveSheetId();
     const chartId = model.getters.getChartIds(sheetId)[0];
     model.dispatch("SELECT_FIGURE", { figureId: model.getters.getFigureIdFromChartId(chartId) });
@@ -618,7 +620,8 @@ test("Can copy/paste Odoo chart", async () => {
 });
 
 test("Can cut/paste Odoo chart", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "pie" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "pie" });
+    makeStoreWithModel(model, ClipboardStore);
     const sheetId = model.getters.getActiveSheetId();
     const chartId = model.getters.getChartIds(sheetId)[0];
     const chartRuntime = model.getters.getChartRuntime(chartId);
@@ -634,7 +637,7 @@ test("Can cut/paste Odoo chart", async () => {
 });
 
 test("Duplicating a sheet correctly duplicates Odoo chart", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "bar" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "bar" });
     const sheetId = model.getters.getActiveSheetId();
     const secondSheetId = "secondSheetId";
     const chartId = model.getters.getChartIds(sheetId)[0];
@@ -656,7 +659,7 @@ test("Duplicating a sheet correctly duplicates Odoo chart", async () => {
 });
 
 test("Line chart with stacked attribute is supported", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "line" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "line" });
     const sheetId = model.getters.getActiveSheetId();
     const chartId = model.getters.getChartIds(sheetId)[0];
     const definition = model.getters.getChartDefinition(chartId);
@@ -719,7 +722,7 @@ test("Load odoo chart spreadsheet with models that cannot be accessed", async fu
 });
 
 test("Line chart to support cumulative data", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "line" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "line" });
     const sheetId = model.getters.getActiveSheetId();
     const chartId = model.getters.getChartIds(sheetId)[0];
     const definition = model.getters.getChartDefinition(chartId);
@@ -850,7 +853,7 @@ test("Can insert odoo chart from a different model", async () => {
 });
 
 test("Odoo chart legend color changes with background color update", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "bar" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "bar" });
     const sheetId = model.getters.getActiveSheetId();
     const chartId = model.getters.getChartIds(sheetId)[0];
     const definition = model.getters.getChartDefinition(chartId);
@@ -875,7 +878,7 @@ test("Odoo chart legend color changes with background color update", async () =>
 });
 
 test("Remove odoo chart when sheet is deleted", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "line" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "line" });
     const sheetId = model.getters.getActiveSheetId();
     createSheet(model, { position: model.getters.getSheetIds().length });
     expect(model.getters.getOdooChartIds().length).toBe(1);
@@ -884,7 +887,7 @@ test("Remove odoo chart when sheet is deleted", async () => {
 });
 
 test("Odoo chart datasource display name has a default when the chart title is empty", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "line" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "line" });
     const sheetId = model.getters.getActiveSheetId();
     const chartId = model.getters.getChartIds(sheetId)[0];
     const definition = model.getters.getChartDefinition(chartId);
@@ -902,7 +905,7 @@ test("Odoo chart datasource display name has a default when the chart title is e
 });
 
 test("Every Odoo chart type has a default title", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "line" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "line" });
     const sheetId = model.getters.getActiveSheetId();
     const chartId = model.getters.getChartIds(sheetId)[0];
     const figureId = model.getters.getFigureIdFromChartId(chartId);
@@ -933,7 +936,7 @@ test("Every Odoo chart type has a default title", async () => {
 });
 
 test("Cursor change when hovering a chart item", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "line" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "line" });
     const sheetId = model.getters.getActiveSheetId();
     const chartId = model.getters.getChartIds(sheetId)[0];
     await waitForDataLoaded(model);
@@ -988,7 +991,7 @@ test("See records in new tab on middle click of chart element", async () => {
         },
     };
     mockService("action", fakeActionService);
-    const { model } = await createSpreadsheetWithChart({ type: "bar" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "bar" });
     const sheetId = model.getters.getActiveSheetId();
     const chartId = model.getters.getChartIds(sheetId)[0];
     await waitForDataLoaded(model);
@@ -1058,7 +1061,7 @@ test("See records when clicking on a pie chart slice", async () => {
         doAction: async (request, options = {}) => {
             if (request.type === "ir.actions.act_window") {
                 expect.step("do-action");
-                expect(request).toEqual({
+                expect(request).toMatchObject({
                     ...action,
                     name: "January 2022",
                 });
@@ -1417,7 +1420,7 @@ test("import/export action xml id", async () => {
 });
 
 test("Show values is taken into account in the runtime", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "bar" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "bar" });
     const sheetId = model.getters.getActiveSheetId();
     const chartId = model.getters.getChartIds(sheetId)[0];
     const definition = model.getters.getChartDefinition(chartId);
@@ -1621,7 +1624,7 @@ test("Chart data source is updated when changing chart type", async () => {
         },
     });
 
-    const { model } = await createSpreadsheetWithChart({ type: "bar" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "bar" });
     const sheetId = model.getters.getActiveSheetId();
     const chartId = model.getters.getChartIds(sheetId)[0];
     const chartDataSource = model.getters.getChartDataSource(chartId);
@@ -1640,7 +1643,7 @@ test("Chart data source is updated when changing chart type", async () => {
 });
 
 test("Non-web chart types are using data source in 'bar' mode", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "radar" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "radar" });
     const sheetId = model.getters.getActiveSheetId();
     const chartId = model.getters.getChartIds(sheetId)[0];
 
@@ -1717,6 +1720,41 @@ test("changing chart granularity updates the groupBy and preserves the domain", 
     const definition = model.getters.getChartDefinition(chartId);
     expect(definition.dataSource.metaData.groupBy).toEqual(["date:year"]);
     expect(definition.dataSource.searchParams.domain).toEqual([["date", ">=", "2020-01-01"]]);
+});
+
+test("can change chart granularity without losing the customized color", async () => {
+    const { model } = await createSpreadsheetWithChart({
+        type: "bar",
+        definition: {
+            dataSetStyles: {
+                "date:month": {
+                    backgroundColor: "#FF0000",
+                },
+            },
+            dataSource: {
+                type: "odoo",
+                metaData: {
+                    groupBy: ["date:month"],
+                    measure: "probability",
+                    resModel: "partner",
+                },
+            },
+        },
+    });
+    const sheetId = model.getters.getActiveSheetId();
+    const chartId = model.getters.getChartIds(sheetId)[0];
+    model.dispatch("UPDATE_CHART_GRANULARITY", {
+        chartId,
+        granularity: "year",
+    });
+    expect(model.getters.getChartDefinition(chartId).dataSetStyles).toEqual({
+        "date:month": {
+            backgroundColor: "#FF0000",
+        },
+        "date:year": {
+            backgroundColor: "#FF0000",
+        },
+    });
 });
 
 test("changing chart granularity reloads data source once with global filter", async () => {
@@ -2221,7 +2259,7 @@ test("chart getHierarchicalData wraps monetary labels with currency format", asy
 });
 
 test("chart getData has undefined format for non-monetary measure", async () => {
-    const { model } = await createSpreadsheetWithChart({ type: "bar" });
+    const { model } = await createSpreadsheetWithChart({ createMockApp: true, type: "bar" });
     const sheetId = model.getters.getActiveSheetId();
     const chartId = model.getters.getChartIds(sheetId)[0];
     await waitForDataLoaded(model);

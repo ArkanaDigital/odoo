@@ -147,6 +147,36 @@ test("Clicking on leave button leaves the channel", async () => {
     await contains(".o-mail-MessagingMenuEmpty");
 });
 
+test("Change livechat status from the dropdown of the chat actions", async () => {
+    const pyEnv = await startServer();
+    pyEnv["res.users"].write([serverState.userId], {
+        group_ids: pyEnv["res.groups"]
+            .search_read([["id", "=", serverState.groupLivechatId]])
+            .map(({ id }) => id),
+    });
+    pyEnv["discuss.channel"].create({
+        channel_member_ids: [
+            Command.create({ partner_id: serverState.partnerId, livechat_member_type: "agent" }),
+            Command.create({
+                guest_id: pyEnv["mail.guest"].create({ name: "Visitor 11" }),
+                livechat_member_type: "visitor",
+            }),
+        ],
+        channel_type: "livechat",
+        livechat_status: "need_help",
+    });
+    await start();
+    await openDiscuss(MENU_ACTIVE_IDS.LIVECHAT);
+    const needHelpLabel =
+        ".o-mail-MessagingMenuItem:has(:text('Visitor 11')) .o-livechat-LivechatStatusLabel.o-help";
+    await contains(needHelpLabel);
+    await click("[title='Chat Actions']");
+    await click("button[name='livechat-status']");
+    await contains(".o-livechat-LivechatStatusSelection .active:text('Looking for help')");
+    await click(".o-livechat-LivechatStatusSelection button:text('In progress')");
+    await contains(needHelpLabel, { count: 0 });
+});
+
 test("Message unread counter", async () => {
     mockDate("2023-01-03 12:00:00");
     const pyEnv = await startServer();
@@ -256,6 +286,9 @@ test("show looking for help duration in the sidebar", async () => {
     await waitFor(
         ".o-mail-MessagingMenuItem:has(:text(Visitor #1)) .o-livechat-LookingForHelp-timer:text(< 1m)"
     );
+    await waitFor(
+        ".o-mail-MessagingMenuItem:has(:text(Visitor #1)) .o-livechat-LookingForHelp-timer[data-tooltip='Looking for help for: < 1m']"
+    );
     await advanceTime(60_000);
     await waitFor(
         ".o-mail-MessagingMenuItem:has(:text(Visitor #1)) .o-livechat-LookingForHelp-timer:text(1m)"
@@ -319,7 +352,9 @@ test("sidebar: leave non-livechat channel removes it from sidebar", async () => 
     await start();
     await openDiscuss();
     await click(".o-mail-NotificationItem:has(:text('General'))");
-    await click(".o-mail-NotificationItem:has(:text('General')) [data-icon='more_horiz']");
+    await click(
+        ".o-mail-NotificationItem:has(:text('General')) .o-mail-MessagingMenu-actions button"
+    );
     await click(".o-dropdown-item:contains('Leave Conversation')");
     await contains(
         ".modal-body:text('You are about to leave this group conversation and will no longer have access to it unless you are invited again. Are you sure you want to continue?')"

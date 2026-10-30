@@ -196,7 +196,7 @@ class Manager(Thread):
 
         # Check every 3 seconds if the list of connected devices has changed and send the updated
         # list to the connected DB.
-        while 1:
+        while True:
             try:
                 if self._get_changes_to_send():
                     self._send_all_devices()
@@ -204,7 +204,6 @@ class Manager(Thread):
                     wifi.reconnect(
                         system.get_conf("wifi_ssid"), system.get_conf("wifi_password"),
                     )
-                time.sleep(3)
 
                 current_time = time.time()
                 if abs(current_time - last_check_time) > 600:
@@ -219,6 +218,8 @@ class Manager(Thread):
             except Exception:
                 # No matter what goes wrong, the Manager loop needs to keep running
                 _logger.exception("Manager loop unexpected error")
+            finally:
+                time.sleep(3)
 
 
 manager = Manager()

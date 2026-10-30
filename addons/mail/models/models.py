@@ -13,7 +13,7 @@ from odoo.tools import parse_contact_from_email
 from odoo.tools.mail import email_normalize, email_split_and_format
 
 from odoo.addons.mail.tools.alias_error import AliasError
-from odoo.addons.mail.tools.discuss import StoreVersion
+from odoo.addons.mail.tools.discuss import Store, StoreVersion
 
 _logger = logging.getLogger(__name__)
 
@@ -45,16 +45,15 @@ class Base(models.AbstractModel):
     # CRUD
     # ------------------------------------------------------------
 
-    def unlink(self):
-        # Override unlink to delete records activities through (res_model, res_id)
+    def _delete_extra(self):
+        yield from super()._delete_extra()
         record_ids = self.ids if (not self._abstract and not self._transient) else []
-        result = super().unlink()
         # during uninstallation of module mail, the search below will crash
         if record_ids and 'mail' not in self.pool.uninstalling_modules:
-            self.env['mail.activity'].with_context(active_test=False).sudo().search(
-                [('res_model', '=', self._name), ('res_id', 'in', record_ids)]
-            ).unlink()
-        return result
+            yield self.env['mail.activity'].search(
+                [('res_model', '=', self._name), ('res_id', 'in', record_ids)],
+                order='id',
+            )
 
     # ------------------------------------------------------------
     # CHECK ACCESS
@@ -312,8 +311,9 @@ class Base(models.AbstractModel):
             all_emails += defaults['partners'].mapped('email_normalized')
         ban_emails = []
         # ban emails: don't propose odoobot unless another active partner has the same email
-        if not self.env['res.partner'].search_count([('email_normalized', '=', self.env.ref('base.partner_root').email_normalized)]):
-            ban_emails.append(self.env.ref('base.partner_root').email_normalized)
+        root_email = self.env.ref('base.partner_root').email_normalized
+        if root_email in all_emails and not self.env['res.partner'].search_count([('email_normalized', '=', root_email)], limit=1):
+            ban_emails.append(root_email)
         ban_emails += self.env['mail.alias.domain'].sudo()._find_aliases(
             [email_key(e) for e in all_emails if e and e.strip()]
         )
@@ -764,6 +764,13 @@ class Base(models.AbstractModel):
             '&', ('hidden', '=', False),
             '|', ('res_model', '=', self._name), ('res_model', '=', False)])
 
+    def _store_model_name_fields(self, res: Store.FieldList):
+        res.attr(
+            "modelName",
+            lambda record: record.env["ir.model"]._get(record._name).display_name,
+        )
+        res.attr("display_name")
+
     # ------------------------------------------------------------
     # GATEWAY: NOTIFICATION
     # ------------------------------------------------------------
@@ -798,8 +805,15 @@ class Base(models.AbstractModel):
         """
         self.ensure_one()
         classes = f" class={extra_classes}" if extra_classes else ""
-        return Markup("<a href=# data-oe-model='%s' data-oe-id='%s'%s>%s</a>") % (
-            self._name, self.id, classes, title or self.display_name)
+        return Markup(
+            "<a href='/mail/view?model={model}&amp;res_id={id}' data-oe-model='{model}'"
+            " data-oe-id='{id}'{classes}>{title}</a>",
+        ).format(
+            model=self._name,
+            id=self.id,
+            classes=classes,
+            title=title or self.display_name,
+        )
 
     @api.model
     def _get_backend_root_menu_ids(self):

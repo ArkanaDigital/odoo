@@ -8,9 +8,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 18.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-24 17:42+0000\n"
-"PO-Revision-Date: 2026-06-21 14:53+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-09-04 17:45+0000\n"
+"PO-Revision-Date: 2026-09-09 14:04+0000\n"
+"Last-Translator: Saara Hakanen <sahak@odoo.com>\n"
 "Language-Team: Finnish <https://translate.odoo.com/projects/odoo-master/"
 "pos_online_payment/fi/>\n"
 "Language: fi\n"
@@ -18,11 +18,23 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
-msgid "<span class=\"visually-hidden\">Loading...</span>"
+msgid ""
+"<i class=\"oi me-2\" data-icon=\"lock\"/>Payment secured · Don't close this "
+"window"
+msgstr ""
+
+#. module: pos_online_payment
+#: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
+msgid "<span class=\"text-500\">Order</span>"
+msgstr ""
+
+#. module: pos_online_payment
+#: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
+msgid "<span class=\"text-500\">Total</span>"
 msgstr ""
 
 #. module: pos_online_payment
@@ -161,6 +173,15 @@ msgid "Invoice could not be generated"
 msgstr "Laskua ei voitu luoda"
 
 #. module: pos_online_payment
+#. odoo-python
+#: code:addons/pos_online_payment/controllers/payment_portal.py:0
+msgid ""
+"It looks like a payment for this order is already being processed — maybe "
+"from this device, maybe from another. If you continue, you risk to pay the "
+"order twice. Only continue if you're sure the earlier attempt was abandoned."
+msgstr ""
+
+#. module: pos_online_payment
 #: model:ir.model.fields,field_description:pos_online_payment.field_pos_order__next_online_payment_amount
 msgid "Next online payment amount to pay"
 msgstr "Seuraava verkkomaksu maksettava summa"
@@ -217,7 +238,7 @@ msgstr "Tilausnumero (ID):"
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pay_confirmation
 msgid "Order Reference"
-msgstr "Tilauksen viite"
+msgstr "Tilausviite"
 
 #. module: pos_online_payment
 #. odoo-javascript
@@ -262,13 +283,13 @@ msgstr "Maksutapahtuma"
 #. odoo-javascript
 #: code:addons/pos_online_payment/static/src/app/utils/order_payment_validation.js:0
 msgid "Payment provider requirement"
-msgstr ""
+msgstr "Maksupalveluntarjoajan vaatimukset"
 
 #. module: pos_online_payment
 #. odoo-javascript
 #: code:addons/pos_online_payment/static/src/app/utils/order_payment_validation.js:0
 msgid "Please ensure you have a customer with an email address on this order."
-msgstr ""
+msgstr "Varmista, että tämän tilauksen asiakkaalla on sähköpostiosoite."
 
 #. module: pos_online_payment
 #: model:ir.model,name:pos_online_payment.model_pos_config
@@ -291,6 +312,11 @@ msgid "Point of Sale Payment Method"
 msgstr "Kassajärjestelmän maksutapa"
 
 #. module: pos_online_payment
+#: model:ir.module.module,shortdesc:base.module_pos_online_payment
+msgid "Point of Sale online payment"
+msgstr ""
+
+#. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pay_confirmation
 msgid "Processed by"
 msgstr "Käsittelijä"
@@ -303,14 +329,14 @@ msgstr "Palvelinvirhe"
 
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
-msgid "Skip <i class=\"fa fa-long-arrow-right ms-1\"/>"
+msgid "Skip <i class=\"oi ms-1\" data-icon=\"east\"/>"
 msgstr ""
 
 #. module: pos_online_payment
 #. odoo-python
 #: code:addons/pos_online_payment/models/pos_payment_method.py:0
 msgid "The %s already has one online payment."
-msgstr ""
+msgstr "%s:lla on jo yksi verkkomaksu."
 
 #. module: pos_online_payment
 #. odoo-python
@@ -550,8 +576,7 @@ msgstr "Et ole aktivoinut mitään"
 msgid ""
 "You should receive an email confirming your payment within a few minutes.<br/"
 ">\n"
-"                            Don't hesitate to contact us if you don't "
-"receive it."
+"                        Don't hesitate to contact us if you don't receive it."
 msgstr ""
 
 #. module: pos_online_payment
@@ -568,16 +593,3 @@ msgstr "maksupalveluntarjojaja"
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_method_view_form_inherit_pos_online_payment
 msgid "to allow online payments."
 msgstr "sallia verkkomaksut."
-
-#~ msgid "Point of Sale Session"
-#~ msgstr "Kassajärjestelmän istunto"
-
-#~ msgid "The partner of the POS online payment (id=%d) could not be found"
-#~ msgstr "Kassan verkkomaksun kumppania (id=%d) ei löydetty"
-
-#~ msgid ""
-#~ "Use this payment method for online payments (payments made on a web page "
-#~ "with online payment providers)"
-#~ msgstr ""
-#~ "Käytä tätä maksutapaa verkkomaksuihin (verkkomaksupalvelujen tarjoajien "
-#~ "verkkosivulla suoritettavat maksut)"

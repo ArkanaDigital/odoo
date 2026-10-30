@@ -1,4 +1,4 @@
-import { SUGGESTION_DELIMITERS } from "@mail/core/common/suggestion_hook";
+import { SUGGESTION_DELIMITERS } from "@mail/core/common/plugin/suggestion_plugin";
 import { SuggestionService } from "@mail/core/common/suggestion_service";
 
 import { localeCompare, normalize } from "@web/core/l10n/utils";
@@ -23,7 +23,7 @@ const suggestionServicePatch = {
             }))
             .filter(({ condition }) => !condition || condition({ store: this.store, channel }));
     },
-    getSupportedDelimiters(thread, env) {
+    getSupportedDelimiters(thread, ancestors) {
         const res = super.getSupportedDelimiters(...arguments);
         return thread?.channel ? [...res, [SUGGESTION_DELIMITERS.CHANNEL_COMMAND, 0]] : res;
     },

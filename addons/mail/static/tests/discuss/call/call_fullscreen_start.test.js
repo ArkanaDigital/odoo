@@ -1,15 +1,14 @@
 import {
-    click,
-    contains,
+    actionPanel,
     defineMailModels,
     mockGetMedia,
     openDiscuss,
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
-import { describe, test } from "@odoo/hoot";
+import { describe, test, waitFor, waitForNone } from "@odoo/hoot";
 
-import { Command, serverState } from "@web/../tests/web_test_helpers";
+import { Command, contains, serverState } from "@web/../tests/web_test_helpers";
 
 describe.current.tags("desktop");
 defineMailModels();
@@ -19,8 +18,8 @@ test("Start Call in a channel stays inline (not fullscreen)", async () => {
     const channelId = pyEnv["discuss.channel"].create({ name: "General" });
     await start();
     await openDiscuss(channelId);
-    await click("[title='Start Call']");
-    await contains(".o-mail-Discuss .o-discuss-Call");
+    await contains("[title='Start Call']:count(1)").click();
+    await waitFor(".o-mail-Discuss .o-discuss-Call:count(1)");
 });
 
 test("Start Video Call in a channel opens the fullscreen meeting view", async () => {
@@ -29,8 +28,8 @@ test("Start Video Call in a channel opens the fullscreen meeting view", async ()
     const channelId = pyEnv["discuss.channel"].create({ name: "General" });
     await start();
     await openDiscuss(channelId);
-    await click("[title='Start Video Call']");
-    await contains(".o-mail-Meeting .o-discuss-Call");
+    await contains("[title='Start Video Call']:count(1)").click();
+    await waitFor(".o-mail-Meeting .o-discuss-Call:count(1)");
 });
 
 test("channel video conference exposes Members as a side action", async () => {
@@ -39,9 +38,25 @@ test("channel video conference exposes Members as a side action", async () => {
     const channelId = pyEnv["discuss.channel"].create({ name: "General" });
     await start();
     await openDiscuss(channelId);
-    await click("[title='Start Video Call']");
-    await contains(".o-mail-MeetingSideActions button[title='Members']");
-    await contains(".o-mail-MeetingSideActions button[title='Chat']");
+    await contains("[title='Start Video Call']:count(1)").click();
+    await waitFor(".o-mail-MeetingSideActions button[title='Members']:count(1)");
+    await waitFor(".o-mail-MeetingSideActions button[title='Chat']:count(1)");
+});
+
+test("meeting More opens the notification settings in a closable panel", async () => {
+    mockGetMedia();
+    const pyEnv = await startServer();
+    const channelId = pyEnv["discuss.channel"].create({ name: "General" });
+    await start();
+    await openDiscuss(channelId);
+    await contains("[title='Start Video Call']:count(1)").click();
+    await contains(".o-mail-MeetingSideActions button[name^='more-action']:count(1)").click();
+    await contains(".o-dropdown--menu button[name='notification-settings']:count(1)").click();
+    await waitFor(`${actionPanel("Notification Settings")}:count(1)`);
+    await contains(
+        `${actionPanel("Notification Settings")} button[title='Close panel']:count(1)`
+    ).click();
+    await waitForNone(actionPanel("Notification Settings"));
 });
 
 test("Start Call in a group chat stays inline (not fullscreen)", async () => {
@@ -56,8 +71,8 @@ test("Start Call in a group chat stays inline (not fullscreen)", async () => {
     });
     await start();
     await openDiscuss(channelId);
-    await click("[title='Start Call']");
-    await contains(".o-mail-Discuss .o-discuss-Call");
+    await contains("[title='Start Call']:count(1)").click();
+    await waitFor(".o-mail-Discuss .o-discuss-Call:count(1)");
 });
 
 test("Start Call in a chat stays inline (not fullscreen)", async () => {
@@ -72,8 +87,8 @@ test("Start Call in a chat stays inline (not fullscreen)", async () => {
     });
     await start();
     await openDiscuss(channelId);
-    await click("[title='Start Call']");
-    await contains(".o-mail-Discuss .o-discuss-Call");
+    await contains("[title='Start Call']:count(1)").click();
+    await waitFor(".o-mail-Discuss .o-discuss-Call:count(1)");
 });
 
 test("Start Video Call in a group chat opens the fullscreen meeting view", async () => {
@@ -89,6 +104,6 @@ test("Start Video Call in a group chat opens the fullscreen meeting view", async
     });
     await start();
     await openDiscuss(channelId);
-    await click("[title='Start Video Call']");
-    await contains(".o-mail-Meeting .o-discuss-Call");
+    await contains("[title='Start Video Call']:count(1)").click();
+    await waitFor(".o-mail-Meeting .o-discuss-Call:count(1)");
 });

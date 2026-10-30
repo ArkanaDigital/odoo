@@ -1,13 +1,18 @@
 import {
-    click,
-    contains,
+    actionPanel,
     defineMailModels,
     openDiscuss,
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
-import { describe, test } from "@odoo/hoot";
-import { Command, getService, serverState, withUser } from "@web/../tests/web_test_helpers";
+import { describe, test, waitFor, waitForNone } from "@odoo/hoot";
+import {
+    Command,
+    contains,
+    getService,
+    serverState,
+    withUser,
+} from "@web/../tests/web_test_helpers";
 
 describe.current.tags("desktop");
 defineMailModels();
@@ -19,13 +24,13 @@ test("Add member to channel", async () => {
     pyEnv["res.partner"].create({ name: "Harry", user_ids: [userId] });
     await start();
     await openDiscuss(channelId);
-    await contains(".o-discuss-ChannelMemberList"); // wait for auto-open of this panel
-    await contains(".o-discuss-ChannelMember:text('Mitchell Admin')");
-    await click("[title='Add People']");
-    await click(".o-discuss-ChannelInvitation-selectable:has(:text('Harry'))");
-    await click(".o-discuss-ChannelInvitation [title='Invite']:enabled");
-    await contains(".o-discuss-ChannelInvitation", { count: 0 });
-    await contains(".o-discuss-ChannelMember:text('Harry')");
+    await waitFor(`${actionPanel("Members")}:count(1)`); // wait for auto-open of this panel
+    await waitFor(".o-discuss-ChannelMember:text('Mitchell Admin'):count(1)");
+    await contains("[title='Add People']:count(1)").click();
+    await contains(".o-discuss-ChannelInvitation-selectable:has(:text('Harry')):count(1)").click();
+    await contains(".o-discuss-ChannelInvitation button:text('Invite'):enabled:count(1)").click();
+    await waitForNone(".o-discuss-ChannelInvitation");
+    await waitFor(".o-discuss-ChannelMember:text('Harry'):count(1)");
 });
 
 test("Remove member from channel", async () => {
@@ -44,9 +49,9 @@ test("Remove member from channel", async () => {
     });
     await start();
     await openDiscuss(channelId);
-    await contains(".o-discuss-ChannelMember:text('Harry')");
+    await waitFor(".o-discuss-ChannelMember:text('Harry'):count(1)");
     withUser(userId, () =>
         getService("orm").call("discuss.channel", "action_unfollow", [channelId])
     );
-    await contains(".o-discuss-ChannelMember:text('Harry')", { count: 0 });
+    await waitForNone(".o-discuss-ChannelMember:text('Harry')");
 });

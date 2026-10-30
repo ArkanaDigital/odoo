@@ -11,10 +11,10 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0beta\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-07 17:36+0000\n"
-"PO-Revision-Date: 2026-06-21 18:18+0000\n"
+"POT-Creation-Date: 2026-08-28 17:42+0000\n"
+"PO-Revision-Date: 2026-08-31 16:25+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Spanish <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Spanish <https://translate.odoo.com/projects/odoo-s19-4/"
 "crm_iap_mine/es/>\n"
 "Language: es\n"
 "MIME-Version: 1.0\n"
@@ -22,7 +22,7 @@ msgstr ""
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=3; plural=(n == 1) ? 0 : ((n != 0 && n % 1000000 == "
 "0) ? 1 : 2);\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: crm_iap_mine
 #. odoo-python
@@ -54,8 +54,8 @@ msgid ""
 msgstr ""
 "<div style=\"margin: 0px; padding: 0px;\">\n"
 "    <p>Hola:</p>\n"
-"    <p>No quedan más créditos en tu cuenta IAP para la generación de "
-"leads.<br/>\n"
+"    <p>No quedan más créditos en tu cuenta IAP para la generación de leads."
+"<br/>\n"
 "    Puedes cambiar tu cuenta para IAP para la generación de leads en la "
 "configuración de la aplicación de CRM.<br/></p>\n"
 "    <p>Atentamente,</p>\n"
@@ -65,29 +65,30 @@ msgstr ""
 #. module: crm_iap_mine
 #: model_terms:ir.ui.view,arch_db:crm_iap_mine.enrich_company
 msgid ""
-"<i class=\"fa fa-fw me-2 fa-address-book text-primary\"/>\n"
-"                    <b>Address</b>"
-msgstr ""
-
-#. module: crm_iap_mine
-#: model_terms:ir.ui.view,arch_db:crm_iap_mine.enrich_company
-msgid ""
-"<i class=\"fa fa-fw me-2 fa-cube text-primary\"/>\n"
+"<i class=\"oi oi-fw me-2 text-primary\" data-icon=\"deployed_code\"/>\n"
 "                    <b>Industries</b>"
 msgstr ""
 
 #. module: crm_iap_mine
 #: model_terms:ir.ui.view,arch_db:crm_iap_mine.enrich_company
 msgid ""
-"<i class=\"fa fa-fw me-2 fa-globe text-primary\"/>\n"
+"<i class=\"oi oi-fw me-2 text-primary\" data-icon=\"public\"/>\n"
 "                    <b>Website</b>"
 msgstr ""
 
 #. module: crm_iap_mine
 #: model_terms:ir.ui.view,arch_db:crm_iap_mine.enrich_company
 msgid ""
-"<i class=\"fa fa-fw me-2 fa-solid fa-id-card text-primary\"/>\n"
+"<i class=\"oi oi-fw oi-filled me-2 text-primary\" data-icon=\"badge\"/>\n"
 "                    <b>Tax ID</b>"
+msgstr ""
+
+#. module: crm_iap_mine
+#: model_terms:ir.ui.view,arch_db:crm_iap_mine.enrich_company
+msgid ""
+"<i class=\"oi oi-fw oi-filled me-2 text-primary\" data-icon=\"contact_page\"/"
+">\n"
+"                    <b>Address</b>"
 msgstr ""
 
 #. module: crm_iap_mine
@@ -462,10 +463,15 @@ msgid "Generate Leads"
 msgstr "Generar leads"
 
 #. module: crm_iap_mine
+#: model:ir.module.module,summary:base.module_crm_iap_mine
+msgid "Generate Leads/Opportunities based on country, industries, size, etc."
+msgstr ""
+
+#. module: crm_iap_mine
 #. odoo-python
 #: code:addons/crm_iap_mine/models/crm_iap_lead_mining_request.py:0
 msgid "Generate new leads based on their country, industry, size, etc."
-msgstr "Generar nuevas leads en función de su país, industrias, tamaño, etc."
+msgstr "Generar nuevos leads en función de su país, sector, tamaño, etc."
 
 #. module: crm_iap_mine
 #: model:ir.model.fields,field_description:crm_iap_mine.field_crm_iap_lead_mining_request__lead_ids
@@ -557,7 +563,7 @@ msgstr ""
 #. module: crm_iap_mine
 #: model:ir.model.constraint,message:crm_iap_mine.constraint_crm_iap_lead_industry_name_uniq
 msgid "Industry name already exists!"
-msgstr "¡El nombre de la industria ya existe!"
+msgstr "¡El nombre del sector ya existe!"
 
 #. module: crm_iap_mine
 #: model:ir.model.fields,help:crm_iap_mine.field_crm_iap_lead_industry__sic_group
@@ -625,6 +631,7 @@ msgid "Lead Credits"
 msgstr "Créditos de leads"
 
 #. module: crm_iap_mine
+#: model:ir.module.module,shortdesc:base.module_crm_iap_mine
 #: model:ir.ui.menu,name:crm_iap_mine.crm_menu_lead_generation
 msgid "Lead Generation"
 msgstr "Generación de leads"
@@ -1122,7 +1129,7 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/crm_iap_mine/static/src/js/tours/crm_iap_lead.js:0
 msgid "Which Industry do you want to target?"
-msgstr "¿En qué tipo de industria se quiere enfocar?"
+msgstr "¿Qué sector de actividad te interesa?"
 
 #. module: crm_iap_mine
 #: model:crm.iap.lead.industry.division,name:crm_iap_mine.crm_iap_mine_division_f

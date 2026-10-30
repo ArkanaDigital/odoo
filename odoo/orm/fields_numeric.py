@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import typing
 from operator import attrgetter
-from xmlrpc.client import MAXINT  # TODO change this
 
 from odoo.exceptions import AccessError
 from odoo.tools import float_compare, float_is_zero, float_repr, float_round
@@ -33,23 +32,13 @@ class Integer(Field[int]):
         return int(value or 0)
 
     def convert_to_cache(self, value, records, validate=True):
-        if isinstance(value, dict):
-            # special case, when an integer field is used as inverse for a one2many
-            return value.get('id', None)
         return int(value or 0)
 
     def convert_to_record(self, value, record):
         return value or 0
 
     def convert_to_read(self, value, record, use_display_name=True):
-        # Integer values greater than 2^31-1 are not supported in pure XMLRPC,
-        # so we have to pass them as floats :-(
-        if value and value > MAXINT:
-            return float(value)
         return value
-
-    def _update_inverse(self, records: BaseModel, value: BaseModel):
-        self._update_cache(records, value.id or 0)
 
     def convert_to_export(self, value, record):
         if value or value == 0:
@@ -148,6 +137,7 @@ class Float(Field[float]):
         return self._min_display_digits
 
     _related__digits = property(attrgetter('_digits'))
+    _related__min_display_digits = property(attrgetter('_min_display_digits'))
 
     def _description_digits(self, env: Environment) -> tuple[int, int] | None:
         return self.get_digits(env)
@@ -231,17 +221,13 @@ class Monetary(Field[float]):
             None
         )
 
-    def setup_nonrelated(self, model):
-        super().setup_nonrelated(model)
-        assert self.get_currency_field(model) in model._fields, \
-            "Field %s with unknown currency_field %r" % (self, self.get_currency_field(model))
-
-    def setup_related(self, model):
-        super().setup_related(model)
-        if self.inherited:
+    def _setup(self, model):
+        super()._setup(model)
+        if self.related and self.inherited:
             self.currency_field = self.related_field.get_currency_field(model.env[self.related_field.model_name])
-        assert self.get_currency_field(model) in model._fields, \
-            "Field %s with unknown currency_field %r" % (self, self.get_currency_field(model))
+
+        if (cur_field := self.get_currency_field(model)) not in model._fields:
+            raise Exception(f"{self}: unknown currency_field {cur_field!r}")
 
     def convert_to_column_insert(self, value, record, values=None, validate=True):
         # retrieve currency from values or record

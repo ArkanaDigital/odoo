@@ -7,7 +7,7 @@ from odoo.http import Controller, request, route
 
 class SaleProductConfiguratorController(Controller):
     @route(
-        route="/sale/product_configurator/get_values", type="jsonrpc", auth="user", readonly=True
+        route="/sale/product_configurator/get_values", type="jsonrpc", auth="user", replica=True
     )
     def sale_product_configurator_get_values(
         self,
@@ -69,7 +69,7 @@ class SaleProductConfiguratorController(Controller):
                     lambda ptal: ptal.product_template_value_ids._only_active()[:1]
                 )
             if not combination:
-                combination = product_template._get_first_possible_combination()
+                combination = product_template._get_first_available_combination()
             currency = self.env["res.currency"].browse(currency_id)
             pricelist = self.env["product.pricelist"].browse(pricelist_id)
             so_date = datetime.fromisoformat(so_date)
@@ -94,7 +94,7 @@ class SaleProductConfiguratorController(Controller):
                     dict(
                         **self._get_product_information(
                             optional_product_template,
-                            optional_product_template._get_first_possible_combination(),
+                            optional_product_template._get_first_available_combination(),
                             currency,
                             pricelist,
                             so_date,
@@ -146,7 +146,7 @@ class SaleProductConfiguratorController(Controller):
         type="jsonrpc",
         auth="user",
         methods=["POST"],
-        readonly=True,
+        replica=True,
     )
     def sale_product_configurator_update_combination(
         self,
@@ -212,7 +212,7 @@ class SaleProductConfiguratorController(Controller):
         route="/sale/product_configurator/get_optional_products",
         type="jsonrpc",
         auth="user",
-        readonly=True,
+        replica=True,
     )
     def sale_product_configurator_get_optional_products(
         self,
@@ -254,7 +254,7 @@ class SaleProductConfiguratorController(Controller):
             dict(
                 **self._get_product_information(
                     optional_product_template,
-                    optional_product_template._get_first_possible_combination(),
+                    optional_product_template._get_first_available_combination(),
                     currency,
                     pricelist,
                     datetime.fromisoformat(so_date),
@@ -344,6 +344,7 @@ class SaleProductConfiguratorController(Controller):
 
         values = dict(
             product_tmpl_id=product_template.id,
+            product_type=product_template.type,
             **self._get_basic_product_information(
                 product_or_template,
                 pricelist,
@@ -430,12 +431,11 @@ class SaleProductConfiguratorController(Controller):
             )
         else:
             price, pricelist_rule_id = 0.0, False
-        if kwargs.get("show_packaging", True) and product_or_template._has_multiple_uoms():
+        if kwargs.get("show_packaging", True) and self.env["res.groups"]._is_feature_enabled("uom.group_uom"):
             basic_information["available_uoms"] = product_or_template._get_available_uoms().read([
                 "id",
                 "display_name",
             ])
-        pricelist_rule = request.env["product.pricelist.item"].browse(pricelist_rule_id)
         return dict(
             **basic_information,
             price=price,
@@ -443,7 +443,6 @@ class SaleProductConfiguratorController(Controller):
             **self.env["product.template"]._get_additional_configurator_data(
                 product_or_template, pricelist=pricelist, **kwargs
             ),
-            show_extra_price=pricelist_rule.compute_price != "fixed",
         )
 
     def _get_ptav_price_extra(self, ptav, currency, date, product_or_template):  # noqa: ARG002

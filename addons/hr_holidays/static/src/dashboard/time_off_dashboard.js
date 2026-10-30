@@ -2,6 +2,7 @@ import { useNewAllocationRequest } from "@hr_holidays/views/hooks";
 import { Component, onWillStart, proxy, types as t, usePlugin, useProps } from "@odoo/owl";
 import { DateTimeInput } from "@web/core/datetime/datetime_input";
 import { useService } from "@web/core/utils/hooks";
+import { _t } from "@web/core/l10n/translation";
 import { TimeOffPlugin } from "../views/time_off_plugin";
 import { TimeOffCard } from "./time_off_card";
 
@@ -21,7 +22,7 @@ export class TimeOffDashboard extends Component {
             date: luxon.DateTime.now(),
             today: luxon.DateTime.now(),
             holidays: [],
-            allocationRequestDaysHours: "",
+            allocationsNumber: "",
         });
 
         usePlugin(TimeOffPlugin).onUpdateDashboard(() => this.loadDashboardData());
@@ -49,19 +50,27 @@ export class TimeOffDashboard extends Component {
             { context }
         );
         this.state.holidays = dashboardData["allocation_data"];
-        this.state.allocationRequestDaysHours = dashboardData["allocation_request_days_hours"];
-        this.hasAccrualAllocation = dashboardData["has_accrual_allocation"];
-        this.hasFutureAllocation = dashboardData["has_future_allocation"];
-    }
-
-    resetDate() {
-        this.state.date = luxon.DateTime.now();
-        this.loadDashboardData();
+        this.state.allocationsNumber = dashboardData["allocations_number"];
     }
 
     openNewAllocation() {
         this.newAllocRequest({
             employeeId: this.props.employeeId,
+        });
+    }
+
+    openPendingAllocations() {
+        const context = this.getContext();
+        this.actionService.doAction({
+            type: "ir.actions.act_window",
+            name: _t("Pending Allocations"),
+            res_model: "hr.leave.allocation",
+            views: [
+                [false, "list"],
+                [false, "form"],
+            ],
+            domain: [["state", "in", ["confirm", "validate1"]]],
+            context,
         });
     }
 }

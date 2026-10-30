@@ -238,6 +238,85 @@ test("should move focus from toolbar to editable on escape", async () => {
     expect(el).toBeFocused();
 });
 
+test("clicking a toolbar button restores the focus to the editable", async () => {
+    class TestPlugin extends Plugin {
+        static id = "TestPlugin";
+        resources = {
+            user_commands: { id: "test_cmd", run: () => null },
+            toolbar_groups: withSequence(24, { id: "test_group" }),
+            toolbar_items: [
+                {
+                    id: "test_btn",
+                    groupId: "test_group",
+                    commandId: "test_cmd",
+                    description: "Test Button",
+                    icon: "square",
+                    namespaces: ["compact", "expanded"],
+                },
+            ],
+        };
+    }
+    const { el } = await setupEditor("<p>[test]</p>", {
+        config: { includePlugins: [TestPlugin] },
+    });
+    await contains(".o-we-toolbar .btn[name='test_btn']").click();
+    expect(el).toBeFocused();
+});
+
+test("a toolbar button with opensUi does not restore the focus to the editable", async () => {
+    class TestPlugin extends Plugin {
+        static id = "TestPlugin";
+        resources = {
+            user_commands: { id: "test_cmd", run: () => null },
+            toolbar_groups: withSequence(24, { id: "test_group" }),
+            toolbar_items: [
+                {
+                    id: "test_btn",
+                    groupId: "test_group",
+                    commandId: "test_cmd",
+                    description: "Test Button",
+                    icon: "square",
+                    namespaces: ["compact", "expanded"],
+                    opensUi: true,
+                },
+            ],
+        };
+    }
+    const { el } = await setupEditor("<p>[test]</p>", {
+        config: { includePlugins: [TestPlugin] },
+    });
+    await contains(".o-we-toolbar .btn[name='test_btn']").click();
+    expect(el).not.toBeFocused();
+    expect(".o-we-toolbar .btn[name='test_btn']").toBeFocused();
+});
+
+test.tags("desktop");
+test("expanding toolbar from table cell selection should focus first expanded button", async () => {
+    const contentBefore = unformat(`
+        <table class="table table-bordered o_table">
+            <tbody>
+                <tr>
+                    <td><p>[<br></p></td>
+                    <td><p>]<br></p></td>
+                </tr>
+                <tr>
+                    <td><p><br></p></td>
+                    <td><p><br></p></td>
+                </tr>
+            </tbody>
+        </table>
+    `);
+    await setupEditor(contentBefore);
+    await waitFor(".o-we-toolbar");
+
+    expect(".o-we-toolbar").toHaveAttribute("data-namespace", "table");
+    await expandToolbar();
+
+    expect(".o-we-toolbar").toHaveAttribute("data-namespace", "expanded");
+    const toolbarBtns = queryAll(".o-we-toolbar button:not([disabled])");
+    expect(toolbarBtns[0]).toBeFocused();
+});
+
 test.tags("desktop");
 test("pressing Escape closes dropdown and returns focus to dropdown button, then editable", async () => {
     const { el } = await setupEditor("<p>[test]</p>");
@@ -509,7 +588,7 @@ test("toolbar disable link button when table cells are selected", async () => {
             </tbody>
         </table>
     `);
-    await waitFor(".o-we-toolbar");
+    await expandToolbar();
     expect(".btn[name='link']").toHaveClass("disabled");
 });
 
@@ -647,6 +726,70 @@ test("toolbar works: change font size correctly when closest block element has a
     expect(fontSizeInputEl).toHaveValue(h1Size);
 });
 
+test("toolbar font size selector reflects heading size after remove format", async () => {
+    const { el } = await setupEditor(`<h2 class="display-3-fs">[heading 2]</h2>`);
+    await expandToolbar();
+    const style = getHtmlStyle(document);
+    const getFontSizeFromVar = (cssVar) => {
+        const strValue = getCSSVariableValue(cssVar, style);
+        const remValue = parseFloat(strValue);
+        const pxValue = convertNumericToUnit(remValue, "rem", "px", style);
+        return Math.round(pxValue);
+    };
+    await waitFor(".o-we-toolbar");
+    const inputEl = await getIframeInput(
+        ".o-we-toolbar [name='font_size'] iframe.o_font_size_selector_iframe",
+        "input[name='font_size_input']"
+    );
+    expect(inputEl).toHaveValue(getFontSizeFromVar("display-3-font-size"));
+
+    await click(".btn[name='remove_format']");
+    await animationFrame();
+
+    expect(getContent(el)).toBe(`<h2>[heading 2]</h2>`);
+    expect(inputEl).toHaveValue(getFontSizeFromVar("h2-font-size"));
+});
+
+test("toolbar font size selector reflects default size with o_default_font_size class", async () => {
+    await setupEditor(
+        '<p class="display-3-fs">abc <span class="o_default_font_size">[def]</span> ghi</p>'
+    );
+    await expandToolbar();
+    const style = getHtmlStyle(document);
+    const getFontSizeFromVar = (cssVar) => {
+        const strValue = getCSSVariableValue(cssVar, style);
+        const remValue = parseFloat(strValue);
+        const pxValue = convertNumericToUnit(remValue, "rem", "px", style);
+        return Math.round(pxValue);
+    };
+    await waitFor(".o-we-toolbar");
+    const inputEl = await getIframeInput(
+        ".o-we-toolbar [name='font_size'] iframe.o_font_size_selector_iframe",
+        "input[name='font_size_input']"
+    );
+    expect(inputEl).toHaveValue(getFontSizeFromVar("font-size-base"));
+});
+
+test("toolbar works: apply custom font size on a selection inside block default class", async () => {
+    const { el } = await setupEditor(
+        '<h2 class="display-3-fs">abc <span class="h2">d[e]f</span> ghi</h2>'
+    );
+    await expandToolbar();
+    await contains(".o-we-toolbar [name='font_size'].dropdown-toggle").click();
+    const style = getHtmlStyle(document);
+    const getFontSizeFromVar = (cssVar) => {
+        const strValue = getCSSVariableValue(cssVar, style);
+        const remValue = parseFloat(strValue);
+        const pxValue = convertNumericToUnit(remValue, "rem", "px", style);
+        return Math.round(pxValue);
+    };
+    const h1Size = getFontSizeFromVar("h1-font-size").toString();
+    await contains(`.o_font_size_selector_menu .dropdown-item:contains('${h1Size}')`).click();
+    expect(getContent(el)).toBe(
+        '<h2 class="display-3-fs">abc <span class="h2">d<span class="h1-fs">[e]</span>f</span> ghi</h2>'
+    );
+});
+
 test("toolbar works: show the correct text alignment", async () => {
     const { el } = await setupEditor("<p>[test</p><p><br>]</p>");
     await expandToolbar();
@@ -745,7 +888,7 @@ test("should not create empty extra nodes while changing format of link", async 
     await waitFor(".o_font_size_selector_menu .dropdown-item:contains('80')");
     await contains(".o_font_size_selector_menu .dropdown-item:contains('80')").click();
     expect(getContent(el)).toBe(
-        `<p>[<span class="display-1-fs">\ufeff<a href="http://test.com">\ufefftest.com\ufeff</a>\ufeff</span>]</p>`
+        `<p>\ufeff[<a href="http://test.com" class="display-1-fs">\ufefftest.com\ufeff</a>\ufeff]</p>`
     );
 });
 
@@ -766,7 +909,7 @@ test("should not create empty extra nodes while changing format of link on mobil
     await waitFor(".o_font_size_selector_menu .dropdown-item:contains('80')");
     await contains(".o_font_size_selector_menu .dropdown-item:contains('80')").click();
     expect(getContent(el)).toBe(
-        `<p>[<span class="display-1-fs">\ufeff<a href="http://test.com">\ufefftest.com\ufeff</a>\ufeff</span>]</p>`
+        `<p>\ufeff[<a href="http://test.com" class="display-1-fs">\ufefftest.com\ufeff</a>\ufeff]</p>`
     );
 });
 
@@ -947,26 +1090,26 @@ test("toolbar works: ArrowUp/Down moves focus to font size dropdown on mobile", 
 test.tags("desktop");
 test("toolbar should not open on keypress tab inside table", async () => {
     const contentBefore = unformat(`
-        <table>
+        <div class="o_table_wrapper"><table>
             <tbody>
                 <tr>
                     <td><p>[]ab</p></td>
                     <td><p>cd</p></td>
                 </tr>
             </tbody>
-        </table>
+        </table></div>
     `);
     const contentAfter = unformat(`
         <p data-selection-placeholder=""><br></p>
-        <table>
+        <div class="o_table_wrapper"><table>
             <tbody>
                 <tr>
                     <td><p>ab</p></td>
                     <td><p>cd[]</p></td>
                 </tr>
             </tbody>
-        </table>
-        <p data-selection-placeholder=""><br></p>
+        </table></div>
+        <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
     `);
 
     const { el } = await setupEditor(contentBefore);
@@ -978,7 +1121,7 @@ test("toolbar should not open on keypress tab inside table", async () => {
 
 test("toolbar open on single selected cell in table", async () => {
     const contentBefore = unformat(`
-        <table class="table table-bordered o_table">
+        <div class="o_table_wrapper"><table class="table table-bordered o_table">
             <tbody>
                 <tr>
                     <td><p>[]<br></p></td>
@@ -989,7 +1132,7 @@ test("toolbar open on single selected cell in table", async () => {
                     <td><p><br></p></td>
                 </tr>
             </tbody>
-        </table>
+        </table></div>
     `);
 
     const { el } = await setupEditor(contentBefore);
@@ -1219,26 +1362,26 @@ test("should select table single formatted cell when entire content is selected 
 test.tags("desktop");
 test("toolbar should close on keypress tab inside table", async () => {
     const contentBefore = unformat(`
-        <table>
+        <div class="o_table_wrapper"><table>
             <tbody>
                 <tr>
                     <td><p>[ab]</p></td>
                     <td><p>cd</p></td>
                 </tr>
             </tbody>
-        </table>
+        </table></div>
     `);
     const contentAfter = unformat(`
         <p data-selection-placeholder=""><br></p>
-        <table>
+        <div class="o_table_wrapper"><table>
             <tbody>
                 <tr>
                     <td><p>ab</p></td>
                     <td><p>cd[]</p></td>
                 </tr>
             </tbody>
-        </table>
-        <p data-selection-placeholder=""><br></p>
+        </table></div>
+        <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
     `);
 
     const { el } = await setupEditor(contentBefore);
@@ -1277,7 +1420,7 @@ test("toolbar works: show the correct vertical alignment", async () => {
     expect(getContent(el)).toBe(
         unformat(`
             <p data-selection-placeholder=""><br></p>
-            <table class="table table-bordered o_table o_selected_table">
+            <div class="o_table_wrapper"><table class="table table-bordered o_table o_selected_table">
                 <tbody>
                     <tr style="height: 100px;">
                         <td class="o_selected_td" style="vertical-align: middle;">[1</td>
@@ -1290,7 +1433,7 @@ test("toolbar works: show the correct vertical alignment", async () => {
                         <td>6</td>
                     </tr>
                 </tbody>
-            </table>
+            </table></div>
             <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
         `)
     );
@@ -1323,7 +1466,7 @@ test("toolbar works: show the correct vertical alignment after undo/redo", async
     expect(getContent(el)).toBe(
         unformat(`
             <p data-selection-placeholder=""><br></p>
-            <table class="table table-bordered o_table o_selected_table">
+            <div class="o_table_wrapper"><table class="table table-bordered o_table o_selected_table">
                 <tbody>
                     <tr style="height: 100px;">
                         <td>1</td>
@@ -1334,7 +1477,7 @@ test("toolbar works: show the correct vertical alignment after undo/redo", async
                         <td class="o_selected_td" style="vertical-align: bottom;">4]</td>
                     </tr>
                 </tbody>
-            </table>
+            </table></div>
             <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
         `)
     );
@@ -1344,7 +1487,7 @@ test("toolbar works: show the correct vertical alignment after undo/redo", async
     expect(getContent(el)).toBe(
         unformat(`
             <p data-selection-placeholder=""><br></p>
-            <table class="table table-bordered o_table">
+            <div class="o_table_wrapper"><table class="table table-bordered o_table">
                 <tbody>
                     <tr style="height: 100px;">
                         <td>1</td>
@@ -1355,7 +1498,7 @@ test("toolbar works: show the correct vertical alignment after undo/redo", async
                         <td>4]</td>
                     </tr>
                 </tbody>
-            </table>
+            </table></div>
             <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
         `)
     );
@@ -1365,7 +1508,7 @@ test("toolbar works: show the correct vertical alignment after undo/redo", async
     expect(getContent(el)).toBe(
         unformat(`
             <p data-selection-placeholder=""><br></p>
-            <table class="table table-bordered o_table o_selected_table">
+            <div class="o_table_wrapper"><table class="table table-bordered o_table o_selected_table">
                 <tbody>
                     <tr style="height: 100px;">
                         <td>1</td>
@@ -1376,7 +1519,7 @@ test("toolbar works: show the correct vertical alignment after undo/redo", async
                         <td class="o_selected_td" style="vertical-align: bottom;">4]</td>
                     </tr>
                 </tbody>
-            </table>
+            </table></div>
             <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>
         `)
     );

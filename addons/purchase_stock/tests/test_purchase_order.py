@@ -64,13 +64,7 @@ class TestPurchaseOrder(ValuationReconciliationTestCommon):
         self.assertEqual(self.po.state, 'purchase', 'Purchase: PO state should be "Purchase"')
         self.assertEqual(self.po.invoice_status, 'to invoice', 'Purchase: PO invoice_status should be "Waiting Invoices"')
 
-        self.assertTrue(self.product_id_2.seller_ids.filtered(lambda r: r.partner_id == self.partner_a), 'Purchase: the partner should be in the list of the product suppliers')
-
-        seller = self.product_id_2._select_seller(partner_id=self.partner_a, quantity=2.0, date=self.po.date_planned, uom_id=self.product_id_2.uom_id)
-        price_unit = seller.price if seller else 0.0
-        if price_unit and seller and self.po.currency_id and seller.currency_id != self.po.currency_id:
-            price_unit = seller.currency_id._convert(price_unit, self.po.currency_id, self.po.company_id, self.po.date_order)
-        self.assertEqual(price_unit, 250.0, 'Purchase: the price of the product for the supplier should be 250.0.')
+        self.assertFalse(self.product_id_2.seller_ids.filtered(lambda r: r.partner_id == self.partner_a), 'Purchase: confirming the order should not add the partner to the product suppliers')
 
         self.assertEqual(self.po.incoming_picking_count, 1, 'Purchase: one picking should be created"')
         self.picking = self.po.picking_ids[0]
@@ -264,11 +258,12 @@ class TestPurchaseOrder(ValuationReconciliationTestCommon):
     def test_05_multi_company(self):
         company_a = self.env.user.company_id
         company_b = self.env['res.company'].create({
-            "name": "Test Company",
+            "name": "Test Company b",
             "currency_id": self.env['res.currency'].with_context(active_test=False).search([
                 ('id', '!=', company_a.currency_id.id),
             ], limit=1).id
         })
+        self.assertNotEqual(company_a.currency_id.name, company_b.currency_id.name)
         self.env.user.write({
             'company_id': company_b.id,
             'company_ids': [(4, company_b.id), (4, company_a.id)],
@@ -282,12 +277,12 @@ class TestPurchaseOrder(ValuationReconciliationTestCommon):
     def test_06_on_time_rate(self):
         company_a = self.env.user.company_id
         company_b = self.env['res.company'].create({
-            "name": "Test Company",
+            "name": "Test Companyb",
             "currency_id": self.env['res.currency'].with_context(active_test=False).search([
                 ('id', '!=', company_a.currency_id.id),
             ], limit=1).id
         })
-
+        self.assertNotEqual(company_a.currency_id.name, company_b.currency_id.name)
         # Create a purchase order with 90% qty received for company A
         self.env.user.write({
             'company_id': company_a.id,
@@ -499,12 +494,12 @@ class TestPurchaseOrder(ValuationReconciliationTestCommon):
         self.env['stock.rule'].run_scheduler()
 
         pol = self.env['purchase.order.line'].search([('product_id', '=', product.id)])
-        self.assertEqual(pol.name, "[C01] Name01")
+        self.assertEqual(pol.label, "[C01] Name01")
 
         with Form(pol.order_id) as po_form:
             with po_form.order_line.edit(0) as pol_form:
                 pol_form.product_qty = 25
-        self.assertEqual(pol.name, "[C02] Name02")
+        self.assertEqual(pol.label, "[C02] Name02")
 
     def test_duplicated_and_modified_picking(self):
         """ Test that the purchase order's received quantity is not modified by a duplicated picking
@@ -522,7 +517,10 @@ class TestPurchaseOrder(ValuationReconciliationTestCommon):
         po.button_confirm()
         po.picking_ids.button_validate()
         self.assertEqual(po.order_line.qty_received, 10.0)
-        outgoing_picking_type = self.env['stock.picking.type'].search([('code', '=', 'outgoing')])
+        outgoing_picking_type = self.env['stock.picking.type'].search([
+            ('code', '=', 'outgoing'),
+            ('company_id', '=', self.env.company.id),
+        ])
         duplicated_picking = po.picking_ids.copy()
         duplicated_picking.picking_type_id = outgoing_picking_type[0]
         duplicated_picking.button_validate()
@@ -1059,6 +1057,7 @@ class TestPurchaseOrder(ValuationReconciliationTestCommon):
         })
 
         self.product_a.is_storable = True
+        self.product_a.categ_id.property_valuation = 'real_time'
         self.product_a.categ_id.property_cost_method = 'standard'
         self.product_a.categ_id.property_price_difference_account_id = self.company_data['default_account_revenue'].id
 

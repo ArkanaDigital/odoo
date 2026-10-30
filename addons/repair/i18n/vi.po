@@ -13,17 +13,33 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0beta\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-03 17:38+0000\n"
-"PO-Revision-Date: 2026-06-21 12:12+0000\n"
+"POT-Creation-Date: 2026-09-04 17:44+0000\n"
+"PO-Revision-Date: 2026-08-31 15:30+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Vietnamese <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Vietnamese <https://translate.odoo.com/projects/odoo-s19-4/"
 "repair/vi/>\n"
 "Language: vi\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: repair
+#: model:ir.module.module,description:base.module_repair
+msgid ""
+"\n"
+"The aim is to have a complete module to manage all products repairs.\n"
+"====================================================================\n"
+"\n"
+"The following topics are covered by this module:\n"
+"------------------------------------------------------\n"
+"    * Add/remove products in the reparation\n"
+"    * Impact for stocks\n"
+"    * Warranty concept\n"
+"    * Repair quotation report\n"
+"    * Notes for the technician and for the final customer\n"
+msgstr ""
 
 #. module: repair
 #. odoo-python
@@ -52,18 +68,9 @@ msgid ""
 "* The 'New' status is used when a user is encoding a new and unconfirmed "
 "repair order.\n"
 "* The 'Confirmed' status is used when a user confirms the repair order.\n"
-"* The 'Under Repair' status is used when the repair is ongoing.\n"
-"* The 'Repaired' status is set when repairing is completed.\n"
+"* The 'Done' status is set when repairing is completed.\n"
 "* The 'Cancelled' status is used when user cancel repair order."
 msgstr ""
-"* Trạng thái 'Mới' được sử dụng khi người dùng đang nhập một lệnh sửa chữa "
-"mới và chưa xác nhận.\n"
-"* Trạng thái 'Đã xác nhận' được sử dụng khi người dùng xác nhận lệnh sửa "
-"chữa.\n"
-"* Trạng thái 'Đang sửa chữa' được sử dụng khi quá trình sửa chữa đang diễn "
-"ra.\n"
-"* Trạng thái 'Đã sửa chữa' được sử dụng khi quá trình sửa chữa hoàn tất.\n"
-"* Trạng thái 'Đã hủy' được sử dụng khi người dùng hủy lệnh sửa chữa."
 
 #. module: repair
 #: model_terms:ir.ui.view,arch_db:repair.report_repairorder
@@ -79,11 +86,6 @@ msgstr "<span class=\"col-6\">Đã xác nhận</span>"
 #: model_terms:ir.ui.view,arch_db:repair.stock_repair_type_kanban
 msgid "<span class=\"col-6\">Late</span>"
 msgstr "<span class=\"col-6\">Trễ</span>"
-
-#. module: repair
-#: model_terms:ir.ui.view,arch_db:repair.stock_repair_type_kanban
-msgid "<span class=\"col-6\">Under Repair</span>"
-msgstr "<span class=\"col-6\">Đang sửa chữa</span>"
 
 #. module: repair
 #: model_terms:ir.ui.view,arch_db:repair.stock_production_lot_view_form
@@ -491,6 +493,12 @@ msgid "Display Name"
 msgstr "Tên hiển thị"
 
 #. module: repair
+#: model:ir.model.fields.selection,name:repair.selection__repair_order__state__done
+#: model_terms:ir.ui.view,arch_db:repair.view_repair_order_form_filter
+msgid "Done"
+msgstr ""
+
+#. module: repair
 #: model_terms:ir.ui.view,arch_db:repair.view_repair_order_form
 msgid "End Repair"
 msgstr "Kết thúc sửa chữa"
@@ -521,11 +529,6 @@ msgstr "Người theo dõi"
 #: model:ir.model.fields,field_description:repair.field_repair_order__message_partner_ids
 msgid "Followers (Partners)"
 msgstr "Người theo dõi (Đối tác)"
-
-#. module: repair
-#: model:ir.model.fields,help:repair.field_repair_order__activity_type_icon
-msgid "Font awesome icon e.g. fa-tasks"
-msgstr "Font biểu tượng, ví dụ: fa-tasks"
 
 #. module: repair
 #: model_terms:ir.ui.view,arch_db:repair.view_repair_order_form_filter
@@ -740,6 +743,11 @@ msgid "Lot/Serial"
 msgstr "Lô/sê-ri"
 
 #. module: repair
+#: model:ir.model.fields,help:repair.field_repair_order__activity_type_icon
+msgid "Material Symbols icon e.g. checklist"
+msgstr ""
+
+#. module: repair
 #: model:ir.model.fields,field_description:repair.field_repair_order__message_has_error
 msgid "Message Delivery error"
 msgstr "Lỗi gửi tin nhắn"
@@ -836,11 +844,6 @@ msgstr "Số lượng lệnh sửa chữa chậm trễ"
 #: model:ir.model.fields,field_description:repair.field_stock_picking_type__count_repair_confirmed
 msgid "Number of Repair Orders Confirmed"
 msgstr "Số lượng lệnh sửa chữa đã xác nhận"
-
-#. module: repair
-#: model:ir.model.fields,field_description:repair.field_stock_picking_type__count_repair_under_repair
-msgid "Number of Repair Orders Under Repair"
-msgstr "Số lượng lệnh sửa chữa đang sửa chữa"
 
 #. module: repair
 #: model:ir.model.fields,field_description:repair.field_stock_picking_type__count_repair_ready
@@ -952,11 +955,6 @@ msgstr "Sản phẩm A"
 #: model_terms:ir.ui.view,arch_db:repair.report_repairorder
 msgid "Product B"
 msgstr "Sản phẩm B"
-
-#. module: repair
-#: model:ir.model.fields,field_description:repair.field_product_product__product_catalog_product_is_in_repair
-msgid "Product Catalog Product Is In Repair"
-msgstr "Danh mục sản phẩm Sản phẩm trong Sửa chữa"
 
 #. module: repair
 #: model:ir.model.fields,field_description:repair.field_repair_order__product_location_dest_id
@@ -1195,12 +1193,15 @@ msgid "Repair Tag"
 msgstr ""
 
 #. module: repair
+#: model:ir.module.module,summary:base.module_repair
+msgid "Repair damaged products"
+msgstr ""
+
+#. module: repair
 #. odoo-python
 #: code:addons/repair/models/repair.py:0
-msgid "Repair must be under repair in order to end reparation."
+msgid "Repair must be confirmed in order to end reparation."
 msgstr ""
-"Lệnh sửa chữa phải ở trạng thái 'Đang sửa chữa' trước khi có thể kết thúc "
-"việc sửa chữa"
 
 #. module: repair
 #. odoo-python
@@ -1214,12 +1215,6 @@ msgid "Repair part count"
 msgstr "Số lượng linh kiện sửa chữa"
 
 #. module: repair
-#: model:ir.model.fields.selection,name:repair.selection__repair_order__state__done
-#: model_terms:ir.ui.view,arch_db:repair.view_repair_order_form_filter
-msgid "Repaired"
-msgstr "Đã sửa"
-
-#. module: repair
 #: model:ir.model.fields,field_description:repair.field_stock_lot__repaired_count
 msgid "Repaired count"
 msgstr "Số lượng đã sửa chữa"
@@ -1227,6 +1222,7 @@ msgstr "Số lượng đã sửa chữa"
 #. module: repair
 #. odoo-python
 #: code:addons/repair/models/stock_warehouse.py:0
+#: model:ir.module.module,shortdesc:base.module_repair
 #: model:ir.ui.menu,name:repair.menu_repair_order
 #: model:ir.ui.menu,name:repair.repair_menu
 #: model:stock.picking.type,name:repair.picking_type_warehouse0_repair
@@ -1369,11 +1365,6 @@ msgstr "Đặt làm nháp"
 #: model_terms:ir.ui.view,arch_db:repair.view_repair_order_form_filter
 msgid "Show all records whose next activity date is past"
 msgstr "Hiển thị tất cả các bản ghi có ngày hoạt động tiếp theo đã quá hạn"
-
-#. module: repair
-#: model_terms:ir.ui.view,arch_db:repair.view_repair_order_form
-msgid "Start Repair"
-msgstr "Bắt đầu sửa chữa"
 
 #. module: repair
 #: model:ir.model.fields,field_description:repair.field_repair_order__state
@@ -1571,12 +1562,6 @@ msgid "Type of the exception activity on record."
 msgstr "Loại hoạt động ngoại lệ trong bản ghi."
 
 #. module: repair
-#: model:ir.model.fields.selection,name:repair.selection__repair_order__state__under_repair
-#: model_terms:ir.ui.view,arch_db:repair.view_repair_order_form_filter
-msgid "Under Repair"
-msgstr "Đang sửa chữa"
-
-#. module: repair
 #: model:ir.model.fields,field_description:repair.field_repair_order__under_warranty
 msgid "Under Warranty"
 msgstr "Đang được bảo hành"
@@ -1702,11 +1687,11 @@ msgstr "sale_order_id"
 msgid "text"
 msgstr ""
 
-#~ msgid "Check availability"
-#~ msgstr "Kiểm tra tình trạng còn hàng"
+msgid "Check availability"
+msgstr "Kiểm tra tình trạng còn hàng"
 
-#~ msgid "Website Messages"
-#~ msgstr "Thông báo trên trang web"
+msgid "Website Messages"
+msgstr "Thông báo trên trang web"
 
-#~ msgid "Website communication history"
-#~ msgstr "Lịch sử trao đổi qua trang web"
+msgid "Website communication history"
+msgstr "Lịch sử trao đổi qua trang web"

@@ -1,5 +1,6 @@
+import { after } from "@odoo/hoot";
 import { animationFrame } from "@odoo/hoot-mock";
-import { Model } from "@odoo/o-spreadsheet";
+import { Model, owlPlugins, stores } from "@odoo/o-spreadsheet";
 import { OdooDataProvider } from "@spreadsheet/data_sources/odoo_data_provider";
 import {
     defineActions,
@@ -8,10 +9,15 @@ import {
     getTestApp,
     makeTestApp,
     onRpc,
+    patchWithCleanup,
 } from "@web/../tests/web_test_helpers";
 import { setCellContent } from "./commands";
 import { addRecordsFromServerData, addViewsFromServerData } from "./data";
 import { markRaw } from "@odoo/owl";
+import { makeOwlPluginManager } from "./owl_plugins";
+
+const { ModelStore, globalStores, proxifyStoreMutation, DependencyContainer } = stores;
+const { ModelPlugin } = owlPlugins;
 
 /**
  * @typedef {import("@spreadsheet/../tests/helpers/data").ServerData} ServerData
@@ -25,6 +31,37 @@ export function setupDataSourceEvaluation(model) {
     });
 }
 
+export function makeSpreadsheetActionTestEnv(model, createMockApp = true) {
+    let container = undefined;
+    let getPlugin = undefined;
+    if (createMockApp) {
+        ({ getPlugin, container } = makeOwlPluginManager([], { model }));
+    } else {
+        container = new DependencyContainer();
+        container.inject(ModelStore, model);
+    }
+
+    after(() => {
+        container.dispose();
+    });
+
+    if (createMockApp) {
+        // stores use owl plugins in their constructor, which requires the owl scope of the mock app
+        for (const store of globalStores.getAll()) {
+            container.get(store);
+        }
+    }
+    return {
+        model: getPlugin ? getPlugin(ModelPlugin).model : undefined,
+        getStore(Store) {
+            const store = container.get(Store);
+            return proxifyStoreMutation(store, () => container.trigger("store-updated"));
+        },
+        __spreadsheet_stores__: container,
+        getPlugin,
+    };
+}
+
 /**
  * Create a spreadsheet model with a mocked server environnement
  *
@@ -33,6 +70,7 @@ export function setupDataSourceEvaluation(model) {
  * @param {object} [params.modelConfig]
  * @param {ServerData} [params.serverData] Data to be injected in the mock server
  * @param {function} [params.mockRPC] Mock rpc function
+ * @param {boolean} [params.createMockApp]
  * @returns {Promise<{ model: OdooSpreadsheetModel, env: Object }>}
  */
 export async function createModelWithDataSource(params = {}) {
@@ -49,10 +87,8 @@ export async function createModelWithDataSource(params = {}) {
         },
     });
     markRaw(model);
-    env.model = model;
-    // if (params.serverData) {
-    //     await addRecordsFromServerData(params.serverData);
-    // }
+    Object.assign(env, makeSpreadsheetActionTestEnv(model, params.createMockApp));
+
     setupDataSourceEvaluation(model);
     await animationFrame(); // initial async formulas loading
     return { model, env };
@@ -88,6 +124,12 @@ export async function makeSpreadsheetMockEnv(params = {}) {
     if (!getTestApp()) {
         await makeTestApp();
     }
+    patchWithCleanup(stores.GridRenderer.prototype, {
+        getBoxesWithAnimations(boxes) {
+            // disable animations for tests, as they won't work with hoot patched `requestAnimationFrame`
+            return boxes;
+        },
+    });
 }
 
 export function createModelFromGrid(grid) {

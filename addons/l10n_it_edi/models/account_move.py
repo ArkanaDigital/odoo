@@ -15,6 +15,7 @@ from odoo.tools import BinaryBytes, cleanup_xml_node, float_compare, float_is_ze
 from stdnum.it import codicefiscale, iva
 
 from odoo import _, api, Command, fields, models, modules
+from odoo.addons.base.models.res_partner_bank import sanitize_account_number
 from odoo.addons.account_edi_proxy_client.models.account_edi_proxy_user import AccountEdiProxyError
 from odoo.addons.l10n_it_edi.models.account_payment_method_line import L10N_IT_PAYMENT_METHOD_SELECTION
 from odoo.addons.l10n_it_edi.tools.remove_signature import remove_signature
@@ -24,6 +25,7 @@ _logger = logging.getLogger(__name__)
 
 
 WAITING_STATES = ('being_sent', 'processing', 'forward_attempt')
+SDI_RESETTABLE_STATES = (False, 'rejected', 'rejected_by_pa_partner')
 FATTURAPA_FILENAME_RE = r"[A-Z]{2}[A-Za-z0-9]{2,28}_[A-Za-z0-9]{0,5}\.((?i:xml\.p7m|xml))"
 
 
@@ -128,6 +130,11 @@ class AccountMove(models.Model):
         copy=False,
         init_storage=lambda model: None,  # avoid timeout on large databases
     )
+    l10n_it_available_document_type_ids = fields.Many2many(
+        comodel_name='l10n_it.document.type',
+        compute='_compute_l10n_it_available_document_type_ids',
+        compute_sudo=True,
+    )
 
     l10n_it_convention_code = fields.Char(
         string="Order/Convention Code",
@@ -145,32 +152,20 @@ class AccountMove(models.Model):
     # Computes
     # -------------------------------------------------------------------------
 
-    @api.depends('line_ids.matching_number', 'payment_state', 'matched_payment_ids')
+    @api.depends('partner_id', 'preferred_payment_method_line_id', 'country_code')
     def _compute_l10n_it_payment_method(self):
-        if self.env.company.account_fiscal_country_id.code != 'IT':
-            return
+        italian_moves = self.filtered(lambda move: move.country_code == 'IT')
 
-        move_lines_per_matching_number = self.env['account.move.line'].search([
-            ('matching_number', 'in', self.line_ids.filtered('matching_number').mapped('matching_number')),
-            ('company_id', '=', self.env.company.id),
-        ]).grouped('matching_number')
+        sale_documents = italian_moves.filtered(lambda move: move.is_sale_document())
+        (italian_moves - sale_documents).l10n_it_payment_method = 'MP05'
 
-        for move in self:
-            matching_numbers = move.line_ids.filtered('matching_number').mapped('matching_number')
-            if matching_numbers:
-                # We use matching_numbers[0] directly, assuming there's a valid key in the dictionary.
-                matching_lines = move_lines_per_matching_number.get(matching_numbers[0])
-                if matching_lines and matching_lines.payment_id:
-                    payment_method_line = matching_lines.payment_id.payment_method_line_id[0]
-                    if payment_method_line:
-                        move.l10n_it_payment_method = payment_method_line.l10n_it_payment_method
-                        continue  # Skip to the next move
-            if linked_payment := move.matched_payment_ids.filtered(lambda p: p.state != 'draft')[:1]:
-                move.l10n_it_payment_method = linked_payment.payment_method_line_id.l10n_it_payment_method
-                continue
-
-            # Default handling if no valid matching lines found or if conditions don't match
-            move.l10n_it_payment_method = move.origin_payment_id.payment_method_line_id.l10n_it_payment_method or move.l10n_it_payment_method or 'MP05'
+        for move in sale_documents:
+            move.l10n_it_payment_method = (
+                move.preferred_payment_method_line_id.l10n_it_payment_method
+                # Fallback to partner's configured details if they manually cleared preferred_payment_method_line_id
+                or move.partner_id.property_inbound_payment_method_line_id.l10n_it_payment_method
+                or 'MP05'
+            )
 
     @api.depends('state')
     def _compute_l10n_it_document_type(self):
@@ -180,6 +175,20 @@ class AccountMove(models.Model):
                 continue
 
             move.l10n_it_document_type = document_type.get(move._l10n_it_edi_get_document_type())
+
+    @api.depends('move_type', 'debit_origin_id')
+    def _compute_l10n_it_available_document_type_ids(self):
+        document_types = self.env['l10n_it.document.type'].search([])
+        for move in self:
+            if move.debit_origin_id:
+                if move.is_sale_document(include_receipts=True):
+                    move_type = 'sale_debit_note'
+                else:
+                    move_type = 'purchase_debit_note'
+            else:
+                move_type = move.move_type
+            available_document_type_ids = document_types.filtered(lambda doc_type: move_type in doc_type.move_types or [])
+            move.l10n_it_available_document_type_ids = available_document_type_ids or document_types
 
     @api.depends('commercial_partner_id.l10n_it_pa_index', 'company_id')
     def _compute_l10n_it_partner_pa(self):
@@ -210,8 +219,7 @@ class AccountMove(models.Model):
             We recognize these cases based on the taxes that target the VJ tax grids, which imply
             the use of VAT External Reverse Charge.
         """
-        purchases = self.filtered(lambda m: m.is_purchase_document())
-        others = self - purchases
+        purchases, others = self.partitioned(lambda m: m.is_purchase_document())
         for move in others:
             move.l10n_it_edi_is_self_invoice = False
         if purchases:
@@ -255,12 +263,21 @@ class AccountMove(models.Model):
         reverse_moves = super()._reverse_moves(default_values_list, cancel)
         return reverse_moves
 
-    @api.depends('l10n_it_edi_transaction')
+    @api.depends('l10n_it_edi_state')
     def _compute_show_reset_to_draft_button(self):
         # EXTENDS 'account'
         super()._compute_show_reset_to_draft_button()
         for move in self:
-            move.show_reset_to_draft_button = not (move.l10n_it_edi_state not in (False, 'rejected') and move.l10n_it_edi_transaction) and move.show_reset_to_draft_button
+            if move.l10n_it_edi_state not in SDI_RESETTABLE_STATES:
+                move.show_reset_to_draft_button = False
+
+    def _check_draftable(self):
+        if self.filtered(lambda move: move.l10n_it_edi_state not in SDI_RESETTABLE_STATES):
+            raise UserError(self.env._(
+                "You cannot reset to draft invoices that were sent to the SdI. "
+                "If you need to modify them, you must issue a credit or debit note."
+            ))
+        return super()._check_draftable()
 
     def _parse_xml_with_recovery(self, content, name=None):
         def parse_xml(parser, content):
@@ -433,9 +450,9 @@ class AccountMove(models.Model):
 
     def button_draft(self):
         # EXTENDS 'account'
-        for move in self:
-            move.l10n_it_edi_state = False
-        return super().button_draft()
+        res = super().button_draft()
+        self.l10n_it_edi_state = False
+        return res
 
     def _get_invoice_legal_documents(self, filetype, allow_fallback=False):
         # EXTENDS 'account'
@@ -497,7 +514,7 @@ class AccountMove(models.Model):
             # Down payment lines:
             # If there was a down paid amount that has been deducted from this move,
             # we need to put a reference to the down payment invoice in the DatiFattureCollegate tag
-            description = line.name
+            description = (line.with_context(display_default_code=False).label or '').replace('\n', ' ')
             if not is_downpayment and price_subtotal < 0:
                 downpayment_moves = line._get_downpayment_lines().move_id
                 if downpayment_moves:
@@ -506,7 +523,7 @@ class AccountMove(models.Model):
                     description = f"{description}{sep}{downpayment_moves_description}"
             # Workaround: remove line breaks due to Tax Agency portal bug.
             # This deviates from Odoo's standard behavior and must be reviewed if the issue gets fixed.
-            description = description and description.replace('\n', ' ').strip() or "NO NAME"
+            description = (description and description.strip()) or "NO NAME"
 
             # Price unit.
             if quantity:
@@ -660,22 +677,6 @@ class AccountMove(models.Model):
         )
         return not skip
 
-    def _prepare_product_base_line_for_taxes_computation(self, product_line):
-        """
-            Prepares tax base line. Rounding lines must appear in the XML,
-            so they are converted to regular lines with tax exemption code ('N2.2').
-        """
-        base_line = super()._prepare_product_base_line_for_taxes_computation(product_line)
-
-        if product_line.display_type == 'rounding':
-            base_line.update({
-                'quantity': 1,
-                'price_unit': -product_line.amount_currency,
-                'tax_ids': self._l10n_it_edi_search_tax_for_import(self.company_id, 0.0, l10n_it_exempt_reason='N2.2'),
-            })
-
-        return base_line
-
     def _l10n_it_edi_get_oss_line_values(self, aml, base_line, vat_tax, n7_tax, n22_tax):
         base_line['tax_ids'] = n7_tax
         tax_amount = (base_line['price_unit'] * (1 - (base_line['discount'] / 100.0))) * (vat_tax.amount / 100.0)
@@ -727,7 +728,6 @@ class AccountMove(models.Model):
                 'has_withholding': bool(withholding_tax),
                 'l10n_it_pension_fund_type': tax.l10n_it_pension_fund_type,
                 'l10n_it_exempt_reason': vat_tax.l10n_it_exempt_reason,
-                'description': vat_tax.description,
                 'skip': not tax._l10n_it_filter_kind('pension_fund') or tax.l10n_it_pension_fund_type == 'TC07',
             }
 
@@ -735,7 +735,7 @@ class AccountMove(models.Model):
 
         # Flags
         is_self_invoice = self.l10n_it_edi_is_self_invoice
-        document_type = self.l10n_it_document_type.code
+        document_type = self._l10n_it_edi_get_document_type()
 
         # Represent if the document is a reverse charge refund in a single variable
         reverse_charge = document_type in ['TD16', 'TD17', 'TD18', 'TD19']
@@ -744,7 +744,7 @@ class AccountMove(models.Model):
         convert_to_euros = self.currency_id.name != 'EUR'
 
         # Base lines.
-        base_amls = self.line_ids.filtered(lambda x: x.display_type == 'product' or x.display_type == 'rounding')
+        base_amls = self.line_ids.filtered(lambda x: x.display_type == 'product')
 
         n7_tax = self.env['account.chart.template'].ref('00ex7', raise_if_not_found=False)
         n22_tax = self.env['account.chart.template'].ref('00ex', raise_if_not_found=False)
@@ -757,6 +757,14 @@ class AccountMove(models.Model):
                 base_lines += self._l10n_it_edi_get_oss_line_values(aml, base_line, vat_tax, n7_tax, n22_tax)
             else:
                 base_lines.append(base_line)
+
+        cash_rounding_tax_exempt = self._l10n_it_edi_search_tax_for_import(self.company_id, 0.0, l10n_it_exempt_reason='N2.2')
+        for aml in self.line_ids.filtered(lambda x: x.display_type == 'rounding'):
+            base_line = self._prepare_cash_rounding_base_line_for_taxes_computation(aml)
+            if cash_rounding_tax_exempt:
+                base_line['tax_ids'] |= cash_rounding_tax_exempt
+            base_lines.append(base_line)
+
         tax_amls = self.line_ids.filtered('tax_repartition_line_id')
         tax_lines = [self._prepare_tax_line_for_taxes_computation(x) for x in tax_amls]
 
@@ -858,8 +866,13 @@ class AccountMove(models.Model):
         # Aggregated linked invoices
         linked_moves = (self._get_reconciled_invoices() | self.reversed_entry_id).filtered(lambda move: move.date <= self.date)
 
-        # Reduce downpayment views to a single recordset
-        linked_moves |= self.invoice_line_ids._get_downpayment_lines().move_id
+        # Reduce downpayment views to a single recordset.
+        # Only lines actually deducting a down payment (negative subtotal, mirroring the
+        # 'downpayment_lines' detection above) should pull in the down payment invoice(s):
+        # a down payment invoice/credit note referencing its own down payment line must not
+        # list every other move ever created against that same sale order line, including itself.
+        downpayment_deduction_lines = self.invoice_line_ids.filtered(lambda line: line.price_subtotal < 0)
+        linked_moves |= downpayment_deduction_lines._get_downpayment_lines().move_id - self
 
         # Withholding tax amounts.
 
@@ -895,7 +908,6 @@ class AccountMove(models.Model):
                 'aliquota_iva': grouping_key['vat_tax_amount_field'],
                 'ritenuta': 'SI' if grouping_key['has_withholding'] else None,
                 'natura': grouping_key['l10n_it_exempt_reason'],
-                'riferimento_amministrazione': html2plaintext(grouping_key['description']),
             })
 
         # Enasarco values.
@@ -1029,51 +1041,40 @@ class AccountMove(models.Model):
             The maximum threshold is 400 Euro, except for the forfettario tax regime (RF19), which can
             issue simplified invoices without the amount limit.
 
-            Deprecated since 18.0: use `not _l10n_it_edi_is_simplified_checks`.
-            It will be removed in ``20.0``.
+            A simplified invoice is chosen automatically only when the move and partner
+            checks pass and the partner's address is incomplete: with a complete address
+            an ordinary invoice is preferred.
         """
         self.ensure_one()
-        return not self._l10n_it_edi_is_simplified_checks()
+        partner = self.commercial_partner_id
+        return (
+            not self._l10n_it_edi_is_simplified_checks()
+            and partner._l10n_it_edi_export_check([
+                'partner_address_missing',
+                'partner_simplified',
+            ]).keys() == {'l10n_it_edi_partner_address_missing'}
+        )
 
     def _l10n_it_edi_is_simplified_checks(self):
-        """ Warnings can be ignored by setting `l10n_it_document_type == 'TD07'`
+        """ Warnings can be ignored by setting `l10n_it_document_type in ('TD07', 'TD08', 'TD09')'`
             in the optional `l10n_it_edi_ndd` module
         """
         errors = {}
         build_error = self._l10n_it_edi_build_move_error
 
-        if wrong_partner_moves := self.filtered(lambda move:
-            not move.commercial_partner_id._l10n_it_edi_is_italian()
-            or move.commercial_partner_id._l10n_it_edi_is_public_administration()
-        ):
-            errors['l10n_it_edi_move_simplified_partner'] = build_error(self.env._(
-                "Simplified Invoices (TD07) can only be used with domestic partners"
-                " that do not belong to the Public Administration."
-                " Please issue an ordinary invoice instead."),
-                records=wrong_partner_moves,
-            )
         if wrong_amount_moves := self.filtered(lambda move:
             move.company_id.l10n_it_tax_system != 'RF19' and move.amount_total > 400
         ):
             errors['l10n_it_edi_move_simplified_amount'] = build_error(self.env._(
-                "Simplified Invoices (TD07) can only be issued for a total amount of up to 400€."
+                "Simplified Invoices (TD07, TD08, TD09) can only be issued for a total amount of up to 400€."
                 " Please issue an ordinary invoice instead."),
                 records=wrong_amount_moves,
             )
         if reverse_charge_moves := self.filtered(lambda move: move.l10n_it_edi_is_self_invoice):
             errors['l10n_it_edi_move_simplified_self_invoice'] = build_error(self.env._(
-                "Simplified Invoices (TD07) cannot be used for self-invoices."
+                "Simplified Invoices (TD07, TD08, TD09) cannot be used for self-invoices."
                 " Please issue an ordinary invoice instead."),
                 records=reverse_charge_moves,
-            )
-        if incomplete_address_moves := self.filtered(lambda move:
-            'l10n_it_edi_partner_address_missing' not in move.commercial_partner_id._l10n_it_edi_export_check()
-        ):
-            errors['l10n_it_edi_move_simplified_address_complete'] = build_error(self.env._(
-                "Simplified Invoices (TD07) are generally preferred when partner address"
-                " is incomplete, so please issue an ordinary invoice instead."),
-                records=incomplete_address_moves,
-                level='info',
             )
         return errors
 
@@ -1152,7 +1153,8 @@ class AccountMove(models.Model):
             'TD07': {'move_types': ['out_invoice'],
                      'import_type': 'in_invoice',
                      'self_invoice': False,
-                     'simplified': True},
+                     'simplified': True,
+                     'debit_note': False},
             'TD08': {'move_types': ['out_refund'],
                      'import_type': 'in_refund',
                      'self_invoice': False,
@@ -1160,7 +1162,8 @@ class AccountMove(models.Model):
             'TD09': {'move_types': ['out_invoice'],
                      'import_type': 'in_invoice',
                      'self_invoice': False,
-                     'simplified': True},
+                     'simplified': True,
+                     'debit_note': True},
             'TD28': {'move_types': ['in_invoice', 'in_refund'],
                      'import_type': 'in_invoice',
                      'simplified': False,
@@ -1200,9 +1203,9 @@ class AccountMove(models.Model):
             Retrieve document type from the move. If not set, compare the features
             of the invoice to the requirements of each Document Type (TDxx)
             FatturaPA until you find a valid one.
-            If the user has selected (the default) TD01 and the partner has no complete address
-            then we can't issue a TD01 invoice - but if it's possible to issue a simplified invoice,
-            then switch automatically to the TD07.
+            If the user has selected an ordinary document type (TD01 invoice, TD04 credit note, TD05 debit note)
+            and the partner has no complete address, but a simplified document can be issued,
+            then switch automatically to the simplified one (TD07, TD08, TD09).
         """
         self.ensure_one()
 
@@ -1218,9 +1221,11 @@ class AccountMove(models.Model):
             return actual_values == expected_values
 
         if self.l10n_it_document_type:
-            if self.l10n_it_document_type.code == 'TD01' and self._l10n_it_edi_is_simplified():
-                return 'TD07'
-            return self.l10n_it_document_type.code
+            code = self.l10n_it_document_type.code
+            simplified_codes = {'TD01': 'TD07', 'TD04': 'TD08', 'TD05': 'TD09'}
+            if code in simplified_codes and self._l10n_it_edi_is_simplified():
+                return simplified_codes[code]
+            return code
 
         invoice_features = self._l10n_it_edi_features_for_document_type_selection()
         for document_type_code, document_type_features in self._l10n_it_edi_document_type_mapping().items():
@@ -1437,9 +1442,10 @@ class AccountMove(models.Model):
 
     def _l10n_it_edi_search_partner(self, company, vat, codice_fiscale, email, destination_code=None):
         base_domain = self.env['res.partner']._check_company_domain(company)
-        for domain in [vat and destination_code
+        has_vat = self.env['res.partner'].new({'vat': vat}).has_vat
+        for domain in [has_vat and destination_code
                            and [('vat', 'ilike', vat), ('l10n_it_pa_index', 'ilike', destination_code)],
-                       vat and [('vat', 'ilike', vat)],
+                       has_vat and [('vat', 'ilike', vat)],
                        codice_fiscale and [('l10n_it_codice_fiscale', 'in', ('IT' + codice_fiscale, codice_fiscale))],
                        email and ['|', ('email', '=', email), ('l10n_it_pec_email', '=', email)]]:
             if domain and (partner := self.env['res.partner'].search(domain + base_domain, limit=1)):
@@ -1799,12 +1805,27 @@ class AccountMove(models.Model):
             payments_info = self._l10n_it_edi_get_payment_info(tree)
             if payments_info['info']:
                 message_to_log.append(_("Total amount from the XML File: %s", payments_info['amount_total']))
+                # Search / Create the bank account only on incoming docs,
+                # unless the IBAN is one of ours (e.g. RiBa, where it's the debtor's one)
+                if self.move_type not in ('out_invoice', 'in_refund'):
+                    ibans = {
+                        sanitize_account_number(iban): iban
+                        for payment_info in payments_info['info']
+                        if (iban := payment_info.get('account_number'))
+                    }
+                    existing_ibans = {
+                        bank['sanitized_account_number']
+                        for bank in self.env['res.partner.bank'].sudo().with_context(active_test=False).search_read([
+                            ('sanitized_account_number', 'in', list(ibans)),
+                            ('partner_id', 'in', self.env['res.company']._cached_data()['partner_id']),
+                        ], ['sanitized_account_number'])
+                    }
+                    for sanitized_iban, iban in ibans.items():
+                        if sanitized_iban not in existing_ibans:
+                            self.env['account.edi.common'].with_company(company)._import_partner_bank(self, [iban])
                 payment_due_dates = []
                 self.l10n_it_payment_method = False
                 for payment_info in payments_info['info']:
-                    # Search / Create the bank account only on incoming docs
-                    if self.move_type not in ('out_invoice', 'in_refund') and (iban := payment_info.get('account_number')):
-                        self.env['account.edi.common'].with_company(company)._import_partner_bank(self, [iban])
                     # Set payment data on the bill
                     self.payment_reference = self.payment_reference or payment_info.get('payment_code', False)
                     payment_due_dates.append(payment_info.get('invoice_date_due'))
@@ -1819,12 +1840,17 @@ class AccountMove(models.Model):
 
             # Invoice lines ---------------------------------------
             tag_name = './/DettaglioLinee' if not extra_info['simplified'] else './/DatiBeniServizi'
+            invoice_line_vals = []
             for element in tree.xpath(tag_name):
-                move_line = self.invoice_line_ids.create({
+                # Use `new` to avoid intermediary write calls to the database
+                move_line = self.invoice_line_ids.new({
                     'move_id': self.id,
                     'tax_ids': [fields.Command.clear()]})
                 if move_line:
                     message_to_log += self._l10n_it_edi_import_line(element, move_line, extra_info)
+                    invoice_line_vals.append(move_line._convert_to_write(move_line._cache))
+
+            self.invoice_line_ids.create(invoice_line_vals)
 
             attachment_vals = []
             for element in tree.xpath('.//Allegati'):
@@ -1870,12 +1896,24 @@ class AccountMove(models.Model):
 
     @api.model
     def _is_prediction_enabled(self):
-        return self.env['ir.module.module'].search([('name', '=', 'account_accountant'), ('state', '=', 'installed')])
+        return 'account_accountant' in self.env['ir.module.module']._installed()
+
+    def _get_prediction_cache_value(self, key, predict_function):
+        self.ensure_one()
+        if not callable(predict_function):
+            return
+
+        predict_cache = self.env.cr.cache.setdefault(f'_l10n_it_edi_predict_cache_{self.id}', {})
+        if key in predict_cache:
+            return predict_cache[key]
+        predict_cache[key] = predict_function()
+        return predict_cache[key]
 
     def _l10n_it_edi_import_line(self, element, move_line, extra_info=None):
         extra_info = extra_info or {}
         company = move_line.company_id
         partner = move_line.partner_id
+        type_tax_use_domain = extra_info.get('type_tax_use_domain', [('type_tax_use', '=', 'purchase')])
         message_to_log = []
         predict_enabled = self._is_prediction_enabled()
 
@@ -1883,9 +1921,6 @@ class AccountMove(models.Model):
         line_elements = element.xpath('.//NumeroLinea')
         if line_elements:
             move_line.sequence = int(line_elements[0].text)
-
-        # Name.
-        move_line.name = " ".join(get_text(element, './/Descrizione').split())
 
         # Product.
         company_domain = self.env['res.company']._check_company_domain(company)
@@ -1914,8 +1949,15 @@ class AccountMove(models.Model):
                         move_line.product_id = product
                         break
 
+        # Extract description for prediction.
+        description = get_text(element, './/Descrizione')
+
         # If no product is found, try to find a product that may be fitting
-        predicted_values = self.env['account.move.line']._get_predicted_values(move_line.name, self) if predict_enabled else {}
+        prediction_key = (company.id, partner.id, description)
+        predicted_values = self._get_prediction_cache_value(
+            prediction_key,
+            lambda: self.env['account.move.line']._get_predicted_values(description, self),
+        ) if predict_enabled else {}
         if predict_enabled and not move_line.product_id:
             fitting_product = predicted_values.get('product_id')
             if fitting_product:
@@ -1928,6 +1970,18 @@ class AccountMove(models.Model):
             fitting_account = predicted_values.get('account_id')
             if fitting_account:
                 move_line.account_id = fitting_account
+
+        # Name.
+        if not move_line.name:
+            prefix = (
+                f'{move_line.product_id.with_context(display_default_code=False).display_name} '
+                if move_line.product_id
+                else None
+            )
+            if prefix and description.startswith(prefix):
+                move_line.name = description.removeprefix(prefix)
+            else:
+                move_line.name = description
 
         # Quantity.
         move_line.quantity = float(get_text(element, './/Quantita') or '1')
@@ -1963,7 +2017,7 @@ class AccountMove(models.Model):
         move_line.tax_ids = [Command.clear()]
         if percentage is not None:
             l10n_it_exempt_reason = get_text(element, './/Natura').upper() or False
-            extra_domain = extra_info.get('type_tax_use_domain', [('type_tax_use', '=', 'purchase')])
+            extra_domain = type_tax_use_domain
             if move_line.product_id:
                 extra_domain = list(extra_domain)
                 tax_scope = 'service' if move_line.product_id.type == 'service' else 'consu'
@@ -2078,13 +2132,7 @@ class AccountMove(models.Model):
 
         companies = self.mapped("company_id")
         companies_partners = companies.mapped("partner_id")
-        moves_full = self.filtered(lambda m: not m._l10n_it_edi_is_simplified())
-        moves_simplified = self.filtered(lambda m: m._l10n_it_edi_is_simplified())
-        moves_simplified_errors = {
-            k: v
-            for k, v in moves_simplified._l10n_it_edi_is_simplified_checks().items()
-            if v.get('level') in ('error', 'warning')
-        }
+        moves_simplified, moves_full = self.partitioned(lambda m: m._l10n_it_edi_is_simplified())
 
         full = moves_full.mapped("commercial_partner_id").filtered(lambda p: p not in companies_partners)
         simplified = moves_simplified.mapped("commercial_partner_id").filtered(lambda p: p not in companies_partners | full)
@@ -2093,12 +2141,11 @@ class AccountMove(models.Model):
         return {
             **companies._l10n_it_edi_export_check(),
             **full._l10n_it_edi_export_check(['partner_address_missing']),
-            **simplified._l10n_it_edi_export_check(['partner_country_missing']),
+            **simplified._l10n_it_edi_export_check(['partner_country_missing', 'partner_simplified']),
             **(simplified | full)._l10n_it_edi_export_check(['partner_vat_codice_fiscale_missing']),
             **representatives._l10n_it_edi_export_check(['partner_vat_missing']),
             **self._l10n_it_edi_base_export_check(),
             **self._l10n_it_edi_export_taxes_check(),
-            **moves_simplified_errors,
         }
 
     def _l10n_it_edi_build_move_error(self, message, records=None, level='warning'):
@@ -2137,6 +2184,9 @@ class AccountMove(models.Model):
             if moves := pa_moves.filtered(lambda move: not move.l10n_it_origin_document_type and (move.l10n_it_cig or move.l10n_it_cup)):
                 message = _("CIG/CUP fields of partner(s) are present, please fill out Origin Document Type field in the Electronic Invoicing tab.")
                 errors['move_missing_origin_document_field'] = build_error(message=message, records=moves)
+        if simplified_moves := self.filtered(lambda move: move._l10n_it_edi_is_simplified_document_type(move._l10n_it_edi_get_document_type())):
+            errors.update(simplified_moves._l10n_it_edi_is_simplified_checks())
+            errors.update(simplified_moves.commercial_partner_id._l10n_it_edi_export_check(['partner_simplified']))
         return errors
 
     def _l10n_it_edi_export_taxes_check(self):
@@ -2250,9 +2300,11 @@ class AccountMove(models.Model):
         ''' Create the xml file content.
             :return:    The XML content as bytestring.
         '''
-        qweb_template_name = (
-            'l10n_it_edi.account_invoice_it_FatturaPA_export' if not self._l10n_it_edi_is_simplified()
-            else 'l10n_it_edi.account_invoice_it_simplified_FatturaPA_export')
+        document_type = self._l10n_it_edi_get_document_type()
+        if self._l10n_it_edi_is_simplified_document_type(document_type):
+            qweb_template_name = 'l10n_it_edi.account_invoice_it_simplified_FatturaPA_export'
+        else:
+            qweb_template_name = 'l10n_it_edi.account_invoice_it_FatturaPA_export'
         xml_content = self.env['ir.qweb']._render(qweb_template_name, {
             **self._l10n_it_edi_get_values(pdf_values, extra_attachments),
             **self._l10n_it_edi_get_formatters()})

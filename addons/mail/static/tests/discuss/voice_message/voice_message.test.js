@@ -1,21 +1,20 @@
 import {
-    click,
-    contains,
     defineMailModels,
     mockGetMedia,
     openDiscuss,
     patchVoiceMessageAudio,
+    patchVoicePlayerFile,
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
-import { describe, globals, test } from "@odoo/hoot";
-import { mockDate } from "@odoo/hoot-mock";
-import { Command, patchWithCleanup, serverState } from "@web/../tests/web_test_helpers";
+import { describe, expect, mockDate, queryOne, test, waitFor, waitForNone } from "@odoo/hoot";
+import { Command, contains, serverState } from "@web/../tests/web_test_helpers";
 
+import { Mp3Encoder } from "@mail/discuss/voice_message/common/mp3_encoder";
 import { loadLamejs } from "@mail/discuss/voice_message/common/voice_message_service";
 import { VoicePlayer } from "@mail/discuss/voice_message/common/voice_player";
 import { patchable } from "@mail/discuss/voice_message/common/voice_recorder";
-import { Mp3Encoder } from "@mail/discuss/voice_message/common/mp3_encoder";
+import { patch } from "@web/core/utils/patch";
 
 describe.current.tags("desktop");
 defineMailModels();
@@ -23,32 +22,29 @@ defineMailModels();
 test("make voice message in chat", async () => {
     const file = new File([new Uint8Array(25000)], "test.mp3", { type: "audio/mp3" });
     const { promise: voicePlayerDrawn, resolve: resolveVoicePlayerDrawn } = Promise.withResolvers();
-    patchWithCleanup(Mp3Encoder.prototype, {
+    patch(Mp3Encoder.prototype, {
         encode() {},
         finish() {
             return Array(500).map(() => new Int8Array());
         },
     });
-    patchWithCleanup(patchable, { makeFile: () => file });
-    patchWithCleanup(VoicePlayer.prototype, {
+    patch(patchable, { makeFile: () => file });
+    patchVoicePlayerFile("/mail/static/src/audio/call-invitation.mp3");
+    patch(VoicePlayer.prototype, {
         async drawWave(...args) {
             const res = await super.drawWave(...args);
             resolveVoicePlayerDrawn();
             return res;
         },
-        async fetchFile() {
-            return super.fetchFile("/mail/static/src/audio/call-invitation.mp3");
-        },
-        _fetch(url) {
-            if (url.includes("call-invitation.mp3")) {
-                const realFetch = globals.fetch;
-                return realFetch(...arguments);
-            }
-            return super._fetch(...arguments);
-        },
     });
     mockGetMedia();
     const resources = patchVoiceMessageAudio();
+    patch(AudioContext.prototype, {
+        resume() {
+            // Simulate a long delay for 'resume' to resolve
+            return new Promise(() => {});
+        },
+    });
     const pyEnv = await startServer();
     const partnerId = pyEnv["res.partner"].create({ name: "Demo" });
     const channelId = pyEnv["discuss.channel"].create({
@@ -61,11 +57,11 @@ test("make voice message in chat", async () => {
     await start();
     await openDiscuss(channelId);
     await loadLamejs(); // simulated AudioProcess.process() requires lamejs fully loaded
-    await click(".o-mail-Composer button[title='More Actions']");
-    await contains(".dropdown-item:contains('Voice Message')");
+    await contains(".o-mail-Composer button[title='More Actions']:count(1)").click();
+    await waitFor(".dropdown-item:contains('Voice Message'):count(1)");
     mockDate("2023-07-31 13:00:00");
-    await click(".dropdown-item:contains('Voice Message')");
-    await contains(".o-mail-VoiceRecorder:text('00 : 00')");
+    await contains(".dropdown-item:contains('Voice Message'):count(1)").click();
+    await waitFor(".o-mail-VoiceRecorder:text('00 : 00'):count(1)");
     /**
      * Simulate 10 sec elapsed.
      * `patchDate` does not freeze the time, it merely changes the value of "now" at the time it was
@@ -83,15 +79,91 @@ test("make voice message in chat", async () => {
     mockDate("2023-07-31 13:00:10.500");
     // simulate some microphone data
     resources.audioProcessor.process([[new Float32Array(128)]]);
-    await contains(".o-mail-VoiceRecorder:text('00 : 10')");
-    await click(".o-mail-Composer button[title='Stop Recording']");
-    await contains(".o-mail-VoicePlayer");
+    await waitFor(".o-mail-VoiceRecorder:text('00 : 10')");
+    await contains(".o-mail-Composer button[title='Stop Recording']:count(1)").click();
+    await waitFor(".o-mail-VoicePlayer:count(1)");
     // wait for audio stream decode + drawing of waves
     await voicePlayerDrawn;
-    await contains(".o-mail-VoicePlayer button[title='Play']");
-    await contains(".o-mail-VoicePlayer canvas", { count: 2 }); // 1 for global waveforms, 1 for played waveforms
-    await contains(".o-mail-VoicePlayer:text('00 : 03')"); // duration of call-invitation_.mp3
-    await click(".o-mail-Composer button[title='More Actions']");
-    await contains(".dropdown-item:contains('Attach Files')"); // check menu loaded
-    await contains(".dropdown-item:contains('Voice Message')", { count: 0 }); // only 1 voice message at a time
+    await waitFor(".o-mail-VoicePlayer button[title='Play']:count(1)");
+    await waitFor(".o-mail-VoicePlayer canvas:count(2)"); // 1 for global waveforms, 1 for played waveforms
+    await waitFor(".o-mail-VoicePlayer-time:text('00 : 00 / 00 : 03'):count(1)"); // duration of call-invitation.mp3
+    await contains(".o-mail-Composer button[title='More Actions']:count(1)").click();
+    await waitFor(".dropdown-item:contains('Attach Files'):count(1)"); // check menu loaded
+    await waitForNone(".dropdown-item:contains('Voice Message')"); // only 1 voice message at a time
+});
+
+test("playback rate control is only shown on voice messages", async () => {
+    patchVoiceMessageAudio();
+    patchVoicePlayerFile("/mail/static/src/audio/call-invitation.mp3");
+    const pyEnv = await startServer();
+    const channelId = pyEnv["discuss.channel"].create({ channel_type: "channel", name: "General" });
+    pyEnv["mail.message"].create([
+        {
+            attachment_ids: [
+                Command.create({
+                    mimetype: "audio/mpeg",
+                    res_id: channelId,
+                    res_model: "discuss.channel",
+                    voice_ids: [Command.create({})],
+                }),
+            ],
+            body: "Voice message",
+            message_type: "comment",
+            model: "discuss.channel",
+            res_id: channelId,
+        },
+        {
+            attachment_ids: [
+                Command.create({
+                    mimetype: "audio/mpeg",
+                    res_id: channelId,
+                    res_model: "discuss.channel",
+                }),
+            ],
+            message_type: "comment",
+            model: "discuss.channel",
+            res_id: channelId,
+        },
+    ]);
+    await start();
+    await openDiscuss(channelId);
+    await waitFor(".o-mail-AttachmentContainer:count(2)");
+    await waitFor(".o-mail-VoicePlaybackRate:count(1)");
+    await waitFor(".o-mail-Message:has(:text('Voice message')) .o-mail-VoicePlaybackRate:count(1)");
+});
+
+test("can change voice message playback speed and replay it once it ends", async () => {
+    patchVoiceMessageAudio();
+    patchVoicePlayerFile("/mail/static/src/audio/call-invitation.mp3");
+    const pyEnv = await startServer();
+    const channelId = pyEnv["discuss.channel"].create({ channel_type: "channel", name: "General" });
+    pyEnv["mail.message"].create({
+        attachment_ids: [
+            Command.create({
+                mimetype: "audio/mpeg",
+                res_id: channelId,
+                res_model: "discuss.channel",
+                voice_ids: [Command.create({})],
+            }),
+        ],
+        message_type: "comment",
+        model: "discuss.channel",
+        res_id: channelId,
+    });
+    await start();
+    await openDiscuss(channelId);
+    await waitFor(".o-mail-VoicePlayer-time:text('00 : 00 / 00 : 03'):count(1)"); // duration of call-invitation.mp3
+    await contains(".o-mail-VoicePlayer button[title='Play']:count(1)").click();
+    await waitFor(".o-mail-VoicePlayer button[title='Pause']:count(1)");
+    await waitFor("button[title='Playback speed']:text('1x'):count(1)");
+    await contains("button[title='Playback speed']:count(1)").click();
+    await waitFor("button[title='Playback speed']:text('1.25x'):count(1)");
+    const audio = queryOne(".o-mail-VoicePlayer audio");
+    expect(audio.playbackRate).toBe(1.25);
+    audio.currentTime = 3; // jump to the end of playback so replay has to rewind to 00 : 00
+    audio.pause(); // stop playback, as browsers do when the audio ends
+    audio.dispatchEvent(new Event("ended"));
+    await contains(".o-mail-VoicePlayer button[title='Replay']:count(1)").click();
+    await waitFor(".o-mail-VoicePlayer-time:text('00 : 00 / 00 : 03'):count(1)");
+    await waitFor(".o-mail-VoicePlayer button[title='Pause']:count(1)");
 });

@@ -1,13 +1,15 @@
 import { DiscussAvatar } from "@mail/core/common/discuss_avatar";
 import { MessagingMenu } from "@mail/core/public_web/messaging_menu/messaging_menu";
-import { useDiscussSystray } from "@mail/utils/common/hooks";
+import { useDiscussSystray, useHover } from "@mail/utils/common/hooks";
 import { incrementFn } from "@mail/utils/common/signal";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 
 import { Component, computed, signal, useEffect } from "@odoo/owl";
 
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { useDropdownState } from "@web/core/dropdown/dropdown_hooks";
 import { registry } from "@web/core/registry";
+import { user } from "@web/core/user";
 import { useService } from "@web/core/utils/hooks";
 
 export class MessagingMenuInDropdown extends Component {
@@ -16,11 +18,16 @@ export class MessagingMenuInDropdown extends Component {
 
     setup() {
         super.setup();
-        this.discussSystray = useDiscussSystray();
-        this.store = useService("mail.store");
-        this.ui = useService("ui");
+        this.ancestors = useAncestors();
         this.dropdown = useDropdownState();
+        this.buttonRef = signal.ref();
+        this.discussSystray = useDiscussSystray(this.dropdown);
+        this.store = useService("mail.store");
         this.menuState = computed(() => this.store.messagingMenuSystrayState);
+        // Reading the state creates it, which starts the initial load of the menu content.
+        useHover([this.buttonRef], {
+            onHover: () => void this.store.messagingMenuSystrayState,
+        });
         // Bound once so `close` is a stable (useProps.static) handler.
         this.closeDropdown = this.dropdown.close.bind(this.dropdown);
         this.searchInputAutofocus = signal(0);
@@ -36,6 +43,12 @@ export class MessagingMenuInDropdown extends Component {
     }
 }
 
-registry
-    .category("systray")
-    .add("mail.messaging_menu", { Component: MessagingMenuInDropdown }, { sequence: 25 });
+registry.category("systray").add(
+    "mail.messaging_menu",
+    {
+        Component: MessagingMenuInDropdown,
+        // A light user does not chat: its conversations are handled for it.
+        isDisplayed: () => user.isRegularUser,
+    },
+    { sequence: 25 }
+);

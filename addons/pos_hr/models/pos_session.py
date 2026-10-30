@@ -92,11 +92,11 @@ class PosSession(models.Model):
 
         return data
 
-    def get_cash_in_out_list(self):
-        cash_in_out_list = super().get_cash_in_out_list()
-        if self.config_id.module_pos_hr:
-            for cash_in_out in cash_in_out_list:
-                cash_move = self.env['account.bank.statement.line'].browse(cash_in_out['id'])
-                if cash_move.employee_id:
-                    cash_in_out['cashier_name'] = cash_move.partner_id.name
-        return cash_in_out_list
+    def try_cash_in_out(self, _type, amount, reason, partner_id, **kwargs):
+        super().try_cash_in_out(_type, amount, reason, partner_id)
+        if employee_id := kwargs.get('employee_id', False):
+            last_line = self.bank_statement_line_ids[:1]
+            last_line.employee_id = employee_id
+
+    def _get_cash_move_cashier_name(self, cash_move):
+        return cash_move.employee_id.name or super()._get_cash_move_cashier_name(cash_move)

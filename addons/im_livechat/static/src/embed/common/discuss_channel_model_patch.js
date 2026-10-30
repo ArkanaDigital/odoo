@@ -8,21 +8,20 @@ import { patch } from "@web/core/utils/patch";
 const discussChannelPatch = {
     setup() {
         super.setup(...arguments);
-        this.livechatWelcomeMessage = fields.One("mail.message", {
-            compute() {
-                if (this.hasWelcomeMessage) {
-                    const livechatService = this.store.env.services["im_livechat.livechat"];
-                    return {
-                        id: -0.2 - this.id,
-                        body: livechatService.options.default_message,
-                        thread: this.thread,
-                        author_id: [
-                            ...this.livechat_agent_history_ids,
-                            ...this.livechat_bot_history_ids,
-                        ].sort((a, b) => a.id - b.id)[0]?.partner_id,
-                    };
-                }
-            },
+        this.livechatWelcomeMessage = this.computed(() => {
+            if (!this.hasWelcomeMessage) {
+                return undefined;
+            }
+            const livechatService = this.store.env.services["im_livechat.livechat"];
+            return this.store["mail.message"].insert({
+                id: -0.2 - this.id,
+                body: livechatService.options.default_message,
+                thread: this.thread,
+                author_id: [
+                    ...this.livechat_agent_history_ids,
+                    ...this.livechat_bot_history_ids,
+                ].sort((a, b) => a.id - b.id)[0]?.partner_id,
+            });
         });
         this.storeAsActiveVisitorLivechats = fields.One("Store", {
             /** @this {import("models").DiscussChannel} */
@@ -35,35 +34,29 @@ const discussChannelPatch = {
             },
             inverse: "activeVisitorLivechats",
         });
-        this._toggleChatbot = fields.Attr(false, {
-            compute() {
-                return Boolean(
-                    this.channel?.chatbot &&
-                        !this.channel.chatbot.completed &&
-                        !this.channel.livechat_end_dt
-                );
+        this.onChange(
+            () => [this.hasActiveChatbot],
+            function onChangeHasActiveChatbot(hasActiveChatbot) {
+                if (!hasActiveChatbot) {
+                    return;
+                }
+                this.isLoadedPromise.then(() => this.channel.chatbot.start());
+                return () => this.isLoadedPromise.then(() => this.channel?.chatbot?.stop());
             },
-            onUpdate() {
-                const shouldToggle = this._toggleChatbot;
-                this.isLoadedPromise.then(() => {
-                    if (shouldToggle) {
-                        this.channel.chatbot.start();
-                    } else {
-                        this.channel?.chatbot?.stop();
-                    }
-                });
-            },
-            eager: true,
-        });
+            { immediate: true }
+        );
     },
     get avatarUrl() {
         if (this.channel_type !== "livechat") {
             return super.avatarUrl;
         }
+        if (this.livechatVisitorMember && this.self_member_id?.notEq(this.livechatVisitorMember)) {
+            return this.livechatVisitorMember.avatarUrl;
+        }
         let bestScore = -1;
         let bestMemberHistory;
         // Agents are preferred over bots, current members over former members, and higher IDs over lower IDs
-        for (const memberHistory of this.livechat_channel_member_history_ids.sort(
+        for (const memberHistory of [...this.livechat_channel_member_history_ids].sort(
             (a, b) => b.id - a.id
         )) {
             if (memberHistory.livechat_member_type === "visitor") {
@@ -79,14 +72,21 @@ const discussChannelPatch = {
         }
         return bestMemberHistory?.partner_id?.avatarUrl || super.avatarUrl;
     },
+    get hasActiveChatbot() {
+        return Boolean(
+            this.channel?.chatbot &&
+                !this.channel.chatbot.completed &&
+                !this.channel.livechat_end_dt
+        );
+    },
     get hasAttachmentPanel() {
         return this.channel_type !== "livechat" && super.hasAttachmentPanel;
     },
     get hasWelcomeMessage() {
         return this.channel_type === "livechat" && !this.chatbot;
     },
-    get isLastMessageFromCustomer() {
-        return this.newestPersistentOfAllMessage?.isSelfAuthored;
+    get isLastCommentFromVisitor() {
+        return this.newestPersistentCommentOfAllMessages?.isSelfAuthored;
     },
     _onDeleteChatWindow() {
         if (this.isTransient && this.channel_type === "livechat") {

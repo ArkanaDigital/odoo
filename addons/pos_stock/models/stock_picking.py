@@ -1,5 +1,6 @@
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
+from odoo.tools import float_is_zero, sql
 
 
 class StockPicking(models.Model):
@@ -24,11 +25,13 @@ class StockPicking(models.Model):
         """We'll create some picking based on order_lines"""
 
         pickings = self.env['stock.picking']
-        stockable_lines = lines.filtered(lambda l: l.product_id.type == 'consu' and not l.product_id.uom_id.is_zero(l.qty))
+        stockable_lines = lines.filtered(
+            lambda l: l.product_id.type == 'consu'
+            and not l.product_id.uom_id.is_zero(l._get_qty_to_move())
+        )
         if not stockable_lines:
             return pickings
-        positive_lines = stockable_lines.filtered(lambda l: l.qty > 0)
-        negative_lines = stockable_lines - positive_lines
+        positive_lines, negative_lines = stockable_lines.partitioned(lambda l: l._get_qty_to_move() > 0)
 
         if positive_lines:
             location_id = picking_type.default_location_src_id.id
@@ -45,6 +48,49 @@ class StockPicking(models.Model):
 
             pickings |= positive_picking
         if negative_lines:
+            refunded_order = negative_lines.mapped('refunded_orderline_id.order_id')
+            if len(refunded_order) == 1:
+                refundable_lines = refunded_order.lines.filtered(
+                    lambda l: l.product_id.type == 'consu' and not l.product_uom_id.is_zero(l.qty)
+                )
+                is_full_refund = all(
+                    float_is_zero(
+                        line.qty - line.refunded_qty,
+                        precision_rounding=line.currency_id.rounding,
+                    )
+                    for line in refundable_lines
+                )
+                pickings_to_cancel = refunded_order.picking_ids.filtered(lambda p: p.state not in ('done', 'cancel'))
+                has_done_pickings = refunded_order.picking_ids.filtered(lambda p: p.state == 'done')
+
+                if is_full_refund and pickings_to_cancel and not has_done_pickings:
+                    # Full refund before delivery: cancel the picking
+                    pickings_to_cancel.action_cancel()
+                    return pickings
+                elif not is_full_refund and pickings_to_cancel and not has_done_pickings:
+                    # Partial refund before delivery: reduce the picking quantities
+                    moves_to_reassign = self.env['stock.move']
+                    for negative_line in negative_lines:
+                        refunded_line = negative_line.refunded_orderline_id
+                        moves = pickings_to_cancel.move_ids.filtered(
+                            lambda m: m.product_id == refunded_line.product_id
+                            and m.never_product_template_attribute_value_ids.ids == refunded_line.attribute_value_ids.ids
+                        )
+                        cancel_qty = abs(negative_line.qty)
+                        for move in moves:
+                            new_qty = max(0, move.product_uom_qty - cancel_qty)
+                            if float_is_zero(new_qty, precision_rounding=negative_line.currency_id.rounding):
+                                move._action_cancel()
+                                move.unlink()
+                            else:
+                                move.product_uom_qty = new_qty
+                                moves_to_reassign |= move
+                    # Lowering the demand unreserves the move (chained moves then fall
+                    # back to 'waiting'); re-reserve so the picking stays 'ready'.
+                    moves_to_reassign._action_assign()
+                    self.env.flush_all()
+                    # Skip creating a return picking since nothing was delivered
+                    return pickings
             if picking_type.return_picking_type_id:
                 return_picking_type = picking_type.return_picking_type_id
                 return_location_id = return_picking_type.default_location_dest_id.id
@@ -70,7 +116,7 @@ class StockPicking(models.Model):
             'picking_id': self.id,
             'picking_type_id': self.picking_type_id.id,
             'product_id': first_line.product_id.id,
-            'product_uom_qty': abs(sum(order_lines.mapped('qty'))),
+            'product_uom_qty': abs(sum(line._get_qty_to_move() for line in order_lines)),
             'location_id': self.location_id.id,
             'location_dest_id': self.location_dest_id.id,
             'company_id': self.company_id.id,
@@ -118,15 +164,6 @@ class StockPickingType(models.Model):
 
     has_stock_reports_to_print = fields.Boolean(compute='_compute_has_stock_reports_to_print')
 
-    @api.depends(
-        'auto_print_delivery_slip',
-        'auto_print_return_slip',
-        'auto_print_reception_report',
-        'auto_print_reception_report_labels',
-        'auto_print_product_labels',
-        'auto_print_lot_labels',
-        'auto_print_packages',
-    )
     def _compute_has_stock_reports_to_print(self):
         for record in self:
             record.has_stock_reports_to_print = (
@@ -137,6 +174,7 @@ class StockPickingType(models.Model):
                 or record.auto_print_product_labels
                 or record.auto_print_lot_labels
                 or record.auto_print_packages
+                or (record._fields.get('auto_print_cmr_report') and record.auto_print_cmr_report)
             )
 
     @api.depends('warehouse_id')
@@ -148,6 +186,13 @@ class StockPickingType(models.Model):
 
     @api.constrains('active')
     def _check_active(self):
+        # The default for pos.config.picking_type_id may create picking types while
+        # that column is still being added, so this constraint cannot query it yet.
+        if self.env.context.get('module') and not sql.column_exists(
+            self.env.cr, self.env['pos.config']._table, 'picking_type_id',
+        ):
+            return
+
         for picking_type in self:
             if picking_type.active:
                 continue

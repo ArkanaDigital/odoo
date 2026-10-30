@@ -60,7 +60,7 @@ class ResPartner(models.Model):
             return data_list
         for partner in self.filtered("sale_order_count"):
             data_list[partner.id].append({
-                "icon": "attach_money",
+                "icon": "shopping_cart",
                 "value": partner.sale_order_count,
                 "label": self.env._("Sale Orders"),
             })
@@ -106,7 +106,10 @@ class ResPartner(models.Model):
                 "any",
                 [("commercial_partner_id", "in", commercial_partners.ids)],
             ),
-            ("order_line", "any", [("untaxed_amount_to_invoice", ">", 0)]),
+            ("order_line", "any", [
+                "|", ("untaxed_amount_to_invoice", ">", 0),
+                     ("invoice_status", "=", "no"),
+            ]),
             ("state", "=", "sale"),
             ("invoicing_closed", "=", False),
         ])

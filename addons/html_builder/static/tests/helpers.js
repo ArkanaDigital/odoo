@@ -1,8 +1,7 @@
-import { useSubEnv } from "@web/owl2/utils";
 import { Builder } from "@html_builder/builder";
+import { BuilderOptionsPlugin } from "@html_builder/core/builder_options_plugin";
 import { CORE_PLUGINS } from "@html_builder/core/core_plugins";
 import { Image } from "@html_builder/core/img";
-import { BuilderOptionsPlugin } from "@html_builder/core/builder_options_plugin";
 import { SetupEditorPlugin } from "@html_builder/core/setup_editor_plugin";
 import { revertPreview } from "@html_builder/core/utils";
 import { BackgroundShapeOptionPlugin } from "@html_builder/plugins/background_option/background_shape_option_plugin";
@@ -11,35 +10,35 @@ import { setContent } from "@html_editor/../tests/_helpers/selection";
 import { insertText } from "@html_editor/../tests/_helpers/user_actions";
 import { LocalOverlayContainer } from "@html_editor/local_overlay_container";
 import { Plugin } from "@html_editor/plugin";
-import { defineMailModels } from "@mail/../tests/mail_test_helpers";
 import { after, click, queryAll, queryFirst } from "@odoo/hoot";
-import { animationFrame, waitForNone, queryOne, waitFor, advanceTime, tick } from "@odoo/hoot-dom";
-import { Component, onMounted, xml, proxy, signal } from "@odoo/owl";
+import { advanceTime, animationFrame, queryOne, tick, waitFor, waitForNone } from "@odoo/hoot-dom";
+import { Component, onMounted, proxy, signal, t, useProps, xml } from "@odoo/owl";
 import {
     contains,
     defineModels,
+    defineWebModels,
     models,
     mountWithCleanup,
     onRpc,
-    patchWithCleanup,
     waitUntilIdle,
 } from "@web/../tests/web_test_helpers";
 import { loadBundle } from "@web/core/assets";
 import { isBrowserFirefox } from "@web/core/browser/feature_detection";
 import { registry } from "@web/core/registry";
-import { uniqueId } from "@web/core/utils/functions";
 import { delay } from "@web/core/utils/concurrency";
+import { uniqueId } from "@web/core/utils/functions";
+import { patch } from "@web/core/utils/patch";
 
 // Avoid server requests for test snippet thumbnails.
 export const dummyThumbnailImg =
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z9DwHwAGBQKA3H7sNwAAAABJRU5ErkJggg==";
 
-export function patchWithCleanupImg() {
+export function patchImg() {
     const defaultImg = dummyThumbnailImg;
-    patchWithCleanup(Image, {
+    patch(Image, {
         template: xml`<img t-att-data-src="this.props.src" t-att-alt="this.props.alt" t-att-class="this.props.class" t-att-style="this.props.style" t-att="this.props.attrs" src="${defaultImg}"/>`,
     });
-    patchWithCleanup(Image.prototype, {
+    patch(Image.prototype, {
         loadImage: () => {},
         getSvg: function () {
             this.isSvg = () => false;
@@ -120,26 +119,27 @@ class BuilderContainer extends Component {
                     </div>
                 </div>
             </div>
-            <LocalOverlayContainer localOverlay="this.overlayRef" identifier="this.env.localOverlayContainerKey"/>
-            <div t-if="this.state.isEditing" t-att-class="{'o_builder_sidebar_open': this.state.isEditing and this.state.showSidebar}" class="o-website-builder_sidebar border-start border-dark">
+            <LocalOverlayContainer localOverlay="this.overlayRef" identifier="this.localOverlayContainerKey"/>
+            <div t-if="this.state.isEditing" t-att-class="{'o_builder_sidebar_open': this.state.isEditing and this.state.showSidebar}" class="o_website_builder_sidebar border-start border-dark">
                 <Builder t-props="this.getBuilderProps()"/>
             </div>
         </div>`;
     static components = { Builder, LocalOverlayContainer };
-    static props = {
-        content: String,
-        editableSelector: String,
-        headerContent: String,
-        Plugins: Array,
-        onEditorLoad: Function,
-        iframeLangDir: String,
-        builderProps: { type: Object, optional: true },
-    };
+    props = useProps({
+        content: t.string(),
+        editableSelector: t.string(),
+        headerContent: t.string(),
+        Plugins: t.array(),
+        onEditorLoad: t.function(),
+        iframeLangDir: t.string(),
+        builderProps: t.object().optional(),
+    });
 
     containerRef = signal.ref();
     websitePreviewRef = signal.ref();
     iframeRef = signal.ref();
     overlayRef = signal.ref();
+    localOverlayContainerKey = uniqueId("test");
 
     setup() {
         this.state = proxy({ isMobile: false, isEditing: false, showSidebar: true });
@@ -164,9 +164,6 @@ class BuilderContainer extends Component {
                 resolve(el);
             });
         });
-        useSubEnv({
-            builderRef: this.containerRef,
-        });
     }
 
     onLoad() {
@@ -175,6 +172,7 @@ class BuilderContainer extends Component {
 
     getBuilderProps() {
         return {
+            localOverlayContainerKey: this.localOverlayContainerKey,
             onEditorLoad: this.props.onEditorLoad,
             closeEditor: () => {},
             snippetsName: "",
@@ -234,11 +232,11 @@ export async function setupHTMLBuilder(
         builderProps,
     } = {}
 ) {
-    defineMailModels();
+    defineWebModels();
     defineModels([IrUiView]);
 
     if (patchImages) {
-        patchWithCleanupImg();
+        patchImg();
     }
 
     if (!snippets) {
@@ -264,7 +262,7 @@ export async function setupHTMLBuilder(
         };
     }
 
-    patchWithCleanup(IrUiView.prototype, {
+    patch(IrUiView.prototype, {
         render_public_asset: () => getSnippetView(snippets),
     });
 
@@ -294,10 +292,10 @@ export async function setupHTMLBuilder(
         await animationFrame();
         await waitUntilIdle(comp);
     };
-    patchWithCleanup(Builder.prototype, {
+    patch(Builder.prototype, {
         setup() {
             super.setup();
-            patchWithCleanup(this.env.editorBus, {
+            patch(this.env.editorBus, {
                 trigger(eventName, detail) {
                     if (eventName === "DOM_UPDATED") {
                         lastUpdatePromise = detail.updatePromise;
@@ -315,7 +313,7 @@ export async function setupHTMLBuilder(
 
     let editableContent;
     // hack to get a promise that resolves when editor is ready
-    patchWithCleanup(SetupEditorPlugin.prototype, {
+    patch(SetupEditorPlugin.prototype, {
         setup() {
             super.setup();
             _resolve();
@@ -327,7 +325,7 @@ export async function setupHTMLBuilder(
 
     // Remove as soon as the background shape are not always instantiated when
     // entering in edit mode.
-    patchWithCleanup(BackgroundShapeOptionPlugin.prototype, {
+    patch(BackgroundShapeOptionPlugin.prototype, {
         getShapeStylePosition(shapeId, flip) {
             if (!this.shapeStyles[this.convertShapeIdForStyleSearch(shapeId)]) {
                 return [50, 50];
@@ -370,7 +368,7 @@ export async function setupHTMLBuilder(
         getEditor: () => attachedEditor,
         getEditableContent: () => editableContent,
         contentEl: comp.iframeRef().contentDocument.body.firstChild.firstChild,
-        builderEl: comp.env.builderRef().querySelector(".o-website-builder_sidebar"),
+        builderEl: comp.containerRef().querySelector(".o_website_builder_sidebar"),
         waitSidebarUpdated,
     };
 }
@@ -387,7 +385,7 @@ let isBuilderOptionPatched = false;
 
 export function addBuilderOption(option) {
     if (!isBuilderOptionPatched) {
-        patchWithCleanup(BuilderOptionsPlugin.prototype, {
+        patch(BuilderOptionsPlugin.prototype, {
             computeBuilderOptionsFromTemplate() {
                 const options = super.computeBuilderOptionsFromTemplate();
                 const normalizedTestOptions = testBuilderOptions.map(
@@ -617,7 +615,7 @@ export async function editBuilderRangeValue(selector, newValue) {
 }
 
 export async function unfoldAllOptionsGroups() {
-    for (const i of queryAll(".options-container-header i[data-icon='arrow_right']")) {
+    for (const i of queryAll(".o_hb_options_container_header i[data-icon='arrow_right']")) {
         await click(i);
     }
     await animationFrame();

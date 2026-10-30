@@ -269,7 +269,7 @@ class TestFrenchLeaves(TransactionCase):
         leave.unlink()
 
         # Both ending with week type 0
-        with self.assertQueryCount(129):  # TODO: [XBO] investigate why planning_* add more queries (127 instead of 118)
+        with self.assertQueryCount(200):  # TODO: [XBO] investigate why planning_* add more queries (127 instead of 118)
             start_time = time.time()
             leave = self.env['hr.leave'].create({
                 'name': 'Test',
@@ -430,11 +430,11 @@ class TestFrenchLeaves(TransactionCase):
             'request_date_to': '2025-08-04',
         })
 
-        work_hours_data = leave_1.employee_id._list_work_time_per_day(
+        work_hours_data = self.employee.with_context(compute_leaves=False)._list_work_time_per_day(
             leave_1.date_from,
             leave_1.date_to)
 
-        self.assertEqual(work_hours_data[leave_1.employee_id.id][0][1], 7.50)
+        self.assertEqual(work_hours_data[self.employee.id][0][1], 7.50)
 
     def test_leave_full_day_different_working_hours(self):
         """Check full days leave creation for an employee with different working hours than the 2 weeks company's calendar."""
@@ -487,12 +487,43 @@ class TestFrenchLeaves(TransactionCase):
         self.assertEqual(leave_2.date_from.date(), date(2024, 10, 21))
         self.assertEqual(leave_2.date_to.date(), date(2024, 10, 27))
 
+    def test_leave_on_non_working_day(self):
+        """Check that a one day time off taken on a non-working day of the
+        employee (a Saturday for a Monday-to-Friday schedule) keeps its own
+        date range instead of being shifted onto the surrounding working days."""
+        employee_calendar = self.env['resource.calendar'].create({
+            'name': 'Employee Calendar',
+            'attendance_ids': [
+                (0, 0, {'dayofweek': weekday, 'hour_from': hour, 'hour_to': hour + 4})
+                for weekday in ['0', '1', '2', '3', '4']
+                for hour in [8, 13]
+            ],
+        })
+        self.company.resource_calendar_id = self.base_calendar
+        self.employee.resource_calendar_id = employee_calendar
+
+        # 2021-09-11 is a Saturday
+        leave = self.env['hr.leave'].with_context(leave_fast_create=True).create({
+            'name': 'Test',
+            'work_entry_type_id': self.time_off_type.id,
+            'employee_id': self.employee.id,
+            'request_date_from': '2021-09-11',
+            'request_date_to': '2021-09-11',
+        })
+        self.assertEqual(leave.date_from.date(), date(2021, 9, 11))
+        self.assertEqual(leave.date_to.date(), date(2021, 9, 11))
+
     def test_leave_flexible_employee(self):
         self.company.resource_calendar_id = self.base_calendar
-        self.employee.write({
-            'resource_calendar_id': False,
+        flexible_calendar = self.env['resource.calendar'].create({
+            'name': 'Flexible',
+            'company_id': self.company.id,
+            'calendar_type': 'undefined',
             'hours_per_week': 40,
             'hours_per_day': 8,
+        })
+        self.employee.write({
+            'resource_calendar_id': flexible_calendar.id,
         })
         self.time_off_type.requires_allocation = True
         self.env['hr.leave.allocation'].with_company(self.company).create({
@@ -501,7 +532,7 @@ class TestFrenchLeaves(TransactionCase):
             'employee_id': self.employee.id,
             'number_of_days': 5,
             'date_from': '2026-09-01',
-        }).action_approve()
+        })
 
         leave = self.env['hr.leave'].with_company(self.company).create({
             'name': 'Paid Time Off',

@@ -1,5 +1,6 @@
     import { registry } from "@web/core/registry";
     import { stepUtils } from "@web_tour/tour_utils";
+    import { searchOrCreateMany2X } from "@web_tour/tour_scenarios";
     import { _t } from "@web/core/l10n/translation";
 
     import { markup } from "@odoo/owl";
@@ -38,21 +39,14 @@
         trigger: 'div[name="subject"] input',
         content: markup(_t('Pick the <b>email subject</b>.')),
         run: "edit Newsletter",
-    }, {
+    },
+    ...searchOrCreateMany2X({
         trigger: 'div[name="contact_list_ids"] input',
-        content: _t("Pick a mailing list."),
-        run: 'edit Newsletter',
-    }, {
-        isActive: ["desktop"],
-        trigger: '.o-autocomplete--dropdown-item:contains("Newsletter")',
-        content: _t("Select this mailing list."),
-        run: 'click',
-    }, {
-        isActive: ["mobile"],
-        trigger: '.modal .o_kanban_record:contains("Newsletter")',
-        content: _t("Select this mailing list."),
-        run: 'click',
-    }, {
+        label: "mailing list",
+        searchText: "Newsletter",
+        selectExisting: true,
+    }),
+    {
         trigger: 'div[name="body_arch"] :iframe .o_mail_templates_grid .dropdown-item:contains("Welcome Message")',
         content: markup(_t('Choose a <b>template</b>.')),
         tooltipPosition: 'top',
@@ -73,9 +67,18 @@
         content: _t("Save your changes."),
         run: 'click',
     }, {
-        trigger: '.o_favorite',
-        content: _t('Click on the star to add this mailing to your templates.'),
+        trigger: '.o_action_manager button[data-tooltip="Actions"]',
+        content: _t('Click on the actions gear icon.'),
         run: 'click',
+    },
+    {
+        trigger: '.o-dropdown-item.o_save_as_template',
+        content: _t('Click on the "Save as Template" button to add this mailing to your templates.'),
+        run: 'click',
+    },
+    {
+        trigger: '.o_notification_content',
+        content: 'Wait for the template creation to finish.'
     },
     ...stepUtils.statusbarButtonsSteps(
         "Test",

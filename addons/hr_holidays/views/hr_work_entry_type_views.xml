@@ -1,20 +1,5 @@
 <?xml version='1.0' encoding='UTF-8' ?>
 <odoo>
-
-    <record id="view_holidays_status_filter" model="ir.ui.view">
-        <field name="name">hr.work.entry.type.filter</field>
-        <field name="model">hr.work.entry.type</field>
-        <field name="arch" type="xml">
-            <search string="Search Time Type">
-                <field name="name" string="Time Types"/>
-                <field name="create_calendar_meeting"/>
-                <separator/>
-                <filter string="Archived" name="inactive" domain="[('active','=',False)]"/>
-                <filter string="Country" name="country" context="{'group_by': 'country_id'}"/>
-            </search>
-        </field>
-    </record>
-
     <record id="hr_work_entry_type_view_form" model="ir.ui.view">
         <field name="name">hr.work.entry.type.form</field>
         <field name="model">hr.work.entry.type</field>
@@ -59,7 +44,6 @@
                     <span class="text-muted fst-italic">Configure how time off requests are approved, allocated and managed for this time type.</span>
                     <group>
                         <group name="leave_validation" id="time_off_requests" string="Time Off Requests">
-                            <field name="active" invisible="1"/>
                             <field name="leave_validation_type" string="Approval" widget="radio"/>
                         </group>
                         <group name="allocation_validation" id="allocation_requests" string="Allocation">
@@ -117,9 +101,12 @@
         <field name="model">hr.work.entry.type</field>
         <field name="inherit_id" ref="hr_work_entry.hr_work_entry_type_view_tree"/>
         <field name="arch" type="xml">
+             <field name="count_as" position="attributes">
+                <attribute name="column_invisible">1</attribute>
+            </field>
             <field name="count_as" position="after">
-                <field name="unit_of_measure"/>
-                <field name="request_unit"/>
+                <field name="unit_of_measure" optional="hide"/>
+                <field name="request_unit" optional="hide"/>
                 <field name="leave_validation_type" optional="hide" string="Time Type Approval"/>
                 <field name="time_off_selectable" optional="hide"/>
                 <field name="requires_allocation" optional="hide"/>

@@ -18,6 +18,15 @@ class IrAttachment(models.Model):
 
     thumbnail = fields.Image()
     has_thumbnail = fields.Boolean(compute="_compute_has_thumbnail")
+    message_ids = fields.Many2many(
+        "mail.message",
+        "message_attachment_rel",
+        "attachment_id",
+        "message_id",
+        string="Messages",
+        readonly=True,
+        copy=False,
+    )
 
     @api.depends("thumbnail")
     def _compute_has_thumbnail(self):
@@ -116,6 +125,23 @@ class IrAttachment(models.Model):
         res.attr("thumbnail_access_token", lambda a: a._get_thumbnail_token())
         res.extend(["type", "url"])
 
+    def _store_thread_message_fields(self, res: Store.FieldList, *, thread):
+        """ Add only the attachment's messages of the thread they are requested in, so that it
+        can be located in the conversation.
+        """
+        res.many(
+            "message_ids",
+            lambda res: (
+                res.attr("message_type"),
+                res.one("author_guest_id", []),
+                res.one("author_id", []),
+                res.one("thread", [], as_thread=True),
+            ),
+            value=lambda a: a.message_ids.filtered(
+                lambda m: (m.model, m.res_id) == (thread._name, thread.id),
+            ),
+        )
+
     def _get_ownership_token(self):
         """ Returns a scoped limited access token that indicates ownership of the attachment when
             using _has_attachments_ownership. If verified by verify_limited_field_access_token,
@@ -129,3 +155,10 @@ class IrAttachment(models.Model):
     def _get_thumbnail_token(self):
         self.ensure_one()
         return limited_field_access_token(self, "thumbnail", scope="binary")
+
+    def _get_preview_symbol_and_name(self):
+        self.ensure_one()
+        # Use emoji rather than pictographic symbols (e.g. U+1F5BB, U+1F5B9): the
+        # latter have no emoji presentation and could render as tofu on some OSes.
+        symbols = {"audio": "🎵", "image": "📷", "video": "🎥"}
+        return symbols.get(self.mimetype.partition("/")[0], "📄"), self.name

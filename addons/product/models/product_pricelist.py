@@ -5,7 +5,6 @@ from collections import defaultdict
 from odoo import api, fields, models
 from odoo.exceptions import UserError
 from odoo.fields import Domain
-from odoo.tools.translate import mark_as_copy
 
 
 class ProductPricelist(models.Model):
@@ -24,7 +23,7 @@ class ProductPricelist(models.Model):
             '|', ('product_id', '=', None), ('product_id.active', '=', True),
         ]
 
-    name = fields.Char(string="Pricelist Name", required=True, translate=True, copy=mark_as_copy('name'))
+    name = fields.Char(string="Pricelist Name", required=True, translate=True)
 
     active = fields.Boolean(
         string="Active",
@@ -513,3 +512,22 @@ class ProductPricelist(models.Model):
         # filter out pricelist items without UoM
         domain += [('uom_id', '!=', False)]
         return self.env['product.pricelist.item'].search_fetch(domain, ['uom_id']).uom_id
+
+    def action_open_daily_rates(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": self.env._("Daily Rates"),
+            "res_model": "product.pricelist.item",
+            "view_mode": "calendar,form",
+            "views": [
+                (self.env.ref('product.product_pricelist_item_calendar').id, 'calendar'),
+                (False, 'form'),
+            ],
+            "domain": [
+                ("pricelist_id", "=", self.id),
+                ("date_start", "!=", False),
+                ("date_end", "!=", False),
+            ],
+            "context": {"default_pricelist_id": self.id, "default_compute_price": "discount"},
+        }

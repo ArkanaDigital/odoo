@@ -33,9 +33,9 @@ import {
     stepAllNetworkCalls,
 } from "@web/../tests/web_test_helpers";
 
-import { browser } from "@web/core/browser/browser";
+import { location } from "@web/core/browser/browser";
 import { router } from "@web/core/browser/router";
-import { rpc } from "@web/core/network/rpc";
+import { rpc, rpcBus } from "@web/core/network/rpc";
 import { RPCCache } from "@web/core/network/rpc_cache";
 import { pick } from "@web/core/utils/objects";
 import { redirect } from "@web/core/utils/urls";
@@ -112,7 +112,7 @@ test("change setting on nav bar click in base settings on desktop", async () => 
                     <block title="Title of group Bar">
                         <setting help="this is bar" info="this is bar info" documentation="/applications/technical/web/settings/this_is_a_test.html">
                             <field name="bar"/>
-                            <button name="buttonName" icon="east" type="action" string="Manage Users" class="btn-link"/>
+                            <button name="buttonName" icon="arrow_forward" type="action" string="Manage Users" class="btn-link"/>
                         </setting>
                         <setting>
                             <label string="Big BAZ" for="baz"/>
@@ -292,7 +292,7 @@ test("change setting on nav bar click in base settings on mobile", async () => {
                     <block title="Title of group Bar">
                         <setting help="this is bar" info="this is bar info" documentation="/applications/technical/web/settings/this_is_a_test.html">
                             <field name="bar"/>
-                            <button name="buttonName" icon="east" type="action" string="Manage Users" class="btn-link"/>
+                            <button name="buttonName" icon="arrow_forward" type="action" string="Manage Users" class="btn-link"/>
                         </setting>
                         <setting>
                             <label string="Big BAZ" for="baz"/>
@@ -975,7 +975,7 @@ test("settings views does not write the id on the url", async () => {
 
     await getService("action").doAction(1);
     await runAllTimers();
-    expect(browser.location.pathname).toBe("/odoo/settings");
+    expect(location.pathname).toBe("/odoo/settings");
     expect(".o_field_boolean input").toHaveProperty("disabled", false);
     await click(".o_field_boolean input");
     await animationFrame();
@@ -984,7 +984,7 @@ test("settings views does not write the id on the url", async () => {
 
     await animationFrame();
     expect(router.current.resId).toBe(undefined);
-    expect(browser.location.pathname).toBe("/odoo/settings");
+    expect(location.pathname).toBe("/odoo/settings");
 });
 
 test.tags("desktop");
@@ -1031,6 +1031,245 @@ test("settings views can search when coming back in breadcrumbs", async () => {
     await editSearch("Fo");
     await runAllTimers();
     expect(queryFirst(".highlighter")).toHaveText("Fo", { message: "Fo word highlighted" });
+});
+
+test("settings views keep the search when coming back in breadcrumbs", async () => {
+    onRpc("has_group", () => true);
+    defineActions([
+        {
+            id: 1,
+            name: "Settings view",
+            res_model: "res.config.settings",
+            views: [[false, "form"]],
+        },
+        {
+            id: 4,
+            name: "Other action",
+            res_model: "task",
+            views: [[false, "list"]],
+        },
+    ]);
+    ResConfigSettings._views.form = /* xml */ `
+        <form string="Settings" js_class="base_settings">
+            <app string="CRM" name="crm">
+                <block>
+                    <setting help="this is foo">
+                        <field name="foo"/>
+                    </setting>
+                    <setting help="this is bar">
+                        <field name="bar"/>
+                    </setting>
+                </block>
+            </app>
+        </form>
+    `;
+    Task._views.list = /* xml */ `
+        <list>
+            <field name="display_name"/>
+        </list>
+    `;
+    await mountWithCleanup(WebClient);
+    await getService("action").doAction(1);
+    await editSearch("Fo");
+    await runAllTimers();
+    expect(".o_setting_box:visible").toHaveCount(1);
+    await getService("action").doAction(4);
+    expect(".o_list_view").toHaveCount(1);
+    await click(".o_control_panel .breadcrumb-item a, .o_back_button");
+    await animationFrame();
+    expect(".o_searchview_input").toHaveValue("Fo");
+    expect(".o_setting_box:visible").toHaveCount(1);
+    expect(queryAllTexts(".highlighter")).toEqual(["Fo", "fo"]);
+});
+
+test("settings views keep a cleared search empty when coming back in breadcrumbs", async () => {
+    onRpc("has_group", () => true);
+    defineActions([
+        {
+            id: 1,
+            name: "Settings view",
+            res_model: "res.config.settings",
+            views: [[false, "form"]],
+        },
+        {
+            id: 4,
+            name: "Other action",
+            res_model: "task",
+            views: [[false, "list"]],
+        },
+    ]);
+    ResConfigSettings._views.form = /* xml */ `
+        <form string="Settings" js_class="base_settings">
+            <app string="CRM" name="crm">
+                <block>
+                    <setting help="this is foo">
+                        <field name="foo"/>
+                    </setting>
+                    <setting help="this is bar">
+                        <field name="bar"/>
+                    </setting>
+                </block>
+            </app>
+        </form>
+    `;
+    Task._views.list = /* xml */ `
+        <list>
+            <field name="display_name"/>
+        </list>
+    `;
+    await mountWithCleanup(WebClient);
+    await getService("action").doAction(1);
+    await editSearch("Fo");
+    await runAllTimers();
+    await editSearch("");
+    await runAllTimers();
+    expect(".o_setting_box:visible").toHaveCount(2);
+    await getService("action").doAction(4);
+    expect(".o_list_view").toHaveCount(1);
+    await click(".o_control_panel .breadcrumb-item a, .o_back_button");
+    await animationFrame();
+    expect(".o_setting_box:visible").toHaveCount(2);
+    expect(".highlighter").toHaveCount(0);
+});
+
+test("settings views show no content helper when the restored search matches nothing", async () => {
+    onRpc("has_group", () => true);
+    defineActions([
+        {
+            id: 1,
+            name: "Settings view",
+            res_model: "res.config.settings",
+            views: [[false, "form"]],
+        },
+        {
+            id: 4,
+            name: "Other action",
+            res_model: "task",
+            views: [[false, "list"]],
+        },
+    ]);
+    ResConfigSettings._views.form = /* xml */ `
+        <form string="Settings" js_class="base_settings">
+            <app string="CRM" name="crm">
+                <block>
+                    <setting help="this is foo">
+                        <field name="foo"/>
+                    </setting>
+                    <setting help="this is bar">
+                        <field name="bar"/>
+                    </setting>
+                </block>
+            </app>
+        </form>
+    `;
+    Task._views.list = /* xml */ `
+        <list>
+            <field name="display_name"/>
+        </list>
+    `;
+    await mountWithCleanup(WebClient);
+    await getService("action").doAction(1);
+    await editSearch("xyz");
+    await runAllTimers();
+    await animationFrame();
+    expect(".o_nocontent_help").toBeVisible();
+    await getService("action").doAction(4);
+    expect(".o_list_view").toHaveCount(1);
+    await click(".o_control_panel .breadcrumb-item a, .o_back_button");
+    await animationFrame();
+    await animationFrame();
+    expect(".o_searchview_input").toHaveValue("xyz");
+    expect(".o_nocontent_help").toBeVisible();
+});
+
+test("settings views keep the search after saving", async () => {
+    onRpc("has_group", () => true);
+    defineActions([
+        {
+            id: 1,
+            name: "Settings view",
+            res_model: "res.config.settings",
+            views: [[false, "form"]],
+        },
+    ]);
+    ResConfigSettings._views.form = /* xml */ `
+        <form string="Settings" js_class="base_settings">
+            <app string="CRM" name="crm">
+                <block>
+                    <setting help="this is foo">
+                        <field name="foo"/>
+                    </setting>
+                    <setting help="this is bar">
+                        <field name="bar"/>
+                    </setting>
+                </block>
+            </app>
+        </form>
+    `;
+    await mountWithCleanup(WebClient);
+    await getService("action").doAction(1);
+    await editSearch("Fo");
+    await runAllTimers();
+    await clickSave();
+    expect(sessionStorage.getItem("settings_search")).toBe("Fo");
+    // saving reloads the page, which opens the settings action again from scratch
+    await getService("action").doAction(1, { clearBreadcrumbs: true });
+    expect(".o_searchview_input").toHaveValue("Fo");
+    expect(".o_setting_box:visible").toHaveCount(1);
+    expect(sessionStorage.getItem("settings_search")).toBe(null);
+});
+
+test.tags("mobile");
+test("settings views show the search bar on mobile only when a search is restored", async () => {
+    onRpc("has_group", () => true);
+    defineActions([
+        {
+            id: 1,
+            name: "Settings view",
+            res_model: "res.config.settings",
+            views: [[false, "form"]],
+        },
+        {
+            id: 4,
+            name: "Other action",
+            res_model: "task",
+            views: [[false, "list"]],
+        },
+    ]);
+    ResConfigSettings._views.form = /* xml */ `
+        <form string="Settings" js_class="base_settings">
+            <app string="CRM" name="crm">
+                <block>
+                    <setting help="this is foo">
+                        <field name="foo"/>
+                    </setting>
+                    <setting help="this is bar">
+                        <field name="bar"/>
+                    </setting>
+                </block>
+            </app>
+        </form>
+    `;
+    Task._views.list = /* xml */ `
+        <list>
+            <field name="display_name"/>
+        </list>
+    `;
+    await mountWithCleanup(WebClient);
+    await getService("action").doAction(1);
+    await getService("action").doAction(4);
+    expect(".o_list_view").toHaveCount(1);
+    await click(".o_control_panel .breadcrumb-item a, .o_back_button");
+    await animationFrame();
+    expect(".o_searchview_input").toHaveCount(0);
+    await editSearch("Fo");
+    await runAllTimers();
+    await getService("action").doAction(4);
+    expect(".o_list_view").toHaveCount(1);
+    await click(".o_control_panel .breadcrumb-item a, .o_back_button");
+    await animationFrame();
+    expect(".o_searchview_input").toHaveValue("Fo");
+    expect(".o_searchview_input").not.toBeFocused();
 });
 
 test("search for default label when label has empty string", async () => {
@@ -1493,6 +1732,37 @@ test("clicking a button with dirty settings -- discard", async () => {
     await click(".o_field_boolean[name='foo'] input[type='checkbox']");
 });
 
+test("saving settings clears the caches, discarding them does not", async () => {
+    const clearCacheListener = () => expect.step("CLEAR-CACHES");
+    rpcBus.addEventListener("CLEAR-CACHES", clearCacheListener);
+    after(() => rpcBus.removeEventListener("CLEAR-CACHES", clearCacheListener));
+    mockService("action", {
+        doActionButton(params) {
+            expect.step(`action executed ${params.name}`);
+        },
+    });
+    await mountView({
+        type: "form",
+        arch: /* xml */ `
+            <form js_class="base_settings">
+                <app string="CRM" name="crm">
+                    <field name="foo" />
+                    <button type="object" name="mymethod" class="myBtn"/>
+                </app>
+            </form>
+        `,
+        resModel: "res.config.settings",
+    });
+    await contains(".o_field_boolean input[type='checkbox']").click();
+    await contains(".myBtn").click();
+    await contains(".modal .btn-secondary:eq(1)").click();
+    expect.verifySteps(["action executed mymethod"]);
+
+    await contains(".o_field_boolean input[type='checkbox']").click();
+    await contains(".o_form_button_save").click();
+    expect.verifySteps(["CLEAR-CACHES", "action executed execute"]);
+});
+
 test("clicking on a button with noSaveDialog will not show discard warning", async () => {
     onRpc("has_group", () => true);
     expect.assertions(4);
@@ -1647,7 +1917,7 @@ test("settings view change app - desktop", async () => {
     await animationFrame();
 
     expect(queryAllTexts(".tab.selected")).toEqual(["Other App"]);
-    expect(browser.location.href).toBe("https://www.hoot.test/odoo/settings#otherapp");
+    expect(location.href).toBe("https://www.hoot.test/odoo/settings#otherapp");
 });
 
 test.tags("mobile");
@@ -1695,7 +1965,7 @@ test("settings view change app - mobile", async () => {
     await animationFrame();
 
     expect(queryAllTexts(".settings_tab")).toEqual(["Other App"]);
-    expect(browser.location.href).toBe("https://www.hoot.test/odoo/settings#otherapp");
+    expect(location.href).toBe("https://www.hoot.test/odoo/settings#otherapp");
 });
 
 test("settings view shows a message if there are changes", async () => {
@@ -2412,7 +2682,7 @@ test("settings search is accent-insensitive", async () => {
                     <block title="Title of group Bâr">
                         <setting help="this is bàr" documentation="/applications/technical/web/settings/this_is_a_test.html">
                             <field name="bar"/>
-                            <button name="buttonName" icon="east" type="action" string="Manage Users" class="btn-link"/>
+                            <button name="buttonName" icon="arrow_forward" type="action" string="Manage Users" class="btn-link"/>
                         </setting>
                         <setting string="Big BÄZ" help="this is a báz">
                             <field name="baz"/>

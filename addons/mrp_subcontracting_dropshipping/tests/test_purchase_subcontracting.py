@@ -37,10 +37,8 @@ class TestSubcontractingDropshippingFlows(TestMrpSubcontractingCommon, TestStock
         - Po created for the component.
         """
         # self.warehouse.manufacture_pull_id.route_id.write({'sequence': 20})
-        self.env.ref('stock.route_warehouse0_mto').update({'active': True, 'product_selectable': True})
-        mto_route = self.env['stock.route'].search([('name', '=', 'Replenish on Order (MTO)')])
         dropship_route = self.env['stock.route'].search([('name', '=', 'Dropship')])
-        self.comp1.route_ids = [Command.link(mto_route.id)]
+        self._use_route_mto(self.comp1)
         self.finished.route_ids = [Command.link(dropship_route.id)]
 
         partner = self.env['res.partner'].create({
@@ -140,6 +138,34 @@ class TestSubcontractingDropshippingFlows(TestMrpSubcontractingCommon, TestStock
         dropship_route = self.env['stock.route'].search([('name', '=', 'Dropship')])
         self.comp1.route_ids = [Command.link(dropship_route.id)]
         self.subcontractor_partner1.property_stock_subcontractor = sub_location
+
+        subcontract_po = self.env['purchase.order'].create({
+            "partner_id": self.subcontractor_partner1.id,
+            "picking_type_id": self.warehouse.in_type_id.id,
+            "order_line": [Command.create({
+                'product_id': self.finished.id,
+                'name': self.finished.name,
+                'product_qty': 1.0,
+            })],
+        })
+        subcontract_po.button_confirm()
+
+        dropship_po = self.env['purchase.order'].search([('partner_id', '=', self.vendor.id)])
+        self.assertEqual(dropship_po.dest_address_id, self.subcontractor_partner1)
+
+    def test_resupply_subcontractor_in_mtso_dropshipped_component(self):
+        """
+        Suppose:
+            - a subcontracted product and a component dropshipped to the subcontractor
+            - the subcontracting -> production pull rule is set to 'Take from stock, if
+              unavailable trigger another rule'
+        This test ensures that the PO that brings the component to the subcontractor has a correct
+        destination address
+        """
+        self.subcontractor_partner1.parent_id = False
+        dropship_route = self.env['stock.route'].search([('name', '=', 'Dropship')])
+        dropship_route.rule_ids.filtered(lambda r: r.action == 'pull').procure_method = 'mts_else_mto'
+        self.comp1.route_ids = [Command.link(dropship_route.id)]
 
         subcontract_po = self.env['purchase.order'].create({
             "partner_id": self.subcontractor_partner1.id,
@@ -369,9 +395,14 @@ class TestSubcontractingDropshippingFlows(TestMrpSubcontractingCommon, TestStock
         vendor = self.env['res.partner'].create([
             {'name': 'vendor'},
         ])
-        route_mto = self.env.ref('stock.route_warehouse0_mto')
+        route_mto = self.route_mto
         route_mto.active = True
-        route_mto.product_selectable = True
+        self.env.user.group_ids += self.env.ref('analytic.group_analytic_accounting')
+        analytic_plan = self.env['account.analytic.plan'].create({'name': 'Test Plan'})
+        analytic_account = self.env['account.analytic.account'].create({
+            'name': 'Test AA',
+            'plan_id': analytic_plan.id,
+        })
         component = self.env['product.product'].create([{
             'name': 'Common Component',
             'is_storable': True,
@@ -403,12 +434,14 @@ class TestSubcontractingDropshippingFlows(TestMrpSubcontractingCommon, TestStock
                     'name': finished_products[0].name,
                     'product_uom_qty': 2,
                     'product_uom_id': uom_unit.id,
+                    'analytic_distribution': {analytic_account.id: 100},
                 }),
                 Command.create({
                     'product_id': finished_products[1].id,
                     'name': finished_products[1].name,
                     'product_uom_qty': 2,
                     'product_uom_id': uom_unit.id,
+                    'analytic_distribution': {analytic_account.id: 100},
                 }),
             ],
         })
@@ -421,6 +454,7 @@ class TestSubcontractingDropshippingFlows(TestMrpSubcontractingCommon, TestStock
         self.assertTrue(po_vendor)
         self.assertEqual(len(po_vendor.order_line), 1)
         self.assertEqual(sum(po_vendor.order_line.mapped('product_qty')), 4)
+        self.assertEqual(po_vendor.order_line.analytic_distribution, so.order_line[0].analytic_distribution)
         po_vendor.button_confirm()
         self.assertEqual(len(po_vendor.order_line.move_ids), 1)
         self.assertFalse(po_vendor.order_line.move_ids.production_group_id)
@@ -572,3 +606,33 @@ class TestSubcontractingDropshippingFlows(TestMrpSubcontractingCommon, TestStock
         bill.action_post()
         # The AVCO cost must be updated to bill price + component cost = $10 + $2 = $12.
         self.assertAlmostEqual(final_product.standard_price, 12.0, places=2)
+        partial_valuation = dropship_picking.move_ids._get_value_from_account_move(0.5)
+        self.assertEqual(partial_valuation['quantity'], 0.5)
+        self.assertAlmostEqual(partial_valuation['value'], 6.0, places=2)
+
+    def test_dropshipped_resupply_source_purchase(self):
+        """
+        Dropship the subcontractor to resupply the component.
+        Check that the dropship transfer still refers to the subcontracted PO source.
+        """
+        dropship_route = self.env['stock.route'].search([('name', '=', 'Dropship')], limit=1)
+        self.comp1.route_ids = [Command.link(dropship_route.id)]
+
+        subcontracted_po = self.env['purchase.order'].create({
+            "partner_id": self.subcontractor_partner1.id,
+            "picking_type_id": self.warehouse.in_type_id.id,
+            "order_line": [Command.create({
+                'product_id': self.finished.id,
+                'name': self.finished.name,
+                'product_qty': 1.0,
+            })],
+        })
+        subcontracted_po.button_confirm()
+
+        dropship_po = self.env['purchase.order'].search([('partner_id', '=', self.vendor.id)], limit=1)
+        dropship_po.button_confirm()
+
+        dropship_picking = dropship_po.picking_ids
+        self.assertEqual(dropship_picking.subcontracting_source_purchase_count, 1)
+        action = dropship_picking.action_view_subcontracting_source_purchase()
+        self.assertEqual(self.env[action['res_model']].browse(action['res_id']), subcontracted_po)

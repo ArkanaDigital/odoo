@@ -1,5 +1,6 @@
 import { Store } from "@mail/../tests/mock_server/store";
 import { fields, getKwArgs, makeKwArgs, webModels } from "@web/../tests/web_test_helpers";
+import { isEmail } from "@web/core/utils/strings";
 
 /** @typedef {import("@web/../tests/web_test_helpers").ModelRecord} ModelRecord */
 
@@ -218,14 +219,22 @@ export class ResPartner extends webModels.ResPartner {
         const ResUsers = this.env["res.users"];
 
         const channel = this.env["discuss.channel"].browse(channel_id)[0];
+        const memberPartnerIds = DiscussChannelMember.search([
+            ["channel_id", "in", [channel.id, channel.parent_channel_id]],
+        ]).map((memberId) => DiscussChannelMember.browse(memberId)[0].partner_id);
         let partnerIds = [];
         if (!domain?.length && channel) {
-            partnerIds = DiscussChannelMember.search([
-                ["channel_id", "in", [channel.id, channel.parent_channel_id]],
-            ]).map((memberId) => DiscussChannelMember.browse(memberId)[0].partner_id);
+            partnerIds = memberPartnerIds;
         } else {
             partnerIds = ResUsers.search(domain).map(
                 (userId) => ResUsers.browse(userId)[0].partner_id
+            );
+            partnerIds.push(
+                ...this.search([
+                    ["id", "in", memberPartnerIds],
+                    ["user_ids", "=", false],
+                    ...domain,
+                ])
             );
         }
         if (extraDomain?.length) {
@@ -288,7 +297,17 @@ export class ResPartner extends webModels.ResPartner {
             kwargs.channel_id,
             kwargs.limit
         );
-        return { store_data: store.as_dict(), ...channel_invites };
+        let selectable_email = null;
+        if (!channel_invites.partner_ids.length && isEmail(kwargs.search_term)) {
+            const [channel] = this.env["discuss.channel"].browse(kwargs.channel_id);
+            if (
+                ["chat", "group"].includes(channel?.channel_type) ||
+                (channel?.channel_type === "channel" && !channel.group_public_id)
+            ) {
+                selectable_email = kwargs.search_term;
+            }
+        }
+        return { store_data: store.as_dict(), ...channel_invites, selectable_email };
     }
 
     /**

@@ -24,7 +24,7 @@ class TestProjectSharingPortalAccess(TestProjectSharingCommon):
             'res_model': 'project.project',
             'res_id': cls.project_portal.id,
             'collaborator_ids': [
-                Command.create({'partner_id': cls.partner_portal.id, 'access_mode': 'edit'}),
+                Command.create({'partner_id': cls.partner_portal.id, 'access_mode': 'advanced_edit'}),
             ],
         })
 
@@ -55,6 +55,41 @@ class TestProjectSharingPortalAccess(TestProjectSharingCommon):
             if k not in readable_fields and k not in field_exception
         ])
 
+    def test_collaborator_search_any_respects_portal_record_rules(self):
+        portal_partner = self.user_portal.partner_id
+        other_partner = self.user_projectuser.partner_id
+        # A portal user only sees the projects they collaborate on.
+        projects = self.env['project.project'].create([{
+            'name': "Shared with other collaborator",
+            'privacy_visibility': 'portal',
+            'collaborator_ids': [
+                Command.create({'partner_id': portal_partner.id}),
+                Command.create({'partner_id': other_partner.id}),
+            ],
+        }, {
+            'name': "Own collaborator only",
+            'privacy_visibility': 'portal',
+            'collaborator_ids': [Command.create({'partner_id': portal_partner.id})],
+        }])
+        Project = self.env['project.project'].with_user(self.user_portal)
+        domain = [('id', 'in', projects.ids)]
+        self.assertCountEqual(Project.search(domain).ids, projects.ids)
+
+        # Ordinary 'any' must only consider collaborators visible to the portal user.
+        for operator, partner, expected in (
+            ('any', portal_partner, projects),
+            ('not any', portal_partner, self.env['project.project']),
+            ('any', other_partner, self.env['project.project']),
+            ('not any', other_partner, projects),
+        ):
+            with self.subTest(operator=operator, partner=partner.name):
+                self.assertCountEqual(
+                    Project.search(domain + [
+                        ('collaborator_ids', operator, [('partner_id', '=', partner.id)]),
+                    ]).ids,
+                    expected.ids,
+                )
+
     def test_mention_suggestions(self):
         data = (
             self.task_portal.with_user(self.user_portal)
@@ -75,15 +110,18 @@ class TestProjectSharingPortalAccess(TestProjectSharingCommon):
             data["res.partner"][1]["mention_token"],
             self.user_portal.partner_id._get_mention_token(),
         )
+        data = (
+            self.task_portal.with_user(self.user_portal)
+            .get_mention_suggestions(search="xxx")
+            ._build_result()
+        )
+        self.assertEqual(data, {})
         # remove portal user from the project collaborators
         self.project_portal.collaborator_ids.filtered(
             lambda rec: rec.partner_id == self.user_portal.partner_id
         ).unlink()
-        self.assertEqual(
-            {},
-            self.task_portal.with_user(self.user_portal).get_mention_suggestions(search=""),
-            "Non collaborator portal user should not have access to mention suggestions",
-        )
+        with self.assertRaises(AccessError, msg="Non collaborator portal user should not have access to mention suggestions"):
+            self.task_portal.with_user(self.user_portal).get_mention_suggestions(search="")
 
     def test_readonly_fields(self):
         """ The fields are not writeable should not be editable by the portal user. """
@@ -164,7 +202,7 @@ class TestProjectSharingPortalAccess(TestProjectSharingCommon):
             'res_model': 'project.project',
             'res_id': self.project_portal.id,
             'collaborator_ids': [
-                Command.create({'partner_id': partner_portal_no_user.id, 'access_mode': 'edit'}),
+                Command.create({'partner_id': partner_portal_no_user.id, 'access_mode': 'advanced_edit'}),
             ],
         })
         self.env["res.config.settings"].create({"auth_signup_uninvited": 'b2b'}).execute()
@@ -183,7 +221,37 @@ class TestProjectSharingPortalAccess(TestProjectSharingCommon):
         """Tests that the auto-subscription system properly add the followers of
         the parent project when a portal user creates a task
         """
+        self.project_portal.collaborator_ids.filtered(
+            lambda c: c.partner_id == self.user_portal.partner_id
+        ).write({'access_mode': 'advanced_edit'})
         self.project_portal.message_subscribe(self.user_projectmanager.partner_id.ids)
         task = self.env["project.task"].with_user(self.user_portal).with_context(default_project_id=self.project_portal.id).create({'name': 'Task created by portal_user'})
         self.assertIn(self.user_portal.partner_id, task.sudo().message_partner_ids)
         self.assertIn(self.user_projectmanager.partner_id, task.sudo().message_partner_ids)
+
+
+@tagged('post_install', '-at_install')
+class TestProjectSharingSessionInfo(HttpCase, TestProjectSharingCommon):
+
+    def _get_session_info(self):
+        response = self.url_open(f'/my/projects/{self.project_portal.id}/project_sharing')
+        self.assertEqual(response.status_code, 200)
+        return json.loads(search(r'odoo\.__session_info__ = (.*);', response.text).group(1))
+
+    def test_portal_can_advanced_edit_in_session_info(self):
+        password = 'chell_portal_user'
+        self.user_portal.password = password
+        collaborator = self.project_portal.collaborator_ids.filtered(
+            lambda collaborator: collaborator.partner_id == self.user_portal.partner_id,
+        )
+        self.assertTrue(collaborator, "the portal user should be a collaborator of the project")
+
+        self.authenticate(self.user_portal.login, password)
+        for access_mode, can_advanced_edit in [('view', False), ('edit', False), ('advanced_edit', True)]:
+            with self.subTest(access_mode=access_mode):
+                collaborator.access_mode = access_mode
+                self.assertEqual(
+                    self._get_session_info()['portal_can_advanced_edit'], can_advanced_edit,
+                    "The project sharing kanban hides its quick create based on this flag, "
+                    "since the quick create assigns the stage of the column it is opened from.",
+                )

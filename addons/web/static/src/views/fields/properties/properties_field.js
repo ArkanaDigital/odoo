@@ -9,7 +9,6 @@ import { user } from "@web/core/user";
 import { useBus, useService } from "@web/core/utils/hooks";
 import { useSortable } from "@web/core/utils/sortable_owl";
 import { exprToBoolean, uuid } from "@web/core/utils/strings";
-import { useRecordObserver } from "@web/model/relational_model/utils";
 import { standardFieldProps } from "../standard_field_props";
 import { PropertyDefinition } from "./property_definition";
 import { PropertyValue } from "./property_value";
@@ -23,7 +22,6 @@ import {
     proxy,
     signal,
     t,
-    untrack,
     useEffect,
     useProps,
 } from "@odoo/owl";
@@ -62,9 +60,9 @@ export class PropertiesField extends Component {
         this.uiService = useService("ui");
 
         let currentResId;
-        useRecordObserver((record) => {
-            if (currentResId !== record.resId) {
-                currentResId = record.resId;
+        useEffect(() => {
+            if (currentResId !== this.props.record.resId) {
+                currentResId = this.props.record.resId;
                 this._saveInitialPropertiesValues();
             }
         });
@@ -121,21 +119,21 @@ export class PropertiesField extends Component {
         });
 
         useEffect(() => {
-            // subscribe to the definition record changing
+            // subscribe to the definition record changing, and to the edit mode
+            // being turned on after this setup (a subclass may force it)
             void this.props.record.data[this.definitionRecordField];
-            untrack(() => {
-                // when the field has a new definition record:
-                if (this.props.readonly || (!this.state.isInEditMode && !this.props.editMode)) {
-                    return;
-                }
-                this.checkDefinitionWriteAccess().then((canChangeDefinition) => {
-                    this.state.canChangeDefinition = !!canChangeDefinition;
-                    const editable =
-                        canChangeDefinition &&
-                        !this.props.readonly &&
-                        (this.state.isInEditMode || this.props.editMode);
-                    this.setEditMode(editable);
-                });
+            const isEditable =
+                !this.props.readonly && (this.state.isInEditMode || this.props.editMode);
+            if (!isEditable) {
+                return;
+            }
+            this.checkDefinitionWriteAccess().then((canChangeDefinition) => {
+                this.state.canChangeDefinition = !!canChangeDefinition;
+                const editable =
+                    canChangeDefinition &&
+                    !this.props.readonly &&
+                    (this.state.isInEditMode || this.props.editMode);
+                this.setEditMode(editable);
             });
         });
 

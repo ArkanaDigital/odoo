@@ -6,8 +6,9 @@ import {
 } from "@html_builder/../tests/helpers";
 import { beforeEach, describe, expect, test } from "@odoo/hoot";
 import { animationFrame, click, queryAll, queryOne, waitFor } from "@odoo/hoot-dom";
-import { contains, dataURItoBlob, onRpc, patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { contains, dataURItoBlob, onRpc } from "@web/../tests/web_test_helpers";
 import { uniqueId } from "@web/core/utils/functions";
+import { patch } from "@web/core/utils/patch";
 import {
     defineWebsiteModels,
     setupWebsiteBuilder,
@@ -93,6 +94,7 @@ describe("Add image", () => {
     test("Adding an image in gallery doesn't show a hidden pause button", async () => {
         const { waitSidebarUpdated } = await setupWebsiteBuilderWithSnippet("s_image_gallery", {
             loadIframeBundles: true,
+            loadIframeBuilderTemplates: true,
         });
         await contains(":iframe .s_image_gallery").click();
         await waitSidebarUpdated();
@@ -107,6 +109,7 @@ describe("Add image", () => {
     test("Adding an image in gallery doesn't hide a visible pause button", async () => {
         const { waitSidebarUpdated } = await setupWebsiteBuilderWithSnippet("s_image_gallery", {
             loadIframeBundles: true,
+            loadIframeBuilderTemplates: true,
         });
         await contains(":iframe .s_image_gallery").click();
         await waitSidebarUpdated();
@@ -153,12 +156,12 @@ test("Empty image gallery is removed on save", async () => {
         resultSave.push(args[1]);
         return true;
     });
-    await setupWebsiteBuilderWithSnippet("s_image_gallery");
+    await setupWebsiteBuilderWithSnippet("s_image_gallery", { loadIframeBuilderTemplates: true });
     await contains(":iframe .s_image_gallery").click();
     await unfoldAllOptionsGroups();
     await contains("[data-action-id='removeAllImages']").click();
     expect(":iframe .s_image_gallery img:not(.o_carousel_controllers img)").toHaveCount(0);
-    await contains(".o-snippets-top-actions button:contains(Save)").click();
+    await contains(".o_hb_snippets_top_actions button:contains(Save)").click();
     expect(resultSave.length).toBe(1);
     expect(resultSave[0]).not.toInclude("s_image_gallery");
 });
@@ -214,9 +217,9 @@ test("Change gallery restore the container to the cloned equivalent image", asyn
     // The container include the new image equivalent to the old selected image
     expectOptionContainerToInclude(queryOne(":iframe img[data-index='1']"));
 
-    await contains(".o-snippets-top-actions [data-icon='undo']").click();
+    await contains(".o_hb_snippets_top_actions [data-icon='undo']").click();
     expectOptionContainerToInclude(queryOne(":iframe img[data-index='1']"));
-    await contains(".o-snippets-top-actions [data-icon='redo']").click();
+    await contains(".o_hb_snippets_top_actions [data-icon='redo']").click();
     expectOptionContainerToInclude(queryOne(":iframe img[data-index='1']"));
 });
 
@@ -244,10 +247,10 @@ test("Change gallery layout when images have a link", async () => {
 
 test("Dropping multiple image galleries should produce unique IDs", async () => {
     await setupWebsiteBuilder("");
-    patchWithCleanup(uniqueId, { nextId: 0 });
+    patch(uniqueId, { nextId: 0 });
 
     const imageSnippetButtonSelector =
-        ".o-website-builder_sidebar  #snippet_groups .o_snippet[name='Images'] button";
+        ".o_website_builder_sidebar  #snippet_groups .o_snippet[name='Images'] button";
     for (let i = 0; i < 2; i++) {
         await contains(imageSnippetButtonSelector).click();
         await confirmAddSnippet("s_image_gallery");
@@ -261,10 +264,10 @@ test("Dropping multiple image galleries should produce unique IDs", async () => 
 
 test("Cloning an image gallery should produce a unique ID", async () => {
     await setupWebsiteBuilder("");
-    patchWithCleanup(uniqueId, { nextId: 0 });
+    patch(uniqueId, { nextId: 0 });
 
     const imageSnippetButtonSelector =
-        ".o-website-builder_sidebar  #snippet_groups .o_snippet[name='Images'] button";
+        ".o_website_builder_sidebar  #snippet_groups .o_snippet[name='Images'] button";
     await contains(imageSnippetButtonSelector).click();
     await confirmAddSnippet("s_image_gallery");
     await waitForEndOfOperation();
@@ -315,14 +318,14 @@ test("Changing layout of an image gallery to grid should remove size option on i
 test("Click the outline option for the image gallery thumbnails", async () => {
     await setupWebsiteBuilderWithSnippet("s_image_gallery");
     await contains(":iframe .s_image_gallery").click();
-    await contains(".options-container [data-label='Indicators'] .dropdown-toggle").click();
+    await contains(".o_hb_options_container [data-label='Indicators'] .dropdown-toggle").click();
     await contains(
         ".o-dropdown--menu [data-action-param='s_image_gallery_indicators_squared']"
     ).click();
     expect(":iframe section.o_slideshow").not.toHaveClass("s_image_gallery_indicators_outline");
     await contains("[data-class-action='s_image_gallery_indicators_outline'] .o-checkbox").click();
     expect(":iframe section.o_slideshow").toHaveClass("s_image_gallery_indicators_outline");
-    await contains(".options-container [data-label='Indicators'] .dropdown-toggle").click();
+    await contains(".o_hb_options_container [data-label='Indicators'] .dropdown-toggle").click();
     await contains(
         ".o-dropdown--menu [data-action-param='s_image_gallery_indicators_dots']"
     ).click();

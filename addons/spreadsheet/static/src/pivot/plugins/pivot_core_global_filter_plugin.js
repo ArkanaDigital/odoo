@@ -12,68 +12,95 @@ import { CommandResult } from "../../o_spreadsheet/cancelled_reason";
 import { checkFilterFieldMatching } from "@spreadsheet/global_filters/helpers";
 import { deepCopy } from "@web/core/utils/objects";
 import { OdooCorePlugin } from "@spreadsheet/plugins";
+import { corePlugins, stores } from "@odoo/o-spreadsheet";
+import { GlobalFiltersCorePlugin } from "@spreadsheet/global_filters";
+import { _t } from "@web/core/l10n/translation";
+
+const { SidePanelStore } = stores;
 
 export class PivotCoreGlobalFilterPlugin extends OdooCorePlugin {
+    static dependencies = [corePlugins.PivotCorePlugin, GlobalFiltersCorePlugin];
     static getters = /** @type {const} */ (["getPivotFieldMatch", "getPivotFieldMatching"]);
+    validators = {
+        ADD_GLOBAL_FILTER: this.checkPivotFieldMatching,
+        EDIT_GLOBAL_FILTER: this.checkPivotFieldMatching,
+    };
+
+    handlers = {
+        ADD_PIVOT: this.onAddPivot,
+        REMOVE_PIVOT: this.onRemovePivot,
+        DUPLICATE_PIVOT: this.onDuplicatePivot,
+        ADD_GLOBAL_FILTER: this.onAddOrEditGlobalFilter,
+        EDIT_GLOBAL_FILTER: this.onAddOrEditGlobalFilter,
+        REMOVE_GLOBAL_FILTER: this.onRemoveGlobalFilter,
+    };
+
     constructor(config) {
         super(config);
 
         /** @type {Object.<string, GFLocalPivot>} */
         this.pivots = {};
+
+        // Completed with the evaluation accessors by PivotCoreViewGlobalFilterPlugin
+        this.getters.getGlobalFieldMatchingRegistry().replace("pivot", {
+            getIds: () =>
+                this.getters
+                    .getPivotIds()
+                    .filter(
+                        (id) =>
+                            this.getters.getPivotCoreDefinition(id).type === "ODOO" &&
+                            this.getPivotFieldMatch(id)
+                    ),
+            getDisplayName: (pivotId) => this.getters.getPivotName(pivotId),
+            getTag: (pivotId) =>
+                _t("Pivot #%(pivot_id)s", { pivot_id: this.getters.getPivotFormulaId(pivotId) }),
+            getFieldMatching: (pivotId, filterId) => this.getPivotFieldMatching(pivotId, filterId),
+            getModel: (pivotId) => {
+                const pivot = this.getters.getPivotCoreDefinition(pivotId);
+                return pivot.type === "ODOO" && pivot.model;
+            },
+            getActionXmlId: (pivotId) => this.getters.getPivotCoreDefinition(pivotId).actionXmlId,
+            getContext: (pivotId) => this.getters.getPivotCoreDefinition(pivotId).context,
+            openSidePanel: (env, pivotId) =>
+                env.getStore(SidePanelStore).open("PivotSidePanel", { pivotId }),
+        });
     }
 
-    /**
-     * @param {AllCoreCommand} cmd
-     *
-     * @returns {string | string[]}
-     */
-    allowDispatch(cmd) {
-        switch (cmd.type) {
-            case "ADD_GLOBAL_FILTER":
-            case "EDIT_GLOBAL_FILTER":
-                if (cmd.pivot) {
-                    return checkFilterFieldMatching(cmd.pivot);
-                }
+    checkPivotFieldMatching(cmd) {
+        if (cmd.pivot) {
+            return checkFilterFieldMatching(cmd.pivot);
         }
         return CommandResult.Success;
     }
 
-    /**
-     * @param {AllCoreCommand} cmd
-     *
-     */
-    handle(cmd) {
-        switch (cmd.type) {
-            case "ADD_PIVOT": {
-                if (cmd.pivot.type === "ODOO") {
-                    this._addPivot(cmd.pivotId, undefined);
-                }
-                break;
-            }
-            case "REMOVE_PIVOT": {
-                this.history.update("pivots", cmd.pivotId, undefined);
-                break;
-            }
-            case "DUPLICATE_PIVOT": {
-                const { pivotId, newPivotId } = cmd;
-                const pivotDefinition = this.getters.getPivotCoreDefinition(pivotId);
-                if (pivotDefinition.type !== "ODOO") {
-                    break;
-                }
-                const pivot = deepCopy(this.pivots[pivotId]);
-                this._addPivot(newPivotId, pivot.fieldMatching);
-                break;
-            }
-            case "ADD_GLOBAL_FILTER":
-            case "EDIT_GLOBAL_FILTER":
-                if (cmd.pivot) {
-                    this._setPivotFieldMatching(cmd.filter.id, cmd.pivot);
-                }
-                break;
-            case "REMOVE_GLOBAL_FILTER":
-                this._onFilterDeletion(cmd.id);
-                break;
+    onAddPivot(cmd) {
+        if (cmd.pivot.type === "ODOO") {
+            this._addPivot(cmd.pivotId, undefined);
         }
+    }
+
+    onRemovePivot(cmd) {
+        this.history.update("pivots", cmd.pivotId, undefined);
+    }
+
+    onDuplicatePivot(cmd) {
+        const { pivotId, newPivotId } = cmd;
+        const pivotDefinition = this.getters.getPivotCoreDefinition(pivotId);
+        if (pivotDefinition.type !== "ODOO") {
+            return;
+        }
+        const pivot = deepCopy(this.pivots[pivotId]);
+        this._addPivot(newPivotId, pivot.fieldMatching);
+    }
+
+    onAddOrEditGlobalFilter(cmd) {
+        if (cmd.pivot) {
+            this._setPivotFieldMatching(cmd.filter.id, cmd.pivot);
+        }
+    }
+
+    onRemoveGlobalFilter(cmd) {
+        this._onFilterDeletion(cmd.id);
     }
 
     // -------------------------------------------------------------------------

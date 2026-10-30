@@ -1,3 +1,4 @@
+from odoo.exceptions import ValidationError
 from odoo.tests import TransactionCase, tagged
 from odoo.tools.partner_identifiers import TIN_METADATA
 
@@ -63,6 +64,17 @@ class TestPartnerIdentifiers(TransactionCase):
             "BE_EN should be deduced from BE VAT by stripping the country prefix",
         )
 
+    def test_vat_change_updates_be_en(self):
+        """Changing a Belgian VAT must update the existing BE_EN (BCE/KBO) to match."""
+        partner = self.env['res.partner'].create({
+            'name': 'BE Partner',
+            'country_id': self.env.ref('base.be').id,
+            'vat': 'BE0477472701',
+        })
+        self.assertEqual((partner.additional_identifiers or {}).get('BE_EN'), '0477472701')
+        partner.vat = 'BE0428759497'
+        self.assertEqual((partner.additional_identifiers or {}).get('BE_EN'), '0428759497')
+
     def test_vat_deduces_dk_cvr(self):
         """Setting a Danish VAT should automatically deduce DK_CVR."""
         partner = self.env['res.partner'].create({
@@ -87,6 +99,40 @@ class TestPartnerIdentifiers(TransactionCase):
             'U12345675',
         )
 
+    def test_vat_deduces_se_en(self):
+        """Setting a Swedish VAT should automatically deduce SE_EN, with or without the SE prefix."""
+        for vat in ('SE123456789701', '123456789701'):
+            with self.subTest(vat=vat):
+                partner = self.env['res.partner'].create({
+                    'name': 'SE Partner',
+                    'country_id': self.env.ref('base.se').id,
+                })
+                partner.vat = vat
+                self.assertEqual(
+                    (partner.additional_identifiers or {}).get('SE_EN'),
+                    '1234567897',
+                )
+
+    def test_vat_deduces_fi_en(self):
+        """Setting a Finnish VAT should automatically deduce FI_EN."""
+        partner = self.env['res.partner'].create({
+            'name': 'FI Partner',
+            'country_id': self.env.ref('base.fi').id,
+        })
+        partner.vat = 'FI01120389'
+        self.assertEqual((partner.additional_identifiers or {}).get('FI_EN'), '01120389')
+
+    def test_vat_deduces_no_en(self):
+        """Setting a Norwegian VAT should automatically deduce NO_EN, with or without the MVA suffix."""
+        for vat in ('NO974760673MVA', 'NO974760673'):
+            with self.subTest(vat=vat):
+                partner = self.env['res.partner'].create({
+                    'name': 'NO Partner',
+                    'country_id': self.env.ref('base.no').id,
+                })
+                partner.vat = vat
+                self.assertEqual((partner.additional_identifiers or {}).get('NO_EN'), '974760673')
+
     def test_unknown_key_dropped(self):
         """Unknown identifier keys should be dropped on save with a logger warning."""
         with self.assertLogs('odoo.addons.base.models.res_partner', level='WARNING') as logger:
@@ -99,6 +145,29 @@ class TestPartnerIdentifiers(TransactionCase):
 
         self.assertNotIn('UNKNOWN_KEY', partner.additional_identifiers or {})
         self.assertIn('BE_EN', partner.additional_identifiers or {})
+
+    def test_display_name_falls_back_on_enterprise_number(self):
+        """Without a VAT, the display name shows the preferred legal entity identifier."""
+        self.partner.additional_identifiers = {'FR_SIRET': '33417522101010'}
+        self.assertEqual(
+            self.partner.with_context(show_identifier=True).display_name,
+            'Test Partner Identifiers - 33417522101010',
+        )
+
+    def test_display_name_falls_back_on_citizen_number(self):
+        self.partner.additional_identifiers = {'FR_CN': '295109912611193'}
+        self.assertEqual(
+            self.partner.with_context(show_identifier=True).display_name,
+            'Test Partner Identifiers - 295109912611193',
+        )
+
+    def test_display_name_ignores_category_less_identifier(self):
+        """Without a VAT, DUNS should not be shown since it is not a legal identifier."""
+        self.partner.additional_identifiers = {'DUNS': '372441183'}
+        self.assertEqual(
+            self.partner.with_context(show_identifier=True).display_name,
+            'Test Partner Identifiers',
+        )
 
     def test_tin_metadata(self):
         # Please, set a category on the Tax ID.
@@ -124,20 +193,7 @@ class TestPartnerIdentifiers(TransactionCase):
 
     def test_allowed_metadata_keys(self):
         # Ensure that we don't have any other keys than the allowed ones
-        allowed_keys = {
-            'category',
-            'countries',
-            'display_optional',
-            'examples',
-            'format',
-            'help',
-            'label',
-            'placeholder',
-            'scheme',
-            'sequence',
-            'synced',
-            'validation_function',
-        }
+        allowed_keys = self.env['res.partner']._get_allowed_identifier_metadata_keys()
         for identifier_name, metadata in self.env['res.partner']._get_all_identifiers_metadata().items():
             for key in metadata:
                 self.assertIn(key, allowed_keys, f"Key '{key}' is not in allowed keys for identifier {identifier_name}")
@@ -175,3 +231,22 @@ class TestPartnerIdentifiers(TransactionCase):
         identifiers = partner._get_all_identifiers()
         self.assertIn('MX_RFC', identifiers)
         self.assertNotIn('RO_VAT', identifiers)
+
+    def test_sg_uen_peppol_prefixes(self):
+        """A plain UEN validates as-is; a Peppol prefix wrapping a UEN is validated and
+        kept prefixed, while the other Peppol prefixes are taken as-is."""
+        self.partner._set_additional_identifier('SG_UEN', '00192200M')
+        self.assertEqual(self.partner.additional_identifiers['SG_UEN'], '00192200M')
+        self.partner._set_additional_identifier('SG_UEN', 'sguxn00192200m')
+        self.assertEqual(self.partner.additional_identifiers['SG_UEN'], 'SGUXN00192200M')
+        self.partner._set_additional_identifier('SG_UEN', 'FRUIDsomeidentifier')
+        self.assertEqual(self.partner.additional_identifiers['SG_UEN'], 'FRUIDsomeidentifier')
+        with self.assertRaisesRegex(ValidationError, "Invalid identifier: SGUENnotauen"):
+            self.partner._set_additional_identifier('SG_UEN', 'SGUENnotauen')
+
+    def test_preferred_identifier_label_lt(self):
+        """ The label of the preferred identifier must return as a plain string."""
+        self.partner._set_additional_identifier('FR_SIRET', '33417522101010')
+        label = self.partner._get_preferred_legal_entity_identifier_vals()['label']
+        self.assertIsInstance(label, str)
+        self.assertEqual(label, 'SIRET')

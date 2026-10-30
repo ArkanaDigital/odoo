@@ -45,12 +45,16 @@ class SaleOrderLine(models.Model):
     def _search_event_booth_pending_ids(self, operator, value):
         if operator in Domain.NEGATIVE_OPERATORS:
             return NotImplemented
-        return [('event_booth_registration_ids.event_booth_id', operator, value)]
+        domain = Domain('event_booth_registration_ids.event_booth_id', operator, value)
+        if operator == 'in' and False in value:  # relation may be falsy
+            domain |= Domain('event_booth_registration_ids', '=', False)
+        return domain
 
     @api.constrains('event_booth_registration_ids')
     def _check_event_booth_registration_ids(self):
-        if len(self.event_booth_registration_ids.event_booth_id.event_id) > 1:
-            raise ValidationError(_('Registrations from the same Order Line must belong to a single event.'))
+        for so_line in self:
+            if len(so_line.event_booth_registration_ids.event_booth_id.event_id) > 1:
+                raise ValidationError(_('Registrations from the same Order Line must belong to a single event.'))
 
     @api.onchange('product_id')
     def _onchange_product_id_booth(self):

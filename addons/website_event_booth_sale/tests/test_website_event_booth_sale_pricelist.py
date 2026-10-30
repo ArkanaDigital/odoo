@@ -57,8 +57,8 @@ class TestWebsiteBoothPriceList(TestEventBoothSaleCommon, TestWebsiteEventSaleCo
             'item_ids': [
                 Command.create({
                     'applied_on': '3_global',
-                    'compute_price': 'percentage',
-                    'percent_price': 10,
+                    'compute_price': 'discount',
+                    'price_discount': 10,
                 }),
             ],
             'name': 'Test pricelist (with discount)',
@@ -66,5 +66,5 @@ class TestWebsiteBoothPriceList(TestEventBoothSaleCommon, TestWebsiteEventSaleCo
         })
         with MockRequest(self.env, website=self.website, sale_order_id=order.id) as req:
             self.assertEqual(req.pricelist, self.pricelist)
-            self.WebsiteSaleController.pricelist_change(pl2)
+            self.WebsiteSaleController.pricelist_change(pl2.id)
             self.assertEqual(so_line.price_reduce_taxexcl, 360, 'Incorrect amount based on the pricelist "Without Discount" and its currency.')

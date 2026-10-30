@@ -6,7 +6,7 @@ import { htmlReplaceAll } from "@web/core/utils/html";
 import { Wysiwyg } from "@html_editor/wysiwyg";
 import { beforeEach, describe, expect, test } from "@odoo/hoot";
 import { advanceTime, animationFrame, tick, waitUntil } from "@odoo/hoot-dom";
-import { Component, xml, markup } from "@odoo/owl";
+import { Component, markup, t, useProps, xml } from "@odoo/owl";
 import { mountWithCleanup, onRpc } from "@web/../tests/web_test_helpers";
 import { Mutex } from "@web/core/utils/concurrency";
 import { patch } from "@web/core/utils/patch";
@@ -135,11 +135,11 @@ class Wysiwygs extends Component {
         </div>
     `;
     static components = { Wysiwyg };
-    static props = {
-        peerIds: Array,
-        pool: Object,
-        content: String,
-    };
+    props = useProps({
+        peerIds: t.array(),
+        pool: t.object(),
+        content: t.string(),
+    });
     setup() {
         this.peerResolvers = {};
         this.peerPromises = Promise.all(
@@ -1021,6 +1021,32 @@ describe("Stale detection & recovery", () => {
                         // code path to resetFromPeer is properly taken.
                         expect(p2Spies.resetFromPeer.callCount).toBe(2, {
                             message: "p2 resetFromPeer should have been called twice",
+                        });
+                    },
+                "should recover from server when the record is newer than the notified commit id":
+                    (initial) => async () => {
+                        const pool = await createPeers(["p1", "p2"], initial);
+                        const peers = pool.peers;
+
+                        await peers.p1.focus();
+                        await peers.p2.focus();
+
+                        // Simulate a notification received after the next write.
+                        peers.p2.setOffline();
+
+                        await insertEditorText(peers.p1.editor, "b");
+                        await peers.p1.writeToServer();
+                        await insertEditorText(peers.p1.editor, "c");
+                        pool.lastRecordSaved = peers.p1.editor.getContent();
+
+                        expect(peers.p2.getValue()).toBe(`<p>a[]</p>`, {
+                            message: "p2 should not have the same document as p1",
+                        });
+
+                        await peers.p2.setOnline();
+
+                        expect(peers.p2.getValue()).toBe(`[]<p>abc</p>`, {
+                            message: "p2 should have the document last written to the server",
                         });
                     },
             };

@@ -95,15 +95,14 @@
         <field name="priority">32</field>
         <field name="arch" type="xml">
             <form string="Allocation Request" duplicate="false">
-                <field name="can_approve" invisible="1"/>
-                <field name="validation_type" invisible="1"/>
-                <!--
-                The following two lines are required so that the two fields are sent as part of the `vals_list`
-                to the create method when the allocation is created. Otherwise, carried_over_days_expiration_date
-                wouldn't be set and the days won't expire on that date.
-                -->
-                <field name="expiring_carryover_days" invisible="1"/>
-                <field name="carried_over_days_expiration_date" invisible="1"/>
+                <field name="can_approve" invisible="1"/> <!-- drives invisible of the Approve and Validate buttons -->
+                <field name="validation_type" invisible="1"/> <!-- drives invisible of the two state statusbars -->
+                <field name="lastcall" invisible="1"/> <!-- written by the _onchange_process_accrual_plans simulation, must be in the view to be saved -->
+                <field name="last_accrual" invisible="1"/> <!-- written by the _onchange_process_accrual_plans simulation, must be in the view to be saved -->
+                <field name="nextcall" invisible="1"/> <!-- written by the _onchange_process_accrual_plans simulation, must be in the view to be saved -->
+                <field name="yearly_accrued_days" invisible="1"/> <!-- written by the _onchange_process_accrual_plans simulation, must be in the view to be saved -->
+                <field name="previous_carryover_number_of_days" invisible="1"/> <!-- written by the _onchange_process_accrual_plans simulation, must be in the view to be saved -->
+                <field name="carried_over_days_expiration_date" invisible="1"/> <!-- written by the _onchange_process_accrual_plans simulation, must be in the view to be saved -->
                 <header>
                     <button string="Approve" name="action_approve" type="object" class="oe_highlight" invisible="not can_approve or not id" data-hotkey="v"/>
                     <button string="Validate" name="action_approve" invisible="not can_validate or can_approve or not id" type="object" class="oe_highlight" data-hotkey="v"/>
@@ -125,9 +124,7 @@
                     <group id="full_group">
                         <group id="alloc_left_col">
                             <field name="is_name_custom" invisible="1"/> <!-- needed for triggering reasons -->
-                            <field name="type_request_unit" invisible="1"/>
-                            <!-- Save already_accrued when creating record to avoid double allocation when cron runs -->
-                            <field name="already_accrued" invisible="1"/>
+                            <field name="type_request_unit" invisible="1"/> <!-- drives invisible/readonly of number_of_days_display, number_of_hours and their units -->
                             <div class="o_td_label" name="validity_label" invisible="not is_officer">
                                 <label for="date_from" string="Validity Period"
                                     invisible="accrual_plan_id or state != 'confirm'"/>
@@ -151,32 +148,37 @@
                                  invisible="id or not date_to or date_to &gt;= context_today().strftime('%Y-%m-%d')">
                                 <span>The allocated days cannot be used, because the allocation is set to finish in the past.</span>
                             </div>
-                            <field name="accrual_plan_id" placeholder="Regular allocation"
-                                readonly="not is_officer or state in ['refuse', 'validate']"/>
-                            <field name="work_entry_type_id"
+                            <field name="work_entry_type_id" widget="many2one_work_entry_type"
                                 context="{'employee_id':employee_id, 'default_date_from':current_date, 'request_type':'allocation'}"
                                 domain="[
                                     ('id','in', allowed_work_entry_type_ids),
                                 ]"
                                 readonly="state in ['refuse', 'validate']"/>
-                            <field name="number_of_days" invisible="1"/>
+                            <field name="accrual_plan_id"
+                                placeholder="Regular allocation"
+                                readonly="not is_officer or state in ['refuse', 'validate']"
+                                domain="[('work_entry_type_id', '=', work_entry_type_id)] if work_entry_type_id else [('work_entry_type_id', '!=', False)]"
+                                invisible="hide_accrual_plan_id"/>
+                            <field name="number_of_days" invisible="1"/> <!-- reference duration set by the allocation onchanges, must be in the view to be saved -->
                             <div class="o_td_label">
                                 <label for="number_of_days_display" string="Allocation"
                                     readonly="accrual_plan_id or state == 'validate'"/>
                             </div>
                             <div name="duration_display" class="d-flex gap-2 flex-wrap">
+                                <!-- Add type_request_unit check for the readonly condition of the 2 below fields otherwise we can get inconsistent value when
+                                    saving the form (we only want to save the value of the visible field) -->
                                 <field name="number_of_days_display" nolabel="1" style="width: 6ch;"
                                     invisible="type_request_unit == 'hour'"
-                                    readonly="state == 'refuse' or (state != 'confirm' and not is_officer)"/>
-                                <field name="number_of_hours_display" nolabel="1" style="width: 6ch;"
+                                    readonly="type_request_unit == 'hour' or state == 'refuse' or (state != 'confirm' and not is_officer)"/>
+                                <field name="number_of_hours" nolabel="1" style="width: 6ch;"
                                     invisible="type_request_unit != 'hour'"
-                                    readonly="state == 'refuse' or (state != 'confirm' and not is_officer)"/>
+                                    readonly="type_request_unit != 'hour' or state == 'refuse' or (state != 'confirm' and not is_officer)"/>
                                 <span class="ml8" invisible="type_request_unit == 'hour'">Days</span>
                                 <span id="hour_display_field" class="ml8" invisible="type_request_unit != 'hour'">Hours</span>
                             </div>
                         </group>
                         <group name="alloc_right_col">
-                            <field name="employee_id" invisible="1" readonly="state in ['refuse', 'validate']"/>
+                            <field name="employee_id" invisible="1" readonly="state in ['refuse', 'validate']"/> <!-- drives invisible of the wrong company warning and feeds the context of work_entry_type_id; replaced by a visible field in hr_leave_allocation_view_form_manager -->
                         </group>
                     </group>
                     <field name="notes" nolabel="1" placeholder="Add a reason..." readonly="state not in ['confirm']"/>
@@ -315,15 +317,14 @@
                 </header>
                 <field name="employee_id" decoration-muted="not active_employee" widget="many2one_avatar_employee" readonly="state in ['refuse', 'validate']"/>
                 <field name="department_id" optional="hide" readonly="state not in ['confirm']"/>
-                <field name="work_entry_type_id" class="fw-bold" readonly="state in ['refuse', 'validate', 'validate1']"/>
+                <field name="work_entry_type_id" widget="many2one_work_entry_type" class="fw-bold" readonly="state in ['refuse', 'validate', 'validate1']"/>
                 <field name="name" string="Title" optional="hide"/>
                 <field name="duration_display" string="Amount"/>
                 <field name="date_from" string="Validity Start" optional="hide"/>
                 <field name="date_to" string="Validity Stop" optional="hide" readonly="state in ['refuse', 'validate', 'validate1']"/>
                 <field name="accrual_plan_id"/>
                 <field name="notes" string="Reason" optional="hide"/>
-                <field name="message_needaction" column_invisible="True"/>
-                <field name="active_employee" column_invisible="True"/>
+                <field name="active_employee" column_invisible="True"/> <!-- drives decoration-muted of the employee_id column -->
                 <field name="state" widget="badge" decoration-warning="state in ['confirm', 'validate1']" decoration-success="state == 'validate'" decoration-danger="state == 'refuse'"/>
                 <button string="Approve" name="action_approve" type="object" class="text-success"
                     icon="thumb_up" icon_class="oi-filled"
@@ -404,7 +405,7 @@
         <field name="name">hr.leave.allocation.view.kanban</field>
         <field name="model">hr.leave.allocation</field>
         <field name="arch" type="xml">
-            <kanban class="o_holidays_view_kanban" sample="1">
+            <kanban class="o_holidays_view_kanban o_kanban_list" sample="1">
                 <header>
                     <button type="action"
                         name="%(hr_holidays.action_hr_leave_allocation_generate_multi_wizard)d"
@@ -439,7 +440,7 @@
                                             </div>
                                             <div class="col-2 o_hr_holidays_name">
                                                 <div class="o_hr_holidays_card">
-                                                    <field name="work_entry_type_id" class="fw-bold me-1"/>
+                                                    <field name="work_entry_type_id" widget="many2one_work_entry_type" class="fw-bold me-1"/>
                                                     <div class="text-muted" t-if="record.accrual_plan_id.raw_value">
                                                         <field name="accrual_plan_id"/>
                                                     </div>
@@ -451,7 +452,7 @@
                                                 </div>
                                                 <span class="text-muted">Amount</span>
                                             </div>
-                                            <div class="col-2 o_hr_holidays_card">
+                                            <div class="col-2 o_hr_holidays_card" invisible="1">
                                                 <div class="fw-bold d-flex gap-1 me-1">
                                                     <field name="virtual_remaining_leaves" widget="float" digits="[3,2]"/>
                                                     /
@@ -491,7 +492,7 @@
                             <main class="d-flex flex-column lh-sm">
                                 <field class="fw-bold" name="employee_id"/>
                                 <div class="content d-flex flex-column">
-                                    <field name="work_entry_type_id" class="text-muted"/>
+                                    <field name="work_entry_type_id" widget="many2one_work_entry_type" class="text-muted"/>
                                     <div class="text-muted">(<field name="duration_display"/>)</div>
                                 </div>
                             </main>
@@ -536,7 +537,7 @@
                         <img class="rounded" t-att-src="activity_image('hr.employee', 'avatar_128', record.employee_id.raw_value)" t-att-title="record.employee_id.value" t-att-alt="record.employee_id.value"/>
                         <div class="ms-2">
                             <field name="employee_id" class="o_text_block o_text_bold"/> <span class="text-muted">(<field name="number_of_days"/> days)</span>
-                            <field name="work_entry_type_id" muted="1" display="full"/>
+                            <field name="work_entry_type_id" widget="many2one_work_entry_type" muted="1" display="full"/>
                         </div>
                     </div>
                 </templates>

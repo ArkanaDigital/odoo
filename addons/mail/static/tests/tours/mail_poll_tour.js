@@ -30,20 +30,24 @@ registry.category("web_tour.tours").add("mail_poll_tour.js", {
         { trigger: ".o-mail-Poll button:contains('Vote'):enabled", run: "click" },
         { trigger: ".o-mail-PollOption:contains(Blue):contains(1 vote100%)" },
         { trigger: ".o-mail-Poll a:text('1 vote')", run: "click" },
-        { trigger: ".o-mail-PollVotesPanel:has(:text('❤️ Red (0)'))" },
+        {
+            trigger:
+                ".o-mail-PollVotesPanel .o-mail-TabHeader:has(:text('Red')) .o-discuss-badge:text(0)",
+        },
         { trigger: ".modal .btn-close", run: "click" },
         { trigger: "body:not(:has(.o-mail-PollVotesPanel))" },
         { trigger: ".o-mail-Poll button:contains('Remove Vote')", run: "click" },
         { trigger: ".o-mail-PollOption:contains('Blue') input:not(:checked)" },
+        { trigger: ".o-mail-Message:has(.o-mail-Poll)", run: "hover" },
         { trigger: ".o-mail-Message:has(.o-mail-Poll) [title='Expand']", run: "click" },
         { trigger: ".o-mail-Message-moreMenu [name='reply-to']", run: "click" },
         {
             trigger:
-                ".o-mail-Composer:contains('Replying to Ernest Employee') .o-mail-Composer-input",
-            run: "edit Reply to the poll",
+                ".o-mail-Composer:contains('Replying to Ernest Employee') .o-mail-Composer-html",
+            run: "editor Reply to the poll",
         },
         {
-            trigger: ".o-mail-Composer:has(button[title='Send']:enabled) .o-mail-Composer-input",
+            trigger: ".o-mail-Composer:has(button[title='Send']:enabled) .o-mail-Composer-html",
             run: "press Enter",
         },
         {
@@ -53,14 +57,13 @@ registry.category("web_tour.tours").add("mail_poll_tour.js", {
         { trigger: ".o-mail-PollOption:contains('Blue') input", run: "click" },
         { trigger: ".o-mail-Poll button:contains('Vote'):enabled", run: "click" },
         { trigger: ".o-mail-PollOption:contains(Blue):contains(1 vote100%)" },
-        { trigger: ".o-mail-Message:has(.o-mail-Poll)", run: "hover && click [title='Expand']" },
+        { trigger: ".o-mail-Message:has(.o-mail-Poll)", run: "hover" },
+        { trigger: ".o-mail-Message:has(.o-mail-Poll) [title='Expand']", run: "click" },
         { trigger: "button:contains('End Poll')", run: "click" },
         { trigger: ".o-mail-PollResult:contains(Blue)" },
         { trigger: ".o-mail-PollResult:contains('Winning Answer∙100%')" },
-        {
-            trigger: ".o-mail-Message:has(.o-mail-Poll)",
-            run: "hover && click .o-mail-Message:has(.o-mail-Poll) [title='Expand']",
-        },
+        { trigger: ".o-mail-Message:has(.o-mail-Poll)", run: "hover" },
+        { trigger: ".o-mail-Message:has(.o-mail-Poll) [title='Expand']", run: "click" },
         { trigger: "button:contains('Delete')", run: "click" },
         { trigger: ".modal .btn:contains(Delete)", run: "click" },
         {

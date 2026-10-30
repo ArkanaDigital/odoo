@@ -6,7 +6,7 @@
         <field name="inherit_id" ref="point_of_sale.pos_payment_method_view_form"/>
         <field name="arch" type="xml">
             <xpath expr="//form/sheet" position="before">
-                <field name="has_an_online_payment_provider" invisible="1"/>
+                <field name="has_an_online_payment_provider" invisible="1"/> <!-- drives invisible of the missing online provider warning -->
                 <div class="alert alert-danger" role="alert" invisible="type != 'online' or has_an_online_payment_provider">
                     You have not activated any <bold><a type="action" name="%(payment.action_payment_provider)d" class="alert-link" role="button">payment provider</a></bold> to allow online payments.
                 </div>
@@ -21,7 +21,7 @@
                 <attribute name="invisible">type == 'online'</attribute>
             </xpath>
             <xpath expr="//form/sheet/group[@name='Payment methods']/group" position="after">
-                <group invisible="type != 'online'">
+                <group invisible="type != 'online'" groups="point_of_sale.group_pos_manager,base.group_system">
                     <div colspan="2">
                         <label for="online_payment_provider_ids"/>
                         <field name="online_payment_provider_ids" widget="many2many_tags" options="{'no_create': True}" placeholder="All available providers" />
@@ -41,7 +41,7 @@
                 <attribute name="decoration-danger">type == 'online' and not has_an_online_payment_provider</attribute>
             </xpath>
             <xpath expr="//list" position="inside">
-                <field name="has_an_online_payment_provider" column_invisible="True"/>
+                <field name="has_an_online_payment_provider" column_invisible="True"/> <!-- drives the decoration-danger this view sets on the list -->
             </xpath>
         </field>
     </record>

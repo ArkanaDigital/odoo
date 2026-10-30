@@ -96,6 +96,13 @@ class TestPersonalStages(TestProjectCommon):
         self.assertEqual(1, total_stage_0)
         self.assertEqual(1, total_stage_1)
 
+    def test_personal_stage_read_grouping_sets(self):
+        groups = self.env['project.task'].with_context(read_group_expand=True).with_user(self.user_projectuser).formatted_read_grouping_sets(
+            [('user_ids', '=', self.user_projectuser.id)],
+            grouping_sets=[['personal_stage_type_id']],
+        )[0]
+        self.assertEqual(len(self.user_stages), len(groups))
+
     def test_delete_personal_stage(self):
         """
         When deleting personal stages, the task of this stage are transfered to the one following it sequence-wise.
@@ -293,6 +300,7 @@ class TestPersonalStages(TestProjectCommon):
                          "Superuser should be able to delete personal stages in batch.")
         self.assertEqual(self.env['project.task'].with_user(user_1.id).search_count([('user_ids', 'in', user_1.ids)]), 4,
                          "Tasks in personal stages removed in batch by superuser should not be unlinked.")
+        self.env['project.task'].invalidate_model(['personal_stage_id', 'personal_stage_type_id'])  # No depends on _compute_personal_stage_id
         for private_task in private_tasks:
             self.assertEqual(private_task.with_user(user_1.id).personal_stage_type_id.id, user_1_stages[4].id,
                              "Tasks in a personal stage removed in batch should be moved to a stage with a higher sequence if no stage with lower sequence have been found")

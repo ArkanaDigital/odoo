@@ -1,8 +1,8 @@
 import { BuilderAction } from "@html_builder/core/builder_action";
 import { ClassAction } from "@html_builder/core/core_builder_action_plugin";
 import { Plugin } from "@html_editor/plugin";
+import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
-import { renderToElement } from "@web/core/utils/render";
 import { ImagePositionOverlay } from "@html_builder/plugins/image/image_position_overlay";
 import { onceAllImagesLoaded } from "@website/utils/images";
 
@@ -30,6 +30,7 @@ const imageRelatedStyles = [
     "--card-img-size-h",
     "--card-img-ratio-align", // kept for compatibility
 ];
+const cardImageSelector = ".o_card_img_wrapper > .o_card_img";
 
 export class CardImageOptionPlugin extends Plugin {
     static id = "cardImageOption";
@@ -37,6 +38,16 @@ export class CardImageOptionPlugin extends Plugin {
     static shared = ["adaptRatio", "getDelta"];
     /** @type {import("plugins").WebsiteResources} */
     resources = {
+        clone_disabled_reason_providers: (el) => {
+            if (el.matches(cardImageSelector)) {
+                return _t("You cannot duplicate this image.");
+            }
+        },
+        is_node_removable_predicates: (node) => {
+            if (node.matches?.(cardImageSelector)) {
+                return false;
+            }
+        },
         builder_actions: {
             SetCoverImagePositionAction,
             RemoveCoverImageAction,
@@ -115,8 +126,11 @@ export class RemoveCoverImageAction extends BuilderAction {
 }
 export class AddCoverImageAction extends BuilderAction {
     static id = "addCoverImage";
+    static dependencies = ["websiteBridge"];
     apply({ editingElement }) {
-        const imageWrapper = renderToElement("website.s_card.imageWrapper");
+        const imageWrapper = this.dependencies.websiteBridge.renderToElement(
+            "website.s_card.imageWrapper"
+        );
         editingElement.prepend(imageWrapper);
         editingElement.classList.add("o_card_img_top");
     }

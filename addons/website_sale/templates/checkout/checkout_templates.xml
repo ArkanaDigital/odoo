@@ -2,7 +2,7 @@
 <odoo>
 
     <template id="website_sale.wizard_checkout" name="Wizard Checkout">
-        <t t-call="website.step_wizard" wizard_step="website._get_checkout_breadcrumb_steps()"/>
+        <t t-call="website.step_wizard" wizard_step="website._get_checkout_breadcrumb_steps(website_sale_order)"/>
     </template>
 
     <!-- Called in `website_sale.reduction_code`. -->
@@ -66,7 +66,7 @@
                         t-attf-class="btn btn-primary #{cart_has_blocking_alerts and 'disabled'} w-100"
                         t-att-href="next_website_checkout_step_href">
                         <span t-field="next_website_checkout_step.main_button_label"/>
-                        <i class="oi ms-2 fw-light" data-icon="keyboard_arrow_right"/>
+                        <i class="oi ms-2 fw-light" data-icon="keyboard_arrow_right" role="img" aria-hidden="true"/>
                     </a>
                 </t>
             </t>
@@ -80,13 +80,13 @@
                     t-att-href="previous_website_checkout_step.step_href"
                     class="my-4 my-lg-0 text-center"
                 >
-                    <i class="oi me-2 fw-light" data-icon="keyboard_arrow_left"/>
+                    <i class="oi me-2 fw-light" data-icon="keyboard_arrow_left" role="img" aria-hidden="true"/>
                     <span t-field="previous_website_checkout_step.back_button_label"/>
                 </a>
             </t>
             <t t-else="">
                 <a t-att-href="'/shop'" class="my-4 my-lg-0 text-center">
-                    <i class="oi me-2 fw-light" data-icon="keyboard_arrow_left"/>
+                    <i class="oi me-2 fw-light" data-icon="keyboard_arrow_left" role="img" aria-hidden="true"/>
                     Continue shopping
                 </a>
             </t>
@@ -246,7 +246,7 @@
                                     class="o_cart_item_count badge ms-1 top-0 bg-primary"
                                     t-out="str(website_sale_order.cart_quantity)"
                                 />
-                                <i class="oi ms-2" data-icon="keyboard_arrow_right" role="img"/>
+                                <i class="oi ms-2" data-icon="keyboard_arrow_right" role="img" aria-hidden="true"/>
                             </button>
                             <t
                                 t-if="show_navigation_button"
@@ -267,7 +267,7 @@
                                     class="o_wsale_scrollable_table_badge o_wsale_scrollable_table_badge_mobile d-none badge position-absolute start-50 z-1 translate-middle py-2 px-3 pe-none"
                                 >
                                     <t t-out="str(website_sale_order.cart_quantity)"/> items - Scroll for more
-                                    <i class="oi ms-1" data-icon="south" aria-hidden="true"/>
+                                    <i class="oi ms-1" data-icon="south" role="img" aria-hidden="true"/>
                                 </span>
                                 <a href="/shop/cart" class="btn btn-link w-100">
                                     Coupon, Gift card, Promo-code?
@@ -342,7 +342,7 @@
                         class="o_wsale_scrollable_table_badge o_wsale_scrollable_table_badge_desktop badge d-none d-lg-inline py-2 px-3 position-absolute start-50 z-1 translate-middle pe-none"
                     >
                         <t t-out="str(website_sale_order.cart_quantity)"/> items - Scroll for more
-                        <i class="oi ms-1" data-icon="south" aria-hidden="true"/>
+                        <i class="oi ms-1" data-icon="south" role="img" aria-hidden="true"/>
                     </span>
                     <tbody>
                         <tr
@@ -413,7 +413,7 @@
         >
             <t
                 t-set="tax_included"
-                t-value="website_sale_order.website_id.show_line_subtotals_tax_selection == 'tax_included'"
+                t-value="website_sale_order.website_id.tax_display == 'tax_included'"
             />
             <table name="cart_total_table" class="table mb-0">
                 <tr
@@ -475,6 +475,23 @@
                         />
                     </td>
                 </tr>
+                <!-- Paid -->
+                <tr
+                    t-if="website_sale_order.amount_paid and not website_sale_order._is_paid()"
+                    id="amount_paid"
+                    class="text-success"
+                >
+                    <td colspan="2" class="border-0 ps-0 pt-0 pb-2">
+                        Paid
+                    </td>
+                    <td class="text-end border-0 px-0 pt-0 pb-2">
+                        <span
+                            t-field="website_sale_order.amount_paid"
+                            t-options="{'widget': 'monetary', 'display_currency': website_sale_order.currency_id}"
+                            class="monetary_field"
+                        />
+                    </td>
+                </tr>
                 <!-- Tax included view -->
                 <t t-if="tax_included" t-call="website_sale.order_tax_lines" name="tax_included_order_tax_lines"/>
             </table>
@@ -505,7 +522,7 @@
         <tbody id="order_tax_lines_container">
             <t
                 t-set="tax_included"
-                t-value="website_sale_order.website_id.show_line_subtotals_tax_selection == 'tax_included'"
+                t-value="website_sale_order.website_id.tax_display == 'tax_included'"
             />
             <t t-if="website_sale_order.tax_totals and website_sale_order.tax_totals['subtotals']">
                 <t t-foreach="website_sale_order.tax_totals['subtotals']" t-as="line">

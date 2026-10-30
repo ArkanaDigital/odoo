@@ -38,6 +38,7 @@ class ResConfigSettings(models.TransientModel):
     module_pos_pine_labs = fields.Boolean(string="Pine Labs Payment Terminal", help="The transactions are processed by Pine Labs. Set your Pine Labs credentials on the related payment method.")
     module_pos_qfpay = fields.Boolean(string="QFPay Payment Terminal", help="The transactions are processed by QFPay. Set your QFPay credentials on the related payment method.")
     module_pos_dpopay = fields.Boolean(string="DPO Pay Payment Terminal", help="The transactions are processed by DPO Pay. Set your DPO Pay credentials on the related payment method.")
+    module_pos_sumup = fields.Boolean(string="Sumup Payment Terminal", help="The transactions are processed by SumUp. Set your SumUp credentials on the related payment method.")
     module_pos_pricer = fields.Boolean(string="Pricer electronic price tags", help="Display the price of your products through electronic price tags")
     barcode_nomenclature_id = fields.Many2one('barcode.nomenclature', related='company_id.nomenclature_id', readonly=False)
     use_kiosk_mode = fields.Boolean(string="Is Kiosk Mode", default=False)
@@ -89,6 +90,7 @@ class ResConfigSettings(models.TransientModel):
     pos_use_header_or_footer = fields.Boolean(related='pos_config_id.use_header_or_footer', readonly=False)
     pos_is_margins_costs_accessible_to_every_user = fields.Boolean(related='pos_config_id.is_margins_costs_accessible_to_every_user', readonly=False)
     pos_journal_id = fields.Many2one(related='pos_config_id.journal_id', readonly=False)
+    pos_closing_journal_id = fields.Many2one(related='pos_config_id.closing_journal_id', readonly=False)
     pos_limit_categories = fields.Boolean(related='pos_config_id.limit_categories', readonly=False)
     pos_manual_discount = fields.Boolean(related='pos_config_id.manual_discount', readonly=False)
     pos_only_round_cash_method = fields.Boolean(related='pos_config_id.only_round_cash_method', readonly=False)
@@ -126,6 +128,7 @@ class ResConfigSettings(models.TransientModel):
     pos_fast_payment_method_ids = fields.Many2many(related='pos_config_id.fast_payment_method_ids', readonly=False)
     pos_iface_printbill = fields.Boolean(related='pos_config_id.iface_printbill', readonly=False)
     pos_use_download_invoice = fields.Boolean(related='pos_config_id.use_download_invoice', readonly=False)
+    pos_welcome_message = fields.Char(related='pos_config_id.welcome_message', readonly=False)
 
     def action_launch_cron_generate_invoice_period(self):
         self.env['pos.session']._launch_cron_generate_invoice_period()

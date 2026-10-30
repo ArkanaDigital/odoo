@@ -7,21 +7,22 @@
 #
 # "Dylan Kiss (dyki)" <dyki@odoo.com>, 2025.
 # "Tony Ng (ngto)" <ngto@odoo.com>, 2026.
+# Weblate <noreply-mt-weblate@weblate.org>, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server saas~18.2\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-03 17:36+0000\n"
-"PO-Revision-Date: 2026-06-20 07:43+0000\n"
+"POT-Creation-Date: 2026-08-28 17:41+0000\n"
+"PO-Revision-Date: 2026-08-31 14:46+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
 "Language-Team: Chinese (Traditional Han script) <https://translate.odoo.com/"
-"projects/odoo-master/pos_adyen/zh_Hant/>\n"
+"projects/odoo-s19-4/pos_adyen/zh_Hant/>\n"
 "Language: zh_TW\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: pos_adyen
 #: model_terms:ir.ui.view,arch_db:pos_adyen.res_config_settings_view_form
@@ -30,8 +31,9 @@ msgstr "透過付款終端機加入小費（Adyen）"
 
 #. module: pos_adyen
 #: model_terms:ir.ui.view,arch_db:pos_adyen.pos_payment_method_view_form_inherit_pos_adyen
+#, fuzzy
 msgid "Adyen"
-msgstr ""
+msgstr "Adyen"
 
 #. module: pos_adyen
 #: model:ir.model.fields,field_description:pos_adyen.field_pos_payment_method__adyen_api_key
@@ -51,8 +53,9 @@ msgstr "Adyen 最後回應"
 
 #. module: pos_adyen
 #: model:ir.model.fields,field_description:pos_adyen.field_pos_payment_method__adyen_merchant_account
+#, fuzzy
 msgid "Adyen Merchant Account"
-msgstr ""
+msgstr "Adyen 商家賬號"
 
 #. module: pos_adyen
 #: model:ir.model.fields,field_description:pos_adyen.field_pos_payment_method__adyen_terminal_identifier
@@ -132,6 +135,11 @@ msgid "ID"
 msgstr "識別號"
 
 #. module: pos_adyen
+#: model:ir.module.module,summary:base.module_pos_adyen
+msgid "Integrate your POS with an Adyen payment terminal"
+msgstr ""
+
+#. module: pos_adyen
 #. odoo-python
 #: code:addons/pos_adyen/models/pos_payment_method.py:0
 msgid "Invalid Adyen request"
@@ -142,6 +150,11 @@ msgstr "Adyen 請求無效"
 #: code:addons/pos_adyen/static/src/app/utils/payment/payment_adyen.js:0
 msgid "Message from Adyen: %s"
 msgstr "來自 Adyen 的訊息: %s"
+
+#. module: pos_adyen
+#: model:ir.module.module,shortdesc:base.module_pos_adyen
+msgid "POS Adyen"
+msgstr ""
 
 #. module: pos_adyen
 #. odoo-python
@@ -157,13 +170,15 @@ msgstr "POS設定"
 
 #. module: pos_adyen
 #: model:ir.model,name:pos_adyen.model_pos_order
+#, fuzzy
 msgid "Point of Sale Order"
-msgstr ""
+msgstr "POS 銷售點訂單"
 
 #. module: pos_adyen
 #: model:ir.model,name:pos_adyen.model_pos_payment
+#, fuzzy
 msgid "Point of Sale Payment"
-msgstr ""
+msgstr "POS 銷售點付款"
 
 #. module: pos_adyen
 #: model:ir.model,name:pos_adyen.model_pos_payment_method
@@ -187,8 +202,8 @@ msgid ""
 "Terminal %(terminal)s is already used in company %(company)s on payment "
 "method %(payment_method)s."
 msgstr ""
-"終端機 %(terminal)s 已在 %(company)s 公司的付款方式 %(payment_method)s 上使用"
-"。"
+"終端機 %(terminal)s 已在 %(company)s 公司的付款方式 %(payment_method)s 上使"
+"用。"
 
 #. module: pos_adyen
 #. odoo-python
@@ -199,8 +214,9 @@ msgstr "終端機 %(terminal)s 已在付款方式 %(payment_method)s 上使用�
 
 #. module: pos_adyen
 #: model:ir.model.fields,help:pos_adyen.field_pos_payment_method__adyen_merchant_account
+#, fuzzy
 msgid "The POS merchant account code used in Adyen"
-msgstr ""
+msgstr "Adyen 中使用的 POS 商戶帳號代碼"
 
 #. module: pos_adyen
 #: model:ir.model.fields,help:pos_adyen.field_pos_payment_method__adyen_event_url

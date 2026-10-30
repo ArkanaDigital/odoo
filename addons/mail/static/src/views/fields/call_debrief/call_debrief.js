@@ -7,16 +7,19 @@ import {
     useEffect,
     useListener,
     useOnChange,
+    usePlugin,
     useProps,
 } from "@odoo/owl";
 import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
 import { CallDebriefTimeline } from "@mail/views/fields/call_debrief/call_debrief_timeline";
 import { CallDebriefMediaControls } from "@mail/views/fields/call_debrief/call_debrief_media_controls";
 import { registry } from "@web/core/registry";
-import { useService } from "@web/core/utils/hooks";
+import { ORM } from "@web/core/orm_plugin";
 import { standardFieldProps } from "@web/views/fields/standard_field_props";
 import { deserializeDateTime } from "@web/core/l10n/dates";
 import { _t } from "@web/core/l10n/translation";
+
+const { DateTime } = luxon;
 
 export class CallDebrief extends Component {
     static template = "mail.CallDebrief";
@@ -39,11 +42,12 @@ export class CallDebrief extends Component {
         this.mediaPlayer = signal.ref();
         this.rootElement = signal.ref();
 
-        this.orm = useService("orm");
+        this.orm = usePlugin(ORM);
         this.state = proxy({
             currentTime: 0,
             mediaSegments: [],
             currentSegment: undefined,
+            /** @type {TranslatedString} */
             error: "",
             isPlaying: false,
             isFullscreen: false,
@@ -56,7 +60,12 @@ export class CallDebrief extends Component {
         this._pendingSeek = null;
 
         useOnChange(
-            () => [this.props.record.resId, this.props.record.data[this.props.name]],
+            () => [
+                this.props.record.resId,
+                this.props.record.data[this.props.name],
+                this.props.record.data[this.props.callStartDateField],
+                this.props.record.data[this.props.callEndDateField],
+            ],
             (resId) => {
                 // Tracks active record ID to bypass this.props update lag during async paging
                 this.activeResId = resId;
@@ -195,12 +204,16 @@ export class CallDebrief extends Component {
     }
 
     _initCallTiming(start, end) {
-        if (!start || !end) {
+        if (!start) {
             this._resetState();
             return false;
         }
         const callStartDate = typeof start === "string" ? deserializeDateTime(start) : start;
-        const callEndDate = typeof end === "string" ? deserializeDateTime(end) : end;
+        const callEndDate = !end
+            ? DateTime.now()
+            : typeof end === "string"
+            ? deserializeDateTime(end)
+            : end;
 
         const duration = callEndDate.diff(callStartDate, "seconds").seconds;
         if (duration < 0) {
@@ -250,6 +263,11 @@ export class CallDebrief extends Component {
         try {
             artifacts = await this.orm.read("mail.call.artifact", artifactIds, fieldsToRead);
         } catch (e) {
+            // The component was destroyed during the call: rethrow so the AbortError skips the
+            // error handling below and reaches the global handler, which silently ignores it.
+            if (e.name === "AbortError") {
+                throw e;
+            }
             if (this.activeResId !== initialResId) {
                 return;
             }
@@ -314,18 +332,18 @@ export class CallDebrief extends Component {
      * Overridden in AI module to add AI-specific fields.
      */
     _getArtifactFields() {
-        return ["media_id", "start_ms", "end_ms"];
+        return ["media_id", "start_ms", "end_ms", "recording_upload_pending"];
     }
 
     /**
-     * Hook to determine if a loaded artifact represents a playable segment.
-     * Overridden in enterprise modules to filter out specific artifacts.
+     * Completed uploads can be played back. Enterprise modules may exclude
+     * other artifact types from playback.
      *
      * @param {Object} art - The mail.call.artifact record
      * @returns {boolean} True if the artifact should be played back
      */
     _isPlaybackArtifact(art) {
-        return true;
+        return !art.recording_upload_pending;
     }
 
     /**
@@ -575,12 +593,6 @@ export class CallDebrief extends Component {
 
     setPlaybackRate(ev) {
         this.state.playbackRate = parseFloat(ev.target.value);
-    }
-
-    adjustVolume(delta) {
-        const newVolume = Math.max(0, Math.min(1, this.state.volume + delta));
-        this.state.volume = newVolume;
-        this.state.isMuted = this.state.volume === 0;
     }
 
     setVolume(ev) {

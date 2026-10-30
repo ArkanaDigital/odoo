@@ -1,9 +1,10 @@
-import { Component, onMounted, onWillUnmount, proxy, t, useEffect, useProps } from "@odoo/owl";
+import { Component, onMounted, onWillUnmount, proxy, t, useProps } from "@odoo/owl";
 import { PrintingFailurePopup } from "@pos_self_order/app/components/printing_failure_popup/printing_failure_popup";
 import { useSelfOrder } from "@pos_self_order/app/services/self_order_service";
 import { cookie } from "@web/core/browser/cookie";
 import { rpc } from "@web/core/network/rpc";
 import { useService } from "@web/core/utils/hooks";
+import { imageDataUri } from "@point_of_sale/utils";
 
 export class ConfirmationPage extends Component {
     static template = "pos_self_order.ConfirmationPage";
@@ -15,6 +16,7 @@ export class ConfirmationPage extends Component {
         this.dialog = useService("dialog");
         this.changeToDisplay = [];
         this.state = proxy({
+            continueDisabled: true,
             onReload: true,
             payment: this.props.screenMode === "pay",
         });
@@ -26,28 +28,22 @@ export class ConfirmationPage extends Component {
                 }, 30000);
             }
         });
-        useEffect(() => {
-            if (
-                !this.confirmedOrder ||
-                !this.confirmedOrder.uiState?.receiptReady ||
-                typeof this.confirmedOrder.id !== "number"
-            ) {
-                return;
-            }
 
-            const printReceipts = async () => {
-                await this.printOrder();
-                await this.printOrderChanges();
-            };
-
-            printReceipts();
-        });
         onWillUnmount(() => {
             clearTimeout(this.defaultTimeout);
         });
 
         onMounted(async () => {
             await this.initOrder();
+            // Init the order before trying to print anything
+            try {
+                await this.printOrder();
+                if (!this.selfOrder.hasPaymentMethod() || this.confirmedOrder.state === "paid") {
+                    await this.printOrderChanges();
+                }
+            } finally {
+                this.state.continueDisabled = false;
+            }
         });
     }
 
@@ -79,21 +75,15 @@ export class ConfirmationPage extends Component {
         }
 
         this.selfOrder.selectedOrderUuid = order.uuid;
-        this.confirmedOrder.uiState.receiptReady = this.beforePrintOrder();
         this.state.onReload = false;
     }
 
     canPrintReceipt() {
         return (
             !this.isPrinting &&
-            this.confirmedOrder.uiState.receiptReady &&
+            this.confirmedOrder &&
             (!this.confirmedOrder.nb_print || this.confirmedOrder.nb_print < 1)
         );
-    }
-
-    beforePrintOrder() {
-        // meant to be overriden.
-        return true;
     }
 
     /**
@@ -164,7 +154,7 @@ export class ConfirmationPage extends Component {
     }
 
     backToHome() {
-        if (this.confirmedOrder.uiState.receiptReady && !this.setDefautLanguage()) {
+        if (!this.setDefautLanguage()) {
             this.router.navigate("default");
         }
     }
@@ -196,5 +186,10 @@ export class ConfirmationPage extends Component {
     }
     get orderTimeStr() {
         return this.confirmedOrder.preset_time.toFormat("h:mm a");
+    }
+    get logoUrl() {
+        return this.selfOrder.config.logo
+            ? imageDataUri(this.selfOrder.config.logo.content)
+            : false;
     }
 }

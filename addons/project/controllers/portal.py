@@ -9,7 +9,8 @@ from odoo import http, _
 from odoo.exceptions import AccessError, MissingError, UserError
 from odoo.fields import Domain
 from odoo.http import request
-from odoo.tools import groupby as groupbyelem
+from odoo.tools import groupby as groupbyelem, consteq
+from odoo.tools.misc import hmac
 
 from odoo.addons.portal.controllers.portal import CustomerPortal, pager as portal_pager
 
@@ -143,11 +144,16 @@ class ProjectCustomerPortal(CustomerPortal):
         lang = user_context.get("lang")
 
         project_company = self._get_project_sharing_company(project)
+        collaborator = project.collaborator_ids.filtered(
+            lambda c: c.partner_id == request.env.user.partner_id
+        )[:1]
 
         session_info.update(
             action_name="project.project_sharing_project_task_action",
             project_id=project.id,
             project_name=project.name,
+            portal_is_readonly=collaborator.access_mode == 'view' if collaborator else False,
+            portal_can_advanced_edit=collaborator.access_mode == 'advanced_edit' if collaborator else True,
             user_companies={
                 'current_company': project_company.id,
                 'allowed_companies': {
@@ -160,9 +166,12 @@ class ProjectCustomerPortal(CustomerPortal):
             # FIXME: See if we prefer to give only the currency that the portal user just need to see the correct information in project sharing
             currencies=request.env['res.currency'].get_all_currencies(),
         )
+
         session_info['user_context'].update({
             'allow_milestones': project.allow_milestones,
             'allow_task_dependencies': project.allow_task_dependencies,
+            'portal_can_advanced_edit': not self.env.user.share or (collaborator and collaborator.access_mode == 'advanced_edit'),
+            'portal_is_readonly': self.env.user.share and (collaborator and collaborator.access_mode == 'view'),
         })
         return session_info
 
@@ -174,10 +183,16 @@ class ProjectCustomerPortal(CustomerPortal):
             and project.with_user(request.env.user)._check_project_sharing_access()
         ):
             return request.not_found()
-        return request.render(
+        session_info = self._prepare_project_sharing_session_info(project)
+        hmac_payload = request.env.user._session_token_get_values()
+        session_info['browser_cache_secret'] = hmac(request.env(su=True), 'browser_cache_key', hmac_payload)
+
+        response = request.render(
             'project.project_sharing_portal',
-            {'session_info': self._prepare_project_sharing_session_info(project)},
+            {'session_info': session_info},
         )
+        response.headers['Cache-Control'] = 'no-store'
+        return response
 
     @http.route('/my/projects/<int:project_id>/task/<int:task_id>', type='http', auth='public', website=True)
     def portal_my_project_task(self, project_id=None, task_id=None, access_token=None, **kw):
@@ -186,9 +201,11 @@ class ProjectCustomerPortal(CustomerPortal):
         except (AccessError, MissingError):
             return request.redirect('/my')
         Task = request.env['project.task']
-        if access_token:
+        if access_token and project_sudo.access_token and consteq(project_sudo.access_token, access_token):
             Task = Task.sudo()
         task_sudo = Task.search([('project_id', '=', project_id), ('id', '=', task_id)], limit=1).sudo()
+        if not task_sudo:
+            return request.not_found()
         task_sudo.attachment_ids.generate_access_token()
         values = self._task_get_page_view_values(task_sudo, access_token, project=project_sudo, **kw)
         values['project'] = project_sudo
@@ -391,8 +408,7 @@ class ProjectCustomerPortal(CustomerPortal):
             return self._task_get_name_search_domain(search)
 
     def _concat_tasks(self, task_sudo, groupby, tasks):
-        tasks_project_allow_milestone = tasks.filtered(lambda t: t.allow_milestones)
-        tasks_no_milestone = tasks - tasks_project_allow_milestone
+        tasks_project_allow_milestone, tasks_no_milestone = tasks.partitioned(lambda t: t.allow_milestones)
         if groupby == 'milestone_id':
             grouped_tasks = [task_sudo.concat(g) for k, g in groupbyelem(tasks_project_allow_milestone, itemgetter(groupby))]
 

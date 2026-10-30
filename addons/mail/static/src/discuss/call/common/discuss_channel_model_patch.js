@@ -7,80 +7,49 @@ import { patch } from "@web/core/utils/patch";
 
 /** @import { AwaitChatHubInit } from "@mail/core/common/chat_hub_model" */
 
-export const CALL_PROMOTE_FULLSCREEN = Object.freeze({
-    INACTIVE: "INACTIVE",
-    ACTIVE: "ACTIVE",
-    DISCARDED: "DISCARDED",
-});
+/**
+ * How long (ms) a participant keeps their place on the main stage after they stop talking, so a
+ * back-and-forth does not trade the main window on every sentence.
+ */
+export const SPEAKER_WINDOW = 3000;
 
 /** @type {import("models").DiscussChannel} */
 const DiscussChannelPatch = {
     setup() {
         super.setup(...arguments);
         this.activeRtcSession = fields.One("discuss.channel.rtc.session");
-        /** @type {typeof CALL_PROMOTE_FULLSCREEN[keyof CALL_PROMOTE_FULLSCREEN]} */
-        this.promoteFullscreen = CALL_PROMOTE_FULLSCREEN.DISABLED;
         this.hadSelfSession = false;
         /** @type {Set<number>} */
         this.lastSessionIds = new Set();
         /** @type {number|undefined} */
         this.cancelRtcInvitationTimeout = undefined;
-        this.rtc_session_ids = fields.Many("discuss.channel.rtc.session", {
-            onDelete: (r) => r?.delete(),
-            /** @this {import("models").Thread} */
-            async onUpdate() {
-                const hadSelfSession = this.hadSelfSession;
-                const lastSessionIds = this.lastSessionIds;
-                this.hadSelfSession = Boolean(this.store.rtc.selfSession?.in(this.rtc_session_ids));
-                this.lastSessionIds = new Set(this.rtc_session_ids.map((s) => s.id));
-                const shouldPlayJoinSound = [...this.lastSessionIds].some(
-                    (id) => !lastSessionIds.has(id)
-                );
-                const shouldPlayLeaveSound = [...lastSessionIds].some(
-                    (id) => !this.lastSessionIds.has(id)
-                );
-                if (
-                    !hadSelfSession || // sound for self-join is played instead
-                    !this.hadSelfSession || // sound for self-leave is played instead
-                    !(await this.store.env.services["multi_tab"].isOnMainTab()) // another tab playing sound
-                ) {
-                    return;
-                }
-                if (shouldPlayJoinSound) {
-                    this.store.env.services["mail.sound_effects"].play("call-join");
-                    this.store.rtc.call({ asFallback: true });
-                }
-                if (shouldPlayLeaveSound) {
-                    this.store.env.services["mail.sound_effects"].play("member-leave");
-                }
+        this.rtc_session_ids = fields.Many("discuss.channel.rtc.session");
+        this.onEnter(
+            () => this.rtc_session_ids,
+            (session) => () => session.delete()
+        );
+        this.onChange(
+            () => [...this.rtc_session_ids],
+            function onChangeRtcSessionIds(...rtcSessions) {
+                this._playRtcSessionsSoundEffects(rtcSessions);
             },
-        });
-        this.videoCountNotSelf = fields.Attr(0, {
-            compute() {
-                return this.rtc_session_ids.filter(
-                    (s) => s.hasVideo && s.notEq(this.store.rtc.selfSession)
-                ).length;
-            },
-            onUpdate() {
-                if (this.promoteFullscreen === CALL_PROMOTE_FULLSCREEN.DISCARDED) {
-                    return;
-                }
-                this.promoteFullscreen =
-                    this.videoCountNotSelf > 0 && this.chatWindow?.isOpen
-                        ? CALL_PROMOTE_FULLSCREEN.ACTIVE
-                        : CALL_PROMOTE_FULLSCREEN.INACTIVE;
-            },
-        });
-        this.videoCount = fields.Attr(0, {
-            compute() {
-                return this.rtc_session_ids.filter((s) => s.hasVideo).length;
-            },
-        });
+            { immediate: true }
+        );
+        this.videoCount = this.computed(
+            () => this.rtc_session_ids.filter((s) => s.hasVideo).length
+        );
         this.focusStack = fields.Many("discuss.channel.rtc.session");
+        /**
+         * Remote participants talking, or stopped less than {@link SPEAKER_WINDOW} ago, in the
+         * order they took the floor — so a new speaker waits for a place instead of taking one.
+         */
+        this.activeSpeakers = fields.Many("discuss.channel.rtc.session");
+        /** @type {number|undefined} */
+        this.pruneSpeakersTimeout = undefined;
         this.pinnedRtcSession = fields.One("discuss.channel.rtc.session");
         /** @type {import("@mail/discuss/call/common/call").CardData[]} */
-        this.visibleCards = fields.Attr([], {
-            compute() {
+        this.visibleCards = this.computedShallowEqual(
+            () => {
                 const raisingHandCards = [];
                 const sessionCards = [];
                 const invitationCards = [];
@@ -139,27 +108,50 @@ const DiscussChannelPatch = {
                 });
                 return raisingHandCards.concat(sessionCards, invitationCards);
             },
+            { nested: true }
+        );
+        this.useCameraByDefault = this.computed(() => {
+            if (this.channel_type === "chat" && this.store.rtc.selfSession?.channel?.eq(this)) {
+                return this.store.rtc.selfSession.is_camera_on;
+            }
+            const stored = localStorage.getItem(`discuss_channel_camera_default_${this.id}`);
+            return stored ? JSON.parse(stored) : undefined;
         });
-        this.useCameraByDefault = fields.Attr(null, {
-            /** @this {import("models").Thread} */
-            compute() {
-                if (this.channel_type === "chat" && this.store.rtc.selfSession?.channel?.eq(this)) {
-                    return this.store.rtc.selfSession.is_camera_on;
-                }
-                return JSON.parse(
-                    localStorage.getItem(`discuss_channel_camera_default_${this.id}`)
-                );
-            },
-            /** @this {import("models").Thread} */
-            onUpdate() {
-                if (this.useCameraByDefault !== null) {
+        this.onChange(
+            () => [this.useCameraByDefault],
+            function onChangeUseCameraByDefault(useCameraByDefault) {
+                if (typeof useCameraByDefault === "boolean") {
                     localStorage.setItem(
                         `discuss_channel_camera_default_${this.id}`,
-                        JSON.stringify(this.useCameraByDefault)
+                        JSON.stringify(useCameraByDefault)
                     );
                 }
             },
-        });
+            { immediate: true }
+        );
+    },
+    /** @param {import("models").RtcSession[]} rtcSessions */
+    async _playRtcSessionsSoundEffects(rtcSessions) {
+        const hadSelfSession = this.hadSelfSession;
+        const lastSessionIds = this.lastSessionIds;
+        this.hadSelfSession = Boolean(this.store.rtc.selfSession?.in(rtcSessions));
+        this.lastSessionIds = new Set(rtcSessions.map((s) => s.id));
+        const shouldPlayJoinSound = [...this.lastSessionIds].some((id) => !lastSessionIds.has(id));
+        const shouldPlayLeaveSound = [...lastSessionIds].some((id) => !this.lastSessionIds.has(id));
+        if (
+            !hadSelfSession || // sound for self-join is played instead
+            !this.hadSelfSession || // sound for self-leave is played instead
+            !(await this.store.env.services["multi_tab"].isOnMainTab()) // another tab playing sound
+        ) {
+            return;
+        }
+        if (shouldPlayJoinSound) {
+            this.store.soundEffects.play("call-join");
+            this.store.rtc.call({ asFallback: true });
+        }
+        if (shouldPlayLeaveSound) {
+            this.store.soundEffects.play("member-leave");
+        }
     },
     /** ⚠️ {@link AwaitChatHubInit} */
     get isCallDisplayedInChatWindow() {
@@ -195,12 +187,26 @@ const DiscussChannelPatch = {
     unpin() {
         this.pinnedRtcSession = undefined;
     },
+    /** Drop the meeting view's focus: pin, else screenshare, else auto-focus, else tiles. */
+    resetCallFocus() {
+        if (this.pinnedRtcSession) {
+            this.activeRtcSession = this.pinnedRtcSession;
+            return;
+        }
+        const presenter = this.rtc_session_ids.find((s) => s.is_screen_sharing_on);
+        this.activeRtcSession = presenter;
+        if (presenter) {
+            presenter.mainVideoStreamType = "screen";
+            return;
+        }
+        this.focusAvailableVideo();
+    },
     focusAvailableVideo() {
         if (
             this.pinnedRtcSession ||
             !this.store.settings.useCallAutoFocus ||
             !(
-                this.store.env.services.ui.isSmall ||
+                this.store.ui.isSmall() ||
                 this.store.rtc.isPipMode ||
                 this.isCallDisplayedInChatWindow
             )
@@ -240,8 +246,59 @@ const DiscussChannelPatch = {
         if (!activeSession) {
             return;
         }
+        if (this.store.rtc.isFullscreen) {
+            return;
+        }
         this.activeRtcSession = activeSession;
         activeSession.mainVideoStreamType = "camera";
+    },
+    /**
+     * Stop tracking who is speaking. The self-rescheduling timer outlives the call otherwise, and
+     * the next one would open on the previous call's speakers.
+     */
+    clearActiveSpeakers() {
+        window.clearTimeout(this.pruneSpeakersTimeout);
+        this.pruneSpeakersTimeout = undefined;
+        this.activeSpeakers = [];
+    },
+    /**
+     * Whoever speaks joins the end of {@link activeSpeakers}, whoever's {@link SPEAKER_WINDOW}
+     * lapsed leaves it. How many of them get the stage is a per-view call.
+     */
+    updateActiveSpeakers() {
+        if (this.notEq(this.store.rtc?.channel) || !this.store.settings.useCallAutoFocus) {
+            this.clearActiveSpeakers();
+            return;
+        }
+        window.clearTimeout(this.pruneSpeakersTimeout);
+        const now = Date.now();
+        /** @param {import("models").RtcSession} session */
+        const isInWindow = (session) =>
+            session.isActuallyTalking || now - (session.stoppedTalkingAt ?? 0) < SPEAKER_WINDOW;
+        for (const session of [...this.activeSpeakers]) {
+            if (!isInWindow(session)) {
+                this.activeSpeakers.delete(session);
+            }
+        }
+        for (const session of this.rtc_session_ids) {
+            if (
+                session.isActuallyTalking &&
+                session.notEq(this.store.rtc.selfSession) &&
+                !session.in(this.activeSpeakers)
+            ) {
+                this.activeSpeakers.push(session);
+            }
+        }
+        // A lapsing window fires no event, so the last speaker would hold the stage until the next.
+        const stoppedAt = this.activeSpeakers
+            .filter((session) => !session.isActuallyTalking)
+            .map((session) => session.stoppedTalkingAt ?? 0);
+        if (stoppedAt.length) {
+            this.pruneSpeakersTimeout = window.setTimeout(
+                () => this.updateActiveSpeakers(),
+                Math.max(0, Math.min(...stoppedAt) + SPEAKER_WINDOW - now)
+            );
+        }
     },
     get hasRtcSessionActive() {
         return this.rtc_session_ids.length > 0;

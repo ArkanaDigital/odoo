@@ -1,37 +1,60 @@
-import { useSubEnv, render } from "@web/owl2/utils";
 import * as spreadsheet from "@odoo/o-spreadsheet";
-import { Component, onMounted, onWillUnmount } from "@odoo/owl";
-const { registries, stores, constants, helpers } = spreadsheet;
+import {
+    Component,
+    onMounted,
+    onWillUnmount,
+    signal,
+    t,
+    useProps,
+} from "@odoo/owl";
+import { render } from "@web/owl2/utils";
+
+const { registries, constants, hooks } = spreadsheet;
 const { figureRegistry } = registries;
-const { ModelStore, useStoreProvider } = stores;
-const { isMobileOS } = helpers;
+
+const { useSpreadsheetProviders } = hooks;
 
 const EMPTY_FIGURE = { tag: "empty" };
 const { DARK_MODE_FILTER_STRING } = constants;
 
 export class MobileFigureContainer extends Component {
     static template = "documents_spreadsheet.MobileFigureContainer";
-    static props = {
-        spreadsheetModel: Object,
-    };
+    props = useProps({
+        spreadsheetModel: t.object(),
+    });
+
+    figureContainer = signal.ref();
+    containerWidth = signal(0);
 
     setup() {
-        const stores = useStoreProvider();
-        stores.inject(ModelStore, this.props.spreadsheetModel);
+        const { stores } = useSpreadsheetProviders({
+            model: this.props.spreadsheetModel,
+            spreadsheetRef: this.figureContainer,
+            getPopoverContainerRect: () => this.getGridRect(),
+        });
         const onUpdate = () => render(this, true);
+        const resizeObserver = new ResizeObserver(() => {
+            this.containerWidth.set(this.figureContainer()?.offsetWidth || 0);
+        });
         onMounted(() => {
+            resizeObserver.observe(this.figureContainer());
             stores.on("store-updated", this, onUpdate);
         });
         onWillUnmount(() => {
+            resizeObserver.disconnect();
             stores.off("store-updated", this, onUpdate);
         });
+    }
 
-        useSubEnv({
-            model: this.props.spreadsheetModel,
-            isDashboard: () => this.props.spreadsheetModel.getters.isDashboard(),
-            openSidePanel: () => {},
-            isMobile: isMobileOS,
-        });
+    getGridRect() {
+        return (
+            this.figureContainer()?.getBoundingClientRect() || {
+                top: 0,
+                left: 0,
+                width: 0,
+                height: 0,
+            }
+        );
     }
 
     get style() {
@@ -44,6 +67,10 @@ export class MobileFigureContainer extends Component {
         const sortedFigures = this.props.spreadsheetModel.getters
             .getFigures(sheetId)
             .sort((f1, f2) => (this.isBefore(f1, f2) ? -1 : 1));
+
+        if (!this.containerWidth()) {
+            return [];
+        }
 
         const figureRows = [];
         for (let i = 0; i < sortedFigures.length; i++) {
@@ -58,7 +85,20 @@ export class MobileFigureContainer extends Component {
                 figureRows.push([figure]);
             }
         }
-        return figureRows;
+
+        const updateFigureSizeInRow = (figureRow) => {
+            const ratio = figureRow.length === 2 ? 0.5 : 3 / 4;
+            const margins = figureRow.length * 8;
+            const figureWidth = (this.containerWidth() - margins) / figureRow.length;
+            const height = figureWidth * ratio;
+            return figureRow.map((figure) => ({ ...figure, height, width: figureWidth }));
+        };
+
+        return figureRows.map(updateFigureSizeInRow);
+    }
+
+    getFigureStyle(figure) {
+        return `width: ${figure.width}px; height: ${figure.height}px;`;
     }
 
     getFigureComponent(figure) {

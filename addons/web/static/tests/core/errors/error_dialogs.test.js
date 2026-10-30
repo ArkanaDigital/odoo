@@ -1,22 +1,30 @@
-import { browser } from "@web/core/browser/browser";
-import { describe, test, expect } from "@odoo/hoot";
-import { animationFrame, tick } from "@odoo/hoot-mock";
+import {
+    animationFrame,
+    click,
+    describe,
+    expect,
+    freezeTime,
+    queryAllTexts,
+    queryFirst,
+    test,
+    tick,
+} from "@odoo/hoot";
 import {
     assignDialogTestEnv,
+    mockService,
     mountWithCleanup,
     patchWithCleanup,
-    mockService,
 } from "@web/../tests/web_test_helpers";
-import { click, freezeTime, queryAllTexts } from "@odoo/hoot-dom";
+import { location } from "@web/core/browser/browser";
 import {
     ClientErrorDialog,
     Error504Dialog,
     ErrorDialog,
     RedirectWarningDialog,
     SessionExpiredDialog,
+    UnlinkBlockedErrorDialog,
     WarningDialog,
 } from "@web/core/errors/error_dialogs";
-import { queryFirst } from "../../../lib/hoot-dom/hoot-dom";
 
 describe.current.tags("desktop");
 
@@ -209,6 +217,112 @@ test("RedirectWarningDialog", async () => {
     expect.verifySteps(["dialog-closed"]);
 });
 
+test("UnlinkBlockedErrorDialog, single record that can't be archived", async () => {
+    assignDialogTestEnv();
+    await mountWithCleanup(UnlinkBlockedErrorDialog, {
+        props: {
+            data: {
+                context: {
+                    archivable: false,
+                    model_name: "Bar",
+                    res_model: "foo",
+                    res_ids: [1],
+                    blocked_ids: [1],
+                },
+            },
+            close() {
+                expect.step("dialog-closed");
+            },
+        },
+    });
+    expect("header .modal-title").toHaveText("Oops");
+    expect("main p").toHaveText("Not possible to delete the record because it is used in Bar");
+    expect("main a").toHaveCount(0, {
+        message: "a single-record delete has nothing else to show",
+    });
+    expect(queryAllTexts("footer button")).toEqual(["Close"]);
+
+    await click("footer button");
+    await animationFrame();
+    expect.verifySteps(["dialog-closed"]);
+});
+
+test("UnlinkBlockedErrorDialog, archiving acts on the whole selection", async () => {
+    mockService("orm", {
+        call(resModel, method, args) {
+            expect.step(`${method}:${resModel}:${args[0]}`);
+            return Promise.resolve(true);
+        },
+    });
+    mockService("action", {
+        get currentController() {
+            return { jsId: "controller_1" };
+        },
+        restore(jsId) {
+            expect.step(`restore:${jsId}`);
+        },
+    });
+    assignDialogTestEnv();
+    await mountWithCleanup(UnlinkBlockedErrorDialog, {
+        props: {
+            data: {
+                context: {
+                    archivable: true,
+                    model_name: "Bar",
+                    res_model: "foo",
+                    res_ids: [1, 2, 3],
+                    blocked_ids: [2],
+                },
+            },
+            close() {
+                expect.step("dialog-closed");
+            },
+        },
+    });
+    expect("main p:first").toHaveText(
+        "Not possible to delete all the records because some are used in Bar"
+    );
+    expect("main p:last").toHaveText("How about archiving them instead?");
+    expect(queryAllTexts("footer button")).toEqual(["Archive", "Discard"]);
+
+    await click("footer button:nth-child(1)"); // click on "Archive"
+    await animationFrame();
+    // the blocked records are not archived on their own: the user asked for
+    // the whole selection to go away. The current view has no idea any of
+    // this happened, hence the restore.
+    expect.verifySteps(["action_archive:foo:1,2,3", "restore:controller_1", "dialog-closed"]);
+});
+
+test("UnlinkBlockedErrorDialog, only the blocked records are shown", async () => {
+    mockService("action", {
+        doAction(action) {
+            expect.step(action.domain);
+        },
+    });
+    assignDialogTestEnv();
+    await mountWithCleanup(UnlinkBlockedErrorDialog, {
+        props: {
+            data: {
+                context: {
+                    archivable: false,
+                    model_name: "Bar",
+                    res_model: "foo",
+                    res_ids: [1, 2, 3],
+                    blocked_ids: [2],
+                },
+            },
+            close() {
+                expect.step("dialog-closed");
+            },
+        },
+    });
+    expect("main a").toHaveText("View non-deletable records");
+
+    await click("main a");
+    await animationFrame();
+    expect.verifySteps([[["id", "in", [2]]], "dialog-closed"]);
+});
+
 test("Error504Dialog", async () => {
     expect(".o_dialog").toHaveCount(0);
     assignDialogTestEnv();
@@ -222,7 +336,7 @@ test("Error504Dialog", async () => {
 });
 
 test("SessionExpiredDialog", async () => {
-    patchWithCleanup(browser.location, {
+    patchWithCleanup(location, {
         reload() {
             expect.step("location reload");
         },

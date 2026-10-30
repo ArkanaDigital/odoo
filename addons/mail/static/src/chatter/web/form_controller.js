@@ -1,11 +1,13 @@
-import { useSubEnv } from "@web/owl2/utils";
 import { EventBus, t } from "@odoo/owl";
 
 import { x2ManyCommands } from "@web/core/orm_plugin";
 import { useService } from "@web/core/utils/hooks";
-import { createDocumentFragmentFromContent } from "@web/core/utils/html";
+import { createDocumentFragmentFromContent, isHtmlEmpty } from "@web/core/utils/html";
 import { patch } from "@web/core/utils/patch";
 import { FormController, formControllerProps } from "@web/views/form/form_controller";
+
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
+import { discussComponentRegistry } from "@mail/core/common/discuss_component_registry";
 
 Object.assign(formControllerProps, {
     fullComposerBus: t.instanceOf(EventBus).optional(),
@@ -17,11 +19,11 @@ patch(FormController.prototype, {
         if (this.env.services["mail.store"]) {
             this.mailStore = useService("mail.store");
         }
-        useSubEnv({ chatter: { fetchThreadData: true } });
+        this.ancestors = useAncestors({ inFormController: { fetchThreadData: true } });
     },
     onWillLoadRoot(nextConfiguration) {
         super.onWillLoadRoot(...arguments);
-        this.env.chatter.fetchThreadData = true;
+        this.ancestors.inFormController.fetchThreadData = true;
         const isSameThread =
             this.model.root?.resId === nextConfiguration.resId &&
             this.model.root?.resModel === nextConfiguration.resModel;
@@ -34,6 +36,26 @@ patch(FormController.prototype, {
 
     async onWillSaveRecord(record, changes) {
         if (record.resModel === "mail.compose.message") {
+            const messageId = record.context.default_message_id;
+            if (messageId && changes.attachment_ids?.length === 0 && isHtmlEmpty(changes.body)) {
+                const message = this.mailStore?.["mail.message"].get(messageId);
+                if (message) {
+                    this.env.services.dialog.add(
+                        discussComponentRegistry.get("MessageDeleteDialog"),
+                        {
+                            message,
+                            onConfirm: () => {
+                                message.onShowDeleteConfirm(this);
+                                void this.env.services.action.doAction({
+                                    type: "ir.actions.act_window_close",
+                                });
+                            },
+                        },
+                        { rootRef: this.rootRef }
+                    );
+                    return false;
+                }
+            }
             const doc = createDocumentFragmentFromContent(changes.body);
             const partnerElements = doc.querySelectorAll('[data-oe-model="res.partner"]');
             const partnerIds = Array.from(partnerElements).map((element) =>

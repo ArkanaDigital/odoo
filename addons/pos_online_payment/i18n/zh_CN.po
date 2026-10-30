@@ -8,9 +8,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 18.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-24 17:42+0000\n"
-"PO-Revision-Date: 2026-06-20 07:27+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-09-04 17:45+0000\n"
+"PO-Revision-Date: 2026-09-09 14:11+0000\n"
+"Last-Translator: \"Chloe Wang (chwa)\" <chwa@odoo.com>\n"
 "Language-Team: Chinese (Simplified Han script) <https://translate.odoo.com/"
 "projects/odoo-master/pos_online_payment/zh_Hans/>\n"
 "Language: zh_CN\n"
@@ -18,12 +18,24 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
-msgid "<span class=\"visually-hidden\">Loading...</span>"
-msgstr "<span class=\"visually-hidden\">正在加载...</span>"
+msgid ""
+"<i class=\"oi me-2\" data-icon=\"lock\"/>Payment secured · Don't close this "
+"window"
+msgstr ""
+
+#. module: pos_online_payment
+#: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
+msgid "<span class=\"text-500\">Order</span>"
+msgstr ""
+
+#. module: pos_online_payment
+#: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
+msgid "<span class=\"text-500\">Total</span>"
+msgstr ""
 
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pay
@@ -158,6 +170,15 @@ msgid "Invoice could not be generated"
 msgstr "无法生成发票"
 
 #. module: pos_online_payment
+#. odoo-python
+#: code:addons/pos_online_payment/controllers/payment_portal.py:0
+msgid ""
+"It looks like a payment for this order is already being processed — maybe "
+"from this device, maybe from another. If you continue, you risk to pay the "
+"order twice. Only continue if you're sure the earlier attempt was abandoned."
+msgstr ""
+
+#. module: pos_online_payment
 #: model:ir.model.fields,field_description:pos_online_payment.field_pos_order__next_online_payment_amount
 msgid "Next online payment amount to pay"
 msgstr "下一次在线支付金额"
@@ -243,7 +264,7 @@ msgstr ""
 #: model:ir.model,name:pos_online_payment.model_account_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pay
 msgid "Payment"
-msgstr ""
+msgstr "付款"
 
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_method_view_form_inherit_pos_online_payment
@@ -288,6 +309,11 @@ msgid "Point of Sale Payment Method"
 msgstr ""
 
 #. module: pos_online_payment
+#: model:ir.module.module,shortdesc:base.module_pos_online_payment
+msgid "Point of Sale online payment"
+msgstr ""
+
+#. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pay_confirmation
 msgid "Processed by"
 msgstr "处理人"
@@ -300,7 +326,7 @@ msgstr "服务器错误"
 
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
-msgid "Skip <i class=\"fa fa-long-arrow-right ms-1\"/>"
+msgid "Skip <i class=\"oi ms-1\" data-icon=\"east\"/>"
 msgstr ""
 
 #. module: pos_online_payment
@@ -343,7 +369,7 @@ msgstr "与该付款关联的POS订单"
 #. odoo-javascript
 #: code:addons/pos_online_payment/static/src/app/utils/order_payment_validation.js:0
 msgid "The QR code payment could not be generated."
-msgstr ""
+msgstr "无法生成二维码付款码。"
 
 #. module: pos_online_payment
 #. odoo-python
@@ -517,7 +543,7 @@ msgstr "更新在线付款"
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
 msgid "We're confirming your payment."
-msgstr ""
+msgstr "我们正在确认您的付款。"
 
 #. module: pos_online_payment
 #. odoo-javascript
@@ -535,14 +561,13 @@ msgstr "您尚未激活任何"
 msgid ""
 "You should receive an email confirming your payment within a few minutes.<br/"
 ">\n"
-"                            Don't hesitate to contact us if you don't "
-"receive it."
+"                        Don't hesitate to contact us if you don't receive it."
 msgstr ""
 
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_status
 msgid "Your payment is on its way!"
-msgstr ""
+msgstr "支付处于待处理状态。"
 
 #. module: pos_online_payment
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_method_view_form_inherit_pos_online_payment
@@ -553,14 +578,3 @@ msgstr "支付提供商"
 #: model_terms:ir.ui.view,arch_db:pos_online_payment.pos_payment_method_view_form_inherit_pos_online_payment
 msgid "to allow online payments."
 msgstr "支持线上付款。"
-
-#~ msgid "Point of Sale Session"
-#~ msgstr "POS会话"
-
-#~ msgid "The partner of the POS online payment (id=%d) could not be found"
-#~ msgstr "无法找到 POS 在线支付的合作伙伴 (id=%d)"
-
-#~ msgid ""
-#~ "Use this payment method for online payments (payments made on a web page "
-#~ "with online payment providers)"
-#~ msgstr "使用此付款方式进行在线付款（通过在线付款提供商的网页进行付款）"

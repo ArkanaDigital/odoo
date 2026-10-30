@@ -5,20 +5,24 @@ import { computed, useEffect } from "@odoo/owl";
 
 import { normalize } from "@web/core/l10n/utils";
 import { patch } from "@web/core/utils/patch";
+import { computedShallowEqual } from "@mail/utils/common/signal";
 
 /** @type {MessagingMenu} */
 const messagingMenuPatch = {
     setup() {
         super.setup(...arguments);
-        this.filteredChannels = computed(() => {
-            const { activeTab, selectedFilter } = this.state();
-            const channels = selectedFilter?.includesChannel
-                ? activeTab.channels.filter((c) => selectedFilter.includesChannel(c))
-                : activeTab.channels;
-            return activeTab.getSortedChannels(selectedFilter, channels);
+        this.filteredChannels = computedShallowEqual(() => {
+            const filters = [...this.state().activePluginFilters];
+            if (this.state().selectedFilter) {
+                filters.push(this.state().selectedFilter);
+            }
+            const channels = this.state().activeTab.channels.filter((c) =>
+                filters.every((f) => !f.includesChannel || f.includesChannel(c))
+            );
+            return this.state().activeTab.getSortedChannels(this.state().selectedFilter, channels);
         });
         this.channels = computed(() => {
-            if (this.searchTerm()) {
+            if (this.state().searchTerm) {
                 return this.channelSearch.results;
             }
             return this.filteredChannels();
@@ -27,6 +31,7 @@ const messagingMenuPatch = {
             fetch: (searchTerm) =>
                 this.state().activeTab.loadMore({
                     filter: this.state().selectedFilter,
+                    pluginFilters: this.state().activePluginFilters,
                     searchTerm,
                 }),
             filter: (term) =>
@@ -37,7 +42,7 @@ const messagingMenuPatch = {
         });
         useEffect(() => {
             if (this.state().activeTab.recordType === "discuss.channel") {
-                this.channelSearch.searchTerm = this.searchTerm();
+                this.channelSearch.searchTerm = this.state().searchTerm;
             }
         });
         // Bound once so `onClickChannel` is a stable (useProps.static) handler.
@@ -47,7 +52,19 @@ const messagingMenuPatch = {
         return super.isEmpty && !this.channels().length;
     },
     /** @param {import("models").DiscussChannel} channel */
-    onClickChannel(channel) {
+    async onClickChannel(channel) {
+        this.onOpenConversation();
+        this.channelToOpen = channel;
+        const prefetchingOrTimeout = channel.thread?.prefetchingOrTimeout;
+        if (prefetchingOrTimeout) {
+            // Wait for the prefetch, so the thread shows already loaded instead of
+            // rendering once empty and again once it resolves.
+            const activeTab = this.state().activeTab;
+            await prefetchingOrTimeout;
+            if (this.channelToOpen !== channel || this.state().activeTab !== activeTab) {
+                return;
+            }
+        }
         channel.open({ focus: true, fromMessagingMenu: true, bypassCompact: true });
         this.close?.();
     },

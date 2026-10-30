@@ -8,28 +8,52 @@ from odoo.addons.sale.tests.common import SaleCommon
 @tagged("-at_install", "post_install")
 class TestSaleReportCurrencyRate(SaleCommon):
     _test_user_groups = (
-        'product.group_product_manager',
-        'sales_team.group_sale_manager',  # FIXME: use sales_team.group_sale_salesman
+        "product.group_product_manager",
+        "sales_team.group_sale_manager",  # FIXME: use sales_team.group_sale_salesman
         # FIXME: needed to post the down-payment invoice (account.move.action_post checks
         # account.group_account_invoice). Posting is not the subject here (sale.report aggregation
-        # is) but it runs the real feature to populate the report. Adapt/remove if that flow changes.
-        'account.group_account_invoice',
+        # is) but it runs the real feature to populate the report. Adapt/remove if that flow
+        # changes.
+        "account.group_account_invoice",
     )
 
-    _test_user_name = 'Test Sales & Product Manager'
+    _test_user_name = "Test Sales & Product Manager"
 
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
 
-        cls.usd_cmp = cls.env["res.company"].sudo().create({
-            "name": "USD Company",
-            "currency_id": cls.env.ref("base.USD").id,
+        cls.usd_cmp = (
+            cls
+            .env["res.company"]
+            .sudo()
+            .create({"name": "USD Company", "currency_id": cls.env.ref("base.USD").id})
+        )
+        cls.eur_cmp = (
+            cls
+            .env["res.company"]
+            .sudo()
+            .create({"name": "EUR Company", "currency_id": cls.env.ref("base.EUR").id})
+        )
+
+    def test_sale_report_discount_amount(self):
+        "The Sales report must convert the line discount percentage to an amount."
+        order = self.env["sale.order"].create({
+            "partner_id": self.partner.id,
+            "order_line": [Command.create({
+                "product_id": self.product.id,
+                "product_uom_qty": 10,
+                "price_unit": 100,
+                "discount": 10,
+            })],
         })
-        cls.eur_cmp = cls.env["res.company"].sudo().create({
-            "name": "EUR Company",
-            "currency_id": cls.env.ref("base.EUR").id,
-        })
+        order.action_confirm()
+        order.order_line.flush_recordset()
+        amount_line = self.env["sale.report"].formatted_read_group(
+            [("order_reference", "=", f"sale.order,{order.id}")],
+            aggregates=["discount_amount:sum"],
+        )[0]
+        self.assertEqual(amount_line["discount_amount:sum"], 100)
 
     def test_sale_report_with_downpayment(self):
         """Check that downpayment lines are used in the calculation of amounts invoiced and to
@@ -44,7 +68,7 @@ class TestSaleReportCurrencyRate(SaleCommon):
             self
             .env["sale.advance.payment.inv"]
             .with_context(active_ids=order.ids)
-            .create({"advance_payment_method": "fixed", "fixed_amount": 200})
+            .create({"advance_payment_method": "downpayment", "amount": 200})
         )
         downpayment.create_invoices()
         order.invoice_ids.action_post()

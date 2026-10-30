@@ -255,6 +255,8 @@ class configmanager:
                          help="reinitialize one or more modules (comma-separated list), requires -d")
         group.add_option("--with-demo", dest="with_demo", action='store_true', my_default=False,
                          help="install demo data in new databases")
+        group.add_option("--with-test-data", dest="with_test_data", action='store_true', my_default=False,
+                         help="install test data in new databases")
         group.add_option("--without-demo", dest="with_demo", type='without_demo', metavar='BOOL', const=True,
                          nargs='?',  # ty:ignore[invalid-argument-type]
                          help="don't install demo data in new databases (default)")
@@ -463,7 +465,6 @@ class configmanager:
                               "- qweb: log the compiled xml with qweb errors          "
                               "- reload: restart server on change in the source code  "
                               "- replica: simulate a deployment with readonly replica "
-                              "- werkzeug: open a html debugger on http request error "
                               "- xml: read views from the source code, and not the db ")
         group.add_option("--stop", "--stop-after-init", action="store_true", dest="stop_after_init", my_default=False, file_exportable=False, file_loadable=False,
                          help="stop the server after its initialization")
@@ -828,6 +829,8 @@ class configmanager:
         if self['test_enable'] and not self['test_tags']:
             self._runtime_options['test_tags'] = "+standard"
         self._runtime_options['test_enable'] = bool(self['test_tags'])
+        if self['test_enable'] and self['init']:
+            self._runtime_options['with_test_data'] = True
         if self._runtime_options['test_enable']:
             self._runtime_options['stop_after_init'] = True
             if not self['db_name']:
@@ -1164,6 +1167,10 @@ class configmanager:
             e = f"ODOO_MAX_HTTP_THREADS={mht} but it is not a positive integer"
             raise ValueError(e)
         return int(mht)
+
+    @property
+    def has_db_replica(self):
+        return config['db_replica_host'] or 'replica' in config['dev_mode'] or config['test_enable']
 
     @classmethod
     def _normalize(cls, path):

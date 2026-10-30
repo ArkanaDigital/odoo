@@ -17,7 +17,6 @@ test("Width cannot exceed viewport width", async () => {
                 <p>Paragraph</p>
             </ResizablePanel>
         `;
-        props = useProps();
     }
 
     await mountWithCleanup(Parent);
@@ -43,7 +42,6 @@ test("handles right-to-left", async () => {
                 </ResizablePanel>
             </div>
         `;
-        props = useProps();
     }
 
     await mountWithCleanup(Parent);
@@ -73,7 +71,6 @@ test("handles resize handle at start in fixed position", async () => {
                 </ResizablePanel>
             </div>
         `;
-        props = useProps();
     }
 
     await mountWithCleanup(Parent);
@@ -81,18 +78,70 @@ test("handles resize handle at start in fixed position", async () => {
     resizablePanelEl.style.setProperty("right", "100px");
     expect(resizablePanelEl).toHaveRect({ width: 30 });
 
+    const grabOffset = 1;
     await (
-        await drag(".o_resizable_panel_handle")
+        await drag(".o_resizable_panel_handle", { position: { x: grabOffset }, relative: true })
     ).drop(".o_resizable_panel_handle", {
         position: {
             x: window.innerWidth - 200,
         },
     });
-    const panelExpectedWidth = 100 + queryRect(".o_resizable_panel_handle").width / 2;
-    expect(queryRect(resizablePanelEl).width).toBeWithin(
-        panelExpectedWidth,
-        panelExpectedWidth + 1
-    );
+    expect(resizablePanelEl).toHaveRect({ width: 100 + grabOffset });
+});
+
+test("the width follows the pointer wherever the handle is grabbed", async () => {
+    class Parent extends Component {
+        static components = { ResizablePanel };
+        static template = xml`
+            <div class="d-flex">
+                <ResizablePanel minWidth="20" initialWidth="100">
+                    <div style="width: 10px;" class="text-break">
+                        A cool paragraph
+                    </div>
+                </ResizablePanel>
+            </div>
+        `;
+    }
+
+    await mountWithCleanup(Parent);
+    const handle = queryRect(".o_resizable_panel_handle");
+    const y = handle.y + handle.height / 2;
+    const grabX = handle.x + 1;
+    const { drop, moveTo } = await drag(".o_resizable_panel_handle", {
+        position: { x: grabX, y },
+    });
+    await moveTo(".o_resizable_panel_handle", { position: { x: grabX + 10, y } });
+    expect(".o_resizable_panel").toHaveRect({ width: 110 });
+    await drop(".o_resizable_panel_handle", { position: { x: grabX - 20, y } });
+    expect(".o_resizable_panel").toHaveRect({ width: 80 });
+});
+
+test("outer handle sits outside the panel and stays visible while resizing", async () => {
+    class Parent extends Component {
+        static components = { ResizablePanel };
+        static template = xml`
+            <div class="d-flex">
+                <ResizablePanel minWidth="20" initialWidth="100" outerHandle="true">
+                    <div style="width: 10px;" class="text-break">
+                        A cool paragraph
+                    </div>
+                </ResizablePanel>
+            </div>
+        `;
+    }
+
+    await mountWithCleanup(Parent);
+    const panelRight = queryRect(".o_resizable_panel").right;
+    expect(queryRect(".o_resizable_panel_handle > span").left).toBeGreaterThan(panelRight);
+    expect(".o_resizable_panel_handle").toHaveStyle({ opacity: "0" });
+
+    const { drop, moveTo } = await drag(".o_resizable_panel_handle");
+    await moveTo(".o_resizable_panel_handle", { position: { x: 10 }, relative: true });
+    await animationFrame();
+    expect(".o_resizable_panel_handle").toHaveStyle({ opacity: "1" });
+    await drop();
+    await animationFrame();
+    expect(".o_resizable_panel_handle").toHaveStyle({ opacity: "0" });
 });
 
 test("resizing the window adapts the panel", async () => {
@@ -107,7 +156,6 @@ test("resizing the window adapts the panel", async () => {
                 </ResizablePanel>
             </div>
         `;
-        props = useProps();
     }
 
     await mountWithCleanup(Parent);
@@ -167,7 +215,6 @@ test("minWidth props can be updated", async () => {
 test("default to minWidth if initialWidth is smaller than minWidth", async () => {
     class Parent extends Component {
         static components = { ResizablePanel };
-        props = useProps();
         static template = xml`
             <div class="d-flex">
                 <ResizablePanel minWidth="200" initialWidth="100">

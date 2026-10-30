@@ -21,7 +21,7 @@ import { MultiSelectionButtons } from "@web/views/view_components/multi_selectio
 import { getLocalYearAndWeek } from "@web/core/l10n/dates";
 
 import { Component, proxy, t, useProps } from "@odoo/owl";
-import { hasTouch } from "@web/core/browser/feature_detection";
+import { hasTouch, isMobileOS } from "@web/core/browser/feature_detection";
 
 const { DateTime } = luxon;
 
@@ -83,9 +83,10 @@ export class CalendarController extends Component {
                 browser.localStorage.getItem("calendar.isWeekendVisible") != null
                     ? JSON.parse(browser.localStorage.getItem("calendar.isWeekendVisible"))
                     : true,
-            sidePanelExpanded:
-                !this.uiService.isSmall &&
-                Boolean(localSidePanelExpanded != null ? JSON.parse(localSidePanelExpanded) : true),
+            sidePanelExpanded: Boolean(
+                localSidePanelExpanded != null ? JSON.parse(localSidePanelExpanded) : true
+            ),
+            mobilePanelOpen: false,
         });
 
         this.searchBarToggler = useSearchBarToggler();
@@ -162,9 +163,10 @@ export class CalendarController extends Component {
     get weekHeader() {
         const { start, end } = this.model.visibleRange;
         if (start.year != end.year) {
-            return `${start.toFormat("MMMM")} ${start.year} - ${end.toFormat("MMMM")} ${end.year}`;
+            return `${start.toFormat(isMobileOS() ? "MMM" : "MMMM")} ${start.year} - ${end.toFormat(isMobileOS() ? "MMM" : "MMMM")} ${end.year}`;
         } else if (start.month != end.month) {
-            return `${start.toFormat("MMMM")} - ${end.toFormat("MMMM")} ${start.year}`;
+            return isMobileOS() ? `${start.toFormat("MMM")}-${end.toFormat("MMM")} ${start.year}` :
+                `${start.toFormat("MMMM")} - ${end.toFormat("MMMM")} ${start.year}`;
         }
         return `${start.toFormat("MMMM")} ${start.year}`;
     }
@@ -188,9 +190,9 @@ export class CalendarController extends Component {
     get mobileFilterPanelProps() {
         return {
             model: this.model,
-            sidePanelShown: this.state.sidePanelExpanded,
+            sidePanelShown: this.state.mobilePanelOpen,
             toggleSidePanel: () => {
-                this.state.sidePanelExpanded = !this.state.sidePanelExpanded;
+                this.state.mobilePanelOpen = !this.state.mobilePanelOpen;
             },
         };
     }
@@ -199,7 +201,7 @@ export class CalendarController extends Component {
         return {
             model: this.model,
             editRecord: this.editRecord.bind(this),
-            sidePanelExpanded: this.state.sidePanelExpanded,
+            sidePanelExpanded: this.sidePanelExpanded,
             toggleSidePanel: this.toggleSidePanel.bind(this),
         };
     }
@@ -210,7 +212,7 @@ export class CalendarController extends Component {
     }
 
     get showCalendar() {
-        return !this.uiService.isSmall || !this.state.sidePanelExpanded;
+        return !this.uiService.isSmall || !this.sidePanelExpanded;
     }
 
     get hasSidePanel() {
@@ -218,7 +220,7 @@ export class CalendarController extends Component {
     }
 
     get sidePanelExpanded() {
-        return this.state.sidePanelExpanded;
+        return this.uiService.isSmall ? this.state.mobilePanelOpen : this.state.sidePanelExpanded;
     }
 
     get filters() {
@@ -424,7 +426,7 @@ export class CalendarController extends Component {
     getSelectedRecordIds(selectedCells) {
         const ids = [];
         for (const element of selectedCells) {
-            for (const event of [...element.querySelectorAll(".fc-event")]) {
+            for (const event of [...element.querySelectorAll(".o_calendar_event")]) {
                 ids.push(parseInt(event.dataset.eventId, 10));
             }
         }

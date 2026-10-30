@@ -51,7 +51,7 @@
                                     Transactions
                                 </span>
                                 <span class="o_stat_value d-flex text-muted">
-                                    <field name="main_currency_id" invisible="True"/>
+                                    <field name="main_currency_id" invisible="True"/> <!-- currency_field for the processed_amount Monetary widget -->
                                     <field name="processed_amount"/>
                                 </span>
                             </div>
@@ -182,6 +182,7 @@
                                 <group
                                     string="Options"
                                     name="provider_options"
+                                    class="o_group o_label_nowrap"
                                     invisible="not support_tokenization and not support_express_checkout and not support_manual_capture"
                                 >
                                     <field
@@ -211,10 +212,14 @@
                                 <group>
                                     <field name="minimum_amount"/>
                                     <field name="maximum_amount"/>
-                                    <label for="available_currency_ids"/>
+                                    <label for="available_currency_ids" groups="base.group_system"/>
                                     <!-- Use a div to allow placing a button next to the field in
                                     overrides. -->
-                                    <div name="available_currencies" class="o_row">
+                                    <div
+                                        name="available_currencies"
+                                        class="o_row"
+                                        groups="base.group_system"
+                                    >
                                         <field
                                             name="available_currency_ids"
                                             widget="many2many_tags"
@@ -259,7 +264,7 @@
                 <field
                     name="image_128"
                     widget="image"
-                    options="{'size': [25, 25], 'img_class': 'rounded-2'}"
+                    options="{'size': [25, 25], 'img_class': 'rounded'}"
                     nolabel="1"
                     width="40"
                 />
@@ -279,7 +284,7 @@
                 <field name="module_state"/>
                 <field name="module_to_buy"/>
                 <templates>
-                    <t t-name="card" class="flex-row">
+                    <t t-name="card" class="o_card_payment_provider_record flex-row">
                         <t t-set="installed" t-value="!record.module_id.value || (record.module_id.value &amp;&amp; record.module_state.raw_value === 'installed')"/>
                         <t t-set="to_buy" t-value="record.module_to_buy.raw_value === true"/>
                         <t t-set="is_published" t-value="record.is_published.raw_value === true"/>
@@ -289,7 +294,7 @@
                             <field type="open"
                                  name="image_128" widget="image"
                                  class="mb-0 o_image_64_max"
-                                 options="{'img_class': 'p-2 border rounded'}"
+                                 options="{'img_class': 'p-2 border rounded-3'}"
                                  alt="provider"/>
                         </aside>
                         <main class="ms-2">

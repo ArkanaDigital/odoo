@@ -22,9 +22,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-26 19:09+0000\n"
-"PO-Revision-Date: 2026-06-21 14:45+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-08-28 17:41+0000\n"
+"PO-Revision-Date: 2026-09-09 14:01+0000\n"
+"Last-Translator: Saara Hakanen <sahak@odoo.com>\n"
 "Language-Team: Finnish <https://translate.odoo.com/projects/odoo-master/"
 "account_payment/fi/>\n"
 "Language: fi\n"
@@ -32,7 +32,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: account_payment
 #. odoo-python
@@ -220,7 +220,7 @@ msgstr "Valtuutetut tapahtumat"
 #. module: account_payment
 #: model:ir.model,name:account_payment.model_account_bank_statement_line
 msgid "Bank Statement Line"
-msgstr ""
+msgstr "Pankkitiliotteen rivi"
 
 #. module: account_payment
 #: model_terms:ir.ui.view,arch_db:account_payment.account_invoice_view_form_inherit_payment
@@ -285,8 +285,7 @@ msgstr "Näytä avoimet maksuerät"
 msgid ""
 "Done, your online payment has been successfully processed. Thank you for "
 "your order."
-msgstr ""
-"Valmis, verkkomaksusi on käsitelty onnistuneesti. Kiitos tilauksestasi."
+msgstr "Valmis, verkkomaksusi on käsitelty onnistuneesti. Kiitos tilauksestasi."
 
 #. module: account_payment
 #: model:ir.model.fields,field_description:account_payment.field_payment_link_wizard__epd_info
@@ -297,6 +296,13 @@ msgstr "Tietoa ennakkomaksualennuksesta"
 #: model_terms:ir.ui.view,arch_db:account_payment.portal_invoice_payment
 msgid "Early Payment Discount of"
 msgstr "Ennakkomaksualennus"
+
+#. module: account_payment
+#: model:ir.module.module,summary:base.module_account_payment
+msgid ""
+"Enable customers to pay invoices on the portal and post payments when "
+"transactions are processed."
+msgstr ""
 
 #. module: account_payment
 #: model:ir.model.fields.selection,name:account_payment.selection__payment_refund_wizard__support_refund__full_only
@@ -431,6 +437,11 @@ msgstr ""
 "ole käytettävissä."
 
 #. module: account_payment
+#: model:ir.ui.menu,name:account_payment.payment_provider_menu
+msgid "Online Payments"
+msgstr ""
+
+#. module: account_payment
 #. odoo-python
 #: code:addons/account_payment/wizards/payment_link_wizard.py:0
 msgid "Online payment option is not enabled in Configuration."
@@ -508,6 +519,11 @@ msgid "Payment"
 msgstr "Maksu"
 
 #. module: account_payment
+#: model:ir.module.module,shortdesc:base.module_account_payment
+msgid "Payment - Account"
+msgstr ""
+
+#. module: account_payment
 #: model:ir.model.fields,field_description:account_payment.field_payment_refund_wizard__payment_amount
 msgid "Payment Amount"
 msgstr "Maksun summa"
@@ -528,30 +544,15 @@ msgid "Payment Method Line"
 msgstr "Maksutavan rivi"
 
 #. module: account_payment
-#: model:ir.ui.menu,name:account_payment.payment_method_menu
-msgid "Payment Methods"
-msgstr "Maksutavat"
-
-#. module: account_payment
 #: model:ir.model,name:account_payment.model_payment_provider
 #: model:ir.model.fields,field_description:account_payment.field_account_payment_method_line__payment_provider_id
 msgid "Payment Provider"
 msgstr "Maksupalveluntarjoaja"
 
 #. module: account_payment
-#: model:ir.ui.menu,name:account_payment.payment_provider_menu
-msgid "Payment Providers"
-msgstr "Maksupalveluntarjoajat"
-
-#. module: account_payment
 #: model:ir.model,name:account_payment.model_payment_refund_wizard
 msgid "Payment Refund Wizard"
 msgstr "Ohjattu takaisinmaksutoiminto"
-
-#. module: account_payment
-#: model:ir.ui.menu,name:account_payment.payment_token_menu
-msgid "Payment Tokens"
-msgstr "Maksutunnisteet"
 
 #. module: account_payment
 #: model:ir.model,name:account_payment.model_payment_transaction
@@ -560,11 +561,6 @@ msgstr "Maksutunnisteet"
 #: model_terms:ir.ui.view,arch_db:account_payment.account_invoice_view_form_inherit_payment
 msgid "Payment Transaction"
 msgstr "Maksutapahtuma"
-
-#. module: account_payment
-#: model:ir.ui.menu,name:account_payment.payment_transaction_menu
-msgid "Payment Transactions"
-msgstr "Maksutapahtumat"
 
 #. module: account_payment
 #. odoo-python
@@ -776,6 +772,8 @@ msgid ""
 "You can't delete a payment method that is linked to an installed provider.\n"
 "Linked providers(s): %s"
 msgstr ""
+"Et voi poistaa maksutapaa, joka on liitetty asennettuun palveluntarjoajaan.\n"
+"Linkitetyt palveluntarjoajat: %s"
 
 #. module: account_payment
 #. odoo-python
@@ -794,6 +792,9 @@ msgid ""
 "You must first uninstall a payment provider before deleting its journal.\n"
 "Linked providers: %s"
 msgstr ""
+"Sinun on ensin poistettava maksupalveluntarjoaja ennen sen päiväkirjan "
+"poistamista.\n"
+"Linkitetyt palveluntarjoajat: %s"
 
 #. module: account_payment
 #. odoo-javascript

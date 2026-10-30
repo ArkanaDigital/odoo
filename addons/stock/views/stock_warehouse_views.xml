@@ -37,12 +37,11 @@
                         </group>
                         <group>
                             <group>
-                                <field name="active" invisible="1"/>
-                                <field name="company_id" invisible="1"/>
+                                <field name="active" invisible="1"/> <!-- drives invisible on the Archived web_ribbon above -->
                                 <field name="code" placeholder="e.g. CW"/>
                             </group>
                             <group>
-                                <field name="company_id" groups="base.group_multi_company" options="{'no_create': True}"/>
+                                <field name="company_id" groups="base.group_multi_company" options="{'no_create': True}" readonly="id"/>
                                 <field name="partner_id"/>
                             </group>
                         </group>
@@ -53,8 +52,8 @@
                                         <field name="reception_steps" widget='radio'/>
                                         <field name="delivery_steps" widget='radio'/>
                                     </group>
-                                    <group name="group_resupply" string="Resupply" groups="stock.group_stock_multi_warehouses">
-                                        <field name="resupply_wh_ids" domain="[('id', '!=', id), ('company_id', '=', company_id)]" widget="many2many_checkboxes" groups="stock.group_stock_multi_warehouses"/>
+                                    <group name="group_resupply" string="Resupply" groups="stock.group_stock_multi_warehouses,base.group_multi_company">
+                                        <field name="resupply_wh_ids" domain="[('id', '!=', id)]" widget="many2many_checkboxes"/>
                                     </group>
                                 </group>
                             </page>
@@ -93,7 +92,7 @@
                 <list string="Warehouse">
                     <field name="sequence" widget="handle"/>
                     <field name="name"/>
-                    <field name="active" column_invisible="True"/>
+                    <field name="active" column_invisible="True"/> <!-- read by the list renderer to strike through archived records -->
                     <field name="lot_stock_id" groups="stock.group_stock_multi_locations"/>
                     <field name="partner_id"/>
                     <field name="company_id" groups="base.group_multi_company"/>
@@ -115,6 +114,7 @@
         <record id="action_warehouse_form" model="ir.actions.act_window">
             <field name="name">Warehouses</field>
             <field name="res_model">stock.warehouse</field>
+            <field name="cache">False</field>
             <field name="view_id" ref="view_warehouse_tree"/>
             <field name="help" type="html">
               <p class="o_view_nocontent_smiling_face">

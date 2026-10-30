@@ -93,7 +93,15 @@ class ResCompany(models.CachedModel):
     partner_id = fields.Many2one('res.partner', string='Partner', required=True, index=True)
     report_header = fields.Html(string='Company Tagline', translate=True, help="Company tagline, which is included in a printed document's header or footer (depending on the selected layout).")
     report_footer = fields.Html(string='Report Footer', translate=True, help="Footer text displayed at the bottom of all reports.")
-    company_details = fields.Html(string='Company Details', translate=True, help="Header text displayed at the top of all reports.")
+    company_details = fields.Html(
+        string="Company Details",
+        translate=True,
+        help="Header text displayed at the top of all reports.",
+        compute="_compute_parent_fields",
+        store=True,
+        readonly=False,
+        recursive=True,
+    )
     is_company_details_empty = fields.Boolean(compute='_compute_empty_company_details')
     logo = fields.Binary(related='partner_id.image_1920', default=_get_logo, string="Company Logo", readonly=False)
     logo_web = fields.Binary(compute='_compute_logo_web', store=True)
@@ -116,6 +124,7 @@ class ResCompany(models.CachedModel):
     phone = fields.Char(related='partner_id.phone', store=True, readonly=False)
     website = fields.Char(related='partner_id.website', readonly=False)
     vat = fields.Char(related='partner_id.vat', string="Tax ID", readonly=False)
+    has_vat = fields.Boolean(related='partner_id.has_vat', depends=['vat'])
     additional_identifiers = fields.Json(related='partner_id.additional_identifiers', readonly=False)
     available_additional_identifiers_metadata = fields.Json(related='partner_id.available_additional_identifiers_metadata')
     paperformat_id = fields.Many2one('report.paperformat', 'Paper format', default=lambda self: self.env.ref('base.paperformat_euro', raise_if_not_found=False))
@@ -169,6 +178,12 @@ class ResCompany(models.CachedModel):
     def _get_company_address_update(self, partner):
         return dict((fname, partner[fname])
                     for fname in self._get_company_address_field_names())
+
+    @api.depends('parent_id', 'parent_id.company_details')
+    def _compute_parent_fields(self):
+        for company in self:
+            if company.parent_id and not company.company_details:
+                company.company_details = company.parent_id.company_details
 
     @api.depends('parent_path')
     def _compute_parent_ids(self):
@@ -339,7 +354,10 @@ class ResCompany(models.CachedModel):
             if vals.get('name') and not vals.get('partner_id')
         ]
         if no_partner_vals_list:
-            partners = self.env['res.partner'].with_context(default_parent_id=False).create([
+            partners = self.env['res.partner'].with_context(
+                default_parent_id=False,
+                default_company_id=False,
+            ).create([
                 {
                     'name': vals['name'],
                     'image_1920': vals.get('logo'),
@@ -389,12 +407,13 @@ class ResCompany(models.CachedModel):
             if not currency.active:
                 currency.write({'active': True})
 
-        res = super().write(vals)
-
+        # computed before the write: afterwards, every company has the new country
         companies_needs_l10n = (
             vals.get('country_id')
             and self.filtered(lambda company: not company.country_id)
         ) or self.browse()
+
+        res = super().write(vals)
 
         if any(self._ids) and not self._clear_asset_cache_on_fields.isdisjoint(vals):
             # this is used in the content of an asset (see asset_styles_company_report)

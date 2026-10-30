@@ -1,17 +1,17 @@
 :root {
-    --secondary-active-background: #{mix($o-action, $o-white, 10%)};
-    --secondary-active-border: #{$o-action};
+    --secondary-active-background: color-mix(in srgb, var(--o-action) 10%, var(--o-white));
+    --secondary-active-border: var(--o-action);
 
     --btn-group-gap: 0;
     --border-light-color:#e7e9ed;
 
-    // Disable zoom
+    /* Disable zoom */
     touch-action: pan-x pan-y;
     height: 100%;
 
-    // Target 4K devices
+    /* Target 4K devices */
     @media #{screen and (min-width: 3839px), (min-height: 3839px)} {
-        --root-font-size: #{$o-so-font-size-4k};
+        --root-font-size: var(--o-so-font-size-4k);
     }
 
     .bg-secondary {
@@ -47,7 +47,7 @@
 html, body {
     height: 100%;
     overflow: hidden;
-    overscroll-behavior: none;  // disable swipe to go back
+    overscroll-behavior: none;  /* disable swipe to go back */
 }
 
 body {
@@ -77,17 +77,17 @@ li {
 }
 
 .numpad-button:disabled {
-    background-color: $o-gray-100;
+    background-color: var(--o-gray-100);
 }
 
 .form-control:focus {
   border-color: var(--primary) !important;
 }
 
-@include media-breakpoint-down(sm) {
+@media (max-width: 575.98px) {
    .o_self_footer {
        .btn-lg, .btn-group-lg > .btn {
-           padding: $input-btn-padding-y $input-btn-padding-x !important;
+           padding: var(--o-bs-input-btn-padding-y) var(--o-bs-input-btn-padding-x) !important;
            font-size: 1.1rem;
        }
    }
@@ -102,7 +102,7 @@ li {
 }
 
 .numpad-button.active, .numpad-button:active {
-    --btn-active-bg: #{$o-gray-300};
+    --btn-active-bg: var(--o-gray-300);
 }
 
 .o_so_product_details {
@@ -143,39 +143,45 @@ li {
     }
 }
 
-@include media-breakpoint-up(lg) {
+@media (min-width: 992px) {
   .o_self_container {
     max-width: 960px !important;
   }
 }
 
-@include o-kiosk{
-    @include generate-kiosk-utilities(kiosk);
+@media (min-width: 992px) {
+    .kiosk {
+        @include generate-kiosk-utilities(kiosk);
+    }
 }
 
 
-@include o-kiosk-portrait{
-    &:root {
-        --root-font-size: #{$o-so-font-size-kiosk};
+@media (min-width: 992px) and (orientation: portrait) and (min-height: 1500px) {
+    .kiosk:root {
+        --root-font-size: var(--o-so-font-size-kiosk);
     }
 
-     .o_self_container {
+     .kiosk .o_self_container {
         width: 100% !important;
         max-width: 1100px !important;
         padding-left: 1.5rem !important;
         padding-right: 1.5rem !important;
     }
 
-    .kiosk-p-btn-lg {
-      padding: $input-btn-padding-y-lg $input-btn-padding-x-lg !important;
+    .kiosk .kiosk-p-btn-lg {
+      padding: var(--o-bs-input-btn-padding-y-lg) var(--o-bs-input-btn-padding-x-lg) !important;
       font-size: 1.25rem;
     }
 
-    @include generate-kiosk-utilities(kiosk-p);
+    .kiosk {
+        @include generate-kiosk-utilities(kiosk-p);
+    }
 }
 
-@include o-kiosk-landscape{
-    @include generate-kiosk-utilities(kiosk-l);
+@media (min-width: 992px) and (orientation: landscape) {
+    .kiosk {
+        @include generate-kiosk-utilities(kiosk-l);
+    }
 }
 
 $shadow-sizes: sm, md, lg, xl;
@@ -195,19 +201,19 @@ $shadow-sizes: sm, md, lg, xl;
 }
 
 .btn {
-   border-radius: $border-radius-xl;
+   border-radius: var(--border-radius-xl);
 }
 
 .modal-content {
-   border-radius: $border-radius-xl;
+   border-radius: var(--border-radius-xl);
 }
 
-@include media-breakpoint-down(sm) {
+@media (max-width: 575.98px) {
    .btn {
-       border-radius: $border-radius-lg;
+       border-radius: var(--border-radius-lg);
    }
   .modal-content {
-     border-radius: $border-radius-lg;
+     border-radius: var(--border-radius-lg);
   }
 }
 

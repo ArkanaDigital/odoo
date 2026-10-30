@@ -17,7 +17,7 @@ registerWebsitePreviewTour("website_sale.category_page_and_products_snippet_edit
     },
     ...clickOnEditAndWaitEditMode(),
     {
-        trigger: ".o-website-builder_sidebar .o_snippets_container .o_snippet",
+        trigger: ".o_website_builder_sidebar .o_snippets_container .o_snippet",
     },
     {
         content: "Drag and drop the Products snippet group inside the category area.",
@@ -26,8 +26,8 @@ registerWebsitePreviewTour("website_sale.category_page_and_products_snippet_edit
         run: "drag_and_drop :iframe #category_header",
     },
     {
-        content: "Click on the s_dynamic_snippet_products snippet.",
-        trigger: ':iframe .o_snippet_preview_wrap[data-snippet-id="s_dynamic_snippet_products"]',
+        content: "Click on the s_dynamic_snippet_products_carousel snippet.",
+        trigger: ':iframe .o_snippet_preview_wrap[data-snippet-id="s_dynamic_snippet_products_carousel"]',
         run: "click",
     },
     {

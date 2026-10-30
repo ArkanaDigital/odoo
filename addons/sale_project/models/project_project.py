@@ -152,7 +152,15 @@ class ProjectProject(models.Model):
             # Use sudo to avoid AccessErrors when the SOLs belong to different companies.
             all_sale_orders = sale_order_lines.sudo().order_id or project.reinvoiced_sale_order_id
             project.sale_order_count = len(all_sale_orders)
-            project.sale_order_amount_total = sum(all_sale_orders.mapped('amount_total'))
+            project.sale_order_amount_total = sum(
+                order.currency_id._convert(
+                    order.amount_total,
+                    project.currency_id,
+                    project.company_id or self.env.company,
+                    order.date_order,
+                )
+                for order in all_sale_orders
+            )
 
     def _compute_invoice_count(self):
         data = self.env['account.move.line']._read_group(
@@ -537,16 +545,25 @@ class ProjectProject(models.Model):
     def action_real_margin(self):
         self.ensure_one()
         embedded_action_context = self.env.context.get('from_embedded_action', False)
+        view_ids_per_type = {}
+        if pivot_view := self.env.ref('sale_project.view_account_analytic_line_inherit_sale_project_pivot_single', raise_if_not_found=False):
+            view_ids_per_type['pivot'] = pivot_view.id
+        if list_view := self.env.ref('sale_project.account_analytic_line_view_list_margins_no_group', raise_if_not_found=False):
+            view_ids_per_type['list'] = list_view.id
+        if graph_view := self.env.ref('sale_project.account_analytic_line_view_graph_for_single_project', raise_if_not_found=False):
+            view_ids_per_type['graph'] = graph_view.id
         action = self.env['ir.actions.act_window']._for_xml_id('sale_project.action_analytic_reporting_inherit_sale_project')
-        action['views'] = [(self.env.ref('sale_project.view_account_analytic_line_inherit_sale_project_pivot_single').id, 'pivot')]
+        if view_ids_per_type:
+            action['views'] = [
+                (view_ids_per_type.get(view_type, view_id), view_type)
+                for view_id, view_type in action['views']
+            ]
         action['display_name'] = self.env._("%(name)s's Margins", name=self.name)
         action['domain'] = [('account_id', 'in', self.account_id.ids)]
         action['context'] = {
             **ast.literal_eval(action.get('context', '{}')),
             'from_embedded_action': embedded_action_context,
-            **({
-                'search_default_month': 0,
-                'pivot_column_groupby': ['date:month'],
-            } if embedded_action_context else {}),
         }
+        if embedded_action_context:
+            action['context']['search_default_month'] = 0
         return action

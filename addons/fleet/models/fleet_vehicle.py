@@ -48,7 +48,7 @@ class FleetVehicle(models.Model):
     active = fields.Boolean('Active', default=True, tracking=True)
     manager_id = fields.Many2one(
         'res.users', 'Fleet Manager',
-        domain=lambda self: f"[('share', '=', False), ('company_id', 'in', {self.env.companies.ids}), ('all_group_ids', 'in', {self.env.ref('fleet.fleet_group_user').id})]",
+        domain=lambda self: f"[('share', '=', False), ('company_ids', 'in', company_id), ('all_group_ids', 'in', {self.env.ref('fleet.fleet_group_user').id})]",
         tracking=True,
     )
     company_id = fields.Many2one(
@@ -431,7 +431,7 @@ class FleetVehicle(models.Model):
             future_driver = vals['future_driver_id']
             state_waiting_list = self.env.ref('fleet.fleet_vehicle_state_waiting_list', raise_if_not_found=False)
             state_new_request = self.env.ref('fleet.fleet_vehicle_state_new_request', raise_if_not_found=False)
-            vehicle_types = set(self.filtered(lambda vehicle: not state_waiting_list or\
+            vehicle_types = set(self.filtered(lambda vehicle:
                                 vals.get('state_id', vehicle.state_id.id) not in [state_waiting_list.id, state_new_request.id]).mapped('vehicle_type'))
             if vehicle_types:
                 vehicle_read_group = dict(self.env['fleet.vehicle']._read_group(

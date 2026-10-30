@@ -4,6 +4,7 @@ from dateutil.relativedelta import relativedelta
 
 from odoo import _, api, fields, models
 from odoo.exceptions import ValidationError, UserError
+from odoo.tools.date_utils import get_timedelta
 
 
 def _get_selection_days(self):
@@ -52,6 +53,10 @@ class HrLeaveAccrualLevel(models.Model):
         ('biyearly', 'Twice a year'),
         ('yearly', 'Yearly'),
     ], default='daily', required=True, string="Frequency")
+    weekly_option = fields.Selection([
+        ('date', 'On'),
+        ('anniversary', 'On the Allocation date\'s day of the week')
+    ], default='date')
     week_day = fields.Selection([
         ('0', 'Monday'),
         ('1', 'Tuesday'),
@@ -61,6 +66,10 @@ class HrLeaveAccrualLevel(models.Model):
         ('5', 'Saturday'),
         ('6', 'Sunday'),
     ], default='0', required=True, string="Allocation on")
+    monthly_option = fields.Selection([
+        ('date', 'On the'),
+        ('anniversary', 'On the Allocation date\'s day of the month')
+    ], default='date')
     first_day = fields.Selection(_get_selection_days, default='1', export_string_translation=False)
     second_day = fields.Selection(_get_selection_days, default='15', export_string_translation=False)
     first_month_day = fields.Selection(
@@ -85,6 +94,10 @@ class HrLeaveAccrualLevel(models.Model):
         ('11', 'November'),
         ('12', 'December')
     ], default="7", export_string_translation=False)
+    yearly_option = fields.Selection([
+        ('date', 'On the'),
+        ('anniversary', 'On the Allocation date\'s anniversary')
+    ], default='date')
     yearly_month = fields.Selection([
         ('1', 'January'),
         ('2', 'February'),
@@ -104,12 +117,14 @@ class HrLeaveAccrualLevel(models.Model):
         export_string_translation=False)
     cap_accrued_time = fields.Boolean(export_string_translation=False,
         help="When the field is checked the balance of an allocation using this accrual plan will never exceed the specified amount.")
+    # Unit defined by `added_value_type`
     maximum_leave = fields.Float(
         digits=(16, 2), compute="_compute_maximum_leave", default=0, readonly=False, store=True,
         help="Choose a cap for this accrual.", export_string_translation=False)
     cap_accrued_time_yearly = fields.Boolean(export_string_translation=False,
         store=True, readonly=False,
         help="When the field is checked the total amount accrued each year will be capped at the specified amount")
+    # Unit defined by `added_value_type`
     maximum_leave_yearly = fields.Float(digits=(16, 2), export_string_translation=False)
     can_be_carryover = fields.Boolean(related='accrual_plan_id.can_be_carryover', readonly=True,
         export_string_translation=False)
@@ -132,7 +147,8 @@ class HrLeaveAccrualLevel(models.Model):
         default='unlimited', required=True,
         help="You can limit the accrued time carried over for the next period."
     )
-    postpone_max_days = fields.Integer(export_string_translation=False,
+    # Unit defined by `added_value_type`
+    max_carriedover_duration = fields.Integer(export_string_translation=False,
         help="Set a maximum of accruals an allocation keeps at the end of the year.")
     can_modify_value_type = fields.Boolean(compute="_compute_can_modify_value_type", default=False,
         export_string_translation=False)
@@ -155,8 +171,8 @@ class HrLeaveAccrualLevel(models.Model):
         'CHECK(added_value > 0)',
         'You must give a rate greater than 0 in accrual plan levels.',
     )
-    _valid_postpone_max_days_value = models.Constraint(
-        "CHECK(action_with_unused_accruals <> 'all' OR carryover_options <> 'limited' OR COALESCE(postpone_max_days, 0) > 0)",
+    _valid_max_carriedover_duration_value = models.Constraint(
+        "CHECK(action_with_unused_accruals <> 'all' OR carryover_options <> 'limited' OR COALESCE(max_carriedover_duration, 0) > 0)",
         'You cannot have a maximum quantity to carryover set to 0.',
     )
     _valid_accrual_validity_value = models.Constraint(
@@ -293,18 +309,29 @@ class HrLeaveAccrualLevel(models.Model):
             level.yearly_gain = yearly_gain
 
     def _get_hourly_frequencies(self):
+        """Return the frequencies accruing per hour of the period instead of per period.
+
+        :rtype: list[str]
+        """
         return ['hourly']
 
-    def _get_next_date(self, last_call):
-        """
-        Returns the next date with the given last call
+    def _get_next_date(self, last_call, allocation_start_date):
+        """Return the first accrual date of the level after ``last_call`` (excluded).
+
+        :param datetime.date last_call: reference date
+        :param datetime.date allocation_start_date: start date of the allocation, used by the
+            weekly levels accruing on its anniversary weekday
+        :rtype: datetime.date
         """
         self.ensure_one()
         if self.frequency in self._get_hourly_frequencies() + ['daily']:
             return last_call + relativedelta(days=1)
 
-        if self.frequency == 'weekly':
+        if self.frequency == 'weekly' and self.weekly_option == 'date':
             return last_call + relativedelta(days=1, weekday=int(self.week_day))
+
+        if self.frequency == 'weekly' and self.weekly_option == 'anniversary':
+            return last_call + relativedelta(days=1, weekday=allocation_start_date.weekday())
 
         if self.frequency == 'bimonthly':
             first_date = last_call + relativedelta(day=int(self.first_day))
@@ -315,11 +342,17 @@ class HrLeaveAccrualLevel(models.Model):
                 return second_date
             return last_call + relativedelta(day=int(self.first_day), months=1)
 
-        if self.frequency == 'monthly':
+        if self.frequency == 'monthly' and self.monthly_option == 'date':
             date = last_call + relativedelta(day=int(self.first_day))
             if last_call < date:
                 return date
             return last_call + relativedelta(day=int(self.first_day), months=1)
+
+        if self.frequency == 'monthly' and self.monthly_option == 'anniversary':
+            date = last_call + relativedelta(day=allocation_start_date.day)
+            if last_call < date:
+                return date
+            return last_call + relativedelta(day=allocation_start_date.day, months=1)
 
         if self.frequency == 'biyearly':
             first_date = last_call + relativedelta(month=int(self.first_month), day=int(self.first_month_day))
@@ -330,27 +363,40 @@ class HrLeaveAccrualLevel(models.Model):
                 return second_date
             return last_call + relativedelta(month=int(self.first_month), day=int(self.first_month_day), years=1)
 
-        if self.frequency == 'yearly':
+        if self.frequency == 'yearly' and self.yearly_option == 'date':
             date = last_call + relativedelta(month=int(self.yearly_month), day=int(self.yearly_day))
             if last_call < date:
                 return date
             return last_call + relativedelta(month=int(self.yearly_month), day=int(self.yearly_day), years=1)
 
+        if self.frequency == 'yearly' and self.yearly_option == 'anniversary':
+            year_date = last_call + relativedelta(month=allocation_start_date.month, day=allocation_start_date.day)
+            if last_call < year_date:
+                return year_date
+            return last_call + relativedelta(month=allocation_start_date.month, day=allocation_start_date.day, years=1)
+
         raise ValidationError(_("Your frequency selection is not correct: please choose a frequency between theses options:"
             "Hourly, Daily, Weekly, Twice a month, Monthly, Twice a year and Yearly."))
 
-    def _get_previous_date(self, last_call):
-        """
-        Returns the date a potential previous call would have been at
-        For example if you have a monthly level giving 16/02 would return 01/02
-        Contrary to `_get_next_date` this function will return the 01/02 if that date is given
+    def _get_previous_date(self, last_call, allocation_start_date):
+        """Return the last accrual date of the level on or before ``last_call`` (included).
+
+        For instance, the 1st of the month for a monthly level.
+
+        :param datetime.date last_call: reference date
+        :param datetime.date allocation_start_date: start date of the allocation, used by the
+            weekly levels accruing on its anniversary weekday
+        :rtype: datetime.date
         """
         self.ensure_one()
         if self.frequency in self._get_hourly_frequencies() + ['daily']:
             return last_call
 
-        if self.frequency == 'weekly':
+        if self.frequency == 'weekly' and self.weekly_option == 'date':
             return last_call + relativedelta(days=-6, weekday=int(self.week_day))
+
+        if self.frequency == 'weekly' and self.weekly_option == 'anniversary':
+            return last_call + relativedelta(days=-6, weekday=int(allocation_start_date.weekday()))
 
         if self.frequency == 'bimonthly':
             first_date = last_call + relativedelta(day=int(self.first_day))
@@ -361,11 +407,17 @@ class HrLeaveAccrualLevel(models.Model):
                 return first_date
             return last_call + relativedelta(day=int(self.second_day), months=-1)
 
-        if self.frequency == 'monthly':
+        if self.frequency == 'monthly' and self.monthly_option == 'date':
             date = last_call + relativedelta(day=int(self.first_day))
             if last_call >= date:
                 return date
-            return last_call + relativedelta(day=int(self.first_day), months=-1, days=1)
+            return last_call + relativedelta(day=int(self.first_day), months=-1)
+
+        if self.frequency == 'monthly' and self.monthly_option == 'anniversary':
+            date = last_call + relativedelta(day=int(allocation_start_date.day))
+            if last_call >= date:
+                return date
+            return last_call + relativedelta(day=int(allocation_start_date.day), months=-1)
 
         if self.frequency == 'biyearly':
             first_date = last_call + relativedelta(month=int(self.first_month), day=int(self.first_month_day))
@@ -376,16 +428,26 @@ class HrLeaveAccrualLevel(models.Model):
                 return first_date
             return last_call + relativedelta(month=int(self.second_month), day=int(self.second_month_day), years=-1)
 
-        if self.frequency == 'yearly':
+        if self.frequency == 'yearly' and self.yearly_option == 'date':
             year_date = last_call + relativedelta(month=int(self.yearly_month), day=int(self.yearly_day))
             if last_call >= year_date:
                 return year_date
             return last_call + relativedelta(month=int(self.yearly_month), day=int(self.yearly_day), years=-1)
 
+        if self.frequency == 'yearly' and self.yearly_option == 'anniversary':
+            year_date = last_call + relativedelta(month=allocation_start_date.month, day=allocation_start_date.day)
+            if last_call >= year_date:
+                return year_date
+            return last_call + relativedelta(month=allocation_start_date.month, day=allocation_start_date.day, years=-1)
+
         raise ValidationError(_("Your frequency selection is not correct: please choose a frequency between theses options:"
             "Hourly, Daily, Weekly, Twice a month, Monthly, Twice a year and Yearly."))
 
     def _get_level_transition_date(self, allocation_start):
+        """Return the date the level starts for an allocation starting on ``allocation_start``.
+
+        :rtype: datetime.date
+        """
         if self.start_type == 'day':
             return allocation_start + relativedelta(days=self.start_count)
         if self.start_type == 'month':
@@ -395,3 +457,11 @@ class HrLeaveAccrualLevel(models.Model):
 
     def action_save_new(self):
         return self.accrual_plan_id.action_create_accrual_plan_level()
+
+    def _get_start_date(self, date_from):
+        """Return ``date_from`` plus the start delay of the level (``start_count`` ``start_type``).
+
+        :rtype: datetime.date
+        """
+        self.ensure_one()
+        return date_from + get_timedelta(self.start_count, self.start_type)

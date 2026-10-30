@@ -125,6 +125,7 @@ class Registry(Mapping[str, type["BaseModel"]]):
         upgrade_modules: Collection[str] = (),
         reinit_modules: Collection[str] = (),
         new_db_demo: bool | None = None,
+        new_db_test_data: bool | None = None,
         lock_wait: int = 15,
     ) -> Registry:
         """Create and return a new registry for the given database name.
@@ -148,13 +149,16 @@ class Registry(Mapping[str, type["BaseModel"]]):
 
         :param new_db_demo: Whether to install demo data for the new database. If set to ``None``, the value will be
           determined by the ``config['with_demo']``. Defaults to ``None``
+        :param new_db_test_data: Whether to install test data for the new database. If set to ``None``, the value will be
+                  determined by the ``config['with_test_data']``. Defaults to ``None``
         :param lock_wait: How long to wait to acquire the lock on the database (in seconds).
         """
         if (registry := cls.registries.get(db_name)) and not registry.ready:
             raise Exception('Registry for database %s can not be loaded recursively' % db_name)
 
         from odoo.modules import db  # noqa: PLC0415
-        from odoo.modules.loading import load_modules, reset_modules_state  # noqa: PLC0415
+        from odoo.modules.loading import MAX_REMOVED_MODULES, load_modules, reset_modules_state  # noqa: PLC0415
+        from odoo.modules.module import Manifest  # noqa: PLC0415
 
         t0 = time.time()
         registry: Registry = object.__new__(cls)
@@ -192,11 +196,18 @@ class Registry(Mapping[str, type["BaseModel"]]):
                         # lock and try to acquire the exclusive lock
                         cr.commit()  # commit after acquiring the lock to re-start the transaction
                         cr.execute("""
-                            SELECT FROM ir_module_module
+                            SELECT name, state
+                            FROM ir_module_module
                             WHERE state IN ('to upgrade', 'to install', 'to remove')
-                            LIMIT 1
+                            ORDER BY state = 'to remove' DESC
                         """)
-                        if cr.rowcount:
+                        # modules that cannot be loaded (missing or not installable) stay
+                        # in their transient state, an update would not change anything
+                        if any(
+                            state == 'to remove'
+                            or (Manifest.for_addon(name, display_warning=False) or {}).get('installable')
+                            for name, state in cr.fetchall()
+                        ):
                             _logger.info("Force module updates, some modules must be installed/uninstalled/upgraded")
                             update_module = True
                 if update_module:
@@ -208,13 +219,25 @@ class Registry(Mapping[str, type["BaseModel"]]):
                         # multiple workers were loading the database and try to upgrade it, only one will succeed
                         raise ConcurrencyError("Deadlock when waiting for lock to update the registry") from None
                     cr.commit()  # commit after acquiring the lock to re-start the transaction
+                    retries = 5
+                    if db.is_initialized(cr):
+                        cr.execute("""
+                            SELECT COUNT(*)
+                            FROM ir_module_module
+                            WHERE state = 'to remove'
+                        """)
+                        retries += cr.fetchone()[0] // MAX_REMOVED_MODULES
+                else:
+                    retries = 1
 
                 # now load modules
                 if new_db_demo is None:
                     new_db_demo = config['with_demo']
+                if new_db_test_data is None:
+                    new_db_test_data = config['with_test_data']
+
                 if first_registry and not update_module:
                     exit_stack.enter_context(gc.disabling_gc())
-                retries = 5 if update_module else 1
                 for _ in range(retries):
                     # load_modules multiple times in case there are modules to be uninstalled
                     # the load happens in a new context to be independent from things such as requests
@@ -228,6 +251,7 @@ class Registry(Mapping[str, type["BaseModel"]]):
                             install_modules=install_modules,
                             reinit_modules=reinit_modules,
                             new_db_demo=new_db_demo,
+                            new_db_test_data=new_db_test_data,
                         )
                         cr.commit()
                     except Exception:
@@ -240,6 +264,7 @@ class Registry(Mapping[str, type["BaseModel"]]):
                     models_to_check = registry._models_to_check
                     registry = object.__new__(cls)
                     registry.init(db_name, models_to_check=models_to_check)
+                    registry.setup_signaling()
                     cls.registries[db_name] = registry  # pylint: disable=unsupported-assignment-operation
                     cr.transaction.reset()  # rebind the transaction to the new registry
                     upgrade_modules = install_modules = reinit_modules = ()
@@ -260,7 +285,7 @@ class Registry(Mapping[str, type["BaseModel"]]):
         # Yeah, crazy.
         registry = cls.registries[db_name]  # pylint: disable=unsubscriptable-object
 
-        reset_classes_tp_versions_used(registry.values(), reset_above_ratio=0.3)  # cpython optimisation
+        reset_classes_tp_versions_used([*registry.values(), Registry], reset_above_ratio=0.3)  # cpython optimisation
         registry.ready = True
         registry.last_used = time.monotonic()
 
@@ -300,7 +325,7 @@ class Registry(Mapping[str, type["BaseModel"]]):
         self._db: Connection = sql_db.db_connect(db_name, readonly=False)
         self._db_readonly: Connection | None = None
         self._db_readonly_failed_time: float | None = None
-        if config['db_replica_host'] or config['test_enable'] or 'replica' in config['dev_mode']:  # by default, only use readonly pool if we have a db_replica_host defined.
+        if config.has_db_replica:
             self._db_readonly = sql_db.db_connect(db_name, readonly=True)
 
         # field dependencies
@@ -565,7 +590,14 @@ class Registry(Mapping[str, type["BaseModel"]]):
             for field in model._fields.values():
                 depends, depends_context = field.get_depends(model)
                 self.field_depends[field] = tuple(depends)
-                self.field_depends_context[field] = tuple(depends_context)
+                self.field_depends_context[field] = depends_context = tuple(depends_context)
+                # check the context
+                if field.store and not all(
+                    (field.translate and c == 'lang')
+                    or (field.company_dependent and c == 'company')
+                    for c in depends_context
+                ):
+                    field._setup_warning(f'stored field should not depend on context {depends_context}')
 
         # clean the lazy_property again in case they are cached by another ongoing registry readonly request
         reset_cached_properties(self)
@@ -575,18 +607,53 @@ class Registry(Mapping[str, type["BaseModel"]]):
         if self.ready:
             for model in env.values():
                 model._register_hook()
-            env.flush_all()
+            env.cr.flush()
+            env.transaction.clear()
             self.check_null_constraints(env.cr)
-        reset_classes_tp_versions_used(self.values())  # cpython optimisation
+        reset_classes_tp_versions_used([*self.values(), Registry])  # cpython optimisation
 
     @functools.cached_property
     def field_inverses(self) -> Collector[Field, Field]:
         result = Collector()
         for model_cls in self.models.values():
             for field in model_cls._fields.values():
-                if field.relational:
+                if field.relational and field._module not in self.uninstalling_modules:
                     field.setup_inverses(self, result)
         return result
+
+    @functools.cached_property
+    def many2one_targeting(self) -> dict[str, tuple[Field, ...]]:
+        """ Maps each model name to the stored many2one fields having that model
+        as comodel. """
+        result = defaultdict(list)
+        for Model in self.models.values():
+            if Model._abstract or not Model._auto:
+                continue
+
+            for field in Model._fields.values():
+                if field.type == 'many2one' and field.store and field._module not in self.uninstalling_modules:
+                    result[field.comodel_name].append(field)
+
+        return {
+            model_name: tuple(fields) for model_name, fields in result.items()
+        }
+
+    @functools.cached_property
+    def many2many_targeting(self) -> dict[str, tuple[Field, ...]]:
+        """ Maps each model name to the stored many2many fields having that model
+        as comodel. """
+        result = defaultdict(list)
+        for Model in self.models.values():
+            if Model._abstract or not Model._auto:
+                continue
+
+            for field in Model._fields.values():
+                if field.type == 'many2many' and field.store and field._module not in self.uninstalling_modules:
+                    result[field.comodel_name].append(field)
+
+        return {
+            model_name: tuple(fields) for model_name, fields in result.items()
+        }
 
     @functools.cached_property
     def field_computed(self) -> dict[Field, list[Field]]:
@@ -781,11 +848,11 @@ class Registry(Mapping[str, type["BaseModel"]]):
                     func(cr)
             else:
                 self._constraint_queue[key] = func
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             if self._is_install:
-                _schema.error(*e.args)
+                _schema.error("Constraint not added: %s", e)
             else:
-                _schema.info(*e.args)
+                _schema.info("Constraint not added: %s", e)
                 self._constraint_queue[key] = func
 
     def finalize_constraints(self, cr: Cursor) -> None:
@@ -794,10 +861,10 @@ class Registry(Mapping[str, type["BaseModel"]]):
             try:
                 with cr.savepoint(flush=False):
                     func(cr)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 # warn only, this is not a deployment showstopper, and
                 # can sometimes be a transient error
-                _schema.warning(*e.args)
+                _schema.warning("Constraint not added during finalize: %s", e)
         self._constraint_queue.clear()
 
     def init_models(self, cr: Cursor, model_names: Iterable[str], context: dict[str, typing.Any], install: bool = True):
@@ -901,7 +968,7 @@ class Registry(Mapping[str, type["BaseModel"]]):
 
         # retrieve existing indexes with their table and access method
         cr.execute("""
-            SELECT idx.relname, tbl.relname, am.amname
+            SELECT idx.relname, tbl.relname, am.amname, ix.indpred IS NOT NULL
               FROM pg_index ix
               JOIN pg_class idx ON idx.oid = ix.indexrelid
               JOIN pg_class tbl ON tbl.oid = ix.indrelid
@@ -909,7 +976,10 @@ class Registry(Mapping[str, type["BaseModel"]]):
              WHERE idx.relname IN %s
                AND idx.relnamespace = current_schema::regnamespace
         """, [tuple(row[0] for row in expected)])
-        existing = {indexname: (tablename, method) for indexname, tablename, method in cr.fetchall()}
+        existing = {
+            indexname: (tablename, method, partial)
+            for indexname, tablename, method, partial in cr.fetchall()
+        }
 
         for indexname, tablename, field in expected:
             index = field.index
@@ -929,6 +999,8 @@ class Registry(Mapping[str, type["BaseModel"]]):
                 # The index exists, check if it is stale.
                 expected_method = 'gin' if index == 'trigram' else 'btree'
                 stale = existing[indexname][1] != expected_method
+                if expected_method == 'btree':
+                    stale |= existing[indexname][2] != (index == 'btree_not_null')
                 will_index &= stale  # create only when stale
             else:
                 stale = False
@@ -971,7 +1043,7 @@ class Registry(Mapping[str, type["BaseModel"]]):
                 except psycopg2.OperationalError:
                     _schema.error("Unable to add index %r for %s", indexname, self)
 
-            elif not index and tablename == existing.get(indexname, (None, None))[0]:
+            elif not index and tablename == existing.get(indexname, (None, None, None))[0]:
                 _schema.info("Keep unexpected index %s on table %s", indexname, tablename)
 
     def add_foreign_key(
@@ -1139,9 +1211,10 @@ class Registry(Mapping[str, type["BaseModel"]]):
         """ Return a new cursor for the database. The cursor itself may be used
             as a context manager to commit/rollback and close automatically.
 
-            :param readonly: Attempt to acquire a cursor on a replica database.
-                Acquire a read/write cursor on the primary database in case no
-                replica exists or that no readonly cursor could be acquired.
+            :param readonly: Attempt to acquire a read-only cursor on a
+                replica database. Acquire a read-only cursor on the
+                primary database in case no replica exists or the
+                connection failed.
         """
         if readonly and self._db_readonly is not None:
             if (
@@ -1149,14 +1222,13 @@ class Registry(Mapping[str, type["BaseModel"]]):
                 or time.monotonic() > self._db_readonly_failed_time + _REPLICA_RETRY_TIME
             ):
                 try:
-                    cr = self._db_readonly.cursor()
+                    cr = self._db_readonly.cursor(readonly=True)
                     self._db_readonly_failed_time = None
                     return cr
                 except psycopg2.OperationalError:
                     self._db_readonly_failed_time = time.monotonic()
-                    _logger.warning("Failed to open a readonly cursor, falling back to read-write cursor for %dmin %dsec", *divmod(_REPLICA_RETRY_TIME, 60))
-            threading.current_thread().cursor_mode = 'ro->rw'
-        return self._db.cursor()
+                    _logger.warning("Failed to connect on the replica database, falling back on the primary database for %dmin %dsec", *divmod(_REPLICA_RETRY_TIME, 60))
+        return self._db.cursor(readonly=readonly)
 
 
 class TriggerTree(dict['Field', 'TriggerTree']):

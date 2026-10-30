@@ -73,6 +73,7 @@ For more specific needs, you may also assign custom-defined actions
         'views/ir_cron_views.xml',
         'views/ir_filters_views.xml',
         'views/ir_mail_server_views.xml',
+        'views/ir_ui_view_views.xml',
         'views/mail_message_subtype_views.xml',
         'views/mail_notification_views.xml',
         'views/mail_message_views.xml',
@@ -119,7 +120,6 @@ For more specific needs, you may also assign custom-defined actions
         'views/res_partner_views.xml',
         'views/mail_blacklist_views.xml',
         'views/mail_menus.xml',
-        'views/discuss/discuss_menus.xml',
         'views/discuss/discuss_call_history_views.xml',
         'views/res_company_views.xml',
         "views/mail_scheduled_message_views.xml",
@@ -185,10 +185,13 @@ For more specific needs, you may also assign custom-defined actions
             # depends on BS variables, can't be loaded in assets_primary or assets_secondary
             'mail/static/src/scss/variables/derived_variables.scss',
             'mail/static/src/scss/*.scss',
+            'mail/static/src/scss/*.css',
             'mail/static/lib/idb-keyval/idb-keyval.js',
             'mail/static/lib/selfie_segmentation/selfie_segmentation.js',
             'mail/static/src/js/**/*',
             'mail/static/src/model/**/*',
+            # ensure core.scss before any other style
+            "mail/static/src/core/common/core.scss",
             'mail/static/src/core/common/**/*',
             'mail/static/src/core/public_web/**/*',
             'mail/static/src/core/web_portal_project/**/*',
@@ -198,6 +201,7 @@ For more specific needs, you may also assign custom-defined actions
             'mail/static/src/**/web_portal_project/**/*',
             'mail/static/src/**/web/**/*',
             ('remove', 'mail/static/src/**/*.dark.scss'),
+            ('remove', 'mail/static/src/**/*.dark.css'),
             # discuss (loaded last to fix dependencies)
             ('remove', 'mail/static/src/discuss/**/*'),
             'mail/static/src/discuss/core/common/**/*',
@@ -206,7 +210,7 @@ For more specific needs, you may also assign custom-defined actions
             'mail/static/src/discuss/**/common/**/*',
             'mail/static/src/discuss/**/public_web/**/*',
             'mail/static/src/discuss/**/web/**/*',
-            ('remove', 'mail/static/src/discuss/**/*.dark.scss'),
+            ('remove', 'mail/static/src/discuss/**/*.dark.css'),
             'mail/static/src/views/fields/**/*',
             ('remove', 'mail/static/src/views/web/activity/**'),
             'mail/static/src/convert_inline/**/*',
@@ -215,20 +219,22 @@ For more specific needs, you may also assign custom-defined actions
             'mail/static/src/views/web/activity/**',
         ],
         "web.assets_web_dark": [
+            # ensure core.dark.scss before any other style
+            'mail/static/src/core/common/core.dark.scss',
             'mail/static/src/**/*.dark.scss',
+            'mail/static/src/**/*.dark.css',
         ],
         "web.assets_frontend": [
+            "mail/static/src/scss/css_variables.scss",
             "mail/static/src/html_editor/common/state_file_model_patch.js",
             "mail/static/src/utils/common/format.js",
             "mail/static/src/utils/common/html.js",
         ],
         "web.assets_web_print": [
-            "mail/static/src/scss/discuss_print.scss",
+            "mail/static/src/scss/discuss_print.css",
         ],
         'mail.assets_discuss_public_test_tours': [
-            'web/static/lib/hoot-dom/**/*',
-            'web_tour/static/src/js/**/*',
-            'web_tour/static/src/tour_utils.js',
+            ('include', 'web_tour.assets'),
             'mail/static/tests/tours/discuss_channel_public_tour.js',
             'mail/static/tests/tours/discuss_channel_as_guest_tour.js',
             'mail/static/tests/tours/discuss_channel_call_action.js',
@@ -251,7 +257,7 @@ For more specific needs, you may also assign custom-defined actions
             'mail/static/lib/lame/lame.js',
         ],
         "mail.assets_message_email": [
-            "web/static/lib/odoo_ui_icons/odoo_ui_icons.css",
+            ("include", "web.icons_fonts"),
         ],
         'mail.assets_public': [
             ('include', 'web._assets_helpers'),
@@ -279,6 +285,8 @@ For more specific needs, you may also assign custom-defined actions
             ("include", "html_editor.assets_editor"),
 
             'mail/static/src/model/**/*',
+            # ensure core.scss before any other style
+            "mail/static/src/core/common/core.scss",
             'mail/static/src/core/common/**/*',
             'mail/static/src/core/public_web/**/*',
             'mail/static/src/**/common/**/*',
@@ -286,6 +294,7 @@ For more specific needs, you may also assign custom-defined actions
             'mail/static/src/**/public/**/*',
             'mail/static/lib/selfie_segmentation/selfie_segmentation.js',
             ('remove', 'mail/static/src/**/*.dark.scss'),
+            ('remove', 'mail/static/src/**/*.dark.css'),
             # discuss (loaded last to fix dependencies)
             ('remove', 'mail/static/src/discuss/**/*'),
             'mail/static/src/discuss/core/common/**/*',
@@ -294,18 +303,20 @@ For more specific needs, you may also assign custom-defined actions
             'mail/static/src/discuss/**/common/**/*',
             'mail/static/src/discuss/**/public_web/**/*',
             'mail/static/src/discuss/**/public/**/*',
-            ('remove', 'mail/static/src/discuss/**/*.dark.scss'),
-            ('remove', 'web/static/src/**/*.dark.scss'),
+            ('remove', 'mail/static/src/discuss/**/*.dark.css'),
         ],
         'mail.assets_markdown': [
-            'mail/static/src/markdown_assets/mail_markdown_assets.scss',
+            'mail/static/src/markdown_assets/mail_markdown_assets.css',
         ],
         'im_livechat.assets_embed_core': [
             ("include", "html_editor.assets_editor"),
             'mail/static/src/model/**/*',
+            # ensure core.scss before any other style
+            "mail/static/src/core/common/core.scss",
             "mail/static/src/core/common/**/*",
             "mail/static/src/**/common/**/*",
             ('remove', 'mail/static/src/**/*.dark.scss'),
+            ('remove', 'mail/static/src/**/*.dark.css'),
         ],
         'im_livechat.assets_embed_external': [
             ('include', 'web._assets_helpers'),
@@ -324,7 +335,6 @@ For more specific needs, you may also assign custom-defined actions
             'web/static/src/views/fields/formatters.js',
             'web/static/src/views/fields/file_handler.*',
             'web/static/src/scss/mimetypes.scss',
-            ('remove', 'web/static/src/**/*.dark.scss'),
             'bus/static/src/*.js',
             'bus/static/src/services/**/*.js',
             'bus/static/src/workers/*.js',
@@ -342,11 +352,19 @@ For more specific needs, you may also assign custom-defined actions
             ('include', 'web.assets_unit_tests_setup'),
             'web/static/tests/web_test_helpers.js',
             'bus/static/tests/bus_test_helpers.js',
+            'html_editor/static/tests/_helpers/selection.js',
+            'html_editor/static/tests/_helpers/userCommands.js',
+            'html_editor/static/tests/_helpers/user_actions.js',
             'mail/static/tests/mail_test_helpers.js',
+            'mail/static/tests/mail_test_helpers_composer.js',
             'mail/static/tests/mail_test_helpers_contains.js',
+            'mail/static/tests/mail_test_helpers_html.js',
             'bus/static/tests/mock_server/**/*',
             'mail/static/tests/mock_server/**/*',
             'bus/static/tests/mock_*.js',
+        ],
+        'web._assets_bootstrap_backend': [
+            'mail/static/src/scss/css_variables.scss',
         ],
     },
     'author': 'Odoo S.A.',

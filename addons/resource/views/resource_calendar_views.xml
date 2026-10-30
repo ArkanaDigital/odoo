@@ -52,11 +52,17 @@
                             <field name="company_id" options="{'no_create': 1, 'no_quick_create': 1}"
                                    placeholder="Visible to all" domain="[('id', 'in', allowed_company_ids)]"/>
                         </group>
+                        <group name="resource_working_hours">
+                            <field name="reference_calendar_id" placeholder="from company"/>
+                            <label for="work_time_rate" string="Work Time Rate" groups="base.group_no_one"/>
+                            <div groups="base.group_no_one">
+                                <field name="work_time_rate" nolabel="1" style="width: 6ch; " widget="percentage"/>
+                            </div>
+                        </group>
                     </group>
                     <group name="resource_details">
                         <group style="grid-template-columns: fit-content(50%) minmax(0, 1fr);" col="2">
                             <field name="calendar_type" widget="calendar_type_confirm_radio" options="{'horizontal': true}"/>
-                            <field name="days_per_week" style="width: 10ch;" widget="float" digits="[16, 2]" options="{'hide_trailing_zeros': true}" readonly="calendar_type == 'fixed'"/>
                         </group>
                         <group col="2">
                             <label for="hours_per_week"/>
@@ -66,6 +72,7 @@
                                 <field name="hours_per_day" nolabel="1" widget="float_time" readonly="1" class="text-muted" style="width: max-content; flex: none;"/>
                                 <span class="text-muted">/d</span><span class="text-muted">)</span>
                             </span>
+                            <field name="days_per_week" style="width: 10ch;" widget="float" digits="[16, 2]" options="{'hide_trailing_zeros': true}" readonly="calendar_type == 'fixed'"/>
                         </group>
                     </group>
                     <field name="attendance_ids" widget="resource_calendar_attendance_filtered_one2many" domain_filter="[('date', '=', False)]"
@@ -82,7 +89,8 @@
         <field name="model">resource.calendar</field>
         <field name="arch" type="xml">
             <list string="Working Time">
-                <field name="name" string="Working Time"/>
+                <field name="name" string="Working Time" class="align-middle"/>
+                <field name="attendance_ids" string="Preview" widget="resource_calendar_hours_by_day"/>
                 <field name="hours_per_week" string="Schedule Total Time" optional="hide"/>
                 <field name="work_time_rate" widget="percentage"/>
                 <field name="full_time_required_hours" widget="float_time" optional="hide"/>

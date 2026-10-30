@@ -1,6 +1,5 @@
 import { proxy } from "@odoo/owl";
 
-import { browser } from "@web/core/browser/browser";
 import { registry } from "@web/core/registry";
 
 export class DiscussCorePublicWeb {
@@ -17,7 +16,7 @@ export class DiscussCorePublicWeb {
             this.store.insert(store_data);
             await this.store.fetchChannel(channel_id);
         });
-        browser.navigator.serviceWorker?.addEventListener(
+        window.navigator.serviceWorker?.addEventListener(
             "message",
             async ({ data: { action, data } }) => {
                 if (action === "OPEN_CHANNEL") {
@@ -29,7 +28,11 @@ export class DiscussCorePublicWeb {
                     if (this.store.rtc.localChannel) {
                         await this.store.rtc.leaveCall();
                     }
-                    this.store.rtc.joinCall(channel);
+                    await this.store.rtc.mediaPermissionsPromise;
+                    this.store.rtc.joinCall(channel, {
+                        audio: this.store.rtc.microphonePermission === "granted",
+                        camera: false,
+                    });
                 } else if (action === "POST_RTC_LOGS") {
                     const logs = data || {};
                     logs.odooInfo = odoo.info;

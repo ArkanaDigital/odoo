@@ -49,13 +49,13 @@ class TestWebsiteEventPriceList(TestWebsiteEventSaleCommon):
             'currency_id': self.currency_test.id,
             'item_ids': [(5, 0, 0), (0, 0, {
                 'applied_on': '3_global',
-                'compute_price': 'percentage',
-                'percent_price': 10,
+                'compute_price': 'discount',
+                'price_discount': 10,
             })],
             'name': 'Percentage Discount',
             'selectable': True,
         })
         with MockRequest(self.env, website=self.website, sale_order_id=order.id) as req:
             self.assertEqual(req.pricelist, self.pricelist)
-            self.WebsiteSaleController.pricelist_change(pl2)
+            self.WebsiteSaleController.pricelist_change(pl2.id)
             self.assertEqual(so_line.price_reduce_taxexcl, 900, 'Incorrect amount based on the pricelist and its currency.')

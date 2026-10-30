@@ -15,12 +15,15 @@ def _post_init_hook(env):
 
 def _create_product_value(env):
     product_vals_list = []
-    products = env['product.product'].with_context(prefetch_fields=False).search([('type', '=', 'consu')])
+    products = env['product.product'].with_context(prefetch_fields=False).search([('type', '=', 'consu'), ('tracking', '!=', None)])
     for company in env['res.company'].search([]):
         products = products.with_company(company)
         product_vals_list += [
             {
                 'product_id': product.id,
+                'quantity': product.qty_available,
+                'new_cost': product.standard_price,
+                'new_value': product.standard_price * product.qty_available,
                 'value': product.standard_price,
                 'date': fields.Date.today(),
                 'company_id': company.id,
@@ -48,13 +51,8 @@ def _configure_journals(env):
 def _configure_stock_account_company_data(env):
     env['account.chart.template']._load_pre_defined_data({
         'res.company': {
-            'account_stock_valuation_id',
             'account_production_wip_account_id',
             'account_production_wip_overhead_account_id',
-        },
-        'account.account': {
-            'account_stock_expense_id',
-            'account_stock_variation_id',
         },
         'stock.location': {
             'valuation_account_id',

@@ -1,19 +1,19 @@
-import { livechatRoutingMap } from "@im_livechat/embed/cors/livechat_routing_map";
-
-import { browser } from "@web/core/browser/browser";
-import { rpc } from "@web/core/network/rpc";
-import { registry } from "@web/core/registry";
-import { session } from "@web/session";
 import { expirableStorage } from "@im_livechat/core/common/expirable_storage";
 import { GUEST_TOKEN_STORAGE_KEY } from "@im_livechat/embed/common/store_service_patch";
+import { livechatRoutingMap } from "@im_livechat/embed/cors/livechat_routing_map";
+import { ErrorPlugin } from "@web/core/errors/error_plugin";
+import { rpc } from "@web/core/network/rpc";
+import { services } from "@web/core/services";
+import { session } from "@web/session";
 
 (async function boot() {
-    const { fetch } = browser;
-    browser.fetch = function (url, ...args) {
-        if (!url.match(/^(?:https?:)?\/\//)) {
-            url = session.origin + url;
+    const originalFetch = window.fetch;
+    window.fetch = function imLivechatMockFetch(input, init) {
+        const strInput = String(input);
+        if (!/^(?:https?:)?\/\//.test(strInput)) {
+            input = session.origin + strInput;
         }
-        return fetch(url, ...args);
+        return originalFetch(input, init);
     };
 
     // Override rpc to forward requests to CORS-allowed routes.
@@ -35,8 +35,8 @@ import { GUEST_TOKEN_STORAGE_KEY } from "@im_livechat/embed/common/store_service
         }
         return originalRPC(route, params, settings);
     };
-    // Remove the error service: it fails to identify issues within the shadow
+    // Remove the error plugin: it fails to identify issues within the shadow
     // DOM of the live chat and causes disruption for pages that embed it by
     // displaying pop-ups for errors outside of its scope.
-    registry.category("services").remove("error");
+    services.delete(ErrorPlugin);
 })();

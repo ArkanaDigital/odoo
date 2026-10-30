@@ -12,7 +12,7 @@ import { session } from "@web/session";
 import { registry } from "@web/core/registry";
 import { selfOrderIndex } from "@pos_self_order/app/self_order_index";
 import { setupPosEnv } from "@point_of_sale/../tests/unit/utils";
-import { unpatchSelf } from "@pos_self_order/app/services/data_service";
+import { unpatchSelf } from "@pos_self_order/app/plugins/pos_data_plugin";
 import { SelfOrderRouter } from "@pos_self_order/app/services/self_order_router_service";
 import { PosSession } from "@point_of_sale/../tests/unit/data/pos_session.data";
 
@@ -133,6 +133,7 @@ export function initMockRpc() {
     onRpc("/pos-self-order/validate-partner", mockValidatePartner);
     onRpc("/pos-self-order/change-printer-status", () => ({}));
     onRpc("/pos-self-order/get-user-data", mockGetUserData);
+    onRpc("/pos_self_order/kiosk/increment_nb_print/", () => ({}));
 }
 
 export const setupPoSEnvForSelfOrder = async () => {
@@ -187,7 +188,7 @@ export const setupSelfPosEnv = async (
     // Removing `pos` and its dependent services to avoid conflicts during `self_order` data loading.
     // Both `pos` and `self_order` rely on `pos_data`, but some models required by `self_order` (e.g., `res.users`)
     // are missing when `pos` is loaded. Hence, these services are excluded.
-    const serviceNames = ["contextual_utils_service", "debug", "report", "pos"];
+    const serviceNames = ["debug", "report", "pos"];
     serviceNames.forEach((serviceName) => registry.category("services").remove(serviceName));
 
     initMockRpc();

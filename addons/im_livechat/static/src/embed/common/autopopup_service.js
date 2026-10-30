@@ -9,14 +9,13 @@ export class AutopopupService {
      * @param {import("@web/env").OdooEnv} env
      * @param {{
      * "im_livechat.livechat": import("@im_livechat/embed/common/livechat_service").LivechatService,
-     * "mail.store": import("@mail/core/common/store_service").Store,
-     * ui: import("@web/core/ui/ui_plugin").UIPlugin,
+     * "mail.store": import("@mail/core/common/store_plugin").Store,
      * }} services
      */
-    constructor(env, { "im_livechat.livechat": livechatService, "mail.store": store, ui }) {
+    constructor(env, { "im_livechat.livechat": livechatService, "mail.store": store }) {
         this.store = store;
         this.livechatService = livechatService;
-        this.ui = ui;
+        this.ui = store.ui;
 
         livechatService.initializedPromise.then(() => {
             browser.setTimeout(async () => {
@@ -32,7 +31,7 @@ export class AutopopupService {
     get allowAutoPopup() {
         return Boolean(
             !expirableStorage.getItem(AutopopupService.STORAGE_KEY) &&
-                !this.ui.isSmall &&
+                !this.ui.isSmall() &&
                 this.store.livechat_rule?.action === "auto_popup" &&
                 this.store.livechat_available &&
                 this.store.activeVisitorLivechats.length === 0
@@ -41,7 +40,7 @@ export class AutopopupService {
 }
 
 export const autoPopupService = {
-    dependencies: ["im_livechat.livechat", "mail.store", "ui"],
+    dependencies: ["im_livechat.livechat", "mail.store"],
 
     start(env, services) {
         return new AutopopupService(env, services);

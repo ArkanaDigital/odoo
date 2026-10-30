@@ -150,7 +150,7 @@ class IrUiView(models.Model):
     _allow_sudo_commands = False
     _clear_cache_name = 'templates'
 
-    name = fields.Char(string='View Name', required=True)
+    name = fields.Char(string='View Name', required=True, copy=True)
     model = fields.Char(index=True)
     key = fields.Char(index='btree_not_null')
     priority = fields.Integer(string='Sequence', default=16, required=True)
@@ -197,6 +197,7 @@ actual arch.
 """)
 
     warning_info = fields.Html(string="Warning information", compute='_compute_warning_info')
+    notes = fields.Html(string="Notes")
 
     # The "active" field is not updated during updates if <template> is used
     # instead of <record> to define the view in XML, see _tag_template. For
@@ -209,12 +210,13 @@ actual arch.
 * if True, the view always extends its parent
 * if False, the view currently does not extend its parent but can be enabled
          """)
-    model_id = fields.Many2one("ir.model", string="Model of the view", compute='_compute_model_id', inverse='_inverse_compute_model_id')
+    model_id = fields.Many2one("ir.model", string="Model of the view", compute='_compute_model_id', inverse='_inverse_compute_model_id',
+                               write_sequence=-10)  # inverse before 'arch', whose inverse validates the view against 'model'
 
     invalid_locators = fields.Json(compute='_compute_invalid_locators')
     # used mainly for technical sort and find of views, as well to give specific
     # ACLs for specific flows like email marketing (snippets management)
-    technical_usage = fields.Selection(selection=[], string="View's Technical Usage")
+    technical_usage = fields.Selection(selection=[], string="Technical Usage")
 
     @api.depends('arch_db', 'arch_fs', 'arch_updated')
     @api.depends_context('read_arch_from_file', 'lang', 'edit_translations', 'check_translations')
@@ -310,9 +312,9 @@ actual arch.
         for view in self:
             view.model_data_id = False
         domain = [('model', '=', 'ir.ui.view'), ('res_id', 'in', self.ids)]
-        for data in self.env['ir.model.data'].sudo().search_read(domain, ['res_id'], order='id desc'):
-            view = self.browse(data['res_id'])
-            view.model_data_id = data['id']
+        for data in self.env['ir.model.data'].sudo().search_fetch(domain, ['res_id'], order='id desc'):
+            view = self.browse(data.res_id)
+            view.model_data_id = data.id
 
     def _search_model_data_id(self, operator, value):
         if operator in Domain.NEGATIVE_OPERATORS:
@@ -409,8 +411,8 @@ actual arch.
     def _compute_xml_id(self):
         xml_ids = collections.defaultdict(list)
         domain = [('model', '=', 'ir.ui.view'), ('res_id', 'in', self.ids)]
-        for data in self.env['ir.model.data'].sudo().search_read(domain, ['module', 'name', 'res_id']):
-            xml_ids[data['res_id']].append("%s.%s" % (data['module'], data['name']))
+        for data in self.env['ir.model.data'].sudo().search_fetch(domain, ['module', 'name', 'res_id']):
+            xml_ids[data.res_id].append("%s.%s" % (data.module, data.name))
         for view in self:
             view.xml_id = xml_ids.get(view.id, [''])[0]
 
@@ -676,7 +678,11 @@ actual arch.
 
     def unlink(self):
         # if in uninstall mode and has children views, emulate an ondelete cascade
-        if self.env.context.get('force_delete') and self.inherit_children_ids:
+        if (
+            (self.env.context.get('force_delete', False) or
+            self.env.context.get('cascade_unlink_views')) and
+            self.inherit_children_ids
+        ):
             self.inherit_children_ids.unlink()
         return super().unlink()
 
@@ -1127,6 +1133,17 @@ actual arch.
     # ------------------------------------------------------
 
     @api.model
+    def _raise_error(self, error):
+        kind, value = error
+        if kind == 'missing_template':
+            raise MissingError(self.env._("Template not found: '%s'", value))
+        if kind == 'missing_external':
+            raise MissingError(self.env._("External ID can not be loaded: %s", value))
+        if kind == 'syntax':
+            raise SyntaxError(value)
+        raise AssertionError(f'Unknown template error kind: {kind}')
+
+    @api.model
     def _get_cached_template_prefetched_keys(self):
         return ['id', 'key', 'active', 'type']
 
@@ -1164,13 +1181,13 @@ actual arch.
                 view = info['view']
                 error = info['error']
             else:
-                error = SyntaxError('Error compiling template')
+                error = ('syntax', 'Error compiling template')
         info = {
             f: view[f] if view else None
             for f in self._get_cached_template_prefetched_keys()
         }
         if not view and not error:
-            error = MissingError(self.env._("Template not found: '%s'", id_or_xmlid))
+            error = ('missing_template', id_or_xmlid)
         info['error'] = error
         return info
 
@@ -1178,7 +1195,7 @@ actual arch.
     def _get_template_view(self, id_or_xmlid: int | str, raise_if_not_found=True) -> models.BaseModel:
         info = self._get_cached_template_info(id_or_xmlid)
         if info['error'] and raise_if_not_found:
-            raise info['error']
+            self._raise_error(info['error'])
         return self.env['ir.ui.view'].browse(info['id'])
 
     @api.model
@@ -1699,7 +1716,7 @@ actual arch.
                 if isinstance(domain, str):
                     vnames = get_expression_field_names(domain)
                     name_manager.must_have_fields(node, vnames, node_info, ('domain', domain))
-            if field.type == 'properties':
+            if field.type == 'properties' and field.definition_record:
                 name_manager.must_have_fields(node, [field.definition_record], node_info, ('fieldname', field.name))
             context = node.get('context')
             if context:
@@ -1754,6 +1771,13 @@ actual arch.
         if field and field.groups:
             group_definitions = self.env['res.groups']._get_group_definitions()
             node_info['model_groups'] &= group_definitions.parse(field.groups, raise_if_not_found=False)
+
+    def _postprocess_tag_filter(self, node, name_manager, node_info):
+        for attribute in ('date', 'end_date'):
+            field = name_manager.model._fields.get(node.get(attribute))
+            if field and field.groups:
+                group_definitions = self.env['res.groups']._get_group_definitions()
+                node_info['model_groups'] &= group_definitions.parse(field.groups, raise_if_not_found=False)
 
     def _postprocess_tag_search(self, node, name_manager, node_info):
         searchpanel = [child for child in node if child.tag == 'searchpanel']
@@ -1986,7 +2010,7 @@ actual arch.
                 )
                 self._raise_view_error(msg, node)
 
-            if field.type == 'properties' and node_info['view_type'] != 'search':
+            if field.type == 'properties' and field.definition_record and node_info['view_type'] != 'search':
                 name_manager.must_have_fields(node, {field._description_definition_record}, node_info, use=f"definition record of {field.name}")
 
             for child in node:
@@ -2015,6 +2039,32 @@ actual arch.
             name = node.get('name')
             desc = f'domain of <filter name="{name}">' if name else 'domain of <filter>'
             self._validate_domain_identifiers(node, name_manager, domain, desc, name_manager.model._name, node_info)
+        if node.get("end_date") and not node.get("date"):
+            self._raise_view_error(_('Attribute "end_date" requires a "date" attribute'), node)
+        for attribute in ("date", "end_date"):
+            field_name = node.get(attribute)
+            if not field_name:
+                continue
+            field = name_manager.model._fields.get(field_name)
+            if field:
+                if field.type not in ('date', 'datetime'):
+                    msg = _(
+                        'Field "%(field_name)s" in attribute "%(attribute)s" must be a date or datetime field',
+                        field_name=field_name, attribute=attribute,
+                    )
+                    self._raise_view_error(msg, node)
+                if not field._description_searchable:
+                    msg = _(
+                        'Unsearchable field "%(field_name)s" in attribute "%(attribute)s"',
+                        field_name=field_name, attribute=attribute,
+                    )
+                    self._raise_view_error(msg, node)
+            else:
+                msg = _(
+                    'Field "%(field_name)s" does not exist in model "%(model_name)s"',
+                    field_name=field_name, model_name=name_manager.model._name,
+                )
+                self._raise_view_error(msg, node)
         if node.get("date") and (default_periods := node.get("default_period")):
             custom_options = {f'custom_{child.attrib["name"]}' for child in node.getchildren()}
             for default_period in default_periods.split(","):
@@ -2232,7 +2282,27 @@ actual arch.
 
             elif attr.startswith('decoration-'):
                 vnames = get_expression_field_names(expr)
-                if vnames:
+                if node_info.get('view_type') == 'pivot' and node.tag == 'field':
+                    # in pivot views, decorations are evaluated client side with
+                    # only the measure value in the evaluation context
+                    fname = node.get('name')
+                    if node.get('type') != 'measure':
+                        msg = _(
+                            "Decoration %(attribute)s=“%(value)s” on field “%(field)s” is only "
+                            "supported on measures (type=“measure”)",
+                            attribute=attr, value=expr, field=fname,
+                        )
+                        self._raise_view_error(msg, node)
+                    other_names = vnames - {fname}
+                    if other_names:
+                        msg = _(
+                            "Decoration %(attribute)s=“%(value)s” on field “%(field)s” can only "
+                            "reference the field itself, found: %(names)s",
+                            attribute=attr, value=expr, field=fname,
+                            names=", ".join(sorted(other_names)),
+                        )
+                        self._raise_view_error(msg, node)
+                elif vnames:
                     name_manager.must_have_fields(node, vnames, node_info, f"{attr}={expr!r}")
 
             elif attr == 'data-bs-toggle' and expr == 'tab':
@@ -3237,7 +3307,7 @@ class Base(models.AbstractModel):
         return [
             'change_default', 'context', 'currency_field', 'definition_record', 'definition_record_field', 'digits', 'min_display_digits', 'domain',
             'aggregator', 'groups', 'help', 'model_field', 'name', 'readonly', 'related', 'relation', 'relation_field', 'required', 'searchable',
-            'selection', 'size', 'sortable', 'store', 'string', 'translate', 'trim', 'type', 'groupable', 'falsy_value_label'
+            'selection', 'size', 'sortable', 'store', 'string', 'translate', 'trim', 'type', 'groupable', 'falsy_value_label', 'group_expand',
         ]
 
     @api.readonly

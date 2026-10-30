@@ -16,25 +16,28 @@ class TestPortalProject(TestProjectPortalCommon, HttpCase):
         pigs.write({'privacy_visibility': 'portal'})
 
         # Do: Alfred reads project -> ok (employee ok public)
-        pigs.with_user(self.user_projectuser).read(['user_id'])
+        pigs.with_user(self.user_projectuser).fetch(['user_id'])
         # Test: all project tasks visible
         tasks = self.env['project.task'].with_user(self.user_projectuser).search([('project_id', '=', pigs.id)])
         self.assertEqual(tasks, self.task_1 | self.task_2 | self.task_3 | self.task_4 | self.task_5 | self.task_6,
                          'access rights: project user should see all tasks of a portal project')
 
         # Do: Bert reads project -> crash, no group
-        self.assertRaises(AccessError, pigs.with_user(self.user_noone).read, ['user_id'])
+        self.assertRaises(AccessError, pigs.with_user(self.user_noone).fetch, ['user_id'])
         # Test: no project task searchable
         self.assertRaises(AccessError, self.env['project.task'].with_user(self.user_noone).search, [('project_id', '=', pigs.id)])
 
         # Data: task follower
-        pigs.with_user(self.user_projectmanager).message_subscribe(partner_ids=[self.user_portal.partner_id.id])
+        self.env['project.collaborator'].create({
+            'project_id': pigs.id,
+            'partner_id': self.user_portal.partner_id.id,
+        })
         self.task_1.with_user(self.user_projectuser).message_subscribe(partner_ids=[self.user_portal.partner_id.id])
         self.task_3.with_user(self.user_projectuser).message_subscribe(partner_ids=[self.user_portal.partner_id.id])
         # Do: Chell reads project -> ok (portal ok public)
-        pigs.with_user(self.user_portal).read(['user_id'])
+        pigs.with_user(self.user_portal).fetch(['user_id'])
         # Do: Donovan reads project -> ko (public ko portal)
-        self.assertRaises(AccessError, pigs.with_user(self.user_public).read, ['user_id'])
+        self.assertRaises(AccessError, pigs.with_user(self.user_public).fetch, ['user_id'])
         # Test: no access right to project.task
         self.assertRaises(AccessError, self.env['project.task'].with_user(self.user_public).search, [])
         # Data: task follower cleaning
@@ -123,8 +126,14 @@ class TestPortalProject(TestProjectPortalCommon, HttpCase):
         Verify that a portal user can see regular tasks but not task templates or their subtasks.
         """
         self.authenticate(self.user_portal.login, self.user_portal.login)
-        portal_project = self.env['project.project'].create({'name': 'Portal Project'})
-        portal_project.message_subscribe(partner_ids=[self.user_portal.partner_id.id])
+        portal_project = self.env['project.project'].create({
+            'name': 'Portal Project',
+            'privacy_visibility': 'portal',
+        })
+        self.env['project.collaborator'].create({
+            'project_id': portal_project.id,
+            'partner_id': self.user_portal.partner_id.id,
+        })
         task, task_template = self.env['project.task'].create([
             {
                 'name': 'Visible Task',
@@ -148,9 +157,75 @@ class TestPortalProject(TestProjectPortalCommon, HttpCase):
         self.assertNotIn(task_template.child_ids[0].name, my_tasks_response.text)
         self.assertNotIn(task_template.child_ids[1].name, my_tasks_response.text)
 
-        # Check the tasks page for the specific project
-        project_tasks_response = self.url_open('/my/projects/%s' % (portal_project.id))
-        self.assertIn(task.name, project_tasks_response.text)
-        self.assertNotIn(task_template.name, project_tasks_response.text)
-        self.assertNotIn(task_template.child_ids[0].name, project_tasks_response.text)
-        self.assertNotIn(task_template.child_ids[1].name, project_tasks_response.text)
+    def test_portal_task_tracking_message_fetch(self):
+        """Test that ALL tracking messages (both internal and public subtypes)
+        are visible on tasks in the portal, while standard internal notes are excluded."""
+
+        self.project_pigs.write({'privacy_visibility': 'portal'})
+        self.env['project.collaborator'].create({
+            'project_id': self.project_pigs.id,
+            'partner_id': self.user_portal.partner_id.id,
+        })
+        stage_new, stage_done = self.env['project.task.type'].create([
+            {'name': 'New', 'sequence': 1, 'project_ids': [Command.link(self.project_pigs.id)]},
+            {'name': 'Done', 'sequence': 2, 'project_ids': [Command.link(self.project_pigs.id)]},
+        ])
+
+        task = self.env['project.task'].create({
+            'name': 'Portal Tracking Test Task',
+            'project_id': self.project_pigs.id,
+            'stage_id': stage_new.id,
+        })
+        self.env.flush_all()
+        self.cr.flush()
+
+        messages_before = task.message_ids
+        task.stage_id = stage_done
+        self.env.flush_all()
+        self.cr.flush()
+        msg_tracking_stage = task.message_ids - messages_before
+
+        messages_before = task.message_ids
+        task.name = 'Portal Tracking Test Task (renamed)'
+        self.env.flush_all()
+        self.cr.flush()
+        msg_tracking_name = task.message_ids - messages_before
+
+        self.assertEqual(msg_tracking_stage.message_type, 'tracking')
+        self.assertEqual(msg_tracking_stage.subtype_id, self.env.ref('project.mt_task_stage'))
+        self.assertEqual(msg_tracking_name.message_type, 'tracking')
+        self.assertEqual(msg_tracking_name.subtype_id, self.env.ref('mail.mt_note'))
+
+        msg_note_internal = task.message_post(
+            body="Secret Internal Comment",
+            message_type="comment",
+            subtype_xmlid="mail.mt_note",
+        )
+
+        self.authenticate(self.user_portal.login, self.user_portal.login)
+
+        chatter_fetch_params = {
+            "thread_id": task.id,
+            "thread_model": task._name,
+        }
+        result = self.make_jsonrpc_request(
+            "/mail/store",
+            {"fetch_params": [["/mail/chatter_fetch", chatter_fetch_params]]},
+        )
+        fetched_ids = [msg["id"] for msg in result.get("mail.message", [])]
+
+        self.assertIn(
+            msg_tracking_stage.id,
+            fetched_ids,
+            "stage tracking messages should be included."
+        )
+        self.assertIn(
+            msg_tracking_name.id,
+            fetched_ids,
+            "name tracking messages should also be included based on the tracking whitelist."
+        )
+        self.assertNotIn(
+            msg_note_internal.id,
+            fetched_ids,
+            "Standard internal notes must still be excluded by the base firewall."
+        )

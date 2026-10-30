@@ -11,17 +11,12 @@ import {
     ThirdPartyScriptError,
     UncaughtClientError,
     UncaughtPromiseError,
-} from "@web/core/errors/error_service";
+} from "@web/core/errors/error_plugin";
 import { RequestEntityTooLargeError, RPCError } from "@web/core/network/rpc";
 import { registry } from "@web/core/registry";
 import { user } from "@web/core/user";
 import { useService } from "@web/core/utils/hooks";
 import { session } from "@web/session";
-
-/**
- * @typedef {import("../../env").OdooEnv} OdooEnv
- * @typedef {import("./error_service").UncaughtError} UncaughError
- */
 
 const errorHandlerRegistry = registry.category("error_handlers");
 const errorDialogRegistry = registry.category("error_dialogs");
@@ -31,13 +26,8 @@ const errorNotificationRegistry = registry.category("error_notifications");
 // RPC errors
 // -----------------------------------------------------------------------------
 
-/**
- * @param {OdooEnv} env
- * @param {UncaughError} error
- * @param {Error} originalError
- * @returns {boolean}
- */
-export function rpcErrorHandler(env, error, originalError) {
+/** @type {import("registries").ErrorHandler} */
+export function rpcErrorHandler({ error, originalError }) {
     if (!(error instanceof UncaughtPromiseError)) {
         return false;
     }
@@ -95,13 +85,8 @@ errorHandlerRegistry.add("rpcErrorHandler", rpcErrorHandler, { sequence: 97 });
 // Request entity too large errors
 // -----------------------------------------------------------------------------
 
-/**
- * @param {OdooEnv} env
- * @param {UncaughError} error
- * @param {Error} originalError
- * @returns {boolean}
- */
-export function requestEntityTooLargeHandler(env, error, originalError) {
+/** @type {import("registries").ErrorHandler} */
+export function requestEntityTooLargeHandler({ error, originalError }) {
     if (!(error instanceof UncaughtPromiseError)) {
         return false;
     }
@@ -130,12 +115,9 @@ const defaultDialogs = new Map([
 /**
  * Handles the errors based on the very general error categories emitted by the
  * error service. Notice how we do not look at the original error at all.
- *
- * @param {OdooEnv} env
- * @param {UncaughError} error
- * @returns {boolean}
+ * @type {import("registries").ErrorHandler}
  */
-export function defaultHandler(env, error) {
+export function defaultHandler({ error }) {
     const dialog = useService("dialog");
     const DialogComponent = defaultDialogs.get(error.constructor) || ErrorDialog;
     dialog.add(DialogComponent, {
@@ -155,8 +137,9 @@ errorHandlerRegistry.add("defaultHandler", defaultHandler, { sequence: 100 });
 /**
  * We don't want to show tracebacks to non internal users. This handler swallows
  * all errors if we're not an internal user (except in debug or test mode).
+ * @type {import("registries").ErrorHandler}
  */
-export function swallowAllVisitorErrors(env, error, originalError) {
+export function swallowAllVisitorErrors() {
     const debugMode = usePlugin(DebugModePlugin);
     if (!user.isInternalUser && !debugMode.isActive() && !session.test_mode) {
         return true;
@@ -172,7 +155,5 @@ if (user.isInternalUser === undefined) {
         );
     }
 } else {
-    registry
-        .category("error_handlers")
-        .add("swallowAllVisitorErrors", swallowAllVisitorErrors, { sequence: 0 });
+    errorHandlerRegistry.add("swallowAllVisitorErrors", swallowAllVisitorErrors, { sequence: 0 });
 }

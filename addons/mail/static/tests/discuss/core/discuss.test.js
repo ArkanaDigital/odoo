@@ -1,16 +1,16 @@
 import { onWebsocketEvent } from "@bus/../tests/mock_websocket";
 import { BusPlugin } from "@bus/services/bus_plugin";
 import {
-    click,
-    contains,
+    actionPanel,
     defineMailModels,
     openDiscuss,
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
 import { describe, expect, test } from "@odoo/hoot";
-import { tick } from "@odoo/hoot-dom";
-import { getService, makeTestApp, patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { tick, waitFor, waitForNone } from "@odoo/hoot-dom";
+import { contains, getService, makeTestApp } from "@web/../tests/web_test_helpers";
+import { patch } from "@web/core/utils/patch";
 
 describe.current.tags("desktop");
 defineMailModels();
@@ -20,15 +20,15 @@ test("Member list and Pinned Messages Panel menu are exclusive", async () => {
     const channelId = pyEnv["discuss.channel"].create({ name: "General" });
     await start();
     await openDiscuss(channelId);
-    await contains(".o-discuss-ChannelMemberList"); // member list open by default
-    await click("[title='Pinned Messages']");
-    await contains(".o-discuss-PinnedMessagesPanel");
-    await contains(".o-discuss-ChannelMemberList", { count: 0 });
+    await waitFor(`${actionPanel("Members")}:count(1)`); // member list open by default
+    await contains("[title='Pinned Messages']:count(1)").click();
+    await waitFor(`${actionPanel("Pinned Messages")}:count(1)`);
+    await waitForNone(actionPanel("Members"));
 });
 
 test("subscribe to presence channels according to store data", async () => {
     let startBus;
-    patchWithCleanup(BusPlugin.prototype, {
+    patch(BusPlugin.prototype, {
         setup() {
             super.setup();
             startBus = () => this.start();

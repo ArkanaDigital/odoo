@@ -180,7 +180,7 @@ class EventEventTicket(models.Model):
             return {False: event_slot.seats_available if event_slot else (event.seats_available if event.seats_limited else event.EVENT_MAX_TICKETS)}
         availabilities = {}
         for ticket, seats_available in zip(self, slots_seats_available):
-            if not seats_available:  # "No limit"
+            if seats_available is None:  # "No limit"
                 seats_available = ticket.limit_max_per_order or ticket.event_id.EVENT_MAX_TICKETS
             else:
                 seats_available = min(ticket.limit_max_per_order or seats_available, seats_available)
@@ -191,7 +191,7 @@ class EventEventTicket(models.Model):
         """ Compute a multiline description of this ticket. It is used when ticket
         description are necessary without having to encode it manually, like sales
         information. """
-        return '%s\n%s' % (self.display_name, self.event_id.display_name)
+        return self.event_id.display_name
 
     def _set_tz_context(self):
         self.ensure_one()

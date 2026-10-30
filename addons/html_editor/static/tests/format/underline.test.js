@@ -1,6 +1,6 @@
 import { describe, expect, test } from "@odoo/hoot";
 import { tick } from "@odoo/hoot-mock";
-import { press } from "@odoo/hoot-dom";
+import { dblclick, press } from "@odoo/hoot-dom";
 import { patchWithCleanup } from "@web/../tests/web_test_helpers";
 import { setupEditor, testEditor } from "../_helpers/editor";
 import { getContent } from "../_helpers/selection";
@@ -49,8 +49,11 @@ test("should make two paragraphs not underline", async () => {
 
 test("should make qweb tag underline", async () => {
     await testEditor({
-        contentBefore: `<div><p t-out="'Test'" contenteditable="false">[Test]</p></div>`,
-        stepFunction: underline,
+        contentBefore: `<div><p t-out="'Test'" contenteditable="false">Test</p></div>`,
+        stepFunction: async (editor) => {
+            await dblclick("p[t-out]");
+            underline(editor);
+        },
         contentAfter: `<div>[<p t-out="'Test'" style="text-decoration-line: underline;">Test</p>]</div>`,
         config: { includePlugins: [QWebPlugin] },
     });
@@ -183,7 +186,7 @@ test("should make a few characters underline inside table (underline)", async ()
         stepFunction: underline,
         contentAfterEdit: unformat(`
             <p data-selection-placeholder=""><br></p>
-            <table class="table table-bordered o_table o_selected_table">
+            <div class="o_table_wrapper"><table class="table table-bordered o_table o_selected_table">
                 <tbody>
                     <tr>
                         <td class="o_selected_td"><p><u>[abc</u></p></td>
@@ -201,7 +204,7 @@ test("should make a few characters underline inside table (underline)", async ()
                         <td><p><br></p></td>
                     </tr>
                 </tbody>
-            </table>
+            </table></div>
             <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>`),
     });
 });
@@ -384,4 +387,24 @@ test("should not add history commit for underline on collapsed selection", async
 
     undo(editor);
     expect(getContent(el)).toBe(`<p>abcd[]</p>`);
+});
+
+test("should remove underline on list item with heading", async () => {
+    await testEditor({
+        contentBefore: "<ul><li><h1><u>[test]</u></h1></li></ul>",
+        stepFunction: underline,
+        contentAfter: "<ul><li><h1>[test]</h1></li></ul>",
+    });
+});
+
+test("should not apply the style on the link itself because it can't be neutralized locally", async () => {
+    const { el, editor } = await setupEditor(`<p><a href="test">[abc]</a></p>`);
+    underline(editor);
+    expect(getContent(el)).toBe(
+        `<p>\ufeff<a href="test" class="o_link_in_selection">\ufeff<u>[abc]</u>\ufeff</a>\ufeff</p>`
+    );
+    underline(editor);
+    expect(getContent(el)).toBe(
+        `<p>\ufeff<a href="test" class="o_link_in_selection">\ufeff[abc]\ufeff</a>\ufeff</p>`
+    );
 });

@@ -1,12 +1,11 @@
 import {
-    click,
-    contains,
     defineMailModels,
     openDiscuss,
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
-import { describe, test } from "@odoo/hoot";
+import { describe, test, waitFor } from "@odoo/hoot";
+import { contains } from "@web/../tests/web_test_helpers";
 
 describe.current.tags("desktop");
 defineMailModels();
@@ -16,8 +15,8 @@ test("Call has Picture-in-picture feature", async () => {
     const channelId = pyEnv["discuss.channel"].create({ name: "General" });
     await start();
     await openDiscuss(channelId);
-    await click("[title='Start Call']");
-    await contains(".o-discuss-Call");
-    await click(".o-discuss-CallActionList button[title='More']");
-    await contains("[name='picture-in-picture']");
+    await contains("[title='Start Call']:count(1)").click();
+    await waitFor(".o-discuss-Call:count(1)");
+    await contains(".o-discuss-CallActionList button[title='More']:count(1)").click();
+    await waitFor("[name='picture-in-picture']:count(1)");
 });

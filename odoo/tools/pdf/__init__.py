@@ -50,8 +50,8 @@ else:
         raise ImportError("pypdf implementation not found") from errors[0]
     del errors
 
-PdfReaderBase, PdfWriter, filters, generic, errors, create_string_object =\
-    pypdf.PdfReader, pypdf.PdfWriter, pypdf.filters, pypdf.generic, pypdf.errors, pypdf.create_string_object
+PageObject, PdfReaderBase, PdfWriter, filters, generic, errors, create_string_object, Fit, Link =\
+    pypdf.PageObject, pypdf.PdfReader, pypdf.PdfWriter, pypdf.filters, pypdf.generic, pypdf.errors, pypdf.create_string_object, pypdf.Fit, pypdf.Link
 # because they got re-exported
 (ArrayObject, BooleanObject, ByteStringObject, DecodedStreamObject, DictionaryObject,
  IndirectObject, NameObject, NumberObject, PdfObject, NullObject, RectangleObject, TextStringObject) =\
@@ -156,14 +156,11 @@ def fill_form_fields_pdf(writer, form_fields):
     pypdf_version = parse_version(pypdf.__version__)
     if pypdf_version >= parse_version('3.13.0'):
         catalog = writer._root_object
-        if "/Fields" not in catalog.get('/AcroForm'):
-            catalog.update({
-                NameObject("/AcroForm"): writer._add_object(
-                    DictionaryObject({
-                        NameObject("/Fields"): ArrayObject()
-                    })
-                )
-            })
+        acroform = catalog.get("/AcroForm").get_object()
+        if "/Fields" not in acroform:
+            acroform[NameObject("/Fields")] = ArrayObject()
+        if "/DR" not in acroform:
+            acroform[NameObject("/DR")] = DictionaryObject()
 
     for page in writer.pages:
         writer.update_page_form_field_values(page, form_fields)
@@ -178,7 +175,7 @@ def rotate_pdf(pdf):
     writer = PdfFileWriter()
     reader = PdfFileReader(io.BytesIO(pdf), strict=False)
     for page in reader.pages:
-        page.rotate_clockwise(90)
+        page.rotate(90)
         writer.add_page(page)
     with io.BytesIO() as _buffer:
         writer.write(_buffer)
@@ -315,6 +312,11 @@ def reshape_text(text):
     if first_letter_is_rtl and no_letter_is_ltr:
         text = reshape(text)
         text = text[::-1]
+        # Numbers are written left-to-right even inside right-to-left text,
+        # so restore the original order of their digits after the flip.
+        text = re.sub(r'\d+(?:[.,:/\u00A0\u060C\u066B\u066C\u202F]\d+)*', lambda match: match[0][::-1], text)
+        # Brackets are mirrored in right-to-left text.
+        text = text.translate(str.maketrans('()[]{}<>«»', ')(][}{><»«'))
 
     return text
 
@@ -609,7 +611,7 @@ class OdooPdfFileWriter(PdfFileWriter):
         self._root_object[NameObject("/StructTreeRoot")] = struct_tree_root
 
         # Set odoo as producer
-        self.addMetadata({
+        self.add_metadata({
             '/Creator': "Odoo",
             '/Producer': "Odoo",
         })

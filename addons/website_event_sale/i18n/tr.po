@@ -12,24 +12,31 @@
 # İlknur Gözütok, 2023
 # Halil, 2023
 # "Dylan Kiss (dyki)" <dyki@odoo.com>, 2025.
-# Weblate <noreply-mt-weblate@weblate.org>, 2025.
+# Weblate <noreply-mt-weblate@weblate.org>, 2025, 2026.
 # DeepL <noreply-mt-deepl@weblate.org>, 2025.
 # Odoo Turkish Import <dyki+tr@odoo.com>, 2025.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 15.5alpha1\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-26 19:11+0000\n"
-"PO-Revision-Date: 2026-06-21 06:43+0000\n"
+"POT-Creation-Date: 2026-08-28 17:43+0000\n"
+"PO-Revision-Date: 2026-08-31 18:22+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Turkish <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Turkish <https://translate.odoo.com/projects/odoo-s19-4/"
 "website_event_sale/tr/>\n"
 "Language: tr\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: website_event_sale
+#: model:ir.module.module,description:base.module_website_event_sale
+msgid ""
+"\n"
+"Sell event tickets through eCommerce app.\n"
+msgstr ""
 
 #. module: website_event_sale
 #: model_terms:ir.ui.view,arch_db:website_event_sale.event_confirmation
@@ -99,8 +106,9 @@ msgstr "Etkinlik Altyazısı"
 
 #. module: website_event_sale
 #: model:ir.model,name:website_event_sale.model_event_event_ticket
+#, fuzzy
 msgid "Event Ticket"
-msgstr ""
+msgstr "Etkinlik Bileti"
 
 #. module: website_event_sale
 #: model:ir.model.fields,field_description:website_event_sale.field_product_product__event_ticket_ids
@@ -140,6 +148,11 @@ msgid "ID"
 msgstr "ID"
 
 #. module: website_event_sale
+#: model:ir.module.module,shortdesc:base.module_website_event_sale
+msgid "Online Event Ticketing"
+msgstr ""
+
+#. module: website_event_sale
 #: model:ir.model,name:website_event_sale.model_product_pricelist_item
 msgid "Pricelist Rule"
 msgstr "Fiyat Listesi Kuralı"
@@ -171,6 +184,11 @@ msgid "Sales Order Line"
 msgstr "Satış Sipariş Satırı"
 
 #. module: website_event_sale
+#: model:ir.module.module,summary:base.module_website_event_sale
+msgid "Sell event tickets online"
+msgstr ""
+
+#. module: website_event_sale
 #. odoo-python
 #: code:addons/website_event_sale/models/sale_order.py:0
 msgid "Sorry, The %(ticket)s tickets for the %(event)s event are sold out."
@@ -183,8 +201,8 @@ msgid ""
 "Sorry, only %(remaining_seats)d seats are still available for the %(ticket)s "
 "ticket for the %(event)s event%(slot)s."
 msgstr ""
-"Üzgünüz, %(event)s etkinliği için %(ticket)s bileti için yalnızca "
-"%(remaining_seats)d koltukları hala mevcuttur%(slot)s."
+"Üzgünüz, %(event)s etkinliği için %(ticket)s bileti için yalnızca %"
+"(remaining_seats)d koltukları hala mevcuttur%(slot)s."
 
 #. module: website_event_sale
 #. odoo-python

@@ -345,7 +345,7 @@ class TestUnbuild(TestMrpCommon):
         """ This test creates a MO from 3 different lot on a consumed product (p2).
         The unbuild order should revert the correct quantity for each specific lot.
         """
-        mo, bom, p_final, p1, p2 = self.generate_mo(tracking_final='none', tracking_base_2='lot', tracking_base_1='none')
+        mo, bom, p_final, p1, p2 = self.generate_mo(tracking_final=False, tracking_base_2='lot', tracking_base_1=False)
         self.assertEqual(len(mo), 1, 'MO should have been created')
 
         lot_1 = self.env['stock.lot'].create({
@@ -396,7 +396,7 @@ class TestUnbuild(TestMrpCommon):
     def test_production_links_with_non_tracked_lots(self):
         """ This test produces an MO in two times and checks that the move lines are linked in a correct way
         """
-        mo, bom, p_final, p1, p2 = self.generate_mo(tracking_final='lot', tracking_base_1='none', tracking_base_2='lot')
+        mo, _, p_final, p1, p2 = self.generate_mo(tracking_final='lot', tracking_base_1=False, tracking_base_2='lot')
         # Young Tom
         #    \ Botox - 4 - p1
         #    \ Old Tom - 1 - p2
@@ -925,7 +925,7 @@ class TestUnbuild(TestMrpCommon):
         - 2 x (storable)
         - 4 x (consumable)
         - Create a MO with 4 final products to produce.
-        - Confirm and validate, then unlock the mo and update the qty produced to 10
+        - Confirm and validate, then update the qty produced to 10 through the ORM
         - open the wizard to unbuild > the quantity proposed should be 10
         - unbuild 4 units
         - the move lines should be created with the correct quantity
@@ -941,10 +941,9 @@ class TestUnbuild(TestMrpCommon):
         mo = mo_form.save()
         mo.button_mark_done()
         self.assertEqual(mo.state, 'done', "Production order should be in done state.")
-        # unlock and update the qty produced
+        # Update through the ORM; completed MO quantities are readonly in the UI.
         mo.action_toggle_is_locked()
-        with Form(mo) as mo_form:
-            mo_form.qty_producing = 10
+        mo.qty_producing = 10
         self.assertEqual(mo.qty_producing, 10)
         #unbuild order
         unbuild_form = Form(self.env['mrp.unbuild'])
@@ -1227,8 +1226,7 @@ class TestUnbuild(TestMrpCommon):
 
         move_lines = unbuild.produce_line_ids.move_line_ids.sorted(lambda ml: ml.product_id.id)
         self.assertRecordValues(move_lines, [
-            {'reference': unbuild.name, 'quantity': 5, 'product_id': p_final.id, 'state': 'done'},
-            {'reference': unbuild.name, 'quantity': 2, 'product_id': p_final.id, 'state': 'done'},
+            {'reference': unbuild.name, 'quantity': 7, 'product_id': p_final.id, 'state': 'done'},
             {'reference': unbuild.name, 'quantity': 28, 'product_id': p1.id, 'state': 'done'},
             {'reference': unbuild.name, 'quantity': 7, 'product_id': p2.id, 'state': 'done'},
         ])
@@ -1249,3 +1247,84 @@ class TestUnbuild(TestMrpCommon):
             {'product_id': p_final.id, 'quantity': 1.0, 'lot_id': lot2.id},
             {'product_id': p1.id, 'quantity': 20.0, 'lot_id': False},
         ])
+
+    def test_unbuild_specific_serial_number_ignores_fifo(self):
+        """
+        Test that unbuilding a specific serial number from an MO ignores
+        the default FIFO behavior and correctly unbuilds the selected lot.
+        """
+        stock_location = self.stock_location
+        product_final = self.env['product.product'].create({
+            'name': 'Final Product SN',
+            'type': 'consu',
+            'is_storable': True,
+            'tracking': 'serial',
+        })
+        component = self.env['product.product'].create({
+            'name': 'Component',
+            'type': 'consu',
+            'is_storable': True,
+        })
+
+        self.env['stock.quant']._update_available_quantity(
+            component,
+            stock_location,
+            5.0,
+        )
+
+        bom = self.env['mrp.bom'].create({
+            'product_tmpl_id': product_final.product_tmpl_id.id,
+            'product_qty': 1.0,
+            'bom_line_ids': [
+                Command.create({
+                    'product_id': component.id,
+                    'product_qty': 1.0,
+                })
+            ],
+        })
+
+        lot_1 = self.env['stock.lot'].create({'name': 'SN1', 'product_id': product_final.id})
+        lot_2 = self.env['stock.lot'].create({'name': 'SN2', 'product_id': product_final.id})
+        lot_3 = self.env['stock.lot'].create({'name': 'SN3', 'product_id': product_final.id})
+        lot_4 = self.env['stock.lot'].create({'name': 'SN4', 'product_id': product_final.id})
+        lot_5 = self.env['stock.lot'].create({'name': 'SN5', 'product_id': product_final.id})
+
+        fifo_lot = lot_1
+        target_lot = lot_4
+        mo = self.env['mrp.production'].create({
+            'product_id': product_final.id,
+            'bom_id': bom.id,
+            'product_qty': 5.0,
+        })
+        mo.action_confirm()
+
+        mo.lot_producing_ids = lot_1 + lot_2 + lot_3 + lot_4 + lot_5
+        mo._set_qty_producing()
+        mo.button_mark_done()
+
+        self.assertEqual(mo.state, 'done')
+
+        self.assertEqual(
+            self.env['stock.quant']._get_available_quantity(product_final, stock_location, lot_id=fifo_lot),
+            1.0,
+            "The FIFO lot should be in stock after production.",
+        )
+        self.assertEqual(
+            self.env['stock.quant']._get_available_quantity(product_final, stock_location, lot_id=target_lot),
+            1.0,
+            "The target lot should be in stock after production.",
+        )
+        unbuild = self.env['mrp.unbuild'].create({
+            'mo_id': mo.id,
+            'product_id': product_final.id,
+            'product_qty': 1.0,
+            'lot_ids': [Command.set(target_lot.ids)],
+        })
+        unbuild.action_unbuild()
+
+        self.assertEqual(unbuild.state, 'done', "Unbuild order should be completed.")
+        qty_target_lot = self.env['stock.quant']._get_available_quantity(product_final, stock_location, lot_id=target_lot)
+        qty_fifo_lot = self.env['stock.quant']._get_available_quantity(product_final, stock_location, lot_id=fifo_lot)
+
+        self.assertEqual(qty_target_lot, 0.0, "The selected serial number should be unbuilt.")
+        self.assertEqual(qty_fifo_lot, 1.0, "The FIFO serial number should not be unbuilt.")

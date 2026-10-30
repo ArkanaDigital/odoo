@@ -14,9 +14,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-26 19:08+0000\n"
-"PO-Revision-Date: 2026-06-20 14:46+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-09-11 17:41+0000\n"
+"PO-Revision-Date: 2026-09-11 11:36+0000\n"
+"Last-Translator: Bren Driesen <brdri@odoo.com>\n"
 "Language-Team: Dutch <https://translate.odoo.com/projects/odoo-master/hr/nl/"
 ">\n"
 "Language: nl\n"
@@ -24,7 +24,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: hr
 #. odoo-python
@@ -37,6 +37,12 @@ msgstr " Records"
 #: model:ir.model.fields,field_description:hr.field_res_config_settings__hr_presence_control_email_amount
 msgid "# emails to send"
 msgstr "# e-mails te verzenden"
+
+#. module: hr
+#. odoo-python
+#: code:addons/hr/models/resource_calendar.py:0
+msgid "%(calendar_name)s (%(employee_name)s)"
+msgstr ""
 
 #. module: hr
 #. odoo-python
@@ -56,12 +62,6 @@ msgstr "%(employee_name)s heeft geen gebruiker."
 msgid "%(employee_name)s's manager (%(manager_name)s) has no user."
 msgstr ""
 "%(manager_name)s, de manager van %(employee_name)s, heeft geen gebruiker."
-
-#. module: hr
-#. odoo-python
-#: code:addons/hr/models/hr_job.py:0
-msgid "%s (copy)"
-msgstr "%s (kopie)"
 
 #. module: hr
 #. odoo-python
@@ -303,20 +303,9 @@ msgstr ""
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.hr_kanban_view_employees
 msgid ""
-"<i class=\"oi oi-fw me-2 text-primary\" data-icon=\"luggage\" title=\"Job "
-"Position\"/>"
-msgstr ""
-"<i class=\"oi oi-fw me-2 text-primary\" data-icon=\"luggage\" title=\"Job "
-"Position\"/>"
-
-#. module: hr
-#: model_terms:ir.ui.view,arch_db:hr.hr_kanban_view_employees
-msgid ""
-"<i class=\"oi oi-fw me-2 text-primary\" data-icon=\"work\" "
+"<i class=\"oi oi-fw oi-filled me-2 text-primary\" data-icon=\"contract\" "
 "title=\"Contract\"/>"
 msgstr ""
-"<i class=\"oi oi-fw me-2 text-primary\" data-icon=\"work\" "
-"title=\"Contract\"/>"
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.hr_employee_public_view_kanban
@@ -337,6 +326,13 @@ msgid ""
 msgstr ""
 "<i class=\"oi oi-fw oi-filled me-2 text-primary\" data-icon=\"phone\" "
 "title=\"Telefoon\"/>"
+
+#. module: hr
+#: model_terms:ir.ui.view,arch_db:hr.hr_kanban_view_employees
+msgid ""
+"<i class=\"oi oi-fw oi-filled me-2 text-primary\" data-icon=\"work\" "
+"title=\"Job Position\"/>"
+msgstr ""
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.hr_department_view_kanban
@@ -434,17 +430,6 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_form
 msgid "<span invisible=\"not contract_date_start\">to</span>"
 msgstr "<span invisible=\"not contract_date_start\">tot</span>"
-
-#. module: hr
-#: model_terms:ir.ui.view,arch_db:hr.view_employee_form
-msgid ""
-"<span invisible=\"not user_id or is_user_active\">\n"
-"                                                (User is Inactive)\n"
-"                                            </span>"
-msgstr ""
-"<span invisible=\"not user_id or is_user_active\">\n"
-"                                                (Gebruiker is inactief)\n"
-"                                            </span>"
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_form
@@ -638,6 +623,28 @@ msgid "A good company embraces technological innovation"
 msgstr "Een succesvol bedrijf maakt gebruik van technologische innovatie"
 
 #. module: hr
+#. odoo-python
+#: code:addons/hr/models/hr_employee.py:0
+msgid ""
+"A portal user already exist with the following login: %(login)s. User Name: %"
+"(user_name)s. You should set another email address on the employee."
+msgstr ""
+
+#. module: hr
+#. odoo-python
+#: code:addons/hr/models/hr_employee.py:0
+msgid "A signup link was sent by email"
+msgstr ""
+
+#. module: hr
+#. odoo-python
+#: code:addons/hr/models/hr_employee.py:0
+msgid ""
+"A user already exist with the following login: %(login)s. User Name: %"
+"(user_name)s. Please link the user instead before sending invitation."
+msgstr ""
+
+#. module: hr
 #: model:ir.model.constraint,message:hr.constraint_hr_employee_user_uniq
 msgid "A user cannot be linked to multiple employees in the same company."
 msgstr ""
@@ -645,10 +652,18 @@ msgstr ""
 "hetzelfde bedrijf."
 
 #. module: hr
+#. odoo-python
+#: code:addons/hr/models/hr_employee.py:0
+msgid ""
+"A user with the same login (%(login)s) already has an employee in this "
+"company. User Name: %(user_name)s / Employee Name: %(employee)s"
+msgstr ""
+
+#. module: hr
 #. odoo-javascript
 #: code:addons/hr/static/src/views/hr_employee_action_helper/onboarding_helper_blocks.xml:0
 msgid "AI"
-msgstr ""
+msgstr "AI"
 
 #. module: hr
 #: model_terms:hr.job,website_description:hr.job_consultant
@@ -810,7 +825,6 @@ msgstr ""
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__additional_note
-#: model:ir.model.fields,field_description:hr.field_hr_version__additional_note
 #: model:ir.model.fields,field_description:hr.field_res_users__additional_note
 msgid "Additional Note"
 msgstr "Extra notitie"
@@ -853,6 +867,11 @@ msgstr "Geavanceerde aanwezigheidscontrole"
 #: model_terms:ir.ui.view,arch_db:hr.res_config_settings_view_form
 msgid "Advanced presence of employees"
 msgstr "Geavanceerde aanwezigheid van werknemers"
+
+#. module: hr
+#: model:ir.model.fields,field_description:hr.field_hr_employee__age
+msgid "Age"
+msgstr ""
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_crm_team__alias_contact
@@ -905,6 +924,14 @@ msgstr ""
 "hebben."
 
 #. module: hr
+#. odoo-python
+#: code:addons/hr/models/hr_employee.py:0
+msgid ""
+"An inactive user already exist with the following login: %(login)s. User "
+"Name: %(user_name)s."
+msgstr ""
+
+#. module: hr
 #. odoo-javascript
 #: code:addons/hr/static/src/fields/radio_followed_by_element.js:0
 msgid "An object to link select options and element id to move"
@@ -939,7 +966,7 @@ msgstr "Meteen toepassen"
 #. module: hr
 #: model:hr.employee.type,name:hr.contract_type_apprenticeship
 msgid "Apprenticeship"
-msgstr "Leerlingschap"
+msgstr "Leerovereenkomst"
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_form
@@ -966,6 +993,8 @@ msgid "Archive Employee On"
 msgstr "Werknemer archiveren op"
 
 #. module: hr
+#. odoo-javascript
+#: code:addons/hr/static/src/components/employee_user_status/employee_user_status.js:0
 #: model_terms:ir.ui.view,arch_db:hr.hr_employee_public_view_form
 #: model_terms:ir.ui.view,arch_db:hr.hr_employee_public_view_search
 #: model_terms:ir.ui.view,arch_db:hr.hr_version_search_view
@@ -973,7 +1002,6 @@ msgstr "Werknemer archiveren op"
 #: model_terms:ir.ui.view,arch_db:hr.view_department_filter
 #: model_terms:ir.ui.view,arch_db:hr.view_department_form
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_filter
-#: model_terms:ir.ui.view,arch_db:hr.view_employee_form
 #: model_terms:ir.ui.view,arch_db:hr.view_hr_job_form
 #: model_terms:ir.ui.view,arch_db:hr.view_job_filter
 msgid "Archived"
@@ -1127,7 +1155,7 @@ msgstr "Gemiddeld aantal uren"
 #. odoo-python
 #: code:addons/hr/models/hr_version.py:0
 msgid "Average hours per day must be between 0 and 24."
-msgstr ""
+msgstr "Het gemiddelde aantal uren per dag moet tussen 0 en 24 liggen."
 
 #. module: hr
 #. odoo-python
@@ -1253,13 +1281,19 @@ msgstr "Geboortemaand"
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__phone_blacklisted
 msgid "Blacklisted Phone is Phone"
-msgstr ""
+msgstr "Telefoon op zwarte lijst is telefoon"
 
 #. module: hr
 #. odoo-javascript
 #: code:addons/hr/static/src/fields/boolean_radio.js:0
 msgid "Boolean display as radio field with translatable labels"
 msgstr "Booleaanse weergave als radioveld met vertaalbare labels"
+
+#. module: hr
+#. odoo-javascript
+#: code:addons/hr/static/src/views/form/multi_version_update_confirmation_dialog.xml:0
+msgid "Cancel"
+msgstr ""
 
 #. module: hr
 #. odoo-javascript
@@ -1278,6 +1312,14 @@ msgstr "Einde van de samenwerking annuleren"
 msgid "Cannot archive all the active versions of an employee."
 msgstr ""
 "Het is niet mogelijk om alle actieve versies van een werknemer te archiveren."
+
+#. module: hr
+#. odoo-python
+#: code:addons/hr/models/hr_employee.py:0
+msgid ""
+"Cannot create light user for an employee without login (email address or "
+"related contact)."
+msgstr ""
 
 #. module: hr
 #. odoo-python
@@ -1305,6 +1347,11 @@ msgstr ""
 "werknemer te verwijderen."
 
 #. module: hr
+#: model:ir.module.module,summary:base.module_hr
+msgid "Centralize employee information"
+msgstr "Centraliseer gegevens van werknemers"
+
+#. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__certificate
 msgid "Certificate Level"
 msgstr "Niveau getuigschrift"
@@ -1315,15 +1362,15 @@ msgid "Challenge the customer idea"
 msgstr "Ideeën van klant durven uitdagen"
 
 #. module: hr
+#. odoo-javascript
+#: code:addons/hr/static/src/views/form/multi_version_update_confirmation_dialog.xml:0
+msgid "Change all"
+msgstr ""
+
+#. module: hr
 #: model:ir.actions.act_window,name:hr.res_users_action_my
 msgid "Change my Preferences"
 msgstr "Wijzig mijn voorkeuren"
-
-#. module: hr
-#. odoo-javascript
-#: code:addons/hr/static/src/components/employee_chat/employee_chat.xml:0
-msgid "Chat"
-msgstr "Chat"
 
 #. module: hr
 #: model:hr.job,name:hr.job_cto
@@ -1349,6 +1396,11 @@ msgstr "Sub-afdelingen"
 #: model_terms:ir.ui.view,arch_db:hr.hr_department_view_kanban
 msgid "Child departments"
 msgstr "Sub-afdelingen"
+
+#. module: hr
+#: model_terms:ir.ui.view,arch_db:hr.hr_employee_create_version_wizard_view_form
+msgid "Choose a date"
+msgstr ""
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_form
@@ -1478,8 +1530,6 @@ msgstr "Configuratie"
 
 #. module: hr
 #. odoo-javascript
-#. odoo-python
-#: code:addons/hr/models/hr_employee.py:0
 #: code:addons/hr/static/src/components/resource_calendar_form/form_controller.js:0
 msgid "Confirm"
 msgstr "Bevestigen"
@@ -1491,10 +1541,16 @@ msgid "Confirmation Warning"
 msgstr ""
 
 #. module: hr
+#. odoo-javascript
+#: code:addons/hr/static/src/components/employee_user_status/employee_user_status.js:0
+msgid "Confirmed"
+msgstr ""
+
+#. module: hr
 #. odoo-python
 #: code:addons/hr/models/hr_employee.py:0
 msgid "Congratulations!"
-msgstr ""
+msgstr "Gefeliciteerd!"
 
 #. module: hr
 #: model:hr.job,name:hr.job_consultant
@@ -1611,15 +1667,21 @@ msgstr "Te vernieuwen contracten"
 
 #. module: hr
 #. odoo-javascript
-#: code:addons/hr/static/src/components/contract_end_dialog/contract_end_dialog.xml:0
-msgid "Correct terms"
+#: code:addons/hr/static/src/components/employee_user_status/employee_user_status.js:0
+msgid "Copy Invitation Link"
 msgstr ""
 
 #. module: hr
 #. odoo-javascript
 #: code:addons/hr/static/src/components/contract_end_dialog/contract_end_dialog.xml:0
+msgid "Correct terms"
+msgstr "Voorwaarden corrigeren"
+
+#. module: hr
+#. odoo-javascript
+#: code:addons/hr/static/src/components/contract_end_dialog/contract_end_dialog.xml:0
 msgid "Correction of contract terms"
-msgstr ""
+msgstr "Correctie van contractvoorwaarden"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_departure_reason__country_id
@@ -1649,6 +1711,11 @@ msgid "Country of Birth"
 msgstr "Geboorteland"
 
 #. module: hr
+#: model_terms:ir.ui.view,arch_db:hr.hr_employee_create_version_wizard_view_form
+msgid "Create"
+msgstr ""
+
+#. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee_public__create_date
 msgid "Create Date"
 msgstr "Aanmaakdatum"
@@ -1659,13 +1726,14 @@ msgid "Create Employee"
 msgstr "Werknemer aanmaken"
 
 #. module: hr
-#. odoo-python
-#: code:addons/hr/models/hr_employee.py:0
-#: model:ir.actions.server,name:hr.action_hr_employee_create_users
-#: model:ir.actions.server,name:hr.action_hr_employee_create_users_confirmation
-#: model_terms:ir.ui.view,arch_db:hr.view_employee_form
-msgid "Create User"
-msgstr "Gebruiker aanmaken"
+#: model_terms:ir.ui.view,arch_db:hr.hr_employee_create_version_wizard_view_form
+msgid "Create Employee Records"
+msgstr ""
+
+#. module: hr
+#: model:ir.model,name:hr.model_hr_employee_create_version_wizard
+msgid "Create New Employee Version Wizard"
+msgstr ""
 
 #. module: hr
 #: model:ir.model,website_form_label:hr.model_res_partner
@@ -1704,7 +1772,7 @@ msgstr "Een activiteitenplan aanmaken"
 #: model_terms:ir.actions.act_window,help:hr.hr_employee_public_action
 #: model_terms:ir.actions.act_window,help:hr.open_view_employee_list_my
 msgid "Create an employee"
-msgstr ""
+msgstr "Werknemer aanmaken"
 
 #. module: hr
 #: model_terms:ir.actions.act_window,help:hr.action_hr_employee_org_chart
@@ -1733,6 +1801,7 @@ msgstr "Werknemer aanmaken"
 #: model:ir.model.fields,field_description:hr.field_hr_departure_reason__create_uid
 #: model:ir.model.fields,field_description:hr.field_hr_employee__create_uid
 #: model:ir.model.fields,field_description:hr.field_hr_employee_category__create_uid
+#: model:ir.model.fields,field_description:hr.field_hr_employee_create_version_wizard__create_uid
 #: model:ir.model.fields,field_description:hr.field_hr_employee_departure__create_uid
 #: model:ir.model.fields,field_description:hr.field_hr_employee_location__create_uid
 #: model:ir.model.fields,field_description:hr.field_hr_employee_public__create_uid
@@ -1751,6 +1820,7 @@ msgstr "Aangemaakt door"
 #: model:ir.model.fields,field_description:hr.field_hr_departure_reason__create_date
 #: model:ir.model.fields,field_description:hr.field_hr_employee__create_date
 #: model:ir.model.fields,field_description:hr.field_hr_employee_category__create_date
+#: model:ir.model.fields,field_description:hr.field_hr_employee_create_version_wizard__create_date
 #: model:ir.model.fields,field_description:hr.field_hr_employee_departure__create_date
 #: model:ir.model.fields,field_description:hr.field_hr_employee_location__create_date
 #: model:ir.model.fields,field_description:hr.field_hr_employee_type__create_date
@@ -1803,7 +1873,7 @@ msgstr "Momenteel in de eindfase van studies"
 #. odoo-javascript
 #: code:addons/hr/static/src/views/hr_employee_action_helper/onboarding_helper_blocks.xml:0
 msgid "Dashboard"
-msgstr ""
+msgstr "Dashboard"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee_location__date
@@ -1855,9 +1925,15 @@ msgid "Day Week String"
 msgstr "Dag-week-tekenreeks"
 
 #. module: hr
+#. odoo-javascript
+#: code:addons/hr/static/src/components/employee_user_status/employee_user_status.js:0
+msgid "Deactivate"
+msgstr ""
+
+#. module: hr
 #: model:hr.departure.reason,name:hr.departure_dead
 msgid "Dead"
-msgstr ""
+msgstr "Overleden"
 
 #. module: hr
 #: model_terms:hr.job,website_description:hr.job_developer
@@ -2064,6 +2140,7 @@ msgstr "Folder"
 #: code:addons/hr/static/src/components/contract_end_dialog/contract_end_dialog.xml:0
 #: code:addons/hr/static/src/js/departure_conflict_dialog.js:0
 #: code:addons/hr/static/src/xml/contract_template_button.xml:0
+#: model_terms:ir.ui.view,arch_db:hr.hr_employee_create_version_wizard_view_form
 #: model_terms:ir.ui.view,arch_db:hr.hr_employee_departure_view_form
 msgid "Discard"
 msgstr "Negeren"
@@ -2098,6 +2175,7 @@ msgstr "Opzegdatum"
 #: model:ir.model.fields,field_description:hr.field_hr_departure_reason__display_name
 #: model:ir.model.fields,field_description:hr.field_hr_employee__display_name
 #: model:ir.model.fields,field_description:hr.field_hr_employee_category__display_name
+#: model:ir.model.fields,field_description:hr.field_hr_employee_create_version_wizard__display_name
 #: model:ir.model.fields,field_description:hr.field_hr_employee_departure__display_name
 #: model:ir.model.fields,field_description:hr.field_hr_employee_location__display_name
 #: model:ir.model.fields,field_description:hr.field_hr_employee_public__display_name
@@ -2114,6 +2192,7 @@ msgstr "Opzegdatum"
 #: model:ir.model.fields,field_description:hr.field_mail_activity_plan_template__display_name
 #: model:ir.model.fields,field_description:hr.field_mail_activity_schedule__display_name
 #: model:ir.model.fields,field_description:hr.field_mail_alias__display_name
+#: model:ir.model.fields,field_description:hr.field_publisher_warranty_contract__display_name
 #: model:ir.model.fields,field_description:hr.field_res_company__display_name
 #: model:ir.model.fields,field_description:hr.field_res_config_settings__display_name
 #: model:ir.model.fields,field_description:hr.field_res_partner__display_name
@@ -2164,6 +2243,11 @@ msgstr "Rijbewijs"
 #: model:ir.model.fields,field_description:hr.field_hr_employee__driving_license_name
 msgid "Driving License Name"
 msgstr "Naam rijbewijs"
+
+#. module: hr
+#: model_terms:ir.ui.view,arch_db:hr.resource_calendar_form_view_inherit_hr
+msgid "Duplicate & Edit for Current Employee"
+msgstr ""
 
 #. module: hr
 #. odoo-python
@@ -2290,7 +2374,7 @@ msgstr "Noodtelefoon"
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_form
 #: model_terms:ir.ui.view,arch_db:hr.view_users_simple_form_inherit_hr
 msgid "Employee"
-msgstr "Werknemer"
+msgstr "Bediende"
 
 #. module: hr
 #. odoo-python
@@ -2309,6 +2393,7 @@ msgid "Employee Contract"
 msgstr "Arbeidsovereenkomst"
 
 #. module: hr
+#: model:ir.model.fields,field_description:hr.field_hr_employee_create_version_wizard__employee_count
 #: model:ir.model.fields,field_description:hr.field_res_users__employee_count
 msgid "Employee Count"
 msgstr "Aantal werknemers"
@@ -2385,7 +2470,7 @@ msgstr "Werknemerlabels"
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_form
 #: model_terms:ir.ui.view,arch_db:hr.view_job_filter
 msgid "Employee Type"
-msgstr "Soort werknemer"
+msgstr "Werknemerstype"
 
 #. module: hr
 #: model:ir.actions.act_window,name:hr.hr_contract_type_action
@@ -2456,6 +2541,7 @@ msgstr "Maandelijks brutoloon van de werknemer."
 #. odoo-javascript
 #. odoo-python
 #: code:addons/hr/models/hr_department.py:0
+#: code:addons/hr/models/resource_calendar.py:0
 #: code:addons/hr/static/src/views/hr_employee_action_helper/hr_employee_action_helper.js:0
 #: model:ir.actions.act_window,name:hr.hr_employee_public_action
 #: model:ir.actions.act_window,name:hr.open_view_employee_list
@@ -2464,6 +2550,7 @@ msgstr "Maandelijks brutoloon van de werknemer."
 #: model:ir.model.fields,field_description:hr.field_hr_employee_type__employees_count
 #: model:ir.model.fields,field_description:hr.field_hr_job__employee_ids
 #: model:ir.model.fields,field_description:hr.field_res_partner__employee_ids
+#: model:ir.module.module,shortdesc:base.module_hr
 #: model:ir.ui.menu,name:hr.menu_hr_root
 #: model:res.groups.privilege,name:hr.res_groups_privilege_employees
 #: model_terms:ir.ui.view,arch_db:hr.hr_contract_type_view_tree
@@ -2477,6 +2564,7 @@ msgstr "Maandelijks brutoloon van de werknemer."
 #: model_terms:ir.ui.view,arch_db:hr.hr_version_search_view_enhanced
 #: model_terms:ir.ui.view,arch_db:hr.res_config_settings_view_form
 #: model_terms:ir.ui.view,arch_db:hr.res_partner_view_search
+#: model_terms:ir.ui.view,arch_db:hr.resource_calendar_form_view_inherit_hr
 #: model_terms:ir.ui.view,arch_db:hr.view_department_form
 #: model_terms:ir.ui.view,arch_db:hr.view_department_tree
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_filter
@@ -2487,6 +2575,7 @@ msgstr "Werknemers"
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_res_partner__employees_count
 #: model:ir.model.fields,field_description:hr.field_res_users__employees_count
+#: model:ir.model.fields,field_description:hr.field_resource_calendar__employees_count
 msgid "Employees Count"
 msgstr "Aantal werknemers"
 
@@ -2554,7 +2643,7 @@ msgstr "Einde van de samenwerking"
 #. odoo-javascript
 #: code:addons/hr/static/src/components/contract_end_dialog/contract_end_dialog.xml:0
 msgid "End of contract?"
-msgstr ""
+msgstr "Einde van het contract?"
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.res_config_settings_view_form
@@ -2596,7 +2685,7 @@ msgstr "Sterke probleemoplossende vaardigheden"
 #: model_terms:hr.job,website_description:hr.job_marketing
 #: model_terms:hr.job,website_description:hr.job_trainee
 msgid "Expand your knowledge of various business industries"
-msgstr "Vergroot je kennis van verschillende bedrijfstakken"
+msgstr "Vergroot je kennis van verschillende sectoren"
 
 #. module: hr
 #: model:ir.model.fields,help:hr.field_hr_job__expected_employees
@@ -2742,12 +2831,15 @@ msgid ""
 "Field used to store sanitized phone number. Helps speeding up searches and "
 "comparisons."
 msgstr ""
+"Veld dat wordt gebruikt om opgeschoond telefoonnummer (zonder spaties, "
+"haakjes, tekens...) op te slaan. Helpt bij het versnellen van zoekopdrachten "
+"en vergelijkingen."
 
 #. module: hr
 #: model_terms:ir.actions.act_window,help:hr.hr_employee_public_action
 #: model_terms:ir.actions.act_window,help:hr.open_view_employee_list_my
 msgid "Find all the information on employees"
-msgstr ""
+msgstr "Vind alle informatie over werknemers"
 
 #. module: hr
 #: model_terms:ir.actions.act_window,help:hr.action_hr_employee_org_chart
@@ -2782,13 +2874,13 @@ msgstr "Bepaalde duur"
 #: model_terms:ir.ui.view,arch_db:hr.hr_version_search_view_enhanced
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_filter
 msgid "Fixed-term Contract"
-msgstr ""
+msgstr "Contract van bepaalde duur"
 
 #. module: hr
 #. odoo-javascript
 #: code:addons/hr/static/src/views/hr_employee_action_helper/onboarding_helper_blocks.xml:0
 msgid "Fleet"
-msgstr ""
+msgstr "Wagenpark"
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_form
@@ -2824,7 +2916,7 @@ msgstr ""
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee_public__phone_formatted
 msgid "Formatted Number"
-msgstr ""
+msgstr "Nummer met opmaak"
 
 #. module: hr
 #: model_terms:hr.job,website_description:hr.job_hrm
@@ -2929,7 +3021,7 @@ msgstr "Hr-verantwoordelijke"
 #. odoo-python
 #: code:addons/hr/models/hr_version.py:0
 msgid "HR Responsible Update"
-msgstr ""
+msgstr "Hr-verantwoordelijke bijgewerkt"
 
 #. module: hr
 #: model:ir.actions.server,name:hr.ir_cron_apply_departure_ir_actions_server
@@ -2966,7 +3058,7 @@ msgstr "Zeer creatief en zelfstandig"
 #. odoo-javascript
 #: code:addons/hr/static/src/views/hr_employee_action_helper/onboarding_helper_blocks.xml:0
 msgid "Hiring"
-msgstr "Aannemen"
+msgstr "Werving"
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.view_hr_job_form
@@ -3037,7 +3129,7 @@ msgstr "Uren per week"
 #. odoo-python
 #: code:addons/hr/models/hr_version.py:0
 msgid "Hours per week must be between 0 and 168."
-msgstr ""
+msgstr "Het aantal uren per week moet tussen 0 en 168 liggen."
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__hr_icon_display
@@ -3075,6 +3167,7 @@ msgstr "HR-manager"
 #: model:ir.model.fields,field_description:hr.field_hr_departure_reason__id
 #: model:ir.model.fields,field_description:hr.field_hr_employee__id
 #: model:ir.model.fields,field_description:hr.field_hr_employee_category__id
+#: model:ir.model.fields,field_description:hr.field_hr_employee_create_version_wizard__id
 #: model:ir.model.fields,field_description:hr.field_hr_employee_departure__id
 #: model:ir.model.fields,field_description:hr.field_hr_employee_location__id
 #: model:ir.model.fields,field_description:hr.field_hr_employee_public__id
@@ -3091,6 +3184,7 @@ msgstr "HR-manager"
 #: model:ir.model.fields,field_description:hr.field_mail_activity_plan_template__id
 #: model:ir.model.fields,field_description:hr.field_mail_activity_schedule__id
 #: model:ir.model.fields,field_description:hr.field_mail_alias__id
+#: model:ir.model.fields,field_description:hr.field_publisher_warranty_contract__id
 #: model:ir.model.fields,field_description:hr.field_res_company__id
 #: model:ir.model.fields,field_description:hr.field_res_config_settings__id
 #: model:ir.model.fields,field_description:hr.field_res_partner__id
@@ -3176,6 +3270,8 @@ msgid ""
 "If the sanitized phone number is on the blacklist, the contact won't receive "
 "mass mailing sms anymore, from any list"
 msgstr ""
+"Als het opgeschoonde telefoonnummer op de zwarte lijst staat, zal het "
+"contact geen massamailing-sms'en meer ontvangen, van geen enkele lijst"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__image_1920
@@ -3226,6 +3322,9 @@ msgid ""
 "distinguish which number is blacklisted             when there is both a "
 "mobile and phone field in a model."
 msgstr ""
+"Geeft aan of een opgeschoond telefoonnummer op de zwarte lijst een vast "
+"telefoonnummer is. Helpt te onderscheiden welk nummer op de zwarte lijst "
+"staat als er zowel een mobiel- als telefoon-veld in een model staat."
 
 #. module: hr
 #: model:ir.model.fields,help:hr.field_hr_employee__split_legal_name
@@ -3233,6 +3332,8 @@ msgid ""
 "Indicates whether the legal name is split into first and last name fields "
 "based on the employee's country."
 msgstr ""
+"Geeft aan of de officiële naam is opgesplitst in velden voor voor- en "
+"achternaam, afhankelijk van het land van de werknemer."
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__child_all_count
@@ -3253,7 +3354,26 @@ msgstr "Interim"
 #. module: hr
 #: model:hr.employee.type,name:hr.contract_type_intern
 msgid "Intern"
-msgstr "Stage"
+msgstr "Stagiair"
+
+#. module: hr
+#. odoo-javascript
+#: code:addons/hr/static/src/components/employee_user_status/employee_user_status.js:0
+msgid "Invitation link copied to clipboard."
+msgstr ""
+
+#. module: hr
+#. odoo-javascript
+#: code:addons/hr/static/src/components/employee_user_status/employee_user_status.js:0
+#: model_terms:ir.ui.view,arch_db:hr.view_employee_form
+msgid "Invite"
+msgstr ""
+
+#. module: hr
+#. odoo-javascript
+#: code:addons/hr/static/src/components/employee_user_status/employee_user_status.js:0
+msgid "Invited"
+msgstr ""
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__is_current
@@ -3452,6 +3572,7 @@ msgstr "Laatst gewijzigd op"
 #: model:ir.model.fields,field_description:hr.field_hr_departure_reason__write_uid
 #: model:ir.model.fields,field_description:hr.field_hr_employee__write_uid
 #: model:ir.model.fields,field_description:hr.field_hr_employee_category__write_uid
+#: model:ir.model.fields,field_description:hr.field_hr_employee_create_version_wizard__write_uid
 #: model:ir.model.fields,field_description:hr.field_hr_employee_departure__write_uid
 #: model:ir.model.fields,field_description:hr.field_hr_employee_location__write_uid
 #: model:ir.model.fields,field_description:hr.field_hr_employee_public__write_uid
@@ -3470,6 +3591,7 @@ msgstr "Laatst bijgewerkt door"
 #: model:ir.model.fields,field_description:hr.field_hr_departure_reason__write_date
 #: model:ir.model.fields,field_description:hr.field_hr_employee__write_date
 #: model:ir.model.fields,field_description:hr.field_hr_employee_category__write_date
+#: model:ir.model.fields,field_description:hr.field_hr_employee_create_version_wizard__write_date
 #: model:ir.model.fields,field_description:hr.field_hr_employee_departure__write_date
 #: model:ir.model.fields,field_description:hr.field_hr_employee_location__write_date
 #: model:ir.model.fields,field_description:hr.field_hr_employee_public__write_date
@@ -3514,7 +3636,7 @@ msgstr "Bedrijfsprocessen en tools leren"
 #. odoo-javascript
 #: code:addons/hr/static/src/views/hr_employee_action_helper/onboarding_helper_blocks.xml:0
 msgid "Leaves"
-msgstr ""
+msgstr "Verlof"
 
 #. module: hr
 #. odoo-python
@@ -3565,13 +3687,13 @@ msgstr "Sjabloon laden"
 #. odoo-javascript
 #: code:addons/hr/static/src/xml/contract_template_button.xml:0
 msgid "Load a Template"
-msgstr "Laad een sjabloon"
+msgstr "Sjabloon laden"
 
 #. module: hr
 #. odoo-javascript
 #: code:addons/hr/static/src/views/hr_employee_action_helper/hr_employee_action_helper.xml:0
 msgid "Load sample data"
-msgstr ""
+msgstr "Demodata laden"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee_location__work_location_id
@@ -3605,7 +3727,7 @@ msgstr "Langetermijnprojecten"
 #. odoo-javascript
 #: code:addons/hr/static/src/views/hr_employee_action_helper/onboarding_helper_blocks.xml:0
 msgid "Lunch"
-msgstr ""
+msgstr "Lunch"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__message_main_attachment_id
@@ -3694,10 +3816,20 @@ msgid "Master demos of our software"
 msgstr "Beheers demo's van je software"
 
 #. module: hr
+#: model:ir.model.fields,field_description:hr.field_resource_calendar__material_resources_count
+msgid "Material Resources Count"
+msgstr ""
+
+#. module: hr
 #: model:ir.model.fields,help:hr.field_hr_department__activity_type_icon
 #: model:ir.model.fields,help:hr.field_hr_employee__activity_type_icon
 #: model:ir.model.fields,help:hr.field_hr_version__activity_type_icon
 msgid "Material Symbols icon e.g. checklist"
+msgstr ""
+
+#. module: hr
+#: model_terms:ir.ui.view,arch_db:hr.resource_calendar_form_view_inherit_hr
+msgid "Materials"
 msgstr ""
 
 #. module: hr
@@ -3709,7 +3841,7 @@ msgstr "Mei"
 #. odoo-python
 #: code:addons/hr/models/hr_employee.py:0
 msgid "May I recommend you to setup an"
-msgstr ""
+msgstr "Ik raad je aan dit op te stellen:"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee_public__member_of_department
@@ -3766,12 +3898,12 @@ msgstr "Mobiele telefoon"
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee_public__mobile_phone_formatted
 msgid "Mobile Phone Formatted"
-msgstr ""
+msgstr "Mobiel met opmaak"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee_public__mobile_phone_sanitized
 msgid "Mobile Phone Sanitized"
-msgstr ""
+msgstr "Mobiel opgeschoond"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__monday_location_id
@@ -3789,12 +3921,6 @@ msgstr "Maandagen"
 #: code:addons/hr/static/src/fields/hr_org_chart.xml:0
 msgid "More managers"
 msgstr "Meer managers"
-
-#. module: hr
-#. odoo-javascript
-#: code:addons/hr/static/src/components/versions_timeline/versions_timeline.xml:0
-msgid "More..."
-msgstr "Meer..."
 
 #. module: hr
 #: model_terms:hr.job,website_description:hr.job_consultant
@@ -3857,6 +3983,12 @@ msgid "New Employee Record"
 msgstr "Nieuw werknemersrecord"
 
 #. module: hr
+#: model:ir.actions.act_window,name:hr.action_open_hr_employee_create_version_wizard
+#: model:ir.actions.server,name:hr.action_hr_employee_create_versions
+msgid "New Employee Records"
+msgstr ""
+
+#. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.hr_employee_view_graph
 #: model_terms:ir.ui.view,arch_db:hr.hr_employee_view_pivot
 msgid "New Employees Over Time"
@@ -3908,6 +4040,11 @@ msgid "Nice to have"
 msgstr "Leuk om te hebben"
 
 #. module: hr
+#: model:res.groups.privilege,placeholder:hr.res_groups_privilege_employees
+msgid "No"
+msgstr ""
+
+#. module: hr
 #: model_terms:ir.actions.act_window,help:hr.open_view_categ_form
 msgid "No Tags found ! Let's create one"
 msgstr "Geen labels gevonden! Maak er één aan"
@@ -3956,6 +4093,12 @@ msgid "Not Employed"
 msgstr "Niet in dienst"
 
 #. module: hr
+#. odoo-javascript
+#: code:addons/hr/static/src/components/employee_user_status/employee_user_status.js:0
+msgid "Not Invited"
+msgstr ""
+
+#. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_form
 msgid "Not limited"
 msgstr "Ongelimiteerd"
@@ -3967,7 +4110,6 @@ msgstr "Niet gespecificeerd"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_department__note
-#: model_terms:ir.ui.view,arch_db:hr.hr_version_list_view
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_form
 msgid "Note"
 msgstr "Notitie"
@@ -4058,6 +4200,115 @@ msgid "October"
 msgstr "Oktober"
 
 #. module: hr
+#: model:ir.module.module,description:base.module_hr
+msgid ""
+"Odoo Human Resources\n"
+"--------------------\n"
+"\n"
+"With Odoo <a href=\"https://www.odoo.com/app/employees\">Human Resources</"
+"a>,\n"
+"manage the most important asset in your company: People\n"
+"\n"
+"Get all your HR operations managed easily: knowledge sharing, recruitments,\n"
+"appraisals, timesheets, contracts, attendances, payroll, etc.\n"
+"\n"
+"Each need is provided by a specific app that you activate on demand.\n"
+"\n"
+"Manage Your Employees\n"
+"---------------------\n"
+"\n"
+"Oversee all important information in your company address book. Some\n"
+"information are restricted to HR managers, others are public to easily look\n"
+"colleagues.\n"
+"\n"
+"Record employee contracts and get alerts when they have to be renewed.\n"
+"\n"
+"Streamline Your Recruitment Process\n"
+"-----------------------------------\n"
+"\n"
+"Index resumes, track applicants, search profiles with <a href=\"https://"
+"www.odoo.com/app/employees\">Odoo HR</a>.\n"
+"\n"
+"Post job offers and keep track of each application received. Follow "
+"applicants\n"
+"in your recruitment process with the smart kanban view.\n"
+"\n"
+"Save time by automating some communications with email templates. Resumes "
+"are\n"
+"indexed automatically, allowing you to easily find for specific profiles.\n"
+"\n"
+"Enterprise Social Network\n"
+"-------------------------\n"
+"\n"
+"Break down information silos. Share knowledge and best practices amongst "
+"all\n"
+"employees. Follow specific people or documents and join groups of interests "
+"to\n"
+"share expertise and documents.\n"
+"\n"
+"Interact with your coworkers in real time with website live chat.\n"
+"\n"
+"Track time and attendances\n"
+"--------------------------\n"
+"\n"
+"Keep track of the time spent by project, client or task. It's easy to "
+"record\n"
+"timesheets or check attendances for each employee. Get your analytic "
+"accounting\n"
+"posted automatically based on time spent on your projects.\n"
+"\n"
+"Time Off Management\n"
+"-------------------\n"
+"\n"
+"Keep track of the vacation days accrued by each employee. Employees enter "
+"their\n"
+"requests (paid time off, sick time off, etc), for managers to approve and\n"
+"validate. It's all done in just a few clicks. The agenda of each employee "
+"is\n"
+"updated accordingly.\n"
+"\n"
+"Keep Track of Employee Expenses\n"
+"-------------------------------\n"
+"\n"
+"Get rid of the paper work and follow employee's expenses directly in Odoo.\n"
+"Don't loose time or money by controlling the full flow: expense validation,\n"
+"reimbursement of employees, posting in the accounting and re-invoicing to\n"
+"customers.\n"
+"\n"
+"Follow Periodic Appraisals\n"
+"--------------------------\n"
+"\n"
+"Set-up appraisals plans and/or surveys for your employees and watch their\n"
+"evolution. Define steps for interviews and Odoo will notify managers or\n"
+"subordinates automatically to prepare appraisals. Keep track of the progress "
+"of\n"
+"your staff periodically.\n"
+"\n"
+"Boost Engagement With Gamification\n"
+"----------------------------------\n"
+"\n"
+"### Define clear objective and provide real time feedback\n"
+"\n"
+"Inspire achievement with challenges, goals and rewards. Define clear "
+"objectives\n"
+"and provide real time feedback and tangible results. Showcase the top\n"
+"performers to the entire channel and publicly recognize a job well done.\n"
+"\n"
+"### Leaderboards\n"
+"\n"
+"Promote leaders and competition amongst Sales Team with performance ratios.\n"
+"\n"
+"### Personal Objectives\n"
+"\n"
+"Assign clear goals to users to align them with the company objectives.\n"
+"\n"
+"### Team Targets\n"
+"\n"
+"Compare revenues with forecasts and budgets in real time.\n"
+"\n"
+msgstr ""
+
+#. module: hr
 #. odoo-javascript
 #: code:addons/hr/static/src/core/web/avatar_card/avatar_card_patch.xml:0
 #: model:ir.model.fields.selection,name:hr.selection__hr_employee__hr_icon_display__presence_out_of_working_hour
@@ -4118,13 +4369,13 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/hr/static/src/core/web/avatar_card/avatar_card_patch.xml:0
 msgid "Open Contact Profile"
-msgstr ""
+msgstr "Contactprofiel openen"
 
 #. module: hr
 #. odoo-javascript
 #: code:addons/hr/static/src/core/web/avatar_card/avatar_card_patch.xml:0
 msgid "Open Employee Profile (activates company)"
-msgstr ""
+msgstr "Werknemerprofiel openen (activeert bedrijf)"
 
 #. module: hr
 #. odoo-python
@@ -4198,7 +4449,7 @@ msgstr ""
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__parent_company_id
 msgid "Parent Company"
-msgstr ""
+msgstr "Moedermaatschappij"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_department__parent_id
@@ -4264,7 +4515,7 @@ msgstr "Perfect geschreven Engels"
 #. odoo-javascript
 #: code:addons/hr/static/src/views/hr_employee_action_helper/onboarding_helper_blocks.xml:0
 msgid "Performance"
-msgstr ""
+msgstr "Prestaties"
 
 #. module: hr
 #: model_terms:hr.job,website_description:hr.job_consultant
@@ -4279,7 +4530,7 @@ msgstr "Voordelen"
 #: model_terms:ir.ui.view,arch_db:hr.hr_version_search_view_enhanced
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_filter
 msgid "Permanent Contract"
-msgstr ""
+msgstr "Contract van onbepaalde duur"
 
 #. module: hr
 #: model:ir.model.fields,help:hr.field_hr_employee__hr_responsible_id
@@ -4320,17 +4571,17 @@ msgstr "Telefoon"
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__phone_sanitized_blacklisted
 msgid "Phone Blacklisted"
-msgstr ""
+msgstr "Telefoon op zwarte lijst"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__phone_mobile_search
 msgid "Phone Number"
-msgstr ""
+msgstr "Telefoonnummer"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee_public__phone_sanitized
 msgid "Phone Sanitized"
-msgstr ""
+msgstr "Telefoon opgeschoond"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__place_of_birth
@@ -4372,7 +4623,7 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/hr/static/src/views/hr_employee_action_helper/onboarding_helper_blocks.xml:0
 msgid "Planning"
-msgstr ""
+msgstr "Planning"
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.view_department_form
@@ -4502,7 +4753,7 @@ msgstr "Privé e-mail"
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.res_users_view_form_preferences
 msgid "Private Information"
-msgstr ""
+msgstr "Privé-informatie"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__private_phone
@@ -4567,8 +4818,8 @@ msgstr "Aangetoonde staat van dienst in innovatie"
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_form
-msgid "Provide additional information about this version..."
-msgstr "Geef aanvullende informatie over deze versie van het contract..."
+msgid "Provide additional information about this employee..."
+msgstr ""
 
 #. module: hr
 #: model_terms:hr.job,website_description:hr.job_consultant
@@ -4585,6 +4836,11 @@ msgstr "Publieke geboortedatum"
 #: model:ir.model,name:hr.model_hr_employee_public
 msgid "Public Employee"
 msgstr "Openbare werknemer"
+
+#. module: hr
+#: model:ir.model,name:hr.model_publisher_warranty_contract
+msgid "Publisher Warranty Contract"
+msgstr ""
 
 #. module: hr
 #: model_terms:hr.job,website_description:hr.job_developer
@@ -4607,6 +4863,12 @@ msgid "Ratings"
 msgstr "Beoordelingen"
 
 #. module: hr
+#. odoo-javascript
+#: code:addons/hr/static/src/components/employee_user_status/employee_user_status.js:0
+msgid "Reactivate"
+msgstr ""
+
+#. module: hr
 #: model_terms:ir.actions.act_window,help:hr.action_hr_job
 msgid "Ready to recruit more efficiently?"
 msgstr "Klaar om efficiënter te werven?"
@@ -4615,7 +4877,7 @@ msgstr "Klaar om efficiënter te werven?"
 #. odoo-javascript
 #: code:addons/hr/static/src/views/hr_employee_action_helper/hr_employee_action_helper.xml:0
 msgid "Ready to start your experience?"
-msgstr "Klaar om je ervaring te beginnen?"
+msgstr "Klaar om erin te vliegen?"
 
 #. module: hr
 #: model_terms:hr.job,website_description:hr.job_consultant
@@ -4661,7 +4923,7 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/hr/static/src/views/hr_employee_action_helper/onboarding_helper_blocks.xml:0
 msgid "Referral"
-msgstr ""
+msgstr "Aanbeveling"
 
 #. module: hr
 #. odoo-python
@@ -4713,7 +4975,7 @@ msgstr "Gerelateerde werknemers op basis van hun privéadres"
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_res_users__all_employee_ids
 msgid "Related employees from all companies"
-msgstr ""
+msgstr "Gerelateerde werknemers van alle bedrijven"
 
 #. module: hr
 #: model:ir.model.fields,help:hr.field_hr_employee__user_id
@@ -4737,6 +4999,18 @@ msgid "Research & Development"
 msgstr "Research & Development"
 
 #. module: hr
+#. odoo-javascript
+#: code:addons/hr/static/src/components/employee_user_status/employee_user_status.js:0
+msgid "Resend Invitation"
+msgstr ""
+
+#. module: hr
+#. odoo-javascript
+#: code:addons/hr/static/src/components/employee_user_status/employee_user_status.js:0
+msgid "Reset Password"
+msgstr ""
+
+#. module: hr
 #: model:hr.departure.reason,name:hr.departure_resigned
 msgid "Resigned"
 msgstr "Ontslag genomen"
@@ -4756,7 +5030,7 @@ msgstr "Resource agenda"
 #. module: hr
 #: model:ir.model,name:hr.model_resource_calendar_leaves
 msgid "Resource Time Off Detail"
-msgstr "Resource verlof detail"
+msgstr "Afwezigheidsdetails van resource"
 
 #. module: hr
 #: model:ir.model,name:hr.model_resource_calendar
@@ -4789,7 +5063,7 @@ msgstr "Cv"
 #. module: hr
 #: model:hr.departure.reason,name:hr.departure_retired
 msgid "Retired"
-msgstr "Met pensioen"
+msgstr "Gepensioneerd"
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.hr_version_search_view
@@ -4839,7 +5113,7 @@ msgstr "Verkoop"
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__phone_sanitized
 msgid "Sanitized Number"
-msgstr ""
+msgstr "Opgeschoond nummer"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__saturday_location_id
@@ -4967,7 +5241,7 @@ msgstr "Toon hr-icoonweergave"
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.res_users_view_form_preferences
 msgid "Show To All Employees"
-msgstr ""
+msgstr "Weergeven aan alle werknemers"
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.hr_version_search_view
@@ -4978,7 +5252,7 @@ msgstr "Toon alle records waarvan de volgende activiteitsdatum is verstreken"
 #. odoo-javascript
 #: code:addons/hr/static/src/views/hr_employee_action_helper/onboarding_helper_blocks.xml:0
 msgid "Sign"
-msgstr ""
+msgstr "Ondertekenen"
 
 #. module: hr
 #. odoo-python
@@ -4995,7 +5269,7 @@ msgstr "Vaardighedenbeheer"
 #. odoo-python
 #: code:addons/hr/models/hr_employee.py:0
 msgid "Some employee already has a work contact"
-msgstr ""
+msgstr "Sommige werknemers hebben al een arbeidscontact"
 
 #. module: hr
 #. odoo-javascript
@@ -5010,7 +5284,7 @@ msgstr ""
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__split_legal_name
 msgid "Split Legal Name"
-msgstr ""
+msgstr "Gesplitste officiële naam"
 
 #. module: hr
 #: model_terms:hr.job,website_description:hr.job_consultant
@@ -5039,6 +5313,7 @@ msgid "Start"
 msgstr "Start"
 
 #. module: hr
+#: model:ir.model.fields,field_description:hr.field_hr_employee_create_version_wizard__date_version
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_form
 msgid "Start Date"
 msgstr "Startdatum"
@@ -5047,6 +5322,11 @@ msgstr "Startdatum"
 #. odoo-javascript
 #: code:addons/hr/static/src/components/contract_end_dialog/contract_end_dialog.xml:0
 msgid "Start a new contract"
+msgstr "Nieuw contract starten"
+
+#. module: hr
+#: model_terms:ir.ui.view,arch_db:hr.hr_employee_create_version_wizard_view_form
+msgid "Start date"
 msgstr ""
 
 #. module: hr
@@ -5166,7 +5446,7 @@ msgstr "Labels"
 #. odoo-javascript
 #: code:addons/hr/static/src/views/hr_employee_action_helper/onboarding_helper_blocks.xml:0
 msgid "Talent"
-msgstr ""
+msgstr "Talent"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_job__no_of_recruitment
@@ -5361,12 +5641,6 @@ msgstr ""
 
 #. module: hr
 #. odoo-python
-#: code:addons/hr/models/hr_employee.py:0
-msgid "The following employees have the same work email address: %s"
-msgstr "De volgende werknemers hebben hetzelfde zakelijke e-mailadres: %s"
-
-#. module: hr
-#. odoo-python
 #: code:addons/hr/models/res_users.py:0
 msgid "The following fields were modified by %s"
 msgstr "De volgende velden werden gewijzigd door %s"
@@ -5424,6 +5698,8 @@ msgid ""
 "The working schedule '%s' is linked to version(s) not compatible with its "
 "new company."
 msgstr ""
+"De werktijden '%s' is gekoppeld aan versies die niet compatibel zijn met "
+"zijn nieuwe bedrijf."
 
 #. module: hr
 #. odoo-python
@@ -5434,7 +5710,7 @@ msgstr "Er is geen geldige versie die vóór de vertrekdatum van %s begint."
 #. module: hr
 #: model:hr.employee.type,name:hr.contract_type_thesis
 msgid "Thesis"
-msgstr "Scriptie"
+msgstr "Thesisstudent"
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_form
@@ -5448,8 +5724,8 @@ msgstr ""
 #. module: hr
 #. odoo-python
 #: code:addons/hr/models/hr_employee.py:0
-msgid "This employee already has an user."
-msgstr "Deze werknemer heeft al een gebruiker."
+msgid "This employee has no user."
+msgstr ""
 
 #. module: hr
 #. odoo-python
@@ -5503,11 +5779,36 @@ msgstr ""
 
 #. module: hr
 #. odoo-javascript
+#: code:addons/hr/static/src/views/form/multi_version_update_confirmation_dialog.xml:0
+msgid "This version"
+msgstr ""
+
+#. module: hr
+#: model_terms:ir.ui.view,arch_db:hr.hr_employee_create_version_wizard_view_form
+msgid "This will create a new employee record for"
+msgstr ""
+
+#. module: hr
+#: model_terms:ir.ui.view,arch_db:hr.resource_calendar_form_view_inherit_hr
+msgid ""
+"This will create a new schedule copy and automatically reassign it to the "
+"employee you navigated from. Continue?"
+msgstr ""
+
+#. module: hr
+#: model_terms:ir.ui.view,arch_db:hr.resource_calendar_form_view_inherit_hr
+msgid "This working schedule is shared across"
+msgstr "Deze werktijden worden gedeeld door"
+
+#. module: hr
+#. odoo-javascript
 #: code:addons/hr/static/src/components/resource_calendar_form/form_controller.js:0
 msgid ""
 "This working schedule is used by  employee(s), are you sure you want change "
 "it for all employees?"
 msgstr ""
+"Deze werktijden worden gebruikt door  werknemer(s). Weet je zeker dat je dit "
+"voor alle werknemers wilt wijzigen?"
 
 #. module: hr
 #. odoo-python
@@ -5529,7 +5830,7 @@ msgstr "Donderdagen"
 #. module: hr
 #: model:ir.ui.menu,name:hr.menu_config_working_times
 msgid "Time Management"
-msgstr ""
+msgstr "Timemanagement"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__tz
@@ -5702,7 +6003,7 @@ msgstr "Projectdocumentatie bijwerken en onderhouden"
 #. odoo-javascript
 #: code:addons/hr/static/src/components/contract_end_dialog/contract_end_dialog.xml:0
 msgid "Use Employee's current version information"
-msgstr ""
+msgstr "Gebruik de huidige versie-informatie van de werknemer"
 
 #. module: hr
 #: model_terms:ir.actions.act_window,help:hr.open_view_categ_form
@@ -5725,28 +6026,14 @@ msgid "User Archive Notification"
 msgstr "Melding over gebruikersarchivering"
 
 #. module: hr
-#. odoo-python
-#: code:addons/hr/models/hr_employee.py:0
-msgid "User Creation Notification"
-msgstr "Melding aanmaking gebruiker"
+#: model:ir.model.fields,field_description:hr.field_hr_employee__user_state
+msgid "User Status"
+msgstr ""
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_form
 msgid "User Timezone"
 msgstr "Tijdzone van gebruiker"
-
-#. module: hr
-#. odoo-python
-#: code:addons/hr/models/hr_employee.py:0
-msgid "User already exists for Those Employees %s"
-msgstr "Er bestaat al een gebruiker voor deze werknemers %s"
-
-#. module: hr
-#. odoo-python
-#: code:addons/hr/models/hr_employee.py:0
-msgid "User already exists with the same email for Employees %s"
-msgstr ""
-"Er bestaat al een gebruiker met hetzelfde e-mailadres voor werknemers %s"
 
 #. module: hr
 #. odoo-javascript
@@ -5839,26 +6126,15 @@ msgid "User is at the office and online"
 msgstr "Gebruiker is op kantoor en online"
 
 #. module: hr
-#: model:ir.model.fields,field_description:hr.field_hr_employee__is_user_active
-msgid "User's active"
-msgstr "Gebruiker is actief"
-
-#. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__user_partner_id
 #: model:ir.model.fields,field_description:hr.field_hr_employee_public__user_partner_id
 msgid "User's partner"
 msgstr "Partner van de gebruiker"
 
 #. module: hr
-#. odoo-python
-#: code:addons/hr/models/hr_employee.py:0
-msgid "Users %s creation successful"
-msgstr "Gebruikers %s succesvol aangemaakt"
-
-#. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_form
 msgid "Usual Work Location"
-msgstr "Gebruikelijke werklocatie"
+msgstr ""
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.hr_job_view_kanban
@@ -5894,7 +6170,7 @@ msgstr ""
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee__version_revision
 msgid "Version Revision"
-msgstr ""
+msgstr "Versierevisie"
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.hr_version_list_view
@@ -5911,7 +6187,7 @@ msgstr "Werknemers bekijken"
 #: code:addons/hr/static/src/core/web/avatar_card/avatar_card_patch.xml:0
 #: code:addons/hr/static/src/core/web/thread_actions.js:0
 msgid "View Profile"
-msgstr ""
+msgstr "Profiel bekijken"
 
 #. module: hr
 #. odoo-javascript
@@ -5944,7 +6220,7 @@ msgstr "Voor iedereen zichtbaar"
 #: model:ir.model.fields,field_description:hr.field_hr_employee__wage
 #: model:ir.model.fields,field_description:hr.field_hr_version__wage
 msgid "Wage"
-msgstr "Salaris"
+msgstr "Loon"
 
 #. module: hr
 #. odoo-python
@@ -6029,7 +6305,7 @@ msgstr "Of dit contact een werknemer is."
 #. odoo-javascript
 #: code:addons/hr/static/src/components/contract_end_dialog/contract_end_dialog.xml:0
 msgid "Why did you change the contract end date?"
-msgstr ""
+msgstr "Waarom heb je de einddatum van het contract gewijzigd?"
 
 #. module: hr
 #. odoo-python
@@ -6170,12 +6446,12 @@ msgstr "Telefoon werk"
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee_public__work_phone_formatted
 msgid "Work Phone Formatted"
-msgstr ""
+msgstr "Telefoon (werk) met opmaak"
 
 #. module: hr
 #: model:ir.model.fields,field_description:hr.field_hr_employee_public__work_phone_sanitized
 msgid "Work Phone Sanitized"
-msgstr ""
+msgstr "Telefoon (werk) opgeschoond"
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.view_employee_filter
@@ -6190,6 +6466,8 @@ msgid "Working Hours"
 msgstr "Werkuren"
 
 #. module: hr
+#. odoo-python
+#: code:addons/hr/models/resource_calendar.py:0
 #: model_terms:ir.ui.view,arch_db:hr.hr_version_search_view
 msgid "Working Schedule"
 msgstr "Werktijden"
@@ -6249,6 +6527,9 @@ msgid ""
 "companies you don't have access to. Contact your admin or create a new "
 "working schedule."
 msgstr ""
+"Je kunt deze werktijden niet wijzigen. Het wordt gebruikt door werknemers "
+"van andere bedrijven waar je geen toegang toe hebt. Neem contact op met je "
+"beheerder of maak nieuwe werktijden aan."
 
 #. module: hr
 #. odoo-python
@@ -6301,6 +6582,14 @@ msgstr ""
 "Je kunt geen locaties verwijderen die door je werknemers worden gebruikt"
 
 #. module: hr
+#. odoo-javascript
+#: code:addons/hr/static/src/views/form/multi_version_update_confirmation_dialog.xml:0
+msgid ""
+"You changed an old version of the employee. Do you want to apply the "
+"following changes to future versions too?"
+msgstr ""
+
+#. module: hr
 #. odoo-python
 #: code:addons/hr/models/hr_employee.py:0
 msgid "You do not have access to this document."
@@ -6311,18 +6600,8 @@ msgstr "Je hebt geen toegang tot dit document."
 #: code:addons/hr/models/hr_employee.py:0
 msgid "You do not have the rights to load the Employees sample data."
 msgstr ""
-
-#. module: hr
-#. odoo-python
-#: code:addons/hr/models/hr_employee.py:0
-msgid "You need to set a valid work email address for %s"
-msgstr "Geef een geldig zakelijk e-mailadres op voor %s"
-
-#. module: hr
-#. odoo-python
-#: code:addons/hr/models/hr_employee.py:0
-msgid "You need to set the work email address for %s"
-msgstr "Je moet het werkmailadres instellen voor %s"
+"Je beschikt niet over de nodige rechten om de demogegevens van Werknemers te "
+"laden."
 
 #. module: hr
 #: model_terms:hr.job,description:hr.job_trainee
@@ -6398,21 +6677,9 @@ msgstr ""
 
 #. module: hr
 #. odoo-python
-#: code:addons/hr/models/hr_employee.py:0
-msgid ""
-"You're about to invite new users. %s users will be created with the default "
-"user template's rights. Adding new users may increase your subscription "
-"cost. Do you wish to continue?"
-msgstr ""
-"Je staat op het punt nieuwe gebruikers uit te nodigen. %s gebruikers worden "
-"aangemaakt met de rechten van de standaardgebruikerssjabloon. Het toevoegen "
-"van nieuwe gebruikers kan je abonnementsprijs verhogen. Wil je doorgaan?"
-
-#. module: hr
-#. odoo-python
 #: code:addons/hr/models/hr_version.py:0
 msgid "Your HR Responsible has been updated to %s."
-msgstr ""
+msgstr "Je hr-verantwoordelijke is bijgewerkt naar %s."
 
 #. module: hr
 #: model_terms:ir.ui.view,arch_db:hr.res_users_view_form_preferences
@@ -6507,6 +6774,16 @@ msgstr "bijvoorbeeld myprivateemail@example.com"
 #. odoo-javascript
 #: code:addons/hr/static/src/views/hr_employee_action_helper/onboarding_helper_blocks.xml:0
 msgid "eLearning"
+msgstr "E-learning"
+
+#. module: hr
+#: model_terms:ir.ui.view,arch_db:hr.hr_employee_create_version_wizard_view_form
+msgid "employees at the selected date."
+msgstr ""
+
+#. module: hr
+#: model_terms:ir.ui.view,arch_db:hr.resource_calendar_form_view_inherit_hr
+msgid "employees →"
 msgstr ""
 
 #. module: hr
@@ -6546,13 +6823,13 @@ msgstr "mi"
 #. odoo-python
 #: code:addons/hr/models/hr_employee.py:0
 msgid "onboarding plan"
-msgstr ""
+msgstr "onboardingplan"
 
 #. module: hr
 #. odoo-javascript
 #: code:addons/hr/static/src/views/hr_employee_action_helper/hr_employee_action_helper.xml:0
 msgid "or"
-msgstr ""
+msgstr "of"
 
 #. module: hr
 #. odoo-python
@@ -6568,6 +6845,12 @@ msgstr "personen"
 
 #. module: hr
 #. odoo-python
+#: code:addons/hr/models/resource_calendar.py:0
+msgid "resource_calendar_id"
+msgstr ""
+
+#. module: hr
+#. odoo-python
 #: code:addons/hr/models/models.py:0
 msgid "restricted to employees"
 msgstr "beperkt tot werknemers"
@@ -6577,6 +6860,12 @@ msgstr "beperkt tot werknemers"
 #: code:addons/hr/static/src/views/hr_employee_hierarchy/hr_employee_hierarchy_renderer.xml:0
 msgid "to see those employees."
 msgstr "om die werknemers te zien."
+
+#. module: hr
+#. odoo-python
+#: code:addons/hr/models/resource_calendar.py:0
+msgid "version_ids"
+msgstr ""
 
 #. module: hr
 #. odoo-python
@@ -6594,3 +6883,23 @@ msgstr "werk"
 #: model:ir.model.fields,field_description:hr.field_hr_employee__work_permit_name
 msgid "work_permit_name"
 msgstr "work_permit_name"
+
+#~ msgid "Chat"
+#~ msgstr "Chat"
+
+#~ msgid "Provide additional information about this version..."
+#~ msgstr "Geef aanvullende informatie over deze versie van het contract..."
+
+#~ msgid ""
+#~ "<i class=\"oi oi-fw me-2 text-primary\" data-icon=\"luggage\" title=\"Job "
+#~ "Position\"/>"
+#~ msgstr ""
+#~ "<i class=\"oi oi-fw me-2 text-primary\" data-icon=\"luggage\" title=\"Job "
+#~ "Position\"/>"
+
+#~ msgid ""
+#~ "<i class=\"oi oi-fw me-2 text-primary\" data-icon=\"work\" "
+#~ "title=\"Contract\"/>"
+#~ msgstr ""
+#~ "<i class=\"oi oi-fw me-2 text-primary\" data-icon=\"work\" "
+#~ "title=\"Contract\"/>"

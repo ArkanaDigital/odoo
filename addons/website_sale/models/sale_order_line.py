@@ -18,21 +18,24 @@ class SaleOrderLine(models.Model):
 
     # === COMPUTE METHODS ===#
 
-    @api.depends("product_id.display_name")
+    @api.depends("name", "product_id.display_name")
     def _compute_name_short(self):
         """Compute a short name for this sale order line, to be used on the website where we don't
         have much space. To keep it short, instead of using the first line of the description,
         we take the product name without the internal reference.
         """
         for record in self:
-            record.name_short = record.product_id.with_context(
-                display_default_code=False
-            ).display_name
+            if record.product_id:
+                record.name_short = record.product_id.with_context(
+                    display_default_code=False
+                ).display_name
+            else:
+                record.name_short = record.name.splitlines()[0]
 
     # === BUSINESS METHODS ===#
 
     def get_description_following_lines(self):
-        return self.name.splitlines()[1:]
+        return self.name.splitlines()
 
     def _get_combination_name(self):
         return self.product_id.product_template_attribute_value_ids._get_combination_name()
@@ -52,7 +55,7 @@ class SaleOrderLine(models.Model):
         return super()._get_order_date()
 
     def _get_displayed_unit_price(self):
-        show_tax = self.order_id.website_id.show_line_subtotals_tax_selection
+        show_tax = self.order_id.website_id.tax_display
         tax_display = "total_excluded" if show_tax == "tax_excluded" else "total_included"
         is_combo = self.product_type == "combo"
         unit_price = self._get_display_price_ignore_combo() if is_combo else self.price_unit
@@ -93,13 +96,14 @@ class SaleOrderLine(models.Model):
             and self.product_id._is_add_to_cart_allowed()
             and self._is_product_line()
             and not self.combo_item_id
+            and not self._is_custom_cart_line()
         )
 
     def _get_cart_display_price(self):
         self.ensure_one()
         price_type = (
             "price_subtotal"
-            if self.order_id.website_id.show_line_subtotals_tax_selection == "tax_excluded"
+            if self.order_id.website_id.tax_display == "tax_excluded"
             else "price_total"
         )
         return sum(self._get_lines_with_price().mapped(price_type))
@@ -145,7 +149,12 @@ class SaleOrderLine(models.Model):
         :return: Whether the line is sellable or not.
         :rtype: bool
         """
-        return self.product_id._is_published() and not self.is_delivery
+        return (
+            bool(self.product_id)
+            and self.product_id._is_published()
+            and not self._is_custom_cart_line()
+            and not self.is_delivery
+        )
 
     @api.depends("product_id")
     def _compute_is_donation(self):
@@ -260,3 +269,28 @@ class SaleOrderLine(models.Model):
     def _show_line_in_cart(self):
         self.ensure_one()
         return self._is_product_line() and not self.combo_item_id
+
+    def _is_invalid_line(self):
+        """Whether the line must be removed when verifying the cart content.
+
+        Only lines holding a product bought through the shop are dropped, once that product can
+        no longer be bought. Combo choices and the lines of custom flows (donations, event
+        tickets, appointments, rewards, ...) rely on products deliberately not sold on the shop.
+
+        :rtype: bool
+        """
+        self.ensure_one()
+        if (
+            not self.product_id
+            or not self._is_product_line()
+            or self.combo_item_id  # Checks are handled through the combo product line
+            or self._is_custom_cart_line()
+        ):
+            return False
+        return not self.product_id._is_add_to_cart_allowed()
+
+    def _is_custom_cart_line(self):
+        """Allow defining special lines that shouldn't be updated by standard checkout flows."""
+        if self.linked_line_id:
+            return self.linked_line_id._is_custom_cart_line()
+        return False

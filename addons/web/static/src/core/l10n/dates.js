@@ -16,7 +16,7 @@ const { DateTime, Settings } = luxon;
  *  Format used to format a DateTime or to parse a formatted string.
  *  > Default: the session localization format.
  *
- * @typedef {luxon.DateTime} DateTime
+ * @typedef {import("luxon").DateTime} DateTime
  *
  * @typedef {[NullableDateTime, NullableDateTime]} NullableDateRange
  *
@@ -35,6 +35,9 @@ const { DateTime, Settings } = luxon;
  * @property {boolean} [showDate]
  *  Show the date in the final result.
  *  > Default: true.
+ * @property {boolean} [showWeekday]
+ *  Show the abbreviated weekday (e.g. "Mon") in the final result.
+ *  > Default: false.
  */
 
 /**
@@ -152,13 +155,13 @@ export function clampDate(desired, minDate, maxDate) {
  * Get the week year and week number of a given date as well as the starting
  * date of the week, in the user's locale settings.
  *
- * @param {Date | luxon.DateTime} date
- * @returns {{ year: number, week: number, startDate: luxon.DateTime }}
+ * @param {Date | DateTime} date
+ * @returns {{ year: number, week: number, startDate: DateTime }}
  *  the year the week is part of, and
  *  the ISO week number (1-53) of the Monday nearest to the locale's first day of the week
  */
 export function getLocalYearAndWeek(date) {
-    if (!date.isLuxonDateTime) {
+    if (date instanceof Date) {
         date = DateTime.fromJSDate(date);
     }
     const { weekStart } = localization;
@@ -196,8 +199,8 @@ export function getLocalYearAndWeek(date) {
  * Intl API and the `getWeekInfo` method, which is not supported in all browsers.
  * See: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Locale/getWeekInfo#browser_compatibility
  *
- * @param {luxon.DateTime} date
- * @returns {luxon.DateTime}
+ * @param {DateTime} date
+ * @returns {DateTime}
  */
 export function getStartOfLocalWeek(date) {
     const { weekStart } = localization;
@@ -214,8 +217,8 @@ export function getStartOfLocalWeek(date) {
  * Intl API and the `getWeekInfo` method, which is not supported in all browsers.
  * See: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Locale/getWeekInfo#browser_compatibility
  *
- * @param {luxon.DateTime} date
- * @returns {luxon.DateTime}
+ * @param {DateTime} date
+ * @returns {DateTime}
  */
 export function getEndOfLocalWeek(date) {
     return getStartOfLocalWeek(date).plus({ days: 6 }).endOf("day");
@@ -241,8 +244,7 @@ function formatLocalNumber(value) {
  * days it spans, e.g.: Week 32, Aug 2 - Aug 8
  * As in toLocaleDateString, the year is left out while it is the current one.
  *
- * @param {Date | luxon.DateTime} date
- * @returns {string}
+ * @param {Date | DateTime} date
  */
 export function formatLocalWeekRange(date) {
     const { year, week, startDate } = getLocalYearAndWeek(date);
@@ -497,7 +499,7 @@ export function toLocaleDateString(value) {
  */
 export function toLocaleDateTimeString(
     value,
-    options = { showDate: true, showTime: true, showSeconds: false }
+    options = { showDate: true, showTime: true, showSeconds: false, showWeekday: false }
 ) {
     if (!value) {
         return "";
@@ -514,6 +516,9 @@ export function toLocaleDateTimeString(
     if (options.showTime === false) {
         delete format.hour;
         delete format.minute;
+    }
+    if (options.showWeekday) {
+        format.weekday = "short";
     }
     if (today().year === value.year) {
         delete format.year;

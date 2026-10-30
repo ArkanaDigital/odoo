@@ -1,5 +1,6 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 import logging
+import time
 
 from odoo import api, fields, models, modules, tools, _
 from odoo.exceptions import UserError
@@ -11,6 +12,11 @@ _logger = logging.getLogger(__name__)
 
 def get_google_map_api_key(env):
     return env['ir.config_parameter'].sudo().get_str('base_geolocalize.google_map_api_key')
+
+
+class GeoCodingError(UserError):
+    """ Fail to query the geolocation provider (server not reached, timeout,
+    refused request, unexpected answer...). """
 
 
 class BaseGeo_Provider(models.Model):
@@ -63,21 +69,13 @@ class BaseGeocoder(models.AbstractModel):
         Here we use Openstreetmap Nominatim by default.
         :param addr: Address string passed to API
         :return: (latitude, longitude) or None if not found
+        :raise GeoCodingError: if the provider could not be queried
         """
         provider = self._get_provider().tech_name
-        try:
-            service = getattr(self, '_call_' + provider)
-            result = service(addr, **kw)
-        except AttributeError:
-            raise UserError(_(
-                'Provider %s is not implemented for geolocation service.',
-                provider))
-        except UserError:
-            raise
-        except Exception:
-            _logger.debug('Geolocalize call failed', exc_info=True)
-            result = None
-        return result
+        service = getattr(self, '_call_' + provider, None)
+        if not service:
+            raise UserError(_('Provider %s is not implemented for geolocation service.', provider))
+        return service(addr, **kw)
 
     @api.model
     def _call_openstreetmap(self, addr, **kw):
@@ -88,19 +86,23 @@ class BaseGeocoder(models.AbstractModel):
         if not addr:
             _logger.info('invalid address given')
             return None
+        time.sleep(15 if self.env.context.get('cron_id') else 1)
         import requests  # noqa: PLC0415
         url = 'https://nominatim.openstreetmap.org/search'
         try:
             headers = {'User-Agent': 'Odoo (http://www.odoo.com/contactus)'}
-            response = requests.get(url, headers=headers, params={'format': 'json', 'q': addr})
+            response = requests.get(url, headers=headers, params={'format': 'json', 'q': addr}, timeout=10)
             _logger.info('openstreetmap nominatim service called')
             if response.status_code != 200:
                 _logger.warning('Request to openstreetmap failed.\nCode: %s\nContent: %s', response.status_code, response.content)
+            response.raise_for_status()
             result = response.json()
-        except Exception as e:
+            if not result:
+                return None
+            geo = result[0]
+            return float(geo['lat']), float(geo['lon'])
+        except Exception as e:  # noqa: BLE001
             self._raise_query_error(e)
-        geo = result[0]
-        return float(geo['lat']), float(geo['lon'])
 
     @api.model
     def _call_openstreetmap_reverse(self, lat, lon):
@@ -116,6 +118,7 @@ class BaseGeocoder(models.AbstractModel):
             return None
         if tools.config['test_enable'] or modules.module.current_test:
             raise UserError(_("OpenStreetMap calls disabled in testing environment."))
+        time.sleep(15 if self.env.context.get('cron_id') else 1)
         import requests  # noqa: PLC0415
         try:
             headers = {"User-Agent": "Odoo (http://www.odoo.com/contactus)"}
@@ -154,7 +157,9 @@ class BaseGeocoder(models.AbstractModel):
             params['components'] = 'country:%s' % kw['force_country']
         import requests  # noqa: PLC0415
         try:
-            result = requests.get(url, params).json()
+            response = requests.get(url, params, timeout=10)
+            response.raise_for_status()
+            result = response.json()
         except Exception as e:
             self._raise_query_error(e)
 
@@ -164,16 +169,45 @@ class BaseGeocoder(models.AbstractModel):
             if result['status'] != 'OK':
                 _logger.debug('Invalid Gmaps call: %s - %s',
                               result['status'], result.get('error_message', ''))
-                error_msg = _('Unable to geolocate, received the error:\n%s'
+                error_msg = _('Unable to geolocate, received the error:\n%(status)s %(message)s'
                               '\n\nGoogle made this a paid feature.\n'
                               'You should first enable billing on your Google account.\n'
                               'Then, go to Developer Console, and enable the APIs:\n'
-                              'Geocoding, Maps Static, Maps Javascript.\n', result.get('error_message'))
-                raise UserError(error_msg)
+                              'Geocoding, Maps Static, Maps Javascript.\n',
+                              status=result['status'], message=result.get('error_message', ''))
+                raise GeoCodingError(error_msg)
             geo = result['results'][0]['geometry']['location']
             return float(geo['lat']), float(geo['lng'])
-        except (KeyError, ValueError):
-            _logger.debug('Unexpected Gmaps API answer %s', result.get('error_message', ''))
+        except (KeyError, ValueError, IndexError, TypeError) as e:
+            _logger.debug('Unexpected Gmaps API answer %s', result)
+            self._raise_query_error(e)
+
+    @api.model
+    def _call_googlemap_reverse(self, latitude, longitude):
+        """ Use Google Maps Reverse Geocoding API to get address components from coordinates.
+        :return: dict with address components or None
+        """
+        apikey = get_google_map_api_key(self.env)
+        if not apikey:
+            return None
+
+        params = {'latlng': f"{latitude},{longitude}", 'key': apikey}
+
+        import requests  # noqa: PLC0415
+        try:
+            result = requests.get("https://maps.googleapis.com/maps/api/geocode/json", params, timeout=10).json()
+        except Exception as e:  # noqa: BLE001
+            _logger.warning('Google Maps Reverse Geocoding query failed: %s', e)
+            return None
+
+        try:
+            if result['status'] != 'OK':
+                _logger.debug('Invalid Gmaps Reverse call: %s - %s',
+                              result['status'], result.get('error_message', ''))
+                return None
+            return result['results'][0]['address_components']
+        except (KeyError, ValueError, IndexError):
+            _logger.debug('Unexpected Gmaps Reverse API answer %s', result.get('error_message', ''))
             return None
 
     @api.model
@@ -196,14 +230,36 @@ class BaseGeocoder(models.AbstractModel):
         return self._geo_query_address_default(street=street, zip=zip, city=city, state=state, country=country)
 
     def _raise_query_error(self, error):
-        raise UserError(_('Error with geolocation server: %s', error))
+        import requests  # noqa: PLC0415
+        if isinstance(error, requests.Timeout):
+            reason = _("timeout")
+        elif isinstance(error, requests.ConnectionError):
+            reason = _("server not reached")
+        elif isinstance(error, requests.HTTPError):
+            reason = _("server answered with HTTP status %s", error.response.status_code)
+        elif isinstance(error, (KeyError, ValueError, IndexError, TypeError)):
+            reason = _("unexpected response format")
+        else:
+            reason = str(error)
+        raise GeoCodingError(_('Error with geolocation server: %s', reason)) from error
 
     def _get_localisation(self, latitude, longitude):
-        # try to get city and/or country from request.geoip first
-        # if not possible, get them from latitude and longitude
         city = request.geoip.city.name
         country_code = request.geoip.country_code
         postcode = False
+
+        # Try Google Maps if API key exists
+        if gmaps_address_components := self._call_googlemap_reverse(latitude, longitude):
+            for component in gmaps_address_components:
+                types = component.get('types', [])
+                if 'locality' in types or 'sublocality' in types:
+                    city = component.get('long_name')
+                elif 'country' in types:
+                    country_code = component.get('short_name')
+                elif 'postal_code' in types:
+                    postcode = component.get('long_name')
+
+        # Fallback to OpenStreetMap
         if not (city and country_code):
             # for now, we use openstreetmap, if needed, we will add a setting like "partner geolocation" that let the
             # user decide wich provider to use to localise the partner.

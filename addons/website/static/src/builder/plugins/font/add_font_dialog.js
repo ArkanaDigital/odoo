@@ -1,10 +1,11 @@
 import { rpc } from "@web/core/network/rpc";
-import { Component, proxy, signal } from "@odoo/owl";
+import { Component, proxy, signal, useProps, t } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
 import { AutoComplete } from "@web/core/autocomplete/autocomplete";
 import { Dialog } from "@web/core/dialog/dialog";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
+import { Switch } from "@html_editor/components/switch/switch";
 
 class GoogleFontAutoComplete extends AutoComplete {
     get dropdownOptions() {
@@ -66,17 +67,17 @@ function getUploadedFontWeight(fontName) {
 
 export class AddFontDialog extends Component {
     static template = "website.dialog.addFont";
-    static components = { GoogleFontAutoComplete, Dialog };
-    static props = {
-        close: Function,
-        allFonts: Array,
-        googleFonts: Array,
-        googleLocalFonts: Array,
-        uploadedLocalFonts: Array,
-        variable: String,
-        customize: Function,
-        reloadEditor: Function,
-    };
+    static components = { GoogleFontAutoComplete, Dialog, Switch };
+    props = useProps({
+        close: t.function(),
+        allFonts: t.array(),
+        googleFonts: t.array(),
+        googleLocalFonts: t.array(),
+        uploadedLocalFonts: t.array(),
+        variable: t.string(),
+        customize: t.function(),
+        reloadEditor: t.function(),
+    });
     state = proxy({
         valid: true,
         loading: false,
@@ -282,6 +283,9 @@ export class AddFontDialog extends Component {
                     },
                 ],
             ]);
+            await this.orm.write("ir.attachment", [fontCssId], {
+                url: `/web/font/${fontCssId}/${uploadedFontName}`,
+            });
             this.props.uploadedLocalFonts.push(`'${uploadedFontName}': ${fontCssId}`);
             font = uploadedFontName;
         } else {

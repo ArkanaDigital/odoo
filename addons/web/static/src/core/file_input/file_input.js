@@ -1,4 +1,4 @@
-import { Component, onMounted, proxy, signal, t, useProps } from "@odoo/owl";
+import { Component, onMounted, proxy, signal, t, useProps, useScope } from "@odoo/owl";
 import { useFileUploader } from "@web/core/utils/files";
 
 /**
@@ -35,6 +35,8 @@ export class FileInput extends Component {
     });
 
     fileInputRef = signal.ref();
+
+    scope = useScope();
 
     setup() {
         this.uploadFiles = useFileUploader();
@@ -89,6 +91,12 @@ export class FileInput extends Component {
             }
         }
         const parsedFileData = await this.uploadFiles(this.props.route, httpParams);
+        if (this.scope.isDestroyed()) {
+            // The component was destroyed while the upload was in flight (its
+            // dialog was closed, or the user navigated away). Nobody is left to
+            // receive the uploaded files, and the input ref no longer exists.
+            return;
+        }
         if (parsedFileData) {
             // When calling onUpload, also pass the files to allow to get data like their names
             this.props.onUpload(parsedFileData, this.fileInputRef()?.files ?? []);

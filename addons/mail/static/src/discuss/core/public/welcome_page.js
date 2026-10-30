@@ -1,26 +1,36 @@
-import { Component, proxy, signal, types, useProps } from "@odoo/owl";
+import {
+    Component,
+    onMounted,
+    onPatched,
+    proxy,
+    signal,
+    types,
+    useOnChange,
+    usePlugin,
+    useProps,
+} from "@odoo/owl";
 
 import { CallPreview } from "@mail/discuss/call/common/call_preview";
 import { AvatarStack } from "@mail/discuss/core/common/avatar_stack";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 
-import { browser } from "@web/core/browser/browser";
+import { UIPlugin } from "@web/core/ui/ui_plugin";
 import { useService } from "@web/core/utils/hooks";
-import { useLayoutEffect, useSubEnv } from "@web/owl2/utils";
 
 export class WelcomePage extends Component {
     static template = "mail.WelcomePage";
     static components = { AvatarStack, CallPreview };
 
-    cameraPermissionOnMountChecked = false;
+    isMediaPermissionsChecked = false;
 
     setup() {
         super.setup();
         this.props = useProps({ proceed: types.function([]).optional() });
         this.description = signal();
         this.store = useService("mail.store");
-        this.ui = useService("ui");
+        this.ui = usePlugin(UIPlugin);
         this.rtc = useService("discuss.rtc");
-        useSubEnv({ inWelcomePage: true });
+        useAncestors({ inDiscussCallTheme: true, inWelcomePage: true });
         this.state = proxy({
             userName: this.store.discuss.thread.getPersonaName(this.store.self) ?? "",
             activateCamera: 0,
@@ -30,13 +40,15 @@ export class WelcomePage extends Component {
             isDescriptionLong: false,
             isDescriptionUnfolded: false,
         });
-        useLayoutEffect(
+        useOnChange(
+            () => [this.showCallPreview, this.rtc.cameraPermission, this.rtc.microphonePermission],
             (showCallPreview, cameraPermission, microphonePermission) => {
                 if (!showCallPreview) {
                     return;
                 }
-                if (cameraPermission === "prompt" && !this.cameraPermissionOnMountChecked) {
-                    this.rtc.showMediaPermissionDialog("camera");
+                if (!this.isMediaPermissionsChecked) {
+                    this.isMediaPermissionsChecked = true;
+                    this.rtc.showMeetingMediaPermissionDialog();
                 }
                 if (cameraPermission === "granted") {
                     this.state.activateCamera++;
@@ -44,20 +56,19 @@ export class WelcomePage extends Component {
                 if (microphonePermission === "granted") {
                     this.state.activateMicrophone++;
                 }
-                this.cameraPermissionOnMountChecked = Boolean(cameraPermission);
-            },
-            () => [this.showCallPreview, this.rtc.cameraPermission, this.rtc.microphonePermission]
+            }
         );
-        useLayoutEffect(
-            (isDescriptionUnfolded, description) => {
-                const descriptionEl = this.description();
-                this.state.isDescriptionLong =
-                    !isDescriptionUnfolded &&
-                    description &&
-                    descriptionEl?.scrollWidth > descriptionEl?.clientWidth;
-            },
-            () => [this.state.isDescriptionUnfolded, this.channel.description]
-        );
+        onMounted(() => this.updateIsDescriptionLong());
+        onPatched(() => this.updateIsDescriptionLong());
+    }
+
+    /** Measures the rendered description, hence after mount/patch. */
+    updateIsDescriptionLong() {
+        const descriptionEl = this.description();
+        this.state.isDescriptionLong =
+            !this.state.isDescriptionUnfolded &&
+            this.channel.description &&
+            descriptionEl?.scrollWidth > descriptionEl?.clientWidth;
     }
 
     onKeydownInput(ev) {
@@ -77,8 +88,8 @@ export class WelcomePage extends Component {
         if (!this.store.self_user) {
             await this.store.self_guest?.updateGuestName(this.state.userName.trim());
         }
-        browser.localStorage.setItem("discuss_call_preview_join_mute", !this.state.hasMicrophone);
-        browser.localStorage.setItem(
+        window.localStorage.setItem("discuss_call_preview_join_mute", !this.state.hasMicrophone);
+        window.localStorage.setItem(
             "discuss_call_preview_join_video",
             Boolean(this.state.hasCamera)
         );

@@ -27,6 +27,7 @@ MANIFEST_DATA_KEYS = {
     'data',
     'demo',
     'other_files',
+    'test_data',
     *[k for k in _DEFAULT_MANIFEST if k.endswith('_xml')],
 }
 
@@ -38,6 +39,7 @@ DATA_DIRS = {
     'security',
     'template',
     'templates',
+    'test_data',
     'views',
     'wizard',
     'wizards',
@@ -130,6 +132,12 @@ class ManifestLinter(LintCase):
                             bool(value),
                             value.startswith('https://'),
                             f"Module {module!r} website ({value}) should be a valid and secure url",
+                        )
+                        self.assertTrue(
+                            not value.startswith("https://www.odoo.com/documentation/")
+                            or value.startswith("https://www.odoo.com/documentation/latest"),
+                            f"Module {module!r} website ({value}) shouldn't target a specific"
+                            " version of the odoo documentation. Please target `latest` instead."
                         )
 
                 expected_type = type(_DEFAULT_MANIFEST[key])

@@ -1,30 +1,33 @@
+import { cookie } from "@web/core/browser/cookie";
 import { usePopover } from "@web/core/popover/popover_hook";
 import { user } from "@web/core/user";
 import { formatNumber } from "@hr_holidays/views/hooks";
+import { formatDuration } from "@web/views/fields/formatters";
 import { useService } from "@web/core/utils/hooks";
-import { Component, computed } from "@odoo/owl";
+import { Component, computed, t, useProps } from "@odoo/owl";
 export class TimeOffCardPopover extends Component {
     static template = "hr_holidays.TimeOffCardPopover";
-    static props = [
-        "allocated",
-        "accrual_bonus",
-        "approved",
-        "planned",
-        "left",
-        "warning",
-        "closest",
-        "unit_of_measure",
-        "exceeding_duration",
-        "close?",
-        "allows_negative",
-        "max_allowed_negative",
-        "errorLeaves",
-        "accrualExcess",
-        "timeOffType",
-        "employeeId",
-        "employeeCompany",
-        "employeeCountry",
-    ];
+
+    props = useProps({
+        allocated: t.any(),
+        accrual_bonus: t.any(),
+        approved: t.any(),
+        planned: t.any(),
+        left: t.any(),
+        warning: t.any(),
+        closest: t.any(),
+        unit_of_measure: t.any(),
+        exceeding_duration: t.any(),
+        close: t.any().optional(),
+        allows_negative: t.any(),
+        max_allowed_negative: t.any(),
+        errorLeaves: t.any(),
+        accrualExcess: t.any(),
+        timeOffType: t.any(),
+        employeeId: t.any(),
+        employeeCompany: t.any(),
+        employeeCountry: t.any(),
+    });
 
     setup() {
         this.actionService = useService("action");
@@ -47,15 +50,24 @@ export class TimeOffCardPopover extends Component {
         const today = new Date().toISOString().split("T")[0];
         const isInHolidaysUserGroup = await user.hasGroup("hr_holidays.group_hr_holidays_user");
 
-        const resModel = "hr.leave.allocation"
-        const name = "My Allocations"
-        const context = isInHolidaysUserGroup ? {} : {
-            list_view_ref: "hr_holidays.hr_leave_allocation_view_tree_my",
-            form_view_ref: "hr_holidays.hr_leave_allocation_view_form",
-        }
-        const domain = [["work_entry_type_id", "=", timeOffType], ['employee_company_id','=', employeeCompany],
-                '|', ["date_to", "=", false], ["date_to", ">=", today],
-                employeeId ? ['employee_id', '=', employeeId] : ['employee_id.user_id', '=', user.userId]]
+        const resModel = "hr.leave.allocation";
+        const name = "My Allocations";
+        const context = isInHolidaysUserGroup
+            ? {}
+            : {
+                  list_view_ref: "hr_holidays.hr_leave_allocation_view_tree_my",
+                  form_view_ref: "hr_holidays.hr_leave_allocation_view_form",
+              };
+        const domain = [
+            ["work_entry_type_id", "=", timeOffType],
+            ["employee_company_id", "=", employeeCompany],
+            "|",
+            ["date_to", "=", false],
+            ["date_to", ">=", today],
+            employeeId
+                ? ["employee_id", "=", employeeId]
+                : ["employee_id.user_id", "=", user.userId],
+        ];
 
         openLeaveWindow(this.actionService, resModel, name, domain, context);
     }
@@ -67,9 +79,9 @@ export class TimeOffCardPopover extends Component {
         const resModel = "hr.leave";
         const name = "My Time Off";
         const domain = [
-            ['state', 'in', stateList],
-            ['work_entry_type_id', '=', timeOffType],
-            employeeId ? ['employee_id', '=', employeeId] : ['user_id', '=', user.userId]
+            ["state", "in", stateList],
+            ["work_entry_type_id", "=", timeOffType],
+            employeeId ? ["employee_id", "=", employeeId] : ["user_id", "=", user.userId],
         ];
         const context = isInHolidaysUserGroup
             ? {
@@ -89,7 +101,14 @@ export class TimeOffCardPopover extends Component {
 
 export class TimeOffCard extends Component {
     static template = "hr_holidays.TimeOffCard";
-    static props = ["name", "data", "requires_allocation", "employeeId", "holidayStatusId"];
+
+    props = useProps({
+        name: t.any(),
+        data: t.any(),
+        requires_allocation: t.any(),
+        employeeId: t.any(),
+        holidayStatusId: t.any(),
+    });
 
     setup() {
         this.popover = usePopover(TimeOffCardPopover, {
@@ -98,6 +117,7 @@ export class TimeOffCard extends Component {
         });
         this.actionService = useService("action");
         this.lang = user.lang;
+        this.isDarkTheme = cookie.get("color_scheme") === "dark";
         this.formatNumber = formatNumber;
         const { data } = this.props;
         this.errorLeaves = Object.values(data.virtual_excess_data).map((data) => data.leave_id);
@@ -109,20 +129,9 @@ export class TimeOffCard extends Component {
 
     warning = computed(() => this.updateWarning());
 
-    // e.g.: Input: 9.5 Output: 9:30
-    formatHour(hoursFloat) {
-        const sign = hoursFloat < 0 ? "-" : "";
-        const absValue = Math.abs(hoursFloat);
-        const hours = Math.floor(absValue);
-        const minutes = Math.round((absValue - hours) * 60);
-        // Pad minutes with leading zero if needed
-        const formattedMinutes = minutes < 10 ? `0${minutes}` : minutes;
-        return `${sign}${hours}:${formattedMinutes}`;
-    }
-
     formatDuration(duration) {
         if (this.props.data.unit_of_measure === "hour") {
-            return this.formatHour(duration);
+            return formatDuration({ hours: duration });
         }
         return formatNumber(this.lang, duration);
     }
@@ -140,8 +149,12 @@ export class TimeOffCard extends Component {
     }
 
     onClickInfo(ev) {
+        this.popover.open(ev.target, this.getPopoverProps());
+    }
+
+    getPopoverProps() {
         const { data, holidayStatusId, employeeId } = this.props;
-        this.popover.open(ev.target, {
+        return {
             allocated: formatNumber(this.lang, data.max_leaves),
             accrual_bonus: formatNumber(this.lang, data.accrual_bonus),
             approved: formatNumber(this.lang, data.leaves_approved),
@@ -158,8 +171,8 @@ export class TimeOffCard extends Component {
             timeOffType: holidayStatusId,
             employeeId: employeeId,
             employeeCompany: data.employee_company,
-            employeeCountry: data.employee_country
-        });
+            employeeCountry: data.employee_country,
+        };
     }
 
     getAccrualExcess(data) {
@@ -168,42 +181,20 @@ export class TimeOffCard extends Component {
             : -data.exceeding_duration > 0;
     }
 
-    async navigateTimeOffType() {
-        const { employeeId, holidayStatusId, data } = this.props;
-        const isInHolidaysUserGroup = await user.hasGroup("hr_holidays.group_hr_holidays_user");
-
-        const resModel = "hr.leave";
-        const name = "My Time Off";
-        const domain = [
-            ['work_entry_type_id', '=', holidayStatusId], ['company_id','=', data.employee_company],
-            employeeId ? ['employee_id', '=', employeeId] : ['user_id', '=', user.userId]
-        ];
-        const context = isInHolidaysUserGroup
-            ? {
-                  search_default_group_date_from: true,
-                  expand_leave_list: true,
-              }
-            : {
-                  list_view_ref: "hr_holidays.hr_leave_view_tree_my",
-                  form_view_ref: "hr_holidays.hr_leave_view_form",
-                  search_default_group_date_from: true,
-                  expand_leave_list: true,
-              };
-
-        openLeaveWindow(this.actionService, resModel, name, domain, context);
-    }
-
+    /**
+     * Background utility matching the color configured on the time off type
+     * The color picker is 0-indexed over `$o-colors`
+     * while the `bg-color-x` classes are 1-indexed, hence the shift.
+     */
     getColor() {
-        if(!this.props.index) {return "4";}
-        const colorMap = {
-            0: "4",
-            1: "5",
-            2: "6",
-            3: "7",
-            4: "8",
-            5: "9",
-        };
-        return colorMap[this.props.index % 6];
+        const { color } = this.props.data;
+        if (!Number.isInteger(color)) {
+            return "bg-color-4-light";
+        }
+        if (color === 0) {
+            return "no-bg-color";
+        }
+        return `bg-color-${color + 1}-light`;
     }
 }
 
@@ -219,8 +210,4 @@ function openLeaveWindow(actionService, resModel, name, domain, context) {
         domain: domain,
         context: context,
     });
-}
-
-export class TimeOffCardMobile extends TimeOffCard {
-    static template = "hr_holidays.TimeOffCardMobile";
 }

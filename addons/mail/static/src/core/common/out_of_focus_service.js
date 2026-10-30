@@ -1,8 +1,10 @@
+import { SoundEffectsPlugin } from "@mail/core/common/sound_effects_plugin";
 import { htmlToTextContentInline } from "@mail/utils/common/format";
 
+import { usePlugin } from "@odoo/owl";
 import { isAndroid } from "@web/core/browser/feature_detection";
-import { browser } from "@web/core/browser/browser";
 import { _t } from "@web/core/l10n/translation";
+import { NotificationPlugin } from "@web/core/notifications/notification_plugin";
 import { registry } from "@web/core/registry";
 
 const PREVIEW_MSG_MAX_SIZE = 350; // optimal for native English speakers
@@ -23,8 +25,8 @@ export class OutOfFocusService {
         this.env = env;
         this.audio = undefined;
         this.multiTab = services.multi_tab;
-        this.notificationService = services.notification;
-        this.soundEffectService = services["mail.sound_effects"];
+        this.notificationService = usePlugin(NotificationPlugin);
+        this.soundEffects = usePlugin(SoundEffectsPlugin);
         /** @type {import("models").Store} */
         this.store = services["mail.store"];
         this.closeFuncs = [];
@@ -36,44 +38,45 @@ export class OutOfFocusService {
             return;
         }
         this.contributingMessageLocalIds.add(message.localId);
-        const modelsHandleByPush = ["mail.thread", "discuss.channel"];
+        // Message types the server sends via web push, excluding the author.
+        // Keep in sync with mail.thread._notify_get_recipients_for_extra_notifications.
+        const messageTypesHandledByPush = [
+            "comment",
+            "email",
+            "notification",
+            "tracking",
+            "user_notification",
+            "whatsapp_message",
+        ];
         if (
-            modelsHandleByPush.includes(message.thread?.model) &&
+            messageTypesHandledByPush.includes(message.message_type) &&
+            !message.isSelfAuthored &&
             (await this.hasServiceWorkInstalledAndPushSubscriptionActive())
         ) {
             return;
         }
-        const author = message.author;
-        let notificationTitle;
-        let icon = "/mail/static/src/img/odoobot_transparent.png";
-        if (!author) {
-            notificationTitle = _t("New message");
-        } else {
-            icon = author.avatarUrl;
-            if (message.thread?.channel?.channel_type === "channel") {
-                notificationTitle = _t("%(author name)s from %(channel name)s", {
-                    "author name": message.authorName,
-                    "channel name": message.channel_id.displayName,
-                });
-            } else {
-                notificationTitle = message.authorName;
-            }
+        let title = message.thread?.displayName || _t("New message");
+        if (message.thread?.channel?.channel_type === "channel") {
+            title = `#${title}`;
         }
-        const notificationContent = htmlToTextContentInline(message.previewText).substring(
-            0,
-            PREVIEW_MSG_MAX_SIZE
-        );
+        let notificationContent = htmlToTextContentInline(message.bodyPreview);
+        if (message.hasOnlyAttachments) {
+            notificationContent = `${message.previewSymbol}\u00A0\u00A0${notificationContent}`;
+        }
+        notificationContent = message
+            ._prefixWithAuthor(notificationContent)
+            .substring(0, PREVIEW_MSG_MAX_SIZE);
         await this.sendNotification({
             message: notificationContent,
             sound: Boolean(message.channel_id),
-            title: notificationTitle,
+            title,
             type: "info",
-            icon,
+            icon: message.thread?.avatarUrl ?? "/mail/static/src/img/odoobot_transparent.webp",
         });
     }
 
     async hasServiceWorkInstalledAndPushSubscriptionActive() {
-        const registration = await browser.navigator.serviceWorker?.getRegistration();
+        const registration = await window.navigator.serviceWorker?.getRegistration();
         if (registration) {
             const pushManager = await registration.pushManager;
             if (pushManager) {
@@ -156,7 +159,7 @@ export class OutOfFocusService {
     async _playSound() {
         // On Android with push notifications granted, suppress in-browser sound —
         // push notifications handle alerts there and respect the device's silent mode.
-        if (isAndroid() && browser.Notification?.permission === "granted") {
+        if (isAndroid() && window.Notification?.permission === "granted") {
             return;
         }
         if (
@@ -164,7 +167,7 @@ export class OutOfFocusService {
             this.store.settings.messageSound &&
             (await this.multiTab.isOnMainTab())
         ) {
-            this.soundEffectService.play("new-message");
+            this.soundEffects.play("new-message");
         }
     }
 
@@ -184,7 +187,7 @@ export class OutOfFocusService {
 }
 
 export const outOfFocusService = {
-    dependencies: ["multi_tab", "notification", "mail.sound_effects", "mail.store"],
+    dependencies: ["multi_tab", "mail.store"],
     /**
      * @param {import("@web/env").OdooEnv} env
      * @param {import("services").ServiceFactories} services

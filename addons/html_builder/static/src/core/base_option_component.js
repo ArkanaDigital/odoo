@@ -3,7 +3,7 @@ import { Component, onWillDestroy } from "@odoo/owl";
 import { useEnv } from "@web/owl2/utils";
 
 /**
- * @typedef { import("../../../../html_editor/static/src/editor").EditorContext } EditorContext
+ * @typedef { import("@html_editor/editor").EditorContext } EditorContext
  */
 
 export function useIsActiveItem() {
@@ -45,7 +45,6 @@ export function useIsActiveItem() {
 
 export class BaseOptionComponent extends Component {
     static components = {};
-    static props = {};
     static template = "";
     // When `editableOnly` is set to false, the element does not need to be in
     // an editable area and the checks are therefore lighter. (= previous

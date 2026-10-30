@@ -1,16 +1,14 @@
-import { SUGGESTION_DELIMITERS } from "@mail/core/common/suggestion_hook";
+import { SUGGESTION_DELIMITERS } from "@mail/core/common/plugin/suggestion_plugin";
 import { SuggestionService } from "@mail/core/common/suggestion_service";
 
 import { patch } from "@web/core/utils/patch";
 
 /** @type {SuggestionService} */
 const suggestionServicePatch = {
-    getSupportedDelimiters(thread, env) {
-        if (env?.inFrontendPortalChatter) {
-            return [
-                [SUGGESTION_DELIMITERS.CANNED_RESPONSE],
-                [SUGGESTION_DELIMITERS.EMOJI, undefined, 2],
-            ];
+    getSupportedDelimiters(thread, ancestors) {
+        if (ancestors?.inFrontendPortalChatter) {
+            // Emoji suggestions are handled by the emoji plugin of the editor.
+            return [[SUGGESTION_DELIMITERS.CANNED_RESPONSE]];
         }
         return super.getSupportedDelimiters(...arguments);
     },

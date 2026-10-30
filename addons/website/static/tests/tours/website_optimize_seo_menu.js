@@ -4,7 +4,6 @@ import {
     clickOnSave,
     switchToLang,
 } from "@website/js/tours/tour_utils";
-import { stepUtils } from "@web_tour/tour_utils";
 
 const openSeoModal = () => [
     {
@@ -33,7 +32,6 @@ const saveSeoModal = () => [
         content: "Wait for SEO modal to close",
         trigger: "body:not(:has(.modal))",
     },
-    stepUtils.waitIframeIsReady(),
 ];
 
 registerWebsitePreviewTour(
@@ -111,7 +109,7 @@ registerWebsitePreviewTour(
         },
         {
             content: "Describe it again in the default language, which delays its translation",
-            trigger: ".hb-row[data-label='Description'] input",
+            trigger: ".o_hb_row[data-label='Description'] input",
             run: "edit a photograph of the sea && click body",
         },
         ...clickOnSave(),

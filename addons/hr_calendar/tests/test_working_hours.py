@@ -251,14 +251,24 @@ class TestWorkingHoursWithVersion(TestHrContractCalendarCommon):
     def test_working_hours_with_employee_without_contract(self):
         self.env.user.company_id = self.company_A
         self.env.user.company_ids = [self.company_A.id]
+        date_from = datetime(2023, 12, 25).isoformat()
+        date_to = datetime(2023, 12, 31).isoformat()
 
-        work_hours = self.env['res.partner'].get_working_hours_for_all_attendees(
-            [self.partnerA.id, self.partnerE.id],
-            datetime(2023, 12, 25).isoformat(),
-            datetime(2023, 12, 31).isoformat()
+        work_hours_a = self.env['res.partner'].get_working_hours_for_all_attendees(
+            [self.partnerA.id], date_from, date_to
+        )
+        self.assertTrue(work_hours_a)
+        work_hours_a_e = self.env['res.partner'].get_working_hours_for_all_attendees(
+            [self.partnerA.id, self.partnerE.id], date_from, date_to
+        )
+        # Employee E doesn't have a contract: no known schedule, so E is ignored and only A's working hours are displayed.
+        self.assertEqual(work_hours_a, work_hours_a_e)
+
+        work_hours_e = self.env['res.partner'].get_working_hours_for_all_attendees(
+            [self.partnerE.id], date_from, date_to
         )
         # Employee E doesn't have a contract
-        self.assertEqual(work_hours, [{'daysOfWeek': [7], 'startTime': '00:00', 'endTime': '00:00'}])
+        self.assertEqual(work_hours_e, [])
 
     def test_working_hours_one_employee_with_two_contracts(self):
         self.env.user.company_id = self.company_A
@@ -434,9 +444,7 @@ class TestWorkingHoursWithVersion(TestHrContractCalendarCommon):
 
     def test_flexible_employee_is_available_in_the_middle_of_a_day(self):
         self.env.user.company_id = self.company_A
-        self.contractD.resource_calendar_id = False
-        self.contractD.hours_per_week = 56
-        self.contractD.hours_per_day = 8
+        self.contractD.resource_calendar_id = self.calendar_flexible
 
         work_hours = self.env["res.partner"].get_working_hours_for_all_attendees(
             [self.partnerD.id],
@@ -460,9 +468,7 @@ class TestWorkingHoursWithVersion(TestHrContractCalendarCommon):
 
     def test_flexible_employee_is_available_in_the_middle_of_day_after_contract_start(self):
         self.env.user.company_id = self.company_A
-        self.contractD.resource_calendar_id = False
-        self.contractD.hours_per_week = 56
-        self.contractD.hours_per_day = 8
+        self.contractD.resource_calendar_id = self.calendar_flexible
         self.contractD.contract_date_start = datetime(2023, 12, 28)
 
         work_hours = self.env["res.partner"].get_working_hours_for_all_attendees(
@@ -484,9 +490,7 @@ class TestWorkingHoursWithVersion(TestHrContractCalendarCommon):
 
     def test_flexible_employee_is_always_available_until_contract_end(self):
         self.env.user.company_id = self.company_A
-        self.contractD.resource_calendar_id = False
-        self.contractD.hours_per_week = 56
-        self.contractD.hours_per_day = 8
+        self.contractD.resource_calendar_id = self.calendar_flexible
         self.contractD.contract_date_end = datetime(2023, 12, 28)
 
         work_hours = self.env["res.partner"].get_working_hours_for_all_attendees(
@@ -508,9 +512,7 @@ class TestWorkingHoursWithVersion(TestHrContractCalendarCommon):
 
     def test_fully_flexible_employee_is_always_available(self):
         self.env.user.company_id = self.company_A
-        self.contractD.resource_calendar_id = False
-        self.contractD.hours_per_week = False
-        self.contractD.hours_per_day = False
+        self.contractD.resource_calendar_id = self.calendar_fully_flexible
 
         work_hours = self.env["res.partner"].get_working_hours_for_all_attendees(
             [self.partnerD.id],
@@ -534,9 +536,7 @@ class TestWorkingHoursWithVersion(TestHrContractCalendarCommon):
 
     def test_fully_flexible_employee_is_always_available_after_contract_start(self):
         self.env.user.company_id = self.company_A
-        self.contractD.resource_calendar_id = False
-        self.contractD.hours_per_week = False
-        self.contractD.hours_per_day = False
+        self.contractD.resource_calendar_id = self.calendar_fully_flexible
         self.contractD.contract_date_start = datetime(2023, 12, 28)
 
         work_hours = self.env["res.partner"].get_working_hours_for_all_attendees(
@@ -558,9 +558,7 @@ class TestWorkingHoursWithVersion(TestHrContractCalendarCommon):
 
     def test_fully_flexible_employee_is_always_available_until_contract_end(self):
         self.env.user.company_id = self.company_A
-        self.contractD.resource_calendar_id = False
-        self.contractD.hours_per_week = False
-        self.contractD.hours_per_day = False
+        self.contractD.resource_calendar_id = self.calendar_fully_flexible
         self.contractD.contract_date_end = datetime(2023, 12, 28)
 
         work_hours = self.env["res.partner"].get_working_hours_for_all_attendees(

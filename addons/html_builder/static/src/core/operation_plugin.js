@@ -13,11 +13,11 @@ import { Operation } from "./operation";
 export class OperationPlugin extends Plugin {
     static id = "operation";
     static dependencies = ["domObserver", "history"];
-    static shared = ["next", "hasTimedOut"];
+    static shared = ["addLoadingElement", "next", "hasTimedOut"];
 
     setup() {
         this._hasTimedOut = false;
-        this.operation = new Operation(this.document);
+        this.operation = new Operation(this.document, () => this.config.extraPreviewDocument);
 
         // Revert any potential preview as soon as the user does anything, to
         // avoid losing what the user will have done when they ends the preview.
@@ -65,6 +65,13 @@ export class OperationPlugin extends Plugin {
         return result;
     }
 
+    /**
+     * @see Operation.addLoadingElement
+     */
+    addLoadingElement(...args) {
+        return this.operation.addLoadingElement(...args);
+    }
+
     onTimeout(rollback) {
         rollback();
 
@@ -87,12 +94,9 @@ export class OperationPlugin extends Plugin {
 export function useOperation() {
     const env = useEnv();
     return (apply, ...args) => {
-        env.editor.shared.operation.next(
-            async (...args) => {
-                await apply(...args);
-                env.editor.shared.history.commit();
-            },
-            ...args
-        );
+        env.editor.shared.operation.next(async (...args) => {
+            await apply(...args);
+            env.editor.shared.history.commit();
+        }, ...args);
     };
 }

@@ -1,9 +1,9 @@
-import { describe, expect, test } from "@odoo/hoot";
-import { click, queryAll, tick, waitFor, waitForNone } from "@odoo/hoot-dom";
+import { describe, expect, press, test } from "@odoo/hoot";
+import { click, queryAll, waitFor, waitForNone } from "@odoo/hoot-dom";
 import { setupEditor, testEditor } from "./_helpers/editor";
 import { animationFrame } from "@odoo/hoot-mock";
 import { getContent, setContent, setSelection } from "./_helpers/selection";
-import { splitBlock, undo } from "./_helpers/user_actions";
+import { insertText, splitBlock, tripleClick, undo } from "./_helpers/user_actions";
 import { contains, onRpc } from "@web/../tests/web_test_helpers";
 import { expectElementCount } from "./_helpers/ui_expectations";
 import { execCommand } from "./_helpers/userCommands";
@@ -271,29 +271,38 @@ test("Should be able to undo after adding spin effect to an icon", async () => {
 });
 
 describe("selection", () => {
-    test("selection inside icon gets expanded to its outer boundaries", async () => {
+    test("clicking an icon selects it", async () => {
         const { el } = await setupEditor(
             `<p>abc<span class="oi" data-icon="local_bar"></span>def</p>`
         );
-        const icon = el.querySelector("span[data-icon='local_bar']");
-        setSelection({ anchorNode: icon, anchorOffset: 0 });
-        await tick();
+        await click("span[data-icon='local_bar']");
+        await animationFrame();
         expect(getContent(el)).toBe(
             `<p>abc\ufeff[<span class="oi" data-icon="local_bar" contenteditable="false">\u200b</span>]\ufeffdef</p>`
         );
     });
 
-    test("selection inside icon gets expanded around it, but not around its contenteditable=false ancestor", async () => {
+    test("clicking an icon selects it, but not its contenteditable=false ancestor", async () => {
         const { el } = await setupEditor(
             `<p contenteditable="false">abc<span class="oi" data-icon="local_bar"></span>def</p>`
         );
-        const icon = el.querySelector("span[data-icon='local_bar']");
-        setSelection({ anchorNode: icon, anchorOffset: 0 });
-        await tick();
+        await click("span[data-icon='local_bar']");
+        await animationFrame();
         expect(getContent(el)).toBe(
             '<p data-selection-placeholder=""><br></p>' +
                 '<p contenteditable="false">abc[<span class="oi" data-icon="local_bar" contenteditable="false">\u200b</span>]def</p>' +
                 '<p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>'
+        );
+    });
+
+    test.tags("desktop");
+    test("triple clicking an icon selects the whole paragraph", async () => {
+        const { el } = await setupEditor(
+            `<p>abc<span class="oi" data-icon="local_bar"></span>def</p>`
+        );
+        await tripleClick(el.querySelector("span[data-icon='local_bar']"));
+        expect(getContent(el)).toBe(
+            `<p>[abc\ufeff<span class="oi" data-icon="local_bar" contenteditable="false">\u200b</span>\ufeffdef]</p>`
         );
     });
 });
@@ -366,6 +375,20 @@ test("should be able to unlink an icon", async () => {
     expect(".my_link").toHaveCount(0);
 });
 
+test("should hide title replace icon on popover for an icon link", async () => {
+    const { el } = await setupEditor(
+        `<p>[<span class="oi" data-icon="local_bar" contenteditable="false"></span>]</p>`
+    );
+    await waitFor(".o-we-toolbar");
+    await click('.o-we-toolbar button[name="link"]');
+    await expectElementCount(".o-we-linkpopover", 1);
+    await contains(".o-we-linkpopover input.o_we_href_input_link").edit("http://test.com/");
+    expect(getContent(el)).toBe(
+        `<p>\ufeff<a href="http://test.com/" class="o_link_in_selection">\ufeff<span class="oi" data-icon="local_bar" contenteditable="false">\u200b</span>\ufeff[]</a>\ufeff</p>`
+    );
+    expect(".o-we-linkpopover .o_we_replace_title_btn").toHaveCount(0);
+});
+
 test("icon toolbar when only an icon is selected", async () => {
     await setupEditor(
         `<p>[<span class="oi" data-icon="local_bar" contenteditable="false"></span>]</p>`
@@ -417,4 +440,27 @@ test("icon toolbar when only an icon is selected", async () => {
     expect(queryAll(".o-we-toolbar .btn-group[name='image_link'] button[name='link']")).toHaveCount(
         1
     );
+});
+
+test("should remove empty inline attribute when it contains visible content", async () => {
+    await testEditor({
+        contentBefore: `<p><font style="color: rgb(255, 0, 0);">[abc]</font></p>`,
+        stepFunction: async (editor) => {
+            await insertText(editor, "/icon");
+            await expectElementCount(".o-we-powerbox", 1);
+            expect(".active .o-we-command-name").toHaveText("Media");
+            await press("enter");
+
+            await expectElementCount("main.modal-body", 1);
+            expect("main.modal-body button.nav-link.active").toHaveText("Icons");
+            expect("font").toHaveAttribute("data-oe-zws-empty-inline");
+
+            await contains("main.modal-body span[data-icon='search']").click();
+            await expectElementCount("main.modal-body", 0);
+            expect("span.oi[data-icon='search']").toHaveCount(1);
+            // A font with visible content should not have the empty inline attribute.
+            expect("font").not.toHaveAttribute("data-oe-zws-empty-inline");
+        },
+        contentAfter: `<p><font style="color: rgb(255, 0, 0);"><span class="oi" data-icon="search"></span>[]</font></p>`,
+    });
 });

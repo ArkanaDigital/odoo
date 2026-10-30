@@ -3,10 +3,12 @@
 from collections import defaultdict
 
 from odoo import _, api, fields, models
+from odoo.fields import Domain
 from odoo.tools import html_escape
 from odoo.tools.json import scriptsafe as json_scriptsafe
-from odoo.tools.translate import html_translate, mark_as_copy
+from odoo.tools.translate import html_translate
 
+from odoo.addons.portal.controllers.thread import PortalWebClientController
 from odoo.addons.website.tools import images_from_html, text_from_html
 
 
@@ -166,9 +168,12 @@ class BlogPost(models.Model):
         'website.cover_properties.mixin',
         'website.searchable.mixin',
         'website.structured_data.mixin',
+        'website.trackable.mixin',
     ]
+    _website_track_field = 'blog_post_id'
     _order = 'id DESC'
     _mail_post_access = 'read'
+    _add_seo_rels = True
 
     def _compute_website_url(self):
         super(BlogPost, self)._compute_website_url()
@@ -179,13 +184,17 @@ class BlogPost(models.Model):
     def _default_content(self):
         text = html_escape(_("Start writing here..."))
         return """
-            <p>%(text)s</p>
+        <section class="s_text_block" data-snippet="s_text_block">
+            <div class="container s_allow_columns">
+                <p>%(text)s</p>
+            </div>
+        </section>
         """ % {"text": text}
-    name = fields.Char('Title', required=True, translate=True, default='', copy=mark_as_copy('name'))
+    name = fields.Char('Title', required=True, translate=True, default='')
     subtitle = fields.Char('Sub Title', translate=True)
     author_id = fields.Many2one('res.partner', 'Author', default=lambda self: self.env.user.partner_id, index='btree_not_null')
     author_avatar = fields.Binary(related='author_id.image_128', string="Avatar", readonly=False)
-    author_name = fields.Char(related='author_id.display_name', string="Author Name", readonly=False, store=True)
+    author_name = fields.Char(related='author_id.display_name', string="Author Name", readonly=False, store=True, depends=('author_id.name',))
     active = fields.Boolean('Active', default=True)
     blog_id = fields.Many2one('blog.blog', 'Blog', required=True, index=True, ondelete='cascade', default=lambda self: self.env['blog.blog'].search([], limit=1))
     recommended_next_post_id = fields.Many2one('blog.post', string="Recommended Next Post",
@@ -202,6 +211,16 @@ class BlogPost(models.Model):
     write_uid = fields.Many2one('res.users', 'Last Contributor', readonly=True)
     visits = fields.Integer('No of Views', copy=False, default=0, readonly=True)
     website_id = fields.Many2one(related='blog_id.website_id', readonly=True, store=True)
+    comment_count = fields.Integer("Comment count", compute='_compute_comment_count')
+
+    def _compute_comment_count(self):
+        count_by_post = dict(self.env['mail.message']._read_group(
+            domain=PortalWebClientController._get_portal_message_fetch_domain(self),
+            groupby=["res_id"],
+            aggregates=['__count'],
+        ))
+        for post in self:
+            post.comment_count = count_by_post.get(post.id, 0)
 
     @api.depends('content', 'teaser_manual')
     def _compute_teaser(self):
@@ -294,6 +313,15 @@ class BlogPost(models.Model):
         res['default_opengraph']['og:title'] = self.name
         res['default_meta_description'] = self.subtitle
         return res
+
+    def _mail_get_operation_for_mail_message_operation(self, message_operation):
+        if (
+            message_operation == 'create'
+            and not self.env.user._is_internal()
+            and not self.env['website'].is_view_active('website_blog.opt_blog_post_comment')
+        ):
+            return [(Domain.TRUE, 'write')]
+        return super()._mail_get_operation_for_mail_message_operation(message_operation)
 
     @api.model
     def _search_get_detail(self, website, order, options):

@@ -1,5 +1,4 @@
 import { ScheduledMessage } from "@mail/chatter/common/scheduled_message_model";
-import { fields } from "@mail/model/export";
 import { htmlToTextContentInline } from "@mail/utils/common/format";
 
 import { _t } from "@web/core/l10n/translation";
@@ -9,13 +8,11 @@ import { patch } from "@web/core/utils/patch";
 const ScheduledMessagePatch = {
     setup() {
         super.setup();
-        this.textContent = fields.Attr(false, {
-            compute() {
-                if (!this.body) {
-                    return "";
-                }
-                return htmlToTextContentInline(this.body);
-            },
+        this.textContent = this.computed(() => {
+            if (!this.body) {
+                return "";
+            }
+            return htmlToTextContentInline(this.body);
         });
     },
 
@@ -42,7 +39,7 @@ const ScheduledMessagePatch = {
      * Cancel the scheduled message.
      */
     async cancel() {
-        await this.store.env.services.orm.unlink("mail.scheduled.message", [this.id]);
+        await this.store.orm.unlink("mail.scheduled.message", [this.id]);
         this.delete();
     },
 
@@ -53,11 +50,9 @@ const ScheduledMessagePatch = {
     async edit() {
         let action;
         try {
-            action = await this.store.env.services.orm.call(
-                "mail.scheduled.message",
-                "open_edit_form",
-                [this.id]
-            );
+            action = await this.store.orm.call("mail.scheduled.message", "open_edit_form", [
+                this.id,
+            ]);
         } catch {
             this.notifyAlreadySent();
             return;
@@ -68,7 +63,7 @@ const ScheduledMessagePatch = {
     },
 
     notifyAlreadySent() {
-        this.store.env.services.notification.add(_t("This message has already been sent."), {
+        this.store.notification.add(_t("This message has already been sent."), {
             type: "warning",
         });
     },
@@ -78,9 +73,7 @@ const ScheduledMessagePatch = {
      */
     async send() {
         try {
-            await this.store.env.services.orm.call("mail.scheduled.message", "post_message", [
-                this.id,
-            ]);
+            await this.store.orm.call("mail.scheduled.message", "post_message", [this.id]);
         } catch {
             // already sent (by someone else or by cron)
             return;

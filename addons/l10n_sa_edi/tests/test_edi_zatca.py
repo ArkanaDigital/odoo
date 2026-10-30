@@ -1,16 +1,25 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 import base64
+import contextlib
+
 from datetime import datetime
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from freezegun import freeze_time
 from lxml import etree
 
 from odoo import Command
-from odoo.exceptions import ValidationError, UserError
+from odoo.exceptions import ValidationError, UserError, AccessError
 from odoo.tests import tagged
 from odoo.tools import misc
 from odoo.addons.l10n_sa_edi.tests.common import TestSaEdiCommon
+
+ZATCA_RESPONSES = {
+        'accepted': {'status_code': 200},
+        'rejected': {'error': "Invalid VAT number", 'rejected': True},
+        'unknown': {'error': "Timeout waiting for ZATCA", 'excepted': True},
+    }
 
 
 @tagged('post_install_l10n', '-at_install', 'post_install')
@@ -244,8 +253,8 @@ class TestEdiZatca(TestSaEdiCommon):
 
             # Create downpayment invoice
             downpayment_wizard = self.env['sale.advance.payment.inv'].with_context(context).sudo().create({
-                'advance_payment_method': 'fixed',
-                'fixed_amount': 115,
+                'advance_payment_method': 'downpayment',
+                'amount': 115,
             })
             downpayment = downpayment_wizard._create_invoices(sale_order)
             downpayment.invoice_date_due = '2022-09-22'
@@ -337,8 +346,8 @@ class TestEdiZatca(TestSaEdiCommon):
 
         # 1. First downpayment, then reverse it through the Credit Note
         dp1_wizard = self.env['sale.advance.payment.inv'].with_context(context).create({  # noqa: OLS03001
-            'advance_payment_method': 'fixed',
-            'fixed_amount': 115,
+            'advance_payment_method': 'downpayment',
+            'amount': 115,
         })
         dp1 = dp1_wizard._create_invoices(sale_order)
         dp1.invoice_date_due = '2022-09-22'
@@ -707,8 +716,8 @@ class TestEdiZatca(TestSaEdiCommon):
         }
 
         downpayment_wizard = self.env['sale.advance.payment.inv'].with_context(context).create({  # noqa: OLS03001
-            'advance_payment_method': 'percentage',
-            'amount': 100,
+            'advance_payment_method': 'downpayment',
+            'percentage': 1.0,
         })
         downpayment = downpayment_wizard._create_invoices(sale_order)
         downpayment.action_post()
@@ -767,3 +776,97 @@ class TestEdiZatca(TestSaEdiCommon):
             journal.l10n_sa_csr_errors,
             r"Please make sure the following fields are shorter than 64 bytes.*Company Name",
         )
+
+    def test_post_zatca_edi(self):
+        """Test the ZATCA EDI posting functionality."""
+        for expected_state, response in ZATCA_RESPONSES.items():
+            with self.subTest(expected_state=expected_state):
+                document = self._get_invoice_document()
+                with patch.object(self.env.registry['l10n_sa_edi.document'], '_l10n_sa_submit_einvoice', self._mock_submit_response(response)):
+                    document._l10n_sa_post_zatca_edi(True)
+                self.assertEqual(document.state, expected_state)
+
+    def test_zatca_retry_after_failed_attempt(self):
+        """Test if a failed ZATCA submission can be retried successfully."""
+        for prior_state in ('rejected', 'unknown'):
+            with self.subTest(prior_state=prior_state):
+                document = self._get_invoice_document()
+
+                with patch.object(self.env.registry['l10n_sa_edi.document'], '_l10n_sa_submit_einvoice', self._mock_submit_response(ZATCA_RESPONSES[prior_state])):
+                    document._l10n_sa_post_zatca_edi(True)
+                self.assertEqual(document.state, prior_state)
+
+                with patch.object(self.env.registry['l10n_sa_edi.document'], '_l10n_sa_submit_einvoice', self._mock_submit_response(ZATCA_RESPONSES['accepted'])):
+                    document._l10n_sa_post_zatca_edi(True)
+                self.assertEqual(document.state, 'accepted')
+
+    def test_zatca_submission_not_resent_when_user_lacks_journal_write(self):
+        """If a user with only Invoicing rights (read-only on journals) successfully submits
+        to ZATCA, then recording the result writes to journal.l10n_sa_latest_submission_hash.
+        If that write is not done with sudo it raises AccessError after ZATCA already
+        accepted the invoice, the transaction is rolled back, and the invoice is
+        resubmitted, resulting in a duplicate on ZATCA's side.
+        """
+        journal = self.customer_invoice_journal
+
+        if not journal.l10n_sa_chain_sequence_id:
+            journal.sudo().l10n_sa_chain_sequence_id = journal.sudo()._l10n_sa_edi_create_new_chain()
+
+        # Invoicing user with read-only on account.journal
+        restricted_user = self.env['res.users'].create({
+            'name': 'ZATCA Billing User',
+            'login': 'zatca_billing_user',
+            'email': 'zatca_billing_user@example.com',
+            'company_id': self.company.id,
+            'company_ids': [Command.set(self.company.ids)],
+            'group_ids': [Command.set([
+                self.env.ref('base.group_user').id,
+                self.env.ref('account.group_account_invoice').id,
+            ])],
+        })
+
+        document = self._get_invoice_document()
+
+        with patch.object(self.env.registry['l10n_sa_edi.document'], '_l10n_sa_submit_einvoice', self._mock_submit_response(ZATCA_RESPONSES['accepted'])):
+            with contextlib.suppress(AccessError):
+                document.with_user(restricted_user)._l10n_sa_post_zatca_edi(True)
+
+        self.assertEqual(
+            document.state, 'accepted',
+            "The ZATCA document should be marked 'accepted' after a successful submission.",
+        )
+
+    def test_zatca_xml_successfully_embedded_in_pdf(self):
+        """Test if the XML sent to ZATCA is successfully embedded in the PDF."""
+        invoice = self._create_test_invoice(
+            name='INV/2023/00034',
+            invoice_date='2023-03-10',
+            invoice_date_due='2023-03-10',
+            partner_id=self.partner_sa_simplified,
+            invoice_line_ids=[{
+                'product_id': self.product_burger.id,
+                'price_unit': self.product_burger.standard_price,
+                'quantity': 3,
+                'tax_ids': self.tax_15.ids,
+            }],
+        )
+        invoice.action_post()
+        moves_data = {
+            invoice: {
+                **self.env['account.move.send']._get_default_sending_settings(invoice),
+            },
+        }
+
+        with self.allow_pdf_render(), patch.object(self.env.registry['l10n_sa_edi.document'], '_l10n_sa_submit_einvoice', self._mock_submit_response(ZATCA_RESPONSES['accepted'])):
+            self.env['account.move.send'].with_context(force_report_rendering=True)._generate_invoice_documents(moves_data)
+
+        to_unwrap = {
+            'import_file_type': 'pdf',
+            'name': 'test.pdf',
+            'raw': moves_data[invoice]['pdf_attachment_values']['raw'],
+            'origin_attachment': False,
+            'origin_import_file_type': False,
+        }
+        unwrapped_xml = self.env['account.move']._unwrap_attachment(to_unwrap)[0]
+        self.assertEqual(unwrapped_xml['import_file_type'], 'account.edi.xml.ubl_21')
+        self.assertEqual(unwrapped_xml['name'], invoice.l10n_sa_edi_document_id.name)

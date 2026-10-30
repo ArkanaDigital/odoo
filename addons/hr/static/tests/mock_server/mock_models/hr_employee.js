@@ -7,6 +7,7 @@ export class HrEmployee extends models.ServerModel {
     active = fields.Boolean({ related: false });
     department_id = fields.Many2one({ relation: "hr.department" });
     name = fields.Char();
+    version_id = fields.Many2one({ relation: "hr.version" });
     user_id = fields.Many2one({ relation: "res.users" });
     work_email = fields.Char();
     work_phone = fields.Char();
@@ -19,6 +20,7 @@ export class HrEmployee extends models.ServerModel {
         res.one("department_id", ["name"]);
         res.one("user_id", "_store_avatar_card_fields");
         res.one("work_location_id", ["location_type", "name"]);
+        res.many("employee_skill_ids", ["color", "display_name"]);
         res.extend([
             "active",
             "company_id",

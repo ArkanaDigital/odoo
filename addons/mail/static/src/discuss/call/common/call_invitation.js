@@ -1,18 +1,26 @@
-import { useSubEnv } from "@web/owl2/utils";
 import { Action, ACTION_TAGS } from "@mail/core/common/action";
-import { ActionList } from "@mail/core/common/action_list";
+import { ActionList, CircleInlineAction } from "@mail/core/common/action_list";
 import {
     acceptWithCamera,
     CallAction,
     joinAction,
     rejectAction,
 } from "@mail/discuss/call/common/call_actions";
+import { getCallActionComponent } from "@mail/discuss/call/common/call_action_list";
 import { CallPreview } from "@mail/discuss/call/common/call_preview";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 
 import { Component, computed, proxy, signal, types, useProps } from "@odoo/owl";
 
 import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
+
+/** Button to accept the call, spaced from the button next to it. */
+class AcceptCallInlineAction extends CircleInlineAction {
+    get marginClass() {
+        return { ...super.marginClass, "o-me-0_5": true };
+    }
+}
 
 export class CallInvitation extends Component {
     static template = "discuss.CallInvitation";
@@ -27,7 +35,6 @@ export class CallInvitation extends Component {
         this.props = useProps({
             channel: types.instanceOf(this.store["discuss.channel"]),
         });
-        this.ui = useService("ui");
         this.state = proxy({
             activateCamera: 0,
             activateMicrophone: 0,
@@ -35,7 +42,15 @@ export class CallInvitation extends Component {
             hasCamera: false,
             hasMicrophone: this.rtc.microphonePermission === "granted",
         });
-        useSubEnv({ inCallInvitation: true });
+        useAncestors({ inDiscussCallTheme: true });
+    }
+
+    /** @type {import("@mail/core/common/action_list").GetActionComponent} */
+    getActionComponent(params) {
+        if (params.inline && ["accept-with-camera", "join"].includes(params.action.id)) {
+            return AcceptCallInlineAction;
+        }
+        return getCallActionComponent(params);
     }
 
     async joinCall() {
@@ -55,12 +70,10 @@ export class CallInvitation extends Component {
     acceptOrRejectActions = computed(() => {
         const joinUpdated = {
             ...joinAction,
-            btnClass: joinAction.btnClass + " o-me-0_5",
             onSelected: () => this.joinCall(),
         };
         const acceptWithCameraUpdated = {
             ...acceptWithCamera,
-            btnClass: acceptWithCamera.btnClass + " o-me-0_5",
             onSelected: () => {
                 this.state.hasCamera = true;
                 this.joinCall();

@@ -25,7 +25,7 @@ class CalendarRecurrence(models.Model):
         # Outlook, as this update mainly comes from Outlook (the 'rrule' field is not directly
         # modified in Odoo but computed from other fields).
         for recurrence in self.filtered('rrule'):
-            values = self._rrule_parse(recurrence.rrule, recurrence.dtstart)
+            values = recurrence._rrule_parse(recurrence.rrule, recurrence.dtstart)
             recurrence.with_context(dont_notify=True).write(dict(values, need_sync_m=False))
 
     def _apply_recurrence(self, specific_values_creation=None, no_send_edit=False, generic_values_creation=None):
@@ -95,6 +95,8 @@ class CalendarRecurrence(models.Model):
 
     def _write_from_microsoft(self, microsoft_event, vals):
         current_rrule = self.rrule
+        original_dtstart = self.dtstart
+        current_parsed_rrule = self._rrule_parse(current_rrule, original_dtstart)
         # event_tz is written on event in Microsoft but on recurrence in Odoo
         vals['event_tz'] = microsoft_event.start.get('timeZone')
         super()._write_from_microsoft(microsoft_event, vals)
@@ -118,7 +120,7 @@ class CalendarRecurrence(models.Model):
             base_event_id.with_context(dont_notify=True).write(dict(
                 new_event_values, microsoft_id=False, ms_universal_event_id=False, need_sync_m=False
             ))
-            if self.rrule == current_rrule:
+            if self._rrule_parse(self.rrule, original_dtstart) == current_parsed_rrule:
                 # if the rrule has changed, it will be recalculated below
                 # There is no detached event now
                 self.with_context(dont_notify=True)._apply_recurrence()
@@ -136,7 +138,9 @@ class CalendarRecurrence(models.Model):
             )
         # We apply the rrule check after the time_field check because the microsoft ids are generated according
         # to base_event start datetime.
-        if self.rrule != current_rrule:
+        # compare only rrule, change in dtstart should be handled above
+        new_parsed_rrule = self._rrule_parse(self.rrule, original_dtstart)
+        if new_parsed_rrule != current_parsed_rrule:
             detached_events = self._apply_recurrence()
             detached_events.ms_universal_event_id = False
             detached_events.unlink()
@@ -146,11 +150,14 @@ class CalendarRecurrence(models.Model):
         return self._extend_microsoft_domain(Domain.FALSE)
 
     def _cancel_microsoft(self):
-        self.calendar_event_ids.with_context(dont_notify=True)._cancel_microsoft()
+        # If we canceled and unlinked the events before canceling the recurrence,
+        # we would lose the calendar_id information which is related based on the events
+        events_to_cancel = self.calendar_event_ids.with_context(dont_notify=True)
         super()._cancel_microsoft()
+        events_to_cancel._cancel_microsoft()
 
     @api.model
-    def _microsoft_to_odoo_values(self, microsoft_recurrence, default_reminders=(), default_values=None, with_ids=False):
+    def _microsoft_to_odoo_values(self, microsoft_recurrence, default_reminders=(), default_values=None, with_ids=False, create=False):
         recurrence = microsoft_recurrence.get_recurrence()
 
         if with_ids:

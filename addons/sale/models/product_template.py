@@ -57,10 +57,9 @@ class ProductTemplate(models.Model):
         relation="product_optional_rel",
         column1="src_id",
         column2="dest_id",
-        string="Optional Products",
-        help="Optional Products are suggested "
-        "whenever the customer hits *Add to Cart* (cross-sell strategy, "
-        "e.g. for computers: warranty, software, etc.).",
+        string="Options",
+        help="Options are suggested whenever the customer hits *Add to Cart* "
+        "(cross-sell strategy, e.g. for computers: warranty, software, etc.).",
         check_company=True,
     )
     sale_delay = fields.Integer(
@@ -196,8 +195,9 @@ class ProductTemplate(models.Model):
             res["warning"] = {
                 "title": self.env._("Warning"),
                 "message": self.env._(
-                    "You cannot change the product's type because it is already used in sales"
-                    " orders."
+                    "You should not change the product type because this product is already"
+                    " used in sales orders. Changing it may affect how the related order lines"
+                    " are delivered."
                 ),
             }
         return res
@@ -216,6 +216,12 @@ class ProductTemplate(models.Model):
 
     def _get_backend_root_menu_ids(self):
         return super()._get_backend_root_menu_ids() + [self.env.ref("sale.sale_menu_root").id]
+
+    def _get_product_accounts(self):
+        accounts = super()._get_product_accounts()
+        accounts['invoices_to_issue'] = self._get_category_account('property_account_invoices_to_issue_id', 'account_invoices_to_issue_id')
+        accounts['invoiced_not_delivered'] = self._get_category_account('property_account_invoiced_not_delivered_id', 'account_invoiced_not_delivered_id')
+        return accounts
 
     @api.model
     def get_import_templates(self):
@@ -243,21 +249,19 @@ class ProductTemplate(models.Model):
             self
             .env["ir.model.fields"]
             .sudo()
-            .search_read(
+            .search_fetch(
                 [("model", "=", "product.template"), ("name", "in", incompatible_types)],
                 ["name", "field_description"],
             )
         )
-        field_descriptions = {v["name"]: v["field_description"] for v in fields}
-        field_list = incompatible_types + ["name"]
-        values = self.read(field_list)
-        for val in values:
-            incompatible_fields = [f for f in incompatible_types if val[f]]
+        field_descriptions = {v.name: v.field_description for v in fields}
+        for record in self:
+            incompatible_fields = [f for f in incompatible_types if record[f]]
             if len(incompatible_fields) > 1:
                 raise ValidationError(
                     self.env._(
                         "The product (%(product)s) has incompatible values: %(value_list)s",
-                        product=val["name"],
+                        product=record.name,
                         value_list=[field_descriptions[v] for v in incompatible_fields],
                     )
                 )

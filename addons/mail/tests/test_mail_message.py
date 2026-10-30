@@ -3,6 +3,7 @@
 from odoo.addons.bus.tests.common import BusResult
 from odoo.addons.mail.models import mail_message as mail_message_module
 from odoo.addons.mail.tests import common
+from odoo.exceptions import UserError
 from odoo.tests import HttpCase, new_test_user, tagged, users
 
 from unittest.mock import patch
@@ -30,12 +31,63 @@ class TestMailMessage(common.MailCommon, HttpCase):
         self.make_jsonrpc_request("/mail/store", {"fetch_params": ["remove_all_bookmarks"]})
         self.assertNotIn(self.env.user.partner_id, message.bookmarked_partner_ids)
 
+    @users("employee")
+    def test_store_mail_message_only_readable(self):
+        self.authenticate(self.env.user.login, self.env.user.login)
+        # links copied from a group of the user, and from a group they are not a member of
+        Channel = self.env["discuss.channel"].with_user(self.user_admin)
+        member_group = Channel._create_group(users_to=self.user_admin | self.env.user)
+        other_group = Channel._create_group(users_to=self.user_admin)
+        readable = member_group.message_post(body="Readable", message_type="comment")
+        unreadable = other_group.message_post(body="Unreadable", message_type="comment")
+        self.assertFalse(unreadable.with_user(self.env.user).has_access("read"))
+        data = self.make_jsonrpc_request(
+            "/mail/store",
+            {"fetch_params": [["mail.message", {"ids": [readable.id, unreadable.id]}]]},
+        )
+        self.assertEqual([message["id"] for message in data["mail.message"]], readable.ids)
+
     def test_mail_message_read_inexisting(self):
         user = new_test_user(self.env, login="Bob", email="bob@test.com")
         inexisting_message = self.env['mail.message'].with_user(user).browse(-434264)
         self.assertFalse(inexisting_message.exists())
         self.assertTrue(inexisting_message.browse().has_access('read'))
         self.assertFalse(inexisting_message.has_access('read'))
+
+    @users("employee")
+    def test_web_push_attachment_body(self):
+        image = self.env["ir.attachment"].create(
+            {"mimetype": "image/png", "name": "picture.png", "raw": b"image"}
+        )
+        voice = self.env["ir.attachment"].create(
+            {"mimetype": "audio/mpeg", "name": "recording.mp3", "raw": b"voice"}
+        )
+        # sudo: discuss.voice.metadata is group_system; employees can't create it directly
+        voice.sudo()._set_voice_metadata()
+        pdf = self.env["ir.attachment"].create(
+            {"mimetype": "application/pdf", "name": "quote.pdf", "raw": b"pdf"}
+        )
+        cases = [
+            ([image], "📷\N{NO-BREAK SPACE}\N{NO-BREAK SPACE}picture.png"),
+            ([voice], "🎤\N{NO-BREAK SPACE}\N{NO-BREAK SPACE}Voice Message"),
+            ([pdf], "📄\N{NO-BREAK SPACE}\N{NO-BREAK SPACE}quote.pdf"),
+            ([image, voice], "📷\N{NO-BREAK SPACE}\N{NO-BREAK SPACE}picture.png and Voice Message"),
+            (
+                [image, voice, pdf],
+                "📷\N{NO-BREAK SPACE}\N{NO-BREAK SPACE}picture.png and 2 other attachments",
+            ),
+        ]
+        partner = self.env["res.partner"].browse(self.partner_employee.id)
+        for attachments, expected_body in cases:
+            with self.subTest(count=len(attachments), first=attachments[0].name):
+                message = partner.message_post(
+                    body="",
+                    attachment_ids=[a.id for a in attachments],
+                )
+                payload = partner._notify_by_web_push_prepare_payload(message)
+                self.assertEqual(
+                    payload["options"]["body"], f"{self.env.user.name}: {expected_body}",
+                )
 
     def test_mail_message_read_access(self):
         self.env['res.company'].invalidate_model(['name'])
@@ -80,11 +132,31 @@ class TestMailMessage(common.MailCommon, HttpCase):
 
         Message = self.registry[messages._name]
         with (
-            patch.object(mail_message_module, 'PREFETCH_MAX', 3),
+            patch.object(mail_message_module, 'IN_MAX', 3),
             patch.object(Message, '_search', autospec=True, side_effect=Message._search) as search_func,
         ):
             self.assertEqual(messages.search(domain, limit=100), accessible)
             self.assertGreaterEqual(search_func.call_count, 4)
+
+    def test_mail_message_read_access_read_group_with_limit(self):
+        ids = []
+        ids += self._add_messages(self.company_2, "Inccessible notes", count=5, subject="Subject 1").ids
+        ids += self._add_messages(self.env.company, "Accessible notes", count=5, subject="Subject 2").ids
+        messages = (self.env["mail.message"]
+            .with_user(self.user_employee)
+            .with_context(allowed_company_ids=[self.env.company.id])
+        ).browse(ids)
+        accessible = messages._filtered_access('read')
+        self.assertEqual(len(accessible), 5)
+
+        with patch.object(mail_message_module, 'MAX_SEARCH_LIMIT', 5):
+            with self.assertRaisesRegex(UserError, "Please apply additional filters"):
+                messages.formatted_read_group(
+                    [("id", "in", ids)],
+                    ["subject"],
+                    ["id:count"],
+                    limit=100,
+                )
 
     @users("employee")
     def test_unlink_failure_message_notify_author(self):

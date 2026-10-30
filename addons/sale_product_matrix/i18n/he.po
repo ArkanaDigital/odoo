@@ -11,10 +11,10 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0beta\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-24 17:42+0000\n"
-"PO-Revision-Date: 2026-06-21 05:17+0000\n"
+"POT-Creation-Date: 2026-08-28 17:43+0000\n"
+"PO-Revision-Date: 2026-08-31 14:56+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Hebrew <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Hebrew <https://translate.odoo.com/projects/odoo-s19-4/"
 "sale_product_matrix/he/>\n"
 "Language: he\n"
 "MIME-Version: 1.0\n"
@@ -22,7 +22,20 @@ msgstr ""
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=4; plural=(n == 1) ? 0 : ((n == 2) ? 1 : ((n > 10 && "
 "n % 10 == 0) ? 2 : 3));\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: sale_product_matrix
+#: model:ir.module.module,description:base.module_sale_product_matrix
+msgid ""
+"\n"
+"This module allows to fill Sales Order rapidly\n"
+"by choosing product variants quantity through a Grid Entry.\n"
+msgstr ""
+
+#. module: sale_product_matrix
+#: model:ir.module.module,summary:base.module_sale_product_matrix
+msgid "Add variants to Sales Order through a grid entry."
+msgstr ""
 
 #. module: sale_product_matrix
 #: model:ir.model.fields.selection,name:sale_product_matrix.selection__product_template__product_add_mode__configurator
@@ -84,6 +97,11 @@ msgid "Product"
 msgstr "מוצר"
 
 #. module: sale_product_matrix
+#: model:ir.module.module,shortdesc:base.module_sale_product_matrix
+msgid "Sale Matrix"
+msgstr ""
+
+#. module: sale_product_matrix
 #: model:ir.model,name:sale_product_matrix.model_sale_order
 msgid "Sales Order"
 msgstr "הזמנת לקוח"
@@ -114,15 +132,3 @@ msgstr ""
 msgid ""
 "You cannot change the quantity of a product present in multiple sale lines."
 msgstr "אינך יכול לשנות את כמות המוצר הקיימת במספר שורות מכירה."
-
-#~ msgid "Add product mode"
-#~ msgstr "הוסף מצב מוצר"
-
-#~ msgid "Order Grid Entry"
-#~ msgstr "רשומת רשת הזמנות"
-
-#~ msgid "Product Configurator"
-#~ msgstr "מגדיר מוצר"
-
-#~ msgid "Sales Variant Selection"
-#~ msgstr "בחירת וריאנט מכירות"

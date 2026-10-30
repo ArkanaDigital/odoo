@@ -53,10 +53,6 @@ export class AttendeeCalendarCommonPopover extends CalendarCommonPopover {
         );
     }
 
-    get isCurrentUserOrganizer() {
-        return this.props.record.rawRecord.partner_id[0] === user.partnerId;
-    }
-
     get isEventPrivate() {
         return this.props.record.rawRecord.privacy === "private";
     }
@@ -68,19 +64,11 @@ export class AttendeeCalendarCommonPopover extends CalendarCommonPopover {
         );
     }
 
-    get isEventDetailsVisible() {
-        return this.isEventPrivate ? this.isEventEditable : true;
-    }
-
-    get isEventArchivable() {
-        return false;
-    }
-
     /**
      * @override
      */
     get isEventDeletable() {
-        return super.isEventDeletable && this.isEventEditable && !this.isEventArchivable;
+        return super.isEventDeletable && this.isEventEditable;
     }
 
     /**
@@ -113,10 +101,5 @@ export class AttendeeCalendarCommonPopover extends CalendarCommonPopover {
         ]);
         await this.props.model.load();
         this.props.close();
-    }
-
-    async onClickArchive() {
-        this.props.close();
-        await this.props.model.archiveRecord(this.props.record);
     }
 }

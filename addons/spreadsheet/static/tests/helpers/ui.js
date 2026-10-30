@@ -1,25 +1,71 @@
-import { Model, Spreadsheet, stores } from "@odoo/o-spreadsheet";
+import { Model, Spreadsheet, hooks } from "@odoo/o-spreadsheet";
 import { loadBundle } from "@web/core/assets";
 
 import { getFixture } from "@odoo/hoot";
 import { animationFrame } from "@odoo/hoot-mock";
-import { Component, xml, onMounted, onWillUnmount } from "@odoo/owl";
-import { useSpreadsheetNotificationStore } from "@spreadsheet/hooks";
+import {
+    Component,
+    onMounted,
+    onWillUnmount,
+    signal,
+    t,
+    useProps,
+    xml,
+    providePlugins,
+} from "@odoo/owl";
+import { useSpreadsheetNotificationPlugin } from "@spreadsheet/hooks";
 import { mountWithCleanup } from "@web/../tests/web_test_helpers";
 import { MainComponentsContainer } from "@web/core/main_components_container";
 import { render } from "@web/owl2/utils";
+import { createModelWithDataSource } from "@spreadsheet/../tests/helpers/model";
 
-const { useStoreProvider, ModelStore } = stores;
+const { useSpreadsheetProviders } = hooks;
 
 class Parent extends Component {
     static template = xml`<Spreadsheet model="this.props.model"/>`;
     static components = { Spreadsheet, MainComponentsContainer };
-    static props = { model: Model };
+    props = useProps({
+        model: t.instanceOf(Model),
+        owlPlugins: t.array(),
+        owlPluginsConfig: t.object(),
+    });
     setup() {
-        useSpreadsheetNotificationStore();
+        useSpreadsheetNotificationPlugin();
+        providePlugins(this.props.owlPlugins, {
+            model: this.props.model,
+            ...this.props.owlPluginsConfig,
+        });
+    }
+}
 
-        const stores = useStoreProvider();
-        stores.inject(ModelStore, this.props.model);
+/**
+ * Parent of an isolated component: the `.o-spreadsheet` element with exactly the same plugins and
+ * stores as the real Spreadsheet (see `useSpreadsheetProviders`), plus the given extra plugins.
+ */
+class ComponentWithStores extends Component {
+    static template = xml`
+        <div class="o-spreadsheet" t-ref="this.ref">
+            <t t-component="this.props.component" t-props="this.props.props"/>
+        </div>`;
+    props = useProps({
+        component: t.component(),
+        props: t.object(),
+        model: t.instanceOf(Model),
+        owlPlugins: t.array(),
+        owlPluginsConfig: t.object(),
+    });
+    ref = signal.ref();
+    setup() {
+        useSpreadsheetNotificationPlugin();
+        const { stores } = useSpreadsheetProviders({
+            model: this.props.model,
+            spreadsheetRef: this.ref,
+            getPopoverContainerRect: () => this.ref().getBoundingClientRect(),
+        });
+        providePlugins(this.props.owlPlugins, {
+            model: this.props.model,
+            ...this.props.owlPluginsConfig,
+        });
         onMounted(() => {
             this.props.model.on("update", this, () => render(this, true));
             stores.on("store-updated", this, () => render(this, true));
@@ -31,25 +77,54 @@ class Parent extends Component {
     }
 }
 
+export async function mountComponentWithStores(component, model, props = {}, params = {}) {
+    await mountWithCleanup(ComponentWithStores, {
+        props: {
+            component,
+            props,
+            model,
+            owlPlugins: params.owlPlugins || [],
+            owlPluginsConfig: params.owlPluginsConfig || {},
+        },
+        noMainContainer: false,
+    });
+    await animationFrame();
+    return getFixture();
+}
+
 /**
  * Mount o-spreadsheet component with the given spreadsheet model
  * @param {Model} model
  * @returns {Promise<HTMLElement>}
  */
-export async function mountSpreadsheet(model) {
-    // const serviceRegistry = registry.category("services");
-    // serviceRegistry.add("dialog", makeFakeDialogService(), { force: true });
-    // serviceRegistry.add("notification", makeFakeNotificationService(), { force: true });
+export async function mountSpreadsheet(model, params = {}) {
     await loadBundle("web.chartjs_lib");
-    mountWithCleanup(Parent, {
+    await mountWithCleanup(Parent, {
         props: {
             model,
+            owlPlugins: params.owlPlugins || [],
+            owlPluginsConfig: params.owlPluginsConfig || {},
         },
-        env: model.config.custom.env,
         noMainContainer: false,
     });
     await animationFrame();
     return getFixture();
+}
+
+/**
+ * Create and mount a spreadsheet component.
+ *
+ * @param {Object} params
+ * @param {Object} [params.serverData]
+ * @returns {Promise<{ fixture: HTMLElement, model: Model }>}
+ */
+export async function createModelAndMountSpreadsheet(params = {}) {
+    const { model, env } = await createModelWithDataSource({
+        serverData: params.serverData,
+        createMockApp: false,
+    });
+    const fixture = await mountSpreadsheet(model);
+    return { fixture, env, model };
 }
 
 export async function doMenuAction(registry, path, env) {

@@ -1,8 +1,11 @@
 import { ActionList } from "@mail/core/common/action_list";
 import { useMessageActions } from "@mail/core/common/message_actions";
 import { Priority } from "@mail/core/common/priority";
+import { MessagingMenuItemContextMenu } from "@mail/core/public_web/messaging_menu/messaging_menu_item_context_menu";
 import { NotificationItem } from "@mail/core/public_web/notification_item";
-import { propSignal, useLongPress } from "@mail/utils/common/hooks";
+import { propSignal, useLongPress, useRightClickMenu } from "@mail/utils/common/hooks";
+import { computedShallowEqual } from "@mail/utils/common/signal";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 
 import { Component, computed, signal, types, useProps } from "@odoo/owl";
 
@@ -21,6 +24,7 @@ export class MessagingMenuItem extends Component {
     static components = {
         ActionList,
         Dropdown,
+        MessagingMenuItemContextMenu,
         NotificationItem,
         Priority,
     };
@@ -31,6 +35,7 @@ export class MessagingMenuItem extends Component {
 
     setup() {
         super.setup();
+        this.ancestors = useAncestors({ inMessagingMenu: true });
         // Sub-dropdowns (action menu, notification settings mute) closing should not
         // close the outer messaging menu dropdown via `closeAllParents()`. Must be here
         // rather than MessagingMenuInDropdown: the outer Dropdown overwrites
@@ -55,15 +60,21 @@ export class MessagingMenuItem extends Component {
             thread: () => this.message?.thread,
         });
         this.messageDropdownState = useDropdownState();
-        this.ui = useService("ui");
-        useSubEnv({ inMessagingMenu: true });
         if (isMobileOS()) {
             useLongPress(this.root, {
                 action: () => {
-                    if (this.message) {
-                        this.messageDropdownState.open();
+                    if (this.hasActions()) {
+                        this.actionsDropdownState.open();
                     }
                 },
+            });
+        } else {
+            this.rightClickMenu = useRightClickMenu(this.root, {
+                predicate: () => Boolean(this.hasActions()),
+                extraMenuProps: () => ({
+                    actionsList: this.actionsList,
+                    panelContainer: this.getPanelContainer.bind(this),
+                }),
             });
         }
     }
@@ -90,24 +101,33 @@ export class MessagingMenuItem extends Component {
     // computed for memoization/stable identity; the body stays a method so
     // patches can override it (an instance field would shadow a prototype
     // getter override)
-    actionsPartition = computed(() => this._computeActionsPartition());
+    actionsPartition = computedShallowEqual(() => this._computeActionsPartition(), {
+        nested: true,
+    });
+
+    /** @type {import("@mail/core/common/action_list").GetPanelContainer} */
+    getPanelContainer() {}
+
+    hasActions() {
+        return this.messageActions.actionsComputed().length;
+    }
 
     _computeActionsPartition() {
-        const { quick, other, group, actionPanels } = this.messageActions.partition;
+        const { quick, other, group, panelActions } = this.messageActions.partition;
         const isBookmarkTab = this.activeTab().eq(this.store.messagingMenu.bookmarkTab);
         const filter = (actions) =>
             actions.filter((a) =>
                 isBookmarkTab ? BOOKMARK_TAB_ACTIONS.has(a.id) : !EXCLUDED_ACTIONS.has(a.id)
             );
         return {
-            actionPanels,
+            panelActions,
             quick: filter(quick),
             other: filter(other),
             group: group.map(filter),
         };
     }
 
-    actionsList = computed(() => {
+    actionsList = computedShallowEqual(() => {
         const partition = this.actionsPartition();
         return [partition.quick, partition.other, ...partition.group];
     });
@@ -117,7 +137,9 @@ export class MessagingMenuItem extends Component {
     }
 
     get attClass() {
-        return {};
+        return {
+            "o-disable-safari-native-long-press": isMobileOS(),
+        };
     }
 
     get itemName() {

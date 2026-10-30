@@ -15,6 +15,7 @@ class CalendarEvent extends models.Model {
             id: 1,
             user_id: serverState.userId,
             partner_id: serverState.partnerId,
+            calendar_id: 1,
             name: "event 1",
             start: "2016-12-11 00:00:00",
             stop: "2016-12-11 01:00:00",
@@ -25,6 +26,7 @@ class CalendarEvent extends models.Model {
             id: 2,
             user_id: serverState.userId,
             partner_id: serverState.partnerId,
+            calendar_id: 1,
             name: "event 2",
             start: "2016-12-12 10:55:05",
             stop: "2016-12-12 14:55:05",
@@ -35,6 +37,7 @@ class CalendarEvent extends models.Model {
 
     user_id = fields.Many2one({ relation: "users" });
     partner_id = fields.Many2one({ relation: "partner" });
+    calendar_id = fields.Many2one({ relation: "calendar" });
     name = fields.Char();
     start = fields.Datetime();
     stop = fields.Datetime();
@@ -42,15 +45,42 @@ class CalendarEvent extends models.Model {
     partner_ids = fields.One2many({ relation: "partner" });
 }
 
-class CalendarFilter extends models.Model {
+class Calendar extends models.Model {
     _records = [
-        { id: 1, user_id: serverState.userId, partner_id: serverState.partnerId, partner_checked: true },
-        { id: 2, user_id: 2, partner_id: 2, partner_checked: true },
+        { id: 1, name: "User 1 Calendar", user_id: serverState.userId, is_primary: true },
+        { id: 2, name: "User 2 Calendar", user_id: 2, is_primary: true },
+    ];
+
+    name = fields.Char();
+    user_id = fields.Many2one({ relation: "users" });
+    is_primary = fields.Boolean();
+}
+
+class CalendarUser extends models.Model {
+    _records = [
+        { id: 1, user_id: serverState.userId, calendar_id: 1, is_filter_checked: true, is_filter_active: true, access_role: "owner", is_primary: true },
+        { id: 2, user_id: 2, calendar_id: 2, is_filter_checked: true, is_filter_active: true, access_role: "owner", is_primary: true },
     ];
 
     user_id = fields.Many2one({ relation: "users" });
+    calendar_id = fields.Many2one({ relation: "calendar" });
+    access_role = fields.Selection({
+        selection: [["owner", "owner"], ["writer", "write"], ["reader", "read"], ["freeBusyReader", "freeBusyReader"], ["none", "none"]]
+    });
+    is_filter_checked = fields.Boolean();
+    is_filter_active = fields.Boolean();
+    is_primary = fields.Boolean();
+}
+
+class CalendarFilter extends models.Model {
+    _records = [
+        { id: 1, active: true, user_id: serverState.userId, partner_id: serverState.partnerId },
+        { id: 2, active: true, user_id: 2, partner_id: 2 },
+    ];
+
+    active = fields.Boolean();
+    user_id = fields.Many2one({ relation: "users" });
     partner_id = fields.Many2one({ relation: "partner" });
-    partner_checked = fields.Boolean();
 }
 
 class HrEmployee extends models.Model {
@@ -98,6 +128,8 @@ class Users extends models.Model {
 
 defineModels([
     CalendarEvent,
+    Calendar,
+    CalendarUser,
     CalendarFilter,
     HrEmployee,
     HrWorkLocation,
@@ -121,6 +153,7 @@ onRpc("res.users", "get_calendar_model_data", () => ({
     sync_email: false,
     default_duration: 1,
 }))
+onRpc("hr.employee", "has_access", () => true);
 
 beforeEach(() => {
     mockDate("2020-12-10 15:00:00");
@@ -179,7 +212,8 @@ function mountHomeWorkingView() {
         resModel: "calendar.event",
         arch: `
             <calendar js_class="attendee_calendar" event_open_popup="1" date_start="start" date_stop="stop" all_day="allday">
-                <field name="partner_ids" options="{'block': True, 'icon': 'group'}" filters="1" write_model="calendar.filter" write_field="partner_id" filter_field="partner_checked" avatar_field="avatar_128"/>
+                <field name="partner_ids" options="{'block': True, 'icon': 'group'}" filters="1" write_model="calendar.filter" write_field="partner_id" filter_field="active" avatar_field="avatar_128"/>
+                <field name="calendar_id" filters="1" write_model="calendar.user" write_field="calendar_id" filter_field="is_filter_checked"/>
                 <field name="partner_id" string="Organizer" options="{'icon': 'person'}"/>
                 <field name="user_id"/>
                 <field name="start"/>
@@ -205,7 +239,7 @@ test(`basic rendering`, async () => {
     const saturdayDate = DateTime.fromISO("2020-12-12");
     const intervals = Interval.fromDateTimes(sundayDate.startOf("day"), saturdayDate.endOf("day")).splitBy({ day: 1 });
     const workLocations = intervals.map(({ start }) => {
-        return queryFirst(`.fc-col-header-cell[data-date="${start.toISODate()}"] .o_worklocation_btn`);
+        return queryFirst(`.o_calendar_header_cell[data-date="${start.toISODate()}"] .o_worklocation_btn`);
     });
     expect(queryAllTexts(workLocations)).toEqual(["Office", "", "", "Home", "Set Location", "Set Location", "Office"]);
 
@@ -223,7 +257,7 @@ test(`multicalendar`, async () => {
     const saturdayDate = DateTime.fromISO("2020-12-12");
     const intervals = Interval.fromDateTimes(sundayDate.startOf("day"), saturdayDate.endOf("day")).splitBy({ day: 1 });
 
-    const dataSetsByDates = intervals.map(({ start }) => queryAllProperties(`.fc-col-header-cell[data-date="${start.toISODate()}"] .o_worklocation_btn .o_homeworking_content`, "dataset"));
+    const dataSetsByDates = intervals.map(({ start }) => queryAllProperties(`.o_calendar_header_cell[data-date="${start.toISODate()}"] .o_worklocation_btn .o_homeworking_content`, "dataset"));
     const locations = dataSetsByDates.flatMap((dataSets) => dataSets.length ? dataSets.map((ds) => ds.location) : [false]);
     expect(locations).toEqual([
         "Office", // sunday
@@ -239,13 +273,13 @@ test(`multicalendar`, async () => {
         "Office", // saturday
         "Office", // saturday
     ]);
-    expect(queryAll(`.fc-col-header-cell[data-date="2020-12-10"] .o_worklocation_text i.add_wl`, { visible: false })).toHaveCount(1);
-    expect(queryAll(`.fc-col-header-cell[data-date="2020-12-12"] .o_worklocation_text i.add_wl`, { visible: false })).toHaveCount(0);
+    expect(queryAll(`.o_calendar_header_cell[data-date="2020-12-10"] .o_worklocation_text i.add_wl`, { visible: false })).toHaveCount(1);
+    expect(queryAll(`.o_calendar_header_cell[data-date="2020-12-12"] .o_worklocation_text i.add_wl`, { visible: false })).toHaveCount(0);
 
-    await contains(`.fc-col-header-cell[data-date="2020-12-10"] .o_homework_content`).click();
+    await contains(`.o_calendar_header_cell[data-date="2020-12-10"] .o_homework_content`).click();
     expect(`.o_popover div[name="employee_name"]`).toHaveText("Brian");
-    expect(`.o_popover .o_cw_popover_edit`).toHaveCount(0);
-    expect(`.o_popover .o_cw_popover_delete`).toHaveCount(0);
+    expect(`.o_popover .o_calendar_popover_edit`).toHaveCount(0);
+    expect(`.o_popover .o_calendar_popover_delete`).toHaveCount(0);
     await contains(`.o_card_popover_close`).click();
 });
 
@@ -268,9 +302,9 @@ test(`test exceptions are correctly rendered`, async () => {
     }));
 
     await mountHomeWorkingView();
-    expect(`.fc-col-header-cell[data-date="2020-12-11"] .o_worklocation_btn`).toHaveText("Home");
+    expect(`.o_calendar_header_cell[data-date="2020-12-11"] .o_worklocation_btn`).toHaveText("Home");
 
-    await contains(`.fc-col-header-cell[data-date="2020-12-10"] .o_worklocation_text`, { visible: false }).click();
+    await contains(`.o_calendar_header_cell[data-date="2020-12-10"] .o_worklocation_text`, { visible: false }).click();
     expect.verifySteps([["hr_calendar.set_location_wizard_action", "2020-12-10"]]);
 });
 
@@ -302,12 +336,12 @@ test(`test exceptions are correctly rendered in multicalendar`, async () => {
     }));
 
     await mountHomeWorkingView();
-    expect(`.fc-col-header-cell[data-date="2020-12-11"] .o_homework_content`).toHaveCount(1);
-    expect(`.fc-col-header-cell[data-date="2020-12-11"] .o_worklocation_btn`).toHaveText("Office");
-    expect(`.fc-col-header-cell[data-date="2020-12-10"] .o_homework_content`).toHaveCount(2);
-    expect(`.fc-col-header-cell[data-date="2020-12-10"] .o_worklocation_btn`).toHaveText("Home");
-    expect(queryAll(`.fc-col-header-cell[data-date="2020-12-11"] .add_wl`, { visible: false })).toHaveCount(1);
+    expect(`.o_calendar_header_cell[data-date="2020-12-11"] .o_homework_content`).toHaveCount(1);
+    expect(`.o_calendar_header_cell[data-date="2020-12-11"] .o_worklocation_btn`).toHaveText("Office");
+    expect(`.o_calendar_header_cell[data-date="2020-12-10"] .o_homework_content`).toHaveCount(2);
+    expect(`.o_calendar_header_cell[data-date="2020-12-10"] .o_worklocation_btn`).toHaveText("Home");
+    expect(queryAll(`.o_calendar_header_cell[data-date="2020-12-11"] .add_wl`, { visible: false })).toHaveCount(1);
 
-    await contains(`.fc-col-header-cell[data-date="2020-12-11"] .add_wl`, { visible: false }).click();
+    await contains(`.o_calendar_header_cell[data-date="2020-12-11"] .add_wl`, { visible: false }).click();
     expect.verifySteps([["hr_calendar.set_location_wizard_action", "2020-12-11"]]);
 });

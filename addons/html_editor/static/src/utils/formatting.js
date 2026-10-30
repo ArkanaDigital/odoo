@@ -55,6 +55,14 @@ export function removeStyle(node, styleName, item) {
  * @returns {string}
  */
 export function getCSSVariableValue(key, htmlStyle) {
+    if (!key) {
+        return "";
+    }
+    if (key.startsWith("var(--")) {
+        key = key.substring(6, key.length - 1);
+    } else if (key.startsWith("--")) {
+        key = key.substring(2);
+    }
     // Get trimmed value from the HTML element
     let value = htmlStyle.getPropertyValue(`--${key}`).trim();
     // If it is a color value, it needs to be normalized
@@ -132,6 +140,7 @@ export function getFontSizeDisplayValue(sel, document) {
                 [style*='font-size'],
                 ${FONT_SIZE_CLASSES.map((className) => `.${className}`)},
                 ${TEXT_STYLE_CLASSES.map((className) => `.${className}`)},
+                ${DEFAULT_FONT_SIZE_CLASSES.map((className) => `.${className}`)},
                 ${tagNameRelatedToFontSize}
             `)
     );
@@ -148,22 +157,25 @@ export function getFontSizeDisplayValue(sel, document) {
             // options.
             return parseFloat(getComputedStyle(closestStartContainerEl).fontSize);
         }
-        // It's a class font size or a hN tag. We don't return the computed
-        // font size because it can be different from the one displayed in
-        // the toolbar because it's responsive.
-        const fontSizeClass = FONT_SIZE_CLASSES.find((className) =>
-            closestFontSizedEl.classList.contains(className)
-        );
+        // It's a font size class (custom or default/neutral) or a heading tag.
+        // Retrieve the theme CSS variable to get the desktop size instead of
+        // the computed font size, which can be different due to responsiveness.
+        const activeClass = [
+            ...FONT_SIZE_CLASSES,
+            ...DEFAULT_FONT_SIZE_CLASSES,
+            ...TEXT_STYLE_CLASSES,
+        ].find((cls) => closestFontSizedEl.classList.contains(cls));
+
         let fsName;
-        if (fontSizeClass) {
-            fsName = fontSizeClass.substring(0, fontSizeClass.length - 3); // Without -fs
+        if (activeClass === "o_default_font_size" || activeClass === "base-fs") {
+            fsName = "font-size-base";
+        } else if (activeClass) {
+            // e.g. o_small-fs -> small-font-size
+            fsName = `${activeClass.replace(/^o_/, "").replace(/-fs$/, "")}-font-size`;
         } else {
-            fsName =
-                TEXT_STYLE_CLASSES.find((className) =>
-                    closestFontSizedEl.classList.contains(className)
-                ) || closestFontSizedEl.tagName.toLowerCase();
+            fsName = `${closestFontSizedEl.tagName.toLowerCase()}-font-size`;
         }
-        remValue = parseFloat(getCSSVariableValue(`${fsName}-font-size`, htmlStyle));
+        remValue = parseFloat(getCSSVariableValue(fsName, htmlStyle));
     }
     const pxValue = remValue && convertNumericToUnit(remValue, "rem", "px", htmlStyle);
     return pxValue || parseFloat(getComputedStyle(closestStartContainerEl).fontSize);
@@ -183,40 +195,4 @@ export function getFontSizeOrClass(node) {
         return { type: "class", value: fontSizeClass };
     }
     return null;
-}
-
-/**
- * Allows to iterate over all the CSS rules of all the stylesheets of the
- * document and to map them to an array.
- *
- * @param {function(CSSStyleRule): any} fn A function that takes a
- * CSSStyleRule and returns any value. If the function returns undefined, the
- * rule is ignored.
- * @returns {Array<any>} An array of elements returned by the function for
- * each CSS rule.
- */
-export function mapCSSRules(fn) {
-    const mapping = [];
-
-    for (const sheet of document.styleSheets) {
-        try {
-            if (!sheet.cssRules) {
-                continue;
-            }
-        } catch {
-            continue;
-        }
-        for (const rule of sheet.cssRules) {
-            if (!(rule instanceof CSSStyleRule)) {
-                continue;
-            }
-
-            const result = fn(rule);
-            if (result) {
-                mapping.push(result);
-            }
-        }
-    }
-
-    return mapping;
 }

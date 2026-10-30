@@ -35,7 +35,7 @@ const socialMediaInfo = new Map(
         twitter: {
             recorded: true,
             label: _t("X"),
-            iconDataIcon: "oi_twitter",
+            iconDataIcon: "oi_x",
             extraHostnameRegex: /(^|\.)x\.com$/,
         },
         linkedin: {
@@ -81,7 +81,7 @@ const socialMediaInfo = new Map(
             iconDataIcon: "oi_google",
         },
         whatsapp: {
-            label: _t("Whatsapp"),
+            label: _t("WhatsApp"),
             iconDataIcon: "oi_whatsapp",
             extraHostnameRegex: /(^|\.)wa\.me$/,
         },
@@ -107,7 +107,7 @@ const socialMediaInfo = new Map(
             iconDataIcon: "oi_threads",
         },
         paypal: {
-            label: _t("Paypal"),
+            label: _t("PayPal"),
             iconDataIcon: "oi_paypal",
         },
     })
@@ -129,7 +129,6 @@ export class SocialMediaOptionPlugin extends Plugin {
     /** @type {import("plugins").WebsiteResources} */
     resources = {
         // Added to commits by the `SocialMediaLinks` `BaseOptionComponent`:
-        history_commit_data_properties: ["areSocialMediaLinksPrefilled"],
         so_content_addition_selectors: [".s_share", ".s_social_media"],
         builder_actions: {
             ResetSocialMediaIconSizeAction,
@@ -152,11 +151,6 @@ export class SocialMediaOptionPlugin extends Plugin {
             { selector: ".s_share > a > *", target: ".s_share" },
         ],
         replace_media_dialog_params_processors: this.applyMediaDialogParams.bind(this),
-        is_history_commit_reversible_predicates: (commit) => {
-            if (commit.data.areSocialMediaLinksPrefilled) {
-                return false;
-            }
-        },
         immutable_link_selectors: [".s_share a"],
     };
 
@@ -219,13 +213,9 @@ export class SocialMediaOptionPlugin extends Plugin {
     }
 
     normalize(root) {
-        // Add https:// if needed, to the links from dom
         for (const element of selectElements(root, ".s_social_media > a[href]")) {
-            const value = element.attributes.href.value;
-            const newHref = this.addHttpsIfNeeded(value);
-            if (value !== newHref && value !== "#") {
-                element.href = newHref;
-            }
+            const value = element.getAttribute("href");
+            element.setAttribute("title", value.replace(/^(https:\/\/)?(www.)?/, ""));
         }
 
         // ensure one '\n' between each element + before and after

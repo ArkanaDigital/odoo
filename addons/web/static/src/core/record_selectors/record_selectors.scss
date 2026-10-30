@@ -6,11 +6,14 @@
     }
 
     .o_dropdown_button {
-        @include o-position-absolute($o-input-padding-y, $o-input-padding-x);
+        position: absolute;
+        top: var(--o-input-padding-y);
+        left: auto;
+        bottom: auto;
+        right: $o-input-padding-x;
         pointer-events: none;
 
         &::after {
-            @include o-caret-down;
             opacity: 0;
         }
     }
@@ -29,7 +32,6 @@
         position: relative;
 
         &::after {
-            @include o-caret-down;
             align-self: center;
             opacity: 0;
             pointer-events: none;

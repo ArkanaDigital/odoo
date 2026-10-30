@@ -4,8 +4,9 @@ from datetime import date
 from markupsafe import Markup
 import json
 
-from odoo import _, api, fields, models, SUPERUSER_ID
+from odoo import _, api, fields, models
 from odoo.exceptions import UserError
+from odoo.fields import Domain
 from odoo.addons.web.controllers.utils import clean_action
 
 
@@ -34,8 +35,11 @@ class StockPicking(models.Model):
 
     @api.depends('partner_id', 'carrier_id.max_weight', 'carrier_id.max_volume', 'carrier_id.must_have_tag_ids', 'carrier_id.excluded_tag_ids', 'move_ids.product_id.product_tag_ids', 'move_ids.product_id.weight', 'move_ids.product_id.volume')
     def _compute_allowed_carrier_ids(self):
+        all_carriers = self.env['delivery.carrier'].search(
+            self.env['delivery.carrier']._check_company_domain(self.company_id)
+        )
         for picking in self:
-            carriers = self.env['delivery.carrier'].search(self.env['delivery.carrier']._check_company_domain(picking.company_id))
+            carriers = all_carriers.filtered(lambda c: not c.company_id or c.company_id == picking.company_id)
             picking.allowed_carrier_ids = carriers.available_carriers(picking.partner_id, picking) if picking.partner_id else carriers
 
     @api.depends('carrier_id', 'carrier_tracking_ref')
@@ -70,10 +74,36 @@ class StockPicking(models.Model):
         for picking in self:
             picking.weight = sum(move.weight for move in picking.move_ids if move.state != 'cancel')
 
+    def _pre_action_done_hook(self):
+        """Override of ``stock`` to warn about a payment to collect before validating.
+
+        The wizard is only a reminder; the payment itself is recorded in PoS by settling the order.
+        """
+        res = super()._pre_action_done_hook()
+        if (
+            res is True
+            and not self.env.context.get('skip_pay_on_delivery_notice')
+            and self._filtered_pending_payment_on_delivery()
+        ):
+            return self.env['pay.on.delivery']._get_records_action(
+                name=self.env._("Collect Payment"), target='new'
+            )
+        return res
+
+    def _filtered_pending_payment_on_delivery(self):
+        return self.filtered(
+            lambda picking: (
+                picking.location_dest_id.usage == 'customer'
+                and picking.sale_id.sudo().transaction_ids._filtered_pending_pay_on_delivery()
+                and picking.sale_id.amount_unpaid
+            )
+        )
+
     def button_validate(self):
         res = super().button_validate()
         if res is not True:
             return res
+        # FIXME: this won't run if the next action is to print the picking report
         for picking in self:
             # `_get_new_picking_values` is used to propagate the carrier before a picking is created (i.e. carrier is set on an SO).
             # Whereas this case handles the propagation of carrier after the picking validation as the carrier maybe set
@@ -212,7 +242,7 @@ class StockPicking(models.Model):
 
     def cancel_shipment(self):
         for picking in self:
-            picking.carrier_id.cancel_shipment(self)
+            picking.carrier_id.cancel_shipment(picking)
             msg = "Shipment %s cancelled" % picking.carrier_tracking_ref
             picking.message_post(body=msg)
             picking.carrier_tracking_ref = False
@@ -244,6 +274,22 @@ class StockPicking(models.Model):
             'carrier_price': 0.0,
         })
 
+    def _is_auto_batchable(self, picking=None):
+        """ Verifies if a picking can be put in a batch with another picking without violating automatic batch constrains.
+        """
+        res = super()._is_auto_batchable(picking)
+        if not picking:
+            picking = self.env['stock.picking']
+        if self.picking_type_id.batch_max_weight:
+            res = res and (self.weight + picking.weight <= self.picking_type_id.batch_max_weight)
+        return res
+
+    def _get_auto_batch_description(self):
+        description = super()._get_auto_batch_description()
+        if self.picking_type_id.batch_group_by_carrier and self.carrier_id:
+            description = f"{description}, {self.carrier_id.name}" if description else self.carrier_id.name
+        return description
+
     def _get_carrier_name(self):
         """Return the carrier name used by the shipping provider."""
         self.ensure_one()
@@ -268,18 +314,14 @@ class StockPicking(models.Model):
             report_actions.append(action)
         return report_actions + super()._get_autoprint_report_actions()
 
+    def _get_possible_pickings_domain(self):
+        domain = super()._get_possible_pickings_domain()
+        if self.picking_type_id.batch_group_by_carrier:
+            domain &= Domain('carrier_id', '=', self.carrier_id.id if self.carrier_id else False)
+        return domain
 
-class StockPickingType(models.Model):
-    _inherit = "stock.picking.type"
-
-    auto_print_carrier_labels = fields.Boolean(
-        "Auto Print Carrier Labels",
-        help="Automatically print the carrier labels of the picking when they are created.",
-    )
-    auto_print_export_documents = fields.Boolean(
-        "Auto Print Export Documents",
-        help=(
-            "Automatically print the export documents of the picking when they are created. "
-            "Availability of export documents depends on the carrier and the destination."
-        ),
-    )
+    def _get_possible_batches_domain(self):
+        domain = super()._get_possible_batches_domain()
+        if self.picking_type_id.batch_group_by_carrier:
+            domain &= Domain('picking_ids.carrier_id', '=', self.carrier_id.id if self.carrier_id else False)
+        return domain

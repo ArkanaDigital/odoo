@@ -7,18 +7,18 @@ from odoo.exceptions import AccessError, MissingError, ValidationError
 from odoo.fields import Command
 from odoo.http import request
 
+from odoo.addons.payment import utils as payment_utils
 from odoo.addons.payment.controllers import portal as payment_portal
 from odoo.addons.portal.controllers.portal import pager as portal_pager
 
 
 class CustomerPortal(payment_portal.PaymentPortal):
-
     def _prepare_portal_counter_values(self, counter):
         partner = self.env.user.partner_id
-        if counter == 'quotation_count':
-            return 'sale.order', self._prepare_quotations_domain(partner), 'read'
-        if counter == 'order_count':
-            return 'sale.order', self._prepare_orders_domain(partner), 'read'
+        if counter == "quotation_count":
+            return "sale.order", self._prepare_quotations_domain(partner), "read"
+        if counter == "order_count":
+            return "sale.order", self._prepare_orders_domain(partner), "read"
         return super()._prepare_portal_counter_values(counter)
 
     def _prepare_quotations_domain(self, partner):
@@ -138,6 +138,7 @@ class CustomerPortal(payment_portal.PaymentPortal):
         message=False,
         download=False,
         payment_amount=None,
+        payment_token=None,
         amount_selection=None,
         **kw,
     ):
@@ -150,7 +151,12 @@ class CustomerPortal(payment_portal.PaymentPortal):
 
         payment_amount = self._cast_as_float(payment_amount)
         prepayment_amount = order_sudo._get_prepayment_required_amount()
-        if payment_amount and payment_amount < prepayment_amount and order_sudo.state != "sale":
+        if (
+            payment_amount
+            and payment_amount < prepayment_amount
+            and order_sudo.state != "sale"
+            and not payment_utils.check_access_token(payment_token, order_sudo.id, payment_amount)
+        ):
             raise MissingError(self.env._("The amount is lower than the prepayment amount."))
 
         advantage_tax_excl, advantage_tax_incl = order_sudo._get_advantages()
@@ -196,20 +202,32 @@ class CustomerPortal(payment_portal.PaymentPortal):
                 )
 
         backend_url = f"/odoo/action-{order_sudo._get_portal_return_action().id}/{order_sudo.id}"
+        prepayment_available = order_sudo.prepayment_percent and order_sudo.prepayment_percent < 1.0
         values = {
-            "sale_order": order_sudo,
+            "sale_order": order_sudo.with_context(lang=order_sudo._get_lang()),
             "product_documents": order_sudo._get_product_documents(),
             "message": message,
             "report_type": "html",
             "backend_url": backend_url,
             "res_company": order_sudo.company_id,  # Used to display correct company logo
             "payment_amount": payment_amount,
+            "prepayment_available": prepayment_available,
             "advantage_tax_excl": advantage_tax_excl,
             "advantage_tax_incl": advantage_tax_incl,
         }
 
         # Payment values
         if order_sudo._has_to_be_paid() or (payment_amount and not order_sudo.is_expired):
+            if payment_amount and (
+                order_sudo.currency_id.compare_amounts(prepayment_amount, payment_amount)
+                or order_sudo.currency_id.compare_amounts(order_sudo.amount_total, payment_amount)
+            ):
+                # If requested amount is different from total/down payment %, force the payment of
+                # the requested amount, without displaying the choice of down payment/full amount.
+                prepayment_available = False
+                values["from_payment_link"] = True
+                values["prepayment_available"] = False
+
             values.update(
                 self._get_payment_values(
                     order_sudo,
@@ -217,6 +235,7 @@ class CustomerPortal(payment_portal.PaymentPortal):
                         order_sudo, amount_selection, payment_amount
                     ),
                     payment_amount=payment_amount,
+                    prepayment_available=prepayment_available,
                 )
             )
         else:
@@ -254,12 +273,20 @@ class CustomerPortal(payment_portal.PaymentPortal):
             )
         return is_down_payment
 
-    def _get_payment_values(self, order_sudo, is_down_payment=False, payment_amount=None, **kwargs):
+    def _get_payment_values(
+        self,
+        order_sudo,
+        is_down_payment=False,
+        payment_amount=None,
+        prepayment_available=False,
+        **kwargs,
+    ):
         """Return the payment-specific QWeb context values.
 
         :param sale.order order_sudo: The sales order being paid.
         :param bool is_down_payment: Whether the current payment is a down payment.
         :param float payment_amount: The amount suggested in the payment link.
+        :param bool prepayment_available: Whether pre-payment is allowed
         :param dict kwargs: Forwarded to underlying methods
         :return: The payment-specific values.
         :rtype: dict
@@ -274,10 +301,12 @@ class CustomerPortal(payment_portal.PaymentPortal):
                 amount = payment_amount
             else:
                 amount = order_sudo._get_prepayment_required_amount()
+        elif payment_amount:
+            amount = payment_amount
         elif order_sudo.state == "sale":
-            amount = payment_amount or order_sudo.amount_total
-        else:
             amount = order_sudo.amount_total
+        else:
+            amount = currency.round(order_sudo.amount_total - order_sudo.amount_paid)
 
         # Prepare the portal page values
         company_mismatch = not payment_portal.PaymentPortal._can_partner_pay_in_company(
@@ -298,6 +327,7 @@ class CustomerPortal(payment_portal.PaymentPortal):
             sale_order_id=order_sudo.id,
             **kwargs,
         )
+        payment_form_values["show_amount_input"] = not payment_amount and not prepayment_available
 
         payment_context = {
             "amount": amount,
@@ -362,7 +392,7 @@ class CustomerPortal(payment_portal.PaymentPortal):
                 else self.env.user.partner_id.id
             ),
             body=self.env._("Order signed by %s", name),
-            message_type="comment",
+            message_type="auto_comment",
             subtype_xmlid="mail.mt_comment",
         )
 
@@ -418,7 +448,7 @@ class CustomerPortal(payment_portal.PaymentPortal):
         "/my/orders/<int:order_id>/document/<int:document_id>",
         type="http",
         auth="public",
-        readonly=True,
+        replica=True,
     )
     def portal_quote_document(self, order_id, document_id, access_token):
         try:

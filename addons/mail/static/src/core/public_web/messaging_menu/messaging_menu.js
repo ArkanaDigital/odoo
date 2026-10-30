@@ -3,20 +3,68 @@ import { MessageInDialog } from "@mail/core/public_web/messaging_menu/message_in
 import { MessagingMenuEmpty } from "@mail/core/public_web/messaging_menu/messaging_menu_empty";
 import { MessagingMenuItem } from "@mail/core/public_web/messaging_menu/messaging_menu_item";
 import { NotificationItem } from "@mail/core/public_web/notification_item";
-import { useOnBottomScrolled, useSearch } from "@mail/utils/common/hooks";
+import { htmlToTextContentInline } from "@mail/utils/common/format";
+import { onClickIntent, useOnBottomScrolled, usePeek, useSearch } from "@mail/utils/common/hooks";
+import { computedShallowEqual, incrementFn } from "@mail/utils/common/signal";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 
-import { Component, computed, signal, types, useEffect, useProps } from "@odoo/owl";
+import { Component, computed, signal, types, useEffect, usePlugin, useProps } from "@odoo/owl";
 
 import { hasTouch, isDisplayStandalone, isIOS } from "@web/core/browser/feature_detection";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { _t } from "@web/core/l10n/translation";
 import { normalize } from "@web/core/l10n/utils";
-import { useService } from "@web/core/utils/hooks";
+import { usePopover } from "@web/core/popover/popover_hook";
+import { UIPlugin } from "@web/core/ui/ui_plugin";
+import { useAutofocus, useService } from "@web/core/utils/hooks";
+
+/** Never a submenu of an ancestor Dropdown it's embedded in, even visually/positionally. */
+class IsolatedDropdown extends Dropdown {
+    get hasParent() {
+        return false;
+    }
+}
+
+class GuestNamePopover extends Component {
+    static template = "mail.GuestNamePopover";
+
+    inputRef = signal.ref();
+
+    setup() {
+        super.setup();
+        this.store = useService("mail.store");
+        this.props = useProps({ close: types.function().optional() });
+        useAutofocus({ ref: this.inputRef });
+    }
+
+    /** @param {KeyboardEvent} ev */
+    onKeydown(ev) {
+        switch (ev.key) {
+            case "Enter":
+                // Commits the name through `change`.
+                ev.target.blur();
+                this.props.close?.();
+                break;
+            case "Escape":
+                ev.target.value = this.store.self_guest.name;
+                this.props.close?.();
+                break;
+        }
+    }
+
+    /** @param {string} name */
+    async rename(name) {
+        const newName = name.trim();
+        if (newName && this.store.self_guest.name !== newName) {
+            await this.store.self_guest.updateGuestName(newName);
+        }
+    }
+}
 
 export class MessagingMenu extends Component {
     static components = {
         DiscussSearch,
-        Dropdown,
+        IsolatedDropdown,
         MessagingMenuItem,
         MessagingMenuEmpty,
         NotificationItem,
@@ -24,30 +72,51 @@ export class MessagingMenu extends Component {
     static template = "mail.MessagingMenu";
 
     isIosPwa = isIOS() && isDisplayStandalone();
-    filteredMessages = computed(() => {
-        const messages = this.activeTab().sortedMessages;
-        if (!this.state().selectedFilter?.includesMessage) {
-            return messages;
+    isCollapsible = computed(() => this.ancestors.inDiscussApp && !this.ui.isSmall());
+    /** Whether the list is hidden in the discuss sidebar, so that it shows over the content. */
+    canPeek = computed(() => this.isCollapsible() && this.store.discuss.isSidebarCollapsed);
+    /** @type {import("@odoo/owl").Signal<import("models").MessagingMenuUIState|undefined>} */
+    peekedTabState = signal(undefined);
+    /** The tab shown as active: the peeked one only has the look of a hovered tab. */
+    selectedTab = computed(() => this.selectedState().activeTab);
+    containerRef = signal.ref();
+    filteredMessages = computedShallowEqual(() => {
+        const filters = [...this.state().activePluginFilters];
+        if (this.state().selectedFilter) {
+            filters.push(this.state().selectedFilter);
         }
-        return messages.filter((m) => this.state().selectedFilter?.includesMessage(m));
+        const messages = this.activeTab().sortedMessages;
+        return messages.filter((m) =>
+            filters.every((f) => !f.includesMessage || f.includesMessage(m))
+        );
     });
     messages = computed(() => {
-        if (this.searchTerm()) {
+        if (this.state().searchTerm) {
             return this.messageSearch.results;
         }
         return this.filteredMessages();
     });
-    searchTerm = signal("");
     tabContentRef = signal.ref();
+    navRef = signal.ref();
 
     setup() {
         super.setup();
+        this.ancestors = useAncestors();
         this.dialog = useService("dialog");
         this.notification = useService("mail.notification.permission");
+        this.store = useService("mail.store");
+        this.selectedState = useProps.static(
+            "state",
+            types.signal(types.instanceOf(this.store.MessagingMenuUIState))
+        );
+        /** The state of the shown list: the one of the peeked tab, if any. */
+        this.state = computed(() => this.peekedTabState() ?? this.selectedState());
+        this.activeTab = computed(() => this.state().activeTab);
         this.messageSearch = useSearch({
             fetch: (term) =>
                 this.activeTab().loadMore({
                     filter: this.state().selectedFilter,
+                    pluginFilters: this.state().activePluginFilters,
                     searchTerm: term,
                 }),
             filter: (term) =>
@@ -56,33 +125,59 @@ export class MessagingMenu extends Component {
                     return (
                         normalize(m.thread?.displayName).includes(normalizedTerms) ||
                         normalize(m.authorName).includes(normalizedTerms) ||
-                        normalize(m.inlineBody).includes(normalizedTerms)
+                        normalize(htmlToTextContentInline(m.bodyPreview || "")).includes(
+                            normalizedTerms
+                        ) ||
+                        normalize(m.bodyTextContentInline).includes(normalizedTerms)
                     );
                 }),
             deps: () => [this.filteredMessages()],
         });
-        this.store = useService("mail.store");
-        this.state = useProps.static(
-            "state",
-            types.signal(types.instanceOf(this.store.MessagingMenuUIState))
-        );
-        this.activeTab = computed(() => this.state().activeTab);
         this.close = useProps.static("close", types.function().optional());
+        this.onToggleSidebar = useProps.static("onToggleSidebar", types.function().optional());
         this.searchInputAutofocus = useProps.static(
             "searchInputAutofocus",
-            types.signal(types.number()).optional()
+            types.signal(types.number()).optional(() => signal(0))
         );
-        this.ui = useService("ui");
+        this.focusSearchInput = incrementFn(this.searchInputAutofocus);
+        this.ui = usePlugin(UIPlugin);
         // Bound once so `onClickMessage` is a stable (useProps.static) handler.
         this.onClickMessage = this.onClickMessage.bind(this);
         useOnBottomScrolled(this.tabContentRef, () =>
-            this.activeTab().loadMore({ filter: this.state().selectedFilter })
+            this.activeTab().loadMore({
+                filter: this.state().selectedFilter,
+                pluginFilters: this.state().activePluginFilters,
+            })
         );
         // On search term change: update the search state.
         useEffect(() => {
-            this.messageSearch.searchTerm = this.searchTerm();
+            this.messageSearch.searchTerm = this.state().searchTerm;
         });
         this.hasTouch = hasTouch;
+        // The whole sidebar of the discuss app peeks, with the handle that resizes the list.
+        const peekRef = () =>
+            this.containerRef()?.closest(".o-mail-DiscussApp-sidebar") ?? this.containerRef();
+        this.peek = usePeek(peekRef, {
+            enabled: () => this.canPeek(),
+            // The toggle expands the list instead of showing it over the content.
+            ignoreSelector: ".o-mail-MessagingMenu-toggleSidebar",
+            keep: () => Boolean(this.state().searchTerm),
+            onClose: () => {
+                this.clearPeekedTab();
+                this.selectedState().searchTerm = "";
+            },
+        });
+        this.guestNamePopover = usePopover(GuestNamePopover, {
+            arrow: false,
+            position: "right-end",
+        });
+        onClickIntent(this.navRef, (ev) => {
+            const tabId = ev.target.closest?.(".o-mail-MessagingMenu-tab")?.dataset.id;
+            const tab = this.visibleTabs.find((t) => String(t.id) === tabId);
+            if (tab?.getLoadStatus(tab.defaultFilter) === "new") {
+                tab.loadMore({ filter: tab.defaultFilter });
+            }
+        });
     }
 
     get isEmpty() {
@@ -99,7 +194,7 @@ export class MessagingMenu extends Component {
     }
 
     get noSearchResultText() {
-        return this.searchTerm() ? _t('No results for "%s".', this.searchTerm()) : "";
+        return this.state().searchTerm ? _t('No results for "%s".', this.state().searchTerm) : "";
     }
 
     get noFilterResultText() {
@@ -112,7 +207,11 @@ export class MessagingMenu extends Component {
      */
     get showNotificationHubExtras() {
         const menu = this.store.messagingMenu;
-        return !this.searchTerm() && this.state().activeTab.eq(menu.odooBotNotificationsTab);
+        return (
+            !this.state().searchTerm &&
+            !this.state().selectedFilter &&
+            this.state().activeTab.eq(menu.odooBotNotificationsTab)
+        );
     }
 
     get showPushPermissionRequest() {
@@ -125,6 +224,102 @@ export class MessagingMenu extends Component {
             displayName: _t("Turn on notifications"),
             partner: this.store.odoobot,
         };
+    }
+
+    toggleSidebarTitle() {
+        return this.store.discuss.isSidebarCollapsed
+            ? _t("Expand sidebar")
+            : _t("Collapse sidebar");
+    }
+
+    /**
+     * Shows the list of the tab over the content, without selecting it: that would close the
+     * conversation.
+     *
+     * @param {import("models").MessagingMenuTab} tab
+     */
+    peekTab(tab) {
+        if (!this.canPeek()) {
+            return;
+        }
+        if (tab.eq(this.selectedTab())) {
+            this.clearPeekedTab();
+        } else if (this.peekedTabState()) {
+            this.peekedTabState().activeTab = tab;
+        } else {
+            this.peekedTabState.set(
+                this.store.MessagingMenuUIState.insert({
+                    id: `${this.selectedState().id}.peek`,
+                    activeTab: tab,
+                })
+            );
+        }
+    }
+
+    clearPeekedTab() {
+        const peekedTabState = this.peekedTabState();
+        this.peekedTabState.set(undefined);
+        peekedTabState?.delete();
+    }
+
+    onClickToggleSidebar() {
+        this.peek.close();
+        this.onToggleSidebar();
+    }
+
+    /** @param {MouseEvent} ev */
+    onClickSelf(ev) {
+        if (this.guestNamePopover.isOpen) {
+            this.guestNamePopover.close();
+        } else {
+            this.guestNamePopover.open(ev.currentTarget, {});
+        }
+    }
+
+    /**
+     * @param {PointerEvent} ev
+     * @param {import("models").MessagingMenuTab} tab
+     */
+    onClickTab(ev, tab) {
+        if (this.canPeek() && (ev.pointerType === "touch" || ev.pointerType === "pen")) {
+            this.peekTab(tab);
+            this.peek.open();
+            return;
+        }
+        this.clearPeekedTab();
+        this.selectedState().selectTab(tab);
+        if (this.canPeek()) {
+            this.peek.open();
+        }
+    }
+
+    /** A conversation of the list is opened in the content. */
+    onOpenConversation() {
+        if (!this.peek.isOpen()) {
+            return;
+        }
+        this.selectedState().activeTab = this.activeTab();
+        this.peek.closeOnceLeft();
+    }
+
+    /**
+     * @param {FocusEvent} ev
+     * @param {import("models").MessagingMenuTab} tab
+     */
+    onFocusTab(ev, tab) {
+        if (ev.target.matches(":focus-visible")) {
+            this.peekTab(tab);
+        }
+    }
+
+    /**
+     * @param {PointerEvent} ev
+     * @param {import("models").MessagingMenuTab} tab
+     */
+    onPointerenterTab(ev, tab) {
+        if (ev.pointerType === "mouse") {
+            this.peekTab(tab);
+        }
     }
 
     /** @param {import("@mail/core/public_web/messaging_menu/messaging_menu_tab_model").MessagingMenuTabAction} action */
@@ -144,6 +339,9 @@ export class MessagingMenu extends Component {
         if (!message.thread) {
             this.dialog.add(MessageInDialog, { message });
             return;
+        }
+        if (!isMiddleClick) {
+            this.onOpenConversation();
         }
         message.thread.highlightMessage = message;
         message.thread

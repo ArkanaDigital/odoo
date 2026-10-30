@@ -47,6 +47,7 @@
         </t>
     </t>
     <t t-call="web.external_layout"
+        company="doc.company_id.sudo()"
         address="address"
         layout_document_title="layout_document_title"
         information_block="information_block"
@@ -114,14 +115,12 @@
                             name="th_line_no"
                             class="text-start"
                             style="width: 1%; white-space: nowrap;"
-                        />
-                        <th name="th_description" class="text-start">
+                        >#</th>
+                        <th name="th_description" class="text-start" aria-label="Description">
                             <t t-set="colspan_count" t-value="colspan_count + 1"/>
-                            Description
                         </th>
-                        <th name="th_quantity" class="text-end text-nowrap">
+                        <th name="th_quantity" class="text-end text-nowrap" aria-label="Quantity">
                             <t t-set="colspan_count" t-value="colspan_count + 1"/>
-                            Quantity
                         </th>
                         <th name="th_priceunit" class="text-end text-nowrap">
                             <t t-set="colspan_count" t-value="colspan_count + 1"/>
@@ -221,7 +220,7 @@
                                     class="border-end-0"
                                     t-att-style="padding_style"
                                 >
-                                    <span t-field="line.name">A section title</span>
+                                    <span t-field="line.label">A section title</span>
                                     <span
                                         t-if="show_section_qty_uom"
                                         class="text-muted fw-normal ms-1"
@@ -254,7 +253,9 @@
                                     colspan="99"
                                     t-att-style="padding_style"
                                 >
-                                    <span t-field="line.name">A note, whose content usually applies to the section or product above.</span>
+                                    <span t-field="line.label">
+                                        A note, whose content usually applies to the section or product above.
+                                    </span>
                                 </td>
                             </tr>
                             <tr t-elif="is_combo" name="tr_combo" class="o_line_combo fw-bold">
@@ -270,7 +271,7 @@
                                     name="td_combo_name"
                                     t-att-style="padding_style"
                                 >
-                                    <span t-field="line.name">Combo Product</span>
+                                    <span t-field="line.label">Combo Product</span>
                                 </td>
                                 <td name="td_combo_quantity" class="text-end">
                                     <span t-field="line.product_uom_qty"/>
@@ -314,7 +315,7 @@
                                             class="o_sale_report_product_image flex-shrink-0 me-2 rounded object-fit-cover align-top"
                                         />
                                         <div class="o_product_name_cell flex-grow-1 text-break align-top w-100">
-                                            <span class="d-inline-block w-100 lh-sm" t-field="line.name">Bacon Burger</span>
+                                            <span class="d-inline-block w-100 lh-sm" t-field="line.label">Bacon Burger</span>
                                         </div>
                                     </div>
                                 </td>
@@ -383,7 +384,7 @@
                                     <t t-set="line_counter" t-value="line_counter + 1"/>
                                 </td>
                                 <td name="td_section_group_name" t-att-style="padding_style">
-                                    <span t-field="line.name">
+                                    <span t-field="line.label">
                                         Section Summary
                                     </span>
                                 </td>
@@ -395,7 +396,7 @@
                                     <span
                                         t-if="show_section_total"
                                         name="price_subtotal_section_grouped"
-                                        t-out="section_line['price_subtotal']"
+                                        t-out="section_line['price_subtotal']/line.section_qty"
                                         t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"
                                     >
                                         25.00

@@ -18,13 +18,13 @@ registerWebsitePreviewTour(
         {
             content: "Drag a Card into the Title section",
             trigger:
-                ".o-snippets-menu .o_block_tab:not(.o_we_ongoing_insertion) .o_snippet[name='Card'].o_draggable .o_snippet_thumbnail",
+                ".o_hb_snippets_menu .o_block_tab:not(.o_we_ongoing_insertion) .o_snippet[name='Card'].o_draggable .o_snippet_thumbnail",
             run: "drag_and_drop :iframe .s_title .oe_drop_zone:last",
         },
         {
             content: "Add a Button inside the Card",
             trigger:
-                ".o-snippets-menu .o_block_tab:not(.o_we_ongoing_insertion) .o_snippet[name='Button'].o_draggable .o_snippet_thumbnail",
+                ".o_hb_snippets_menu .o_block_tab:not(.o_we_ongoing_insertion) .o_snippet[name='Button'].o_draggable .o_snippet_thumbnail",
             run: "drag_and_drop :iframe .s_title .s_card .oe_drop_zone:last",
         },
         {
@@ -63,16 +63,36 @@ registerWebsitePreviewTour(
         },
         ...changeOptionInPopover("Image", "Animation", "On Hover"),
         clickOnElement("card container", ":iframe .s_title .s_card"),
-        changeOption("Card", "[data-action-id='setCardClickable'] input"),
+        changeOption("Card", "[data-action-id='setElementClickable'] input"),
         {
             content: "Enter the URL for the card link",
-            trigger: "div[data-action-id='setCardAnchorUrl'] input",
+            trigger: "div[data-action-id='setElementAnchorUrl'] input",
             run: "edit #",
         },
         {
             content: "Select matching URL from autocomplete",
             trigger: "ul.ui-autocomplete li a:contains('#top')",
             run: "click",
+        },
+        changeOption("Card", "button[data-action-id='toggleBgImage']"),
+        {
+            content: "Click on the media dialog's 'Add URL' button",
+            trigger: ".o_upload_media_url_button",
+            run: "click",
+        },
+        {
+            content: "Set the URL of the card background image",
+            trigger: ".o_we_url_input",
+            run: "edit website/static/src/img/backgrounds/city.jpg",
+        },
+        {
+            content: "Click on the media dialog's 'Add URL' button",
+            trigger: ".o_upload_media_url_button",
+            run: "click",
+        },
+        {
+            content: "Check that the background image is set on the card",
+            trigger: ":iframe .s_title .s_card.oe_img_bg",
         },
         ...clickOnSave(),
         {

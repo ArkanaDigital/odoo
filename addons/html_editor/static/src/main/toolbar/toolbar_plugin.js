@@ -22,11 +22,6 @@ import { removeStyle } from "@html_editor/utils/dom";
 /** @typedef { (selection: EditorSelection, nodes: Node[]) => TranslatedString } TranslatedStringGetter */
 
 /**
- * @typedef {Object} ToolbarNamespace
- * @property {string} id
- * @property {(targetedNodes: Node[]) => boolean} isApplied
- *
- *
  * @typedef {Object} ToolbarGroup
  * @property {string} id
  * @property {string[]} [namespaces]
@@ -50,6 +45,7 @@ import { removeStyle } from "@html_editor/utils/dom";
  * @property {(selection: EditorSelection) => boolean} [isAvailable] ? *
  * @property {(selection: EditorSelection, nodes: Node[]) => boolean} [isActive]
  * @property {(selection: EditorSelection, nodes: Node[]) => boolean} [isDisabled]
+ * @property {boolean} [opensUi] The button opens some UI (dialog, popover...) that takes the focus
  *
  * @typedef {Object} ToolbarComponentItem
  * Adds a custom component to the toolbar.
@@ -79,6 +75,7 @@ import { removeStyle } from "@html_editor/utils/dom";
  * @property {(selection: EditorSelection) => boolean} isAvailable
  * @property {(selection: EditorSelection, nodes: Node[]) => boolean} [isActive]
  * @property {(selection: EditorSelection, nodes: Node[]) => boolean} [isDisabled]
+ * @property {boolean} [opensUi]
  *
  * @typedef {Object} ToolbarComponentButton
  * Adds a custom component to the toolbar (processed version with required fields).
@@ -99,6 +96,7 @@ export const DELAY_TOOLBAR_OPEN = 300;
 const MIN_SIZE_FOR_COMPACT = 7;
 /** Special namespace that prevents the toolbar from opening */
 export const DISABLED_NAMESPACE = "disabled";
+/** Toolbar namespaces that allow expanding to the full toolbar */
 
 /**
  * @typedef { Object } ToolbarShared
@@ -108,7 +106,11 @@ export const DISABLED_NAMESPACE = "disabled";
 
 /**
  * @typedef {ToolbarGroup[]} toolbar_groups
- * @typedef {ToolbarNamespace[]} toolbar_namespaces
+ */
+
+/**
+ * @typedef {((targetedNodes: Node[], editableSelection: EditorSelection) => string | undefined)[]} toolbar_namespace_providers
+ * @typedef {string[]} expandable_toolbar_namespaces_providers
  */
 
 /**
@@ -177,7 +179,7 @@ export class ToolbarPlugin extends Plugin {
             },
         },
         toolbar_groups: [
-            withSequence(100, { id: "expand_toolbar", namespaces: ["compact"] }),
+            withSequence(100, { id: "expand_toolbar" }),
             withSequence(30, { id: "layout" }),
         ],
         toolbar_items: {
@@ -192,6 +194,7 @@ export class ToolbarPlugin extends Plugin {
                 this.isToolbarVisible(targetedNodes, editableSelection) ? "compact" : undefined
             ),
         ],
+        expandable_toolbar_namespaces_providers: "compact",
     };
 
     setup() {
@@ -202,6 +205,7 @@ export class ToolbarPlugin extends Plugin {
             }
             groupIds.add(group.id);
         }
+        this.expandableNamespaces = this.getResource("expandable_toolbar_namespaces_providers");
         this.buttonGroups = this.getButtonGroups();
         this.buttonsByNamespace = { DISABLED_NAMESPACE: [] };
 
@@ -349,15 +353,19 @@ export class ToolbarPlugin extends Plugin {
         /** @type {ToolbarGroup[]} */
         const groups = this.getResource("toolbar_groups");
 
-        return groups.map((group) => ({
-            ...omit(group, "namespaces"),
-            buttons: buttons
-                .filter((button) => button.groupId === group.id)
-                .map((button) => ({
-                    ...button,
-                    namespaces: button.namespaces || group.namespaces || ["expanded"],
-                })),
-        }));
+        return groups.map((group) => {
+            const groupNamespaces =
+                group.id === "expand_toolbar" ? this.expandableNamespaces : group.namespaces;
+            return {
+                ...omit(group, "namespaces"),
+                buttons: buttons
+                    .filter((button) => button.groupId === group.id)
+                    .map((button) => ({
+                        ...button,
+                        namespaces: button.namespaces || groupNamespaces || ["expanded"],
+                    })),
+            };
+        });
     }
 
     /**
@@ -440,7 +448,7 @@ export class ToolbarPlugin extends Plugin {
             return;
         }
 
-        if (currentNamespace === "compact" && this.isToolbarExpanded) {
+        if (this.expandableNamespaces.includes(currentNamespace) && this.isToolbarExpanded) {
             currentNamespace = "expanded";
         }
 
@@ -531,7 +539,7 @@ export class ToolbarPlugin extends Plugin {
                         ...(button.Component
                             ? pick(button, "Component", "props")
                             : {
-                                  ...pick(button, "run", "icon", "iconClass", "text"),
+                                  ...pick(button, "run", "icon", "iconClass", "text", "opensUi"),
                                   isActive: !!button.isActive?.(selection, targetedNodes),
                               }),
                     })),

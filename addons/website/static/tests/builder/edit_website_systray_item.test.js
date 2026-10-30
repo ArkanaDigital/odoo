@@ -1,6 +1,7 @@
 import { animationFrame, expect, test, waitFor } from "@odoo/hoot";
-import { contains, onRpc, patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { contains, onRpc } from "@web/../tests/web_test_helpers";
 import { registry } from "@web/core/registry";
+import { patch } from "@web/core/utils/patch";
 import { EditWebsiteSystrayItem } from "@website/client_actions/website_preview/edit_website_systray_item";
 import { defineWebsiteModels, setupWebsiteBuilder } from "./website_helpers";
 
@@ -12,7 +13,7 @@ test("Clicking on 'Edit' hides the notification", async () => {
         "/test-path",
         () => "<html><body><div id='wrap'><div class='o_delay_translation'>Some text</div></html>"
     );
-    patchWithCleanup(EditWebsiteSystrayItem.prototype, {
+    patch(EditWebsiteSystrayItem.prototype, {
         get translatable() {
             return true;
         },
@@ -36,7 +37,7 @@ test("Clicking on 'Edit' hides the notification", async () => {
     registry.category("website_systray").dispatchEvent(new CustomEvent("CONTENT-UPDATED"));
     await waitFor(".o_notification_bar");
     // clicking on edit dropdown should hide the notification
-    await contains(".o-website-btn-custo-primary:contains('Edit')").click();
+    await contains(".o_website_btn_custo_primary:contains('Edit')").click();
     await animationFrame();
     expect(".o_notification_bar").toHaveCount(0);
 });

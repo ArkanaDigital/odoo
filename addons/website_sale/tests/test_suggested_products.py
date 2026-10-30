@@ -1,10 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
-from unittest.mock import patch
-
 from dateutil.relativedelta import relativedelta
 
-from odoo import fields
 from odoo.fields import Command
 from odoo.tests import tagged
 
@@ -125,6 +122,14 @@ class TestSuggestedProducts(WebsiteSaleCommon, CronMixinCase):
         self.template_desk._update_suggested_products()
         self.assertEqual(self.template_desk.optional_product_ids, self.template_chair)
 
+    def test_update_suggested_products_without_published_product_sharing_category(self):
+        """Test updating suggested products when no published product shares the product's category."""
+        # Ensure no other published products shares template_desk's category
+        self.template_desk.public_categ_ids.product_tmpl_ids.website_published = False
+        self.template_desk.action_update_suggested_products()
+
+        self.assertFalse(self.template_desk.alternative_product_ids)
+
     def test_cron_write_preserves_automation(self):
         """Test that writing from cron context doesn't disable the automation flags."""
         self.template_desk.suggest_alternative_products = True
@@ -165,10 +170,13 @@ class TestSuggestedProducts(WebsiteSaleCommon, CronMixinCase):
         old_date = now - relativedelta(hours=13)
         self.template_desk.suggested_products_last_update = recent_date
         self.template_chair.suggested_products_last_update = old_date
-        with patch.object(fields.Datetime, "now", return_value=now):
-            with self.enter_registry_test_mode(), self.env.registry.cursor() as cr:
-                env = self.env(context={"cron_id": 1}, cr=cr)
-                self.env["product.template"].with_env(env)._cron_update_suggested_products()
+        with (
+            self.mock_datetime_and_now(now),
+            self.enter_registry_test_mode(),
+            self.env.registry.cursor() as cr,
+        ):
+            env = self.env(context={"cron_id": 1}, cr=cr)
+            self.env["product.template"].with_env(env)._cron_update_suggested_products()
         # template_desk should not be updated (recently updated)
         self.assertEqual(self.template_desk.suggested_products_last_update, recent_date)
         # template_chair should be updated

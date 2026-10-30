@@ -2,68 +2,11 @@
 <odoo>
     <data>
         <template id="report_invoice_document">
+            <t t-set="o" t-value="o.with_context(lang=lang)" />
             <t t-set="layout_document_title">
-                <t t-if="not proforma">
-                    <span t-if="o.move_type == 'out_invoice' and o.state == 'posted'">
-                        <t name="invoice_title">Invoice</t>
-                    </span>
-                    <span t-elif="o.move_type == 'out_invoice' and o.state == 'draft'">
-                        <t name="draft_invoice_title">Draft Invoice</t>
-                    </span>
-                    <span t-elif="o.move_type == 'out_invoice' and o.state == 'cancel'">
-                        <t name="cancelled_invoice_title">Cancelled Invoice</t>
-                    </span>
-                    <span t-elif="o.move_type == 'out_refund' and o.state == 'posted'">
-                        <t name="credit_note_title">Credit Note</t>
-                    </span>
-                    <span t-elif="o.move_type == 'out_refund' and o.state == 'draft'">
-                        <t name="draft_credit_note_title">Draft Credit Note</t>
-                    </span>
-                    <span t-elif="o.move_type == 'out_refund' and o.state == 'cancel'">
-                        <t name="cancelled_credit_note_title">Cancelled Credit Note</t>
-                    </span>
-                    <span t-elif="o.move_type == 'in_refund' and not o.journal_id.is_self_billing">
-                        <t name="vendor_credit_note_title">Vendor Credit Note</t>
-                    </span>
-                    <span t-elif="o.move_type == 'in_refund' and o.journal_id.is_self_billing">
-                        <t name="self_billing_credit_note_title">Self Billing Credit Note</t>
-                    </span>
-                    <span t-elif="o.move_type == 'in_invoice' and not o.journal_id.is_self_billing">
-                        <t name="vendor_bill_title">Vendor Bill</t>
-                    </span>
-                    <span t-elif="o.move_type == 'in_invoice' and o.journal_id.is_self_billing">
-                        <t name="self_billing_invoice_title">Self Billing</t>
-                    </span>
-                </t>
-                <t t-else="">
-                    <span t-if="o.move_type == 'out_invoice' and o.state == 'posted'">
-                        <t name="proforma_invoice_title">Proforma Invoice</t>
-                    </span>
-                    <span t-elif="o.move_type == 'out_invoice' and o.state == 'draft'">
-                        <t name="draft_proforma_invoice_title">Draft Proforma Invoice</t>
-                    </span>
-                    <span t-elif="o.move_type == 'out_invoice' and o.state == 'cancel'">
-                        <t name="cancelled_proforma_invoice_title">Cancelled Proforma Invoice</t>
-                    </span>
-                    <span t-elif="o.move_type == 'out_refund' and o.state == 'posted'">
-                        <t name="proforma_credit_note_title">Proforma Credit Note</t>
-                    </span>
-                    <span t-elif="o.move_type == 'out_refund' and o.state == 'draft'">
-                        <t name="draft_proforma_credit_note_title">Draft Proforma Credit Note</t>
-                    </span>
-                    <span t-elif="o.move_type == 'out_refund' and o.state == 'cancel'">
-                        <t name="cancelled_proforma_credit_note_title">Cancelled Proforma Credit Note</t>
-                    </span>
-                    <span t-elif="o.move_type == 'in_refund'">
-                        <t name="proforma_vendor_credit_note_title">Proforma Vendor Credit Note</t>
-                    </span>
-                    <span t-elif="o.move_type == 'in_invoice'">
-                        <t name="proforma_vendor_bill_title">Proforma Vendor Bill</t>
-                    </span>
-                </t>
+                <span name="document_title" t-out="o._get_document_title()"/>
                 <span t-if="o.name and o.name != '/'" t-field="o.name">INV/2023/0001</span>
             </t>
-            <t t-set="o" t-value="o.with_context(lang=lang)" />
             <t t-set="information_block" t-if="o.partner_shipping_id and (o.partner_shipping_id != o.partner_id)" groups="account.group_delivery_invoice_address">
                 <div name="shipping_address_block">
                     <strong class="d-block mt-3">Shipping Address</strong>
@@ -74,44 +17,30 @@
                 <t t-if="o.partner_shipping_id and (o.partner_shipping_id != o.partner_id)">
                     <t name="address_not_same_as_shipping">
                         <address class="mb-0" t-field="o.partner_id" t-options='{"widget": "contact", "fields": ["address", "name"], "no_marker": True}'/>
-                        <div t-if="o.partner_id.vat" id="partner_vat_address_not_same_as_shipping">
-                            <t t-if="o.company_id.account_fiscal_country_id.vat_label" t-out="o.company_id.account_fiscal_country_id.vat_label" id="inv_tax_id_label"/>
-                            <t t-else="">Tax ID</t>: <span t-field="o.partner_id.vat"/>
-                        </div>
-                        <t t-set="partner_ice" t-value="o.partner_id.country_code == 'MA' and o.partner_id._get_additional_identifier('MA_ICE')"/>
-                        <div t-if="partner_ice">
-                            ICE: <span t-out="partner_ice"/>
+                        <div id="partner_vat_address_not_same_as_shipping">
+                            <t t-out="o._get_document_partner_ident_line()" id='inv_tax_id_label'/>
                         </div>
                     </t>
                 </t>
                 <t t-elif="o.partner_shipping_id and (o.partner_shipping_id == o.partner_id)">
                     <t name="address_same_as_shipping">
                         <address class="mb-0" t-field="o.partner_id" t-options='{"widget": "contact", "fields": ["address", "name"], "no_marker": True}'/>
-                        <div t-if="o.partner_id.vat" id="partner_vat_address_same_as_shipping">
-                            <t t-if="o.company_id.account_fiscal_country_id.vat_label" t-out="o.company_id.account_fiscal_country_id.vat_label" id="inv_tax_id_label"/>
-                            <t t-else="">Tax ID</t>: <span t-field="o.partner_id.vat"/>
-                        </div>
-                        <t t-set="partner_ice" t-value="o.partner_id.country_code == 'MA' and o.partner_id._get_additional_identifier('MA_ICE')"/>
-                        <div t-if="partner_ice">
-                            ICE: <span t-out="partner_ice"/>
+                        <div id="partner_vat_address_same_as_shipping">
+                            <t t-out="o._get_document_partner_ident_line()" id='inv_tax_id_label'/>
                         </div>
                     </t>
                 </t>
                 <t t-else="">
                     <t name="no_shipping">
                         <address class="mb-0" t-field="o.partner_id" t-options='{"widget": "contact", "fields": ["address", "name"], "no_marker": True}'/>
-                        <div t-if="o.partner_id.vat" id="partner_vat_no_shipping">
-                            <t t-if="o.company_id.account_fiscal_country_id.vat_label" t-out="o.company_id.account_fiscal_country_id.vat_label" id="inv_tax_id_label"/>
-                            <t t-else="">Tax ID</t>: <span t-field="o.partner_id.vat"/>
-                        </div>
-                        <t t-set="partner_ice" t-value="o.partner_id.country_code == 'MA' and o.partner_id._get_additional_identifier('MA_ICE')"/>
-                        <div t-if="partner_ice">
-                            ICE: <span t-out="partner_ice"/>
+                        <div id="partner_vat_no_shipping">
+                            <t t-out="o._get_document_partner_ident_line()" id='inv_tax_id_label'/>
                         </div>
                     </t>
                 </t>
             </t>
             <t t-call="web.external_layout"
+                company="o.company_id.sudo()"
                 forced_vat="o.fiscal_position_id.foreign_vat"
                 layout_document_title="layout_document_title"
                 information_block="information_block"
@@ -222,7 +151,7 @@
                                                 <t t-set="line_colspan" t-value="3 + (1 if display_discount else 0) + (1 if display_taxes and not line.tax_ids else 0)"/>
                                                 <t t-if="is_product" name="account_invoice_line_accountable">
                                                     <td class="w-100" name="account_invoice_line_name" t-att-style="padding_style">
-                                                        <span t-if="line.name" t-field="line.name" t-options="{'widget': 'text'}" class="d-inline-block w-100 lh-sm">Bacon Burger</span>
+                                                        <span t-if="line.label" t-field="line.label" t-options="{'widget': 'text'}" class="d-inline-block w-100 lh-sm">Bacon Burger</span>
                                                     </td>
                                                     <td name="td_quantity" class="o_td_quantity text-end">
                                                         <span t-field="line.quantity" class="text-nowrap">3.00</span>
@@ -254,11 +183,11 @@
                                                     <td name="line_name_td"
                                                         t-att-colspan="(1 if is_product else line_colspan)"
                                                         t-attf-class="{{'d-none d-md-table-cell' if report_type == 'html' else ''}} border-end-0" t-att-style="padding_style">
-                                                        <span t-if="line.name" t-field="line.name" t-options="{'widget': 'text'}">A section title</span>
+                                                        <span t-if="line.label" t-field="line.label" t-options="{'widget': 'text'}">A section title</span>
                                                     </td>
                                                     <!-- For mobile -->
                                                     <td colspan="2" t-attf-class="{{'d-md-none d-table-cell' if report_type == 'html' else 'd-none'}} border-end-0" t-att-style="padding_style">
-                                                        <span t-if="line.name" t-field="line.name" t-options="{'widget': 'text'}">A section title</span>
+                                                        <span t-if="line.label" t-field="line.label" t-options="{'widget': 'text'}">A section title</span>
                                                     </td>
                                                     <td colspan="1" class="text-end o_price_total">
                                                         <span t-out="section_subtotal" class="text-nowrap" t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
@@ -266,7 +195,7 @@
                                                 </t>
                                                 <t t-elif="is_note">
                                                     <td colspan="99">
-                                                        <span t-if="line.name" t-field="line.name" t-options="{'widget': 'text'}">A note, whose content usually applies to the section or product above.</span>
+                                                        <span t-if="line.label" t-field="line.label" t-options="{'widget': 'text'}">A note, whose content usually applies to the section or product above.</span>
                                                     </td>
                                                 </t>
                                             </tr>
@@ -298,14 +227,14 @@
                                                         t-att-colspan="line_colspan"
                                                         t-attf-class="{{'d-none d-md-table-cell' if report_type == 'html' else ''}}"
                                                         t-att-style="padding_style">
-                                                        <span t-out="grouped_line['name']" t-options="{'widget': 'text'}">Group 1</span>
+                                                        <span t-out="grouped_line['label']" t-options="{'widget': 'text'}">Group 1</span>
                                                     </td>
                                                     <!-- For mobile -->
                                                     <td name="account_invoice_line_name_grouped"
                                                         t-att-colspan="2 if grouped_line['display_type'] != 'product' else 1"
                                                         t-attf-class="{{'d-md-none d-table-cell' if report_type == 'html' else 'd-none'}}"
                                                         t-att-style="padding_style">
-                                                        <span t-out="grouped_line['name']" t-options="{'widget': 'text'}">Group 1</span>
+                                                        <span t-out="grouped_line['label']" t-options="{'widget': 'text'}">Group 1</span>
                                                     </td>
                                                     <td name="td_quantity_grouped"
                                                         colspan="1"

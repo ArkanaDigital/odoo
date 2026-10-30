@@ -13,17 +13,25 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0beta\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-03 17:40+0000\n"
-"PO-Revision-Date: 2026-06-21 18:30+0000\n"
+"POT-Creation-Date: 2026-08-28 17:43+0000\n"
+"PO-Revision-Date: 2026-08-31 20:37+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Persian <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Persian <https://translate.odoo.com/projects/odoo-s19-4/"
 "website_payment/fa/>\n"
 "Language: fa\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n > 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: website_payment
+#: model:ir.module.module,description:base.module_website_payment
+msgid ""
+"\n"
+"This is a bridge module that adds multi-website support for payment "
+"providers.\n"
+msgstr ""
 
 #. module: website_payment
 #: model_terms:ir.ui.view,arch_db:website_payment.res_config_settings_view_form
@@ -139,6 +147,11 @@ msgid "Payment Provider"
 msgstr "سرویس دهنده پرداخت"
 
 #. module: website_payment
+#: model:ir.module.module,summary:base.module_website_payment
+msgid "Payment integration with website"
+msgstr ""
+
+#. module: website_payment
 #: model_terms:ir.ui.view,arch_db:website_payment.res_config_settings_view_form
 msgid "Payments"
 msgstr "پرداخت‌ها"
@@ -175,184 +188,189 @@ msgstr ""
 msgid "Website"
 msgstr "تارنما"
 
-#~ msgid ""
-#~ ".\n"
-#~ "                        <br/>\n"
-#~ "                        We appreciate your support for our organization "
-#~ "as such.\n"
-#~ "                        <br/>\n"
-#~ "                        Regards."
-#~ msgstr ""
-#~ ".\n"
-#~ "                        <br/>\n"
-#~ "                        ما از حمایت شما از سازمان ما قدردانی می‌کنیم.\n"
-#~ "                        <br/>\n"
-#~ "                        با احترام."
+#. module: website_payment
+#: model:ir.module.module,shortdesc:base.module_website_payment
+msgid "Website Payment"
+msgstr ""
 
-#~ msgid "<b>Comment:</b>"
-#~ msgstr "<b>نظر:</b>"
+msgid ""
+".\n"
+"                        <br/>\n"
+"                        We appreciate your support for our organization as "
+"such.\n"
+"                        <br/>\n"
+"                        Regards."
+msgstr ""
+".\n"
+"                        <br/>\n"
+"                        ما از حمایت شما از سازمان ما قدردانی می‌کنیم.\n"
+"                        <br/>\n"
+"                        با احترام."
 
-#~ msgid "<b>Donation Date:</b>"
-#~ msgstr "<b>تاریخ اهداء:</b>"
+msgid "<b>Comment:</b>"
+msgstr "<b>نظر:</b>"
 
-#~ msgid "<b>Donor Email:</b>"
-#~ msgstr "<b>ایمیل اهدا کننده:</b>"
+msgid "<b>Donation Date:</b>"
+msgstr "<b>تاریخ اهداء:</b>"
 
-#~ msgid "<b>Donor Name:</b>"
-#~ msgstr "<b>نام اهداکننده:</b>"
+msgid "<b>Donor Email:</b>"
+msgstr "<b>ایمیل اهدا کننده:</b>"
 
-#~ msgid "<b>Payment ID:</b>"
-#~ msgstr "<b>شناسه پرداخت</b>"
+msgid "<b>Donor Name:</b>"
+msgstr "<b>نام اهداکننده:</b>"
 
-#~ msgid "<b>Payment Method:</b>"
-#~ msgstr "<b>روش پرداخت</b>"
+msgid "<b>Payment ID:</b>"
+msgstr "<b>شناسه پرداخت</b>"
 
-#~ msgid "<strong>Warning</strong> The currency is missing or incorrect."
-#~ msgstr "<strong>Warning</strong> ارز موردنظر موجود نیست یا نادرست است."
+msgid "<b>Payment Method:</b>"
+msgstr "<b>روش پرداخت</b>"
 
-#~ msgid "A donation has been made on your website"
-#~ msgstr "یک اهدا در وب‌سایت شما انجام شده است"
+msgid "<strong>Warning</strong> The currency is missing or incorrect."
+msgstr "<strong>Warning</strong> ارز موردنظر موجود نیست یا نادرست است."
 
-#~ msgid "A year of cultural awakening."
-#~ msgstr "یک سال بیداری فرهنگی."
+msgid "A donation has been made on your website"
+msgstr "یک اهدا در وب‌سایت شما انجام شده است"
 
-#~ msgid "Add"
-#~ msgstr "افزودن"
+msgid "A year of cultural awakening."
+msgstr "یک سال بیداری فرهنگی."
 
-#~ msgid "Add a description here"
-#~ msgstr "یک توضیح در اینجا اضافه کنید"
+msgid "Add"
+msgstr "افزودن"
 
-#~ msgid "Amount"
-#~ msgstr "مقدار"
+msgid "Add a description here"
+msgstr "یک توضیح در اینجا اضافه کنید"
 
-#~ msgid "Amount ("
-#~ msgstr "مقدار ("
+msgid "Amount"
+msgstr "مقدار"
 
-#~ msgid "Amount("
-#~ msgstr "مبلغ("
+msgid "Amount ("
+msgstr "مقدار ("
 
-#~ msgid "Caring for a baby for 1 month."
-#~ msgstr "مراقبت از نوزاد برای ۱ ماه."
+msgid "Amount("
+msgstr "مبلغ("
 
-#~ msgid "Choose Your Amount"
-#~ msgstr "مبلغ خود را انتخاب کنید"
+msgid "Caring for a baby for 1 month."
+msgstr "مراقبت از نوزاد برای ۱ ماه."
 
-#~ msgid "Country"
-#~ msgstr "کشور"
+msgid "Choose Your Amount"
+msgstr "مبلغ خود را انتخاب کنید"
 
-#~ msgid "Country is required."
-#~ msgstr "کشور لازم است."
+msgid "Country"
+msgstr "کشور"
 
-#~ msgid "Custom Amount"
-#~ msgstr "مبلغ سفارشی"
+msgid "Country is required."
+msgstr "کشور لازم است."
 
-#~ msgid "Dear"
-#~ msgstr "گرامی"
+msgid "Custom Amount"
+msgstr "مبلغ سفارشی"
 
-#~ msgid "Default Amount"
-#~ msgstr "مبلغ پیش‌فرض"
+msgid "Dear"
+msgstr "گرامی"
 
-#~ msgid "Descriptions"
-#~ msgstr "توضیحات"
+msgid "Default Amount"
+msgstr "مبلغ پیش‌فرض"
 
-#~ msgid "Display Options"
-#~ msgstr "گزینه‌های نمایش"
+msgid "Descriptions"
+msgstr "توضیحات"
 
-#~ msgid "Donate"
-#~ msgstr "پرداخت نمایید"
+msgid "Display Options"
+msgstr "گزینه‌های نمایش"
 
-#~ msgid "Donate Now"
-#~ msgstr "اکنون اهدا کنید"
+msgid "Donate"
+msgstr "پرداخت نمایید"
 
-#~ msgid "Donation"
-#~ msgstr "اهدا"
+msgid "Donate Now"
+msgstr "اکنون اهدا کنید"
 
-#~ msgid "Donation Button"
-#~ msgstr "دکمه اهدای کمک"
+msgid "Donation"
+msgstr "اهدا"
 
-#~ msgid "Donation amount must be at least %.2f."
-#~ msgstr "مقدار کمک مالی باید حداقل %.2f باشد."
+msgid "Donation Button"
+msgstr "دکمه اهدای کمک"
 
-#~ msgid "Donation confirmation"
-#~ msgstr "تأیید کمک مالی"
+msgid "Donation amount must be at least %.2f."
+msgstr "مقدار کمک مالی باید حداقل %.2f باشد."
 
-#~ msgid "Donation notification"
-#~ msgstr "اطلاعیه کمک مالی"
+msgid "Donation confirmation"
+msgstr "تأیید کمک مالی"
 
-#~ msgid "Email"
-#~ msgstr "پست الکترونیک"
+msgid "Donation notification"
+msgstr "اطلاعیه کمک مالی"
 
-#~ msgid "Email is required."
-#~ msgstr "<p>ایمیل لازم است.</p>"
+msgid "Email"
+msgstr "پست الکترونیک"
 
-#~ msgid "Input"
-#~ msgstr "ورودی"
+msgid "Email is required."
+msgstr "<p>ایمیل لازم است.</p>"
 
-#~ msgid "Is Donation"
-#~ msgstr "آیا کمک مالی است"
+msgid "Input"
+msgstr "ورودی"
 
-#~ msgid "Is donation"
-#~ msgstr "است کمک مالی"
+msgid "Is Donation"
+msgstr "آیا کمک مالی است"
 
-#~ msgid "Make a Donation"
-#~ msgstr "ایجاد کمک مالی"
+msgid "Is donation"
+msgstr "است کمک مالی"
 
-#~ msgid "Maximum"
-#~ msgstr "حداکثر"
+msgid "Make a Donation"
+msgstr "ایجاد کمک مالی"
 
-#~ msgid "Minimum"
-#~ msgstr "حداقل"
+msgid "Maximum"
+msgstr "حداکثر"
 
-#~ msgid "Name"
-#~ msgstr "نام"
+msgid "Minimum"
+msgstr "حداقل"
 
-#~ msgid "Name is required."
-#~ msgstr "نام لازم است."
+msgid "Name"
+msgstr "نام"
 
-#~ msgid "None"
-#~ msgstr "هیچکدام"
+msgid "Name is required."
+msgstr "نام لازم است."
 
-#~ msgid "One year in elementary school."
-#~ msgstr "یک سال در مدرسه ابتدایی."
+msgid "None"
+msgstr "هیچکدام"
 
-#~ msgid "One year in high school."
-#~ msgstr "یک سال در دبیرستان."
+msgid "One year in elementary school."
+msgstr "یک سال در مدرسه ابتدایی."
 
-#~ msgid "Payment Details"
-#~ msgstr "جزئیات پرداخت"
+msgid "One year in high school."
+msgstr "یک سال در دبیرستان."
 
-#~ msgid "Payment Transaction"
-#~ msgstr "تراکنش پرداخت"
+msgid "Payment Details"
+msgstr "جزئیات پرداخت"
 
-#~ msgid "Please select or enter an amount"
-#~ msgstr "لطفاً یک مبلغ را انتخاب یا وارد کنید"
+msgid "Payment Transaction"
+msgstr "تراکنش پرداخت"
 
-#~ msgid "Pre-filled Options"
-#~ msgstr "گزینه‌های از پیش پر شده"
+msgid "Please select or enter an amount"
+msgstr "لطفاً یک مبلغ را انتخاب یا وارد کنید"
 
-#~ msgid "Recipient Email"
-#~ msgstr "ایمیل گیرنده"
+msgid "Pre-filled Options"
+msgstr "گزینه‌های از پیش پر شده"
 
-#~ msgid "Slider"
-#~ msgstr "لغزنده"
+msgid "Recipient Email"
+msgstr "ایمیل گیرنده"
 
-#~ msgid "Small or large, your contribution is essential."
-#~ msgstr "مهم نیست که چقدر بزرگ یا کوچک است، مشارکت شما ضروری است."
+msgid "Slider"
+msgstr "لغزنده"
 
-#~ msgid "Step"
-#~ msgstr "گام"
+msgid "Small or large, your contribution is essential."
+msgstr "مهم نیست که چقدر بزرگ یا کوچک است، مشارکت شما ضروری است."
 
-#~ msgid "Thank you for your donation of"
-#~ msgstr "سپاسگزاریم برای اهدا شما از"
+msgid "Step"
+msgstr "گام"
 
-#~ msgid "There is nothing to pay."
-#~ msgstr "هیچ موردی برای پرداخت وجود ندارد."
+msgid "Thank you for your donation of"
+msgstr "سپاسگزاریم برای اهدا شما از"
 
-#~ msgid "Write us a comment"
-#~ msgstr "برای ما نظری بنویسید"
+msgid "There is nothing to pay."
+msgstr "هیچ موردی برای پرداخت وجود ندارد."
 
-#~ msgid "Your comment"
-#~ msgstr "نظر شما"
+msgid "Write us a comment"
+msgstr "برای ما نظری بنویسید"
 
-#~ msgid "made on"
-#~ msgstr "ساخته شده در"
+msgid "Your comment"
+msgstr "نظر شما"
+
+msgid "made on"
+msgstr "ساخته شده در"

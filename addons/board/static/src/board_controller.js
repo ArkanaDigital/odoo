@@ -10,15 +10,16 @@ import { renderToFragment } from "@web/core/utils/render";
 import { useSortable } from "@web/core/utils/sortable_owl";
 import { standardViewProps } from "@web/views/standard_view_props";
 import { BoardAction } from "./board_action";
-import { Component, proxy, signal } from "@odoo/owl";
+import { Component, proxy, signal, t, useProps } from "@odoo/owl";
 
 export class BoardController extends Component {
     static template = "board.BoardView";
     static components = { BoardAction, Dropdown, DropdownItem };
-    static props = {
+
+    props = useProps({
         ...standardViewProps,
-        board: Object,
-    };
+        board: t.object(),
+    });
 
     mainRef = signal.ref();
 
@@ -120,6 +121,7 @@ export class BoardController extends Component {
     saveBoard() {
         const root = document.createElement("rendertostring");
         root.appendChild(renderToFragment("board.arch", this.board));
+        root.querySelector("board").setAttribute("style", this.board.layout);
         const result = xmlSerializer.serializeToString(root);
         const arch = result.slice(result.indexOf("<", 1), result.indexOf("</rendertostring>"));
 

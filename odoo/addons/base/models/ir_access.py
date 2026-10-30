@@ -140,7 +140,7 @@ class IrAccess(models.Model):
         xids = self._get_external_ids()
         for access in self:
             access.is_standard = any(
-                not xid.startswith(('__export__', '__custom__'))
+                not xid.startswith(('__export__', '__custom__', 'studio_customization'))
                 for xid in xids[access.id]
             )
 
@@ -152,7 +152,7 @@ class IrAccess(models.Model):
                     WHERE d.model = %s AND d.res_id = %s AND d.module NOT IN %s
                 )
             """,
-            table._model._name, table.id, ('__export__', '__custom__'),
+            table._model._name, table.id, ('__export__', '__custom__', 'studio_customization'),
         )
 
     def _compute_for(self, operation: str):
@@ -257,15 +257,6 @@ class IrAccess(models.Model):
     #
     # Copy and customization
     #
-
-    def copy_data(self, default=None):
-        vals_list = super().copy_data(default=default)
-        if 'name' in (default or {}):
-            return vals_list
-        return [
-            dict(vals, name=f"{access.name or ''} (copy)")
-            for access, vals in zip(self, vals_list)
-        ]
 
     def customize(self):
         """ Customize some access.  If the access comes from a module,
@@ -422,6 +413,7 @@ class IrAccess(models.Model):
         _logger.info(
             "Access Denied for operation: %s on record ids: %r, uid: %s, model: %s",
             operation, records.ids[:6], self.env.uid, records._name,
+            stack_info=_logger.isEnabledFor(logging.DEBUG),
         )
         self = self.with_context(self.env.user.context_get())  # noqa: PLW0642
 

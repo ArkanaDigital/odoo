@@ -134,6 +134,12 @@ class TestSalePurchase(TestCommonSalePurchaseNoChart):
         with self.assertRaises(UserError):
             self.sale_order_1.action_confirm()
 
+    def test_copy_service_tracking_subcontract(self):
+        """ Duplicating a 'Subcontracting RFQ' service must not raise, as its vendors are not copied """
+        template_copy = self.service_purchase_1.product_tmpl_id.copy()
+        self.assertFalse(template_copy.seller_ids)
+        self.assertEqual(template_copy.service_tracking, 'no')
+
     def test_reconfirm_sale_order(self):
         """ Confirm SO, cancel it, then re-confirm it should not regenerate a purchase line """
         self.sale_order_1.action_confirm()
@@ -277,7 +283,7 @@ class TestSalePurchase(TestCommonSalePurchaseNoChart):
         so.action_confirm()
 
         po = self.env['purchase.order'].search([('partner_id', '=', self.partner_vendor_service.id)], order='id desc', limit=1)
-        self.assertEqual(po.order_line.name, "[C01] Name01")
+        self.assertEqual(po.order_line.label, "[C01] Name01")
 
     def test_pol_custom_attribute(self):
         """
@@ -309,7 +315,6 @@ class TestSalePurchase(TestCommonSalePurchaseNoChart):
             'partner_id': self.partner_a.id,
             'order_line': [
                 Command.create({
-                    'name': self.service_purchase_1.name,
                     'product_id': self.service_purchase_1.id,
                     'product_uom_qty': 1,
                     'product_custom_attribute_value_ids': [
@@ -323,7 +328,7 @@ class TestSalePurchase(TestCommonSalePurchaseNoChart):
         })
         sale_order.action_confirm()
         pol = sale_order._get_purchase_orders().order_line
-        self.assertEqual(pol.name, f"{self.service_purchase_1.display_name}\n{product_attribute.name}: {product_attribute_value.name}: {custom_value}")
+        self.assertEqual(pol.name, f"{product_attribute.name}: {product_attribute_value.name}: {custom_value}")
 
     def test_service_tracking_subcontract_multi_company_validation(self):
         """ Test the service tracking 'subcontract' in a multi-company environment.

@@ -7,9 +7,9 @@ import {
     useProps,
     proxy,
     signal,
-    status,
     t,
     useListener,
+    useScope,
 } from "@odoo/owl";
 import { isBrowserFirefox } from "@web/core/browser/feature_detection";
 import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
@@ -40,13 +40,13 @@ function isMobileView() {
 
 export class AddPageConfirmDialog extends Component {
     static template = "website.AddPageConfirmDialog";
-    static props = {
-        close: Function,
-        createPage: Function,
-        name: String,
-        sectionsArch: String,
-        templateId: String,
-    };
+    props = useProps({
+        close: t.function(),
+        createPage: t.function(),
+        name: t.string(),
+        sectionsArch: t.string(),
+        templateId: t.string(),
+    });
     static components = {
         Switch,
         WebsiteDialog,
@@ -76,22 +76,18 @@ export class AddPageConfirmDialog extends Component {
 
 class AddPageTemplatePreview extends Component {
     static template = "website.AddPageTemplatePreview";
-    static props = {
-        template: Object,
-        animationDelay: Number,
-        firstRow: {
-            type: Boolean,
-            optional: true,
-        },
-        isCustom: {
-            type: Boolean,
-            optional: true,
-        },
-        onPageKeydown: { type: Function },
-    };
+    props = useProps({
+        template: t.object(),
+        animationDelay: t.number(),
+        firstRow: t.boolean().optional(),
+        isCustom: t.boolean().optional(),
+        onPageKeydown: t.function(),
+    });
     iframeRef = signal.ref();
     previewRef = signal.ref();
     holderRef = signal.ref();
+
+    scope = useScope();
 
     setup() {
         super.setup();
@@ -123,7 +119,7 @@ class AddPageTemplatePreview extends Component {
             }
             // Apply styles.
             const cssLinkEls = await this.env.getCssLinkEls();
-            if (status(this) === "destroyed") {
+            if (this.scope.isDestroyed()) {
                 return;
             }
             const cssLoadPromises = [];
@@ -334,20 +330,11 @@ class AddPageTemplatePreview extends Component {
 
 class AddPageTemplatePreviews extends Component {
     static template = "website.AddPageTemplatePreviews";
-    static props = {
-        isCustom: {
-            type: Boolean,
-            optional: true,
-        },
-        templates: {
-            type: Array,
-            element: Object,
-        },
-        isSingleColumn: {
-            type: Boolean,
-            optional: true,
-        },
-    };
+    props = useProps({
+        isCustom: t.boolean().optional(),
+        templates: t.array(t.object()),
+        isSingleColumn: t.boolean().optional(),
+    });
     static components = {
         AddPageTemplatePreview,
     };
@@ -375,10 +362,10 @@ class AddPageTemplatePreviews extends Component {
 
 class AddPageTemplates extends Component {
     static template = "website.AddPageTemplates";
-    static props = {
-        onTemplatePageChanged: Function,
-        defaultTemplateId: { type: String, optional: true },
-    };
+    props = useProps({
+        onTemplatePageChanged: t.function(),
+        defaultTemplateId: t.string().optional(),
+    });
     static components = {
         AddPageTemplatePreviews,
     };
@@ -386,6 +373,8 @@ class AddPageTemplates extends Component {
     panesRef = signal.ref();
     autofocusRef = signal.ref();
     inactiveTabRef = signal.ref();
+
+    scope = useScope();
 
     setup() {
         super.setup();
@@ -454,7 +443,7 @@ class AddPageTemplates extends Component {
         // Displaying the correct images in the previews also relies on the
         // website id having been forced.
         await this.env.getCssLinkEls();
-        if (status(this) === "destroyed") {
+        if (this.scope.isDestroyed()) {
             return new Promise(() => {});
         }
 

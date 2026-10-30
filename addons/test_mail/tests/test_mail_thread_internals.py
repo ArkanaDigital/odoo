@@ -1259,6 +1259,7 @@ class TestChatterTweaks(ThreadRecipients):
 
     def test_chatter_mail_notrack(self):
         """ Test disable of automatic value tracking at create and write """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         rec = self.env['mail.test.track'].with_user(self.user_employee).create({'name': 'Test', 'user_id': self.user_employee.id})
         self.flush_tracking()
         self.assertEqual(len(rec.message_ids), 1,
@@ -1280,6 +1281,7 @@ class TestChatterTweaks(ThreadRecipients):
 
     def test_chatter_tracking_disable(self):
         """ Test disable of all chatter features at create and write """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         rec = self.env['mail.test.track'].with_user(self.user_employee).with_context({'tracking_disable': True}).create({'name': 'Test', 'user_id': self.user_employee.id})
         self.flush_tracking()
         self.assertEqual(rec.sudo().message_ids, self.env['mail.message'])
@@ -1333,7 +1335,7 @@ class TestDiscuss(HttpCase, MailCommon, TestRecipients):
 
         with patch.object(MailTestSimple, '_access_domain', autospec=True, side_effect=_employee_crash):
             with self.assertRaises(exceptions.AccessError):
-                self.env['mail.test.simple'].with_user(self.user_employee).browse(self.test_record.ids).read(['name'])
+                self.env['mail.test.simple'].with_user(self.user_employee).browse(self.test_record.ids).fetch(['name'])
 
             employee_partner = self.env['res.partner'].with_user(self.user_employee).browse(self.partner_employee.ids)
 
@@ -1409,6 +1411,49 @@ class TestDiscuss(HttpCase, MailCommon, TestRecipients):
         self.assertEqual(res["messages"][0].id, message2.id)
         res = self.env['mail.message'].with_user(user2)._message_fetch(domain=[['needaction', '=', True]])
         self.assertEqual(len(res["messages"]), 2)
+
+    def test_message_fetch_search_filters(self):
+        record = self.test_record.with_user(self.user_employee)
+        comment = record.message_post(body="Conversation", message_type="comment", subtype_xmlid="mail.mt_comment")
+        email = record.message_post(body="Incoming email", message_type="email", subtype_xmlid="mail.mt_comment")
+        note = record.message_post(body="Note", message_type="comment", subtype_xmlid="mail.mt_note")
+        tracking = record.message_post(body="Tracking", message_type="tracking")
+        activity = record.message_post(
+            body="Activity",
+            message_type="notification",
+            subtype_xmlid="mail.mt_activities",
+            mail_activity_type_id=self.env.ref("mail.mail_activity_data_todo").id,
+        )
+        # messages intentionally in no specific filter: only reachable through 'All'
+        auto_comment = record.message_post(
+            body="Acknowledgement", message_type="auto_comment", subtype_xmlid="mail.mt_comment",
+        )
+        logged_note = record._message_log(body="Logged note")
+        for search_filter, expected in (
+            ("messages", email + comment),
+            ("notes", note),
+            ("activities", activity),
+            ("changes", tracking),
+        ):
+            with self.subTest(search_filter=search_filter):
+                res = self.env["mail.message"].with_user(self.user_employee)._message_fetch(
+                    [], thread=record, search_filter=search_filter,
+                )
+                self.assertEqual(res["messages"], expected)
+                self.assertEqual(res["count"], len(expected))
+
+        # no filter (All) returns everything, including the unbucketed messages
+        all_res = self.env["mail.message"].with_user(self.user_employee)._message_fetch([], thread=record)
+        posted = comment + email + note + tracking + activity + auto_comment + logged_note
+        self.assertEqual(all_res["messages"] & posted, posted)
+        self.assertNotIn("count", all_res)
+
+        # an unknown filter is ignored, and must not report a filtered count
+        res = self.env["mail.message"].with_user(self.user_employee)._message_fetch(
+            [], thread=record, search_filter="unknown",
+        )
+        self.assertEqual(res["messages"], all_res["messages"])
+        self.assertNotIn("count", res)
 
     @users("employee")
     def test_unlink_notification_message(self):
@@ -1528,6 +1573,33 @@ class TestNoThread(MailCommon, TestRecipients):
         )
 
     @users('employee')
+    def test_mail_composer_layout(self):
+        """ Test email layout rendering for non-thread models. Should work
+        even if not inheriting from thread, thread notification methods being
+        called on mixin itself instead of record. """
+        test_records, test_partners = self._create_records_for_batch('mail.test.nothread', 2)
+        test_template = self.env['mail.template'].sudo().create({
+            'body_html': '<p>TemplateBody</p>',
+            'email_layout_xmlid': 'mail.mail_notification_light',
+            'model_id': self.env['ir.model']._get_id('mail.test.nothread'),
+            'partner_to': '{{ object.customer_id.id }}',
+        })
+        composer = self.env['mail.compose.message'].with_context(
+            self._get_mail_composer_web_context(test_records, default_template_id=test_template.id)
+        ).create({})
+
+        with self.mock_mail_gateway():
+            composer._action_send_mail()
+
+        for partner in test_partners:
+            self.assertMailMail(
+                partner,
+                'sent',
+                author=self.partner_employee,
+                email_values={'body_content': 'Your NoThread Model'},
+            )
+
+    @users('employee')
     def test_mail_composer_mail_with_template(self):
         """ This test simulates scenarios where a required method called `_process_attachments_for_post` is missing,
         in such case composer should fallback to the method implementation in mail.thread. """
@@ -1579,6 +1651,30 @@ class TestNoThread(MailCommon, TestRecipients):
         formatted = Store().add(message, "_store_message_fields")._build_result()["mail.message"][0]
         self.assertEqual(formatted['default_subject'], 'Just Test')
         self.assertEqual(formatted['record_name'], 'Just Test')
+
+    @mute_logger('odoo.addons.mail.models.mail_mail')
+    @users('employee')
+    def test_store_notification_fields_mass_mail(self):
+        """ Mass mailing is supported on non-thread models, hence a sending
+        failure should push its notification update without crashing. """
+        test_record = self.test_record_nothread.with_env(self.env)
+        template = self.test_template.with_env(self.env)
+
+        composer = self.env['mail.compose.message'].create({
+            'composition_mode': 'mass_mail',
+            'model': test_record._name,
+            'res_ids': test_record.ids,
+            'template_id': template.id,
+        })
+        with self.mock_mail_gateway(), \
+             self.mock_send_email_delivery_exception([self.partner_1.email_formatted]):
+            composer.action_send_mail()
+
+        self.assertEqual(
+            self._new_mails.notification_ids.notification_status, 'exception',
+            'Sending should have failed, which triggers the bus update',
+        )
+        self.env.cr.precommit.run()
 
     @users('employee')
     def test_message_notify(self):

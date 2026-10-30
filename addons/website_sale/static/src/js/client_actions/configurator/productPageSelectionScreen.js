@@ -1,4 +1,4 @@
-import { onWillStart } from '@odoo/owl';
+import { onWillStart, t, useProps } from '@odoo/owl';
 import { useService } from '@web/core/utils/hooks';
 
 import {
@@ -6,19 +6,21 @@ import {
     ROUTES,
     useStore,
 } from '@website/client_actions/configurator/configurator';
+import { usePagePreviews } from '@website_sale/js/client_actions/configurator/pagePreview';
 
 export class ProductPageSelectionScreen extends ApplyConfiguratorScreen {
     static template = 'website_sale.Configurator.ProductPageSelectionScreen';
-    static props = {
-        navigate: Function,
-        skip: Function,
-        clearStorage: Function,
-    };
+    props = useProps({
+        navigate: t.function(),
+        skip: t.function(),
+        clearStorage: t.function(),
+    });
 
     setup() {
         super.setup();
         this.orm = useService('orm');
         this.state = useStore();
+        this.previews = usePagePreviews();
         onWillStart(async () => {
             this.productPageStyles = await this.orm.call(
                 'website', 'get_configurator_product_page_styles', [], {}

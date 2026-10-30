@@ -1,7 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import odoo
-from odoo import fields
+from odoo import Command, fields
 from odoo.addons.point_of_sale.tests.common import CommonPosTest
 
 
@@ -128,7 +128,7 @@ class TestPosDataLoading(CommonPosTest):
     # -------------------------------------------------------------------------
 
     def test_load_data_incremental_skips_up_to_date_records(self):
-        """Records whose local timestamp is in the future should not be returned."""
+        """Records whose local timestamp is in the future should not be returned except PosConfig."""
         session = self._get_session()
         full_data = session.load_data({'only_records': True})
         config_records = full_data['pos.config']
@@ -142,7 +142,23 @@ class TestPosDataLoading(CommonPosTest):
             'records': {'pos.config': {str(config_id): config_ts}},
             'only_records': True,
         })
-        self.assertEqual(result.get('pos.config', []), [],
+        self.assertTrue(result.get('pos.config'),
+            "pos.config should always be reloaded, even if the local copy is up to date")
+
+        product_records = full_data['product.product']
+        self.assertTrue(product_records)
+
+        product_timestamps = {
+            str(record['id']): fields.Datetime.from_string(record['write_date']).timestamp()
+            for record in product_records
+        }
+
+        result = session.load_data({
+            'models': ['product.product'],
+            'records': {'product.product': product_timestamps},
+            'only_records': True,
+        })
+        self.assertEqual(result.get('product.product', []), [],
             "Up-to-date record should be skipped in incremental load")
 
     def test_load_data_incremental_returns_outdated_records(self):
@@ -232,6 +248,35 @@ class TestPosDataLoading(CommonPosTest):
         ids_to_remove = result.get('pos.config', [])
         self.assertNotIn(config_id, ids_to_remove,
             "Existing active record should not be returned by filter_local_data")
+
+    def test_filter_local_data_handles_model_no_longer_in_registry(self):
+        """filter_local_data should not crash on a model that no longer exists (e.g. its
+        module was uninstalled since the client last synced), and should treat all of its
+        locally cached IDs as stale."""
+        session = self._get_session()
+
+        result = session.filter_local_data({'this.model.does.not.exist': ['1', '2']})
+
+        self.assertEqual(sorted(result.get('this.model.does.not.exist', [])), [1, 2],
+            "IDs of a model missing from the registry should all be treated as stale")
+
+    def test_filter_local_data_returns_items_of_archived_pricelist(self):
+        """Rules have no active field: when their pricelist is archived, filter_local_data
+        must return them along with the pricelist, otherwise the PoS restores rules
+        pointing to a pricelist missing from its local cache."""
+        session = self._get_session()
+        active_pricelist, archived_pricelist = self.env['product.pricelist'].create([{
+            'name': name,
+            'item_ids': [Command.create({'compute_price': 'fixed', 'fixed_price': 1})],
+        } for name in ('Active Pricelist', 'Archived Pricelist')])
+        archived_pricelist.action_archive()
+
+        result = session.filter_local_data({
+            'product.pricelist': [str(active_pricelist.id), str(archived_pricelist.id)],
+            'product.pricelist.item': [str(active_pricelist.item_ids.id), str(archived_pricelist.item_ids.id)],
+        })
+        self.assertEqual(result['product.pricelist'], archived_pricelist.ids)
+        self.assertEqual(result['product.pricelist.item'], archived_pricelist.item_ids.ids)
 
     # -------------------------------------------------------------------------
     # Pagination via search_params

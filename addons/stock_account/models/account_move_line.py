@@ -1,14 +1,9 @@
-from odoo import api, fields, models
+from odoo import fields, models
 
 
 class AccountMoveLine(models.Model):
     _inherit = 'account.move.line'
 
-    cogs_origin_id = fields.Many2one(  # technical field used to keep track in the originating line of the anglo-saxon lines
-        comodel_name="account.move.line",
-        copy=False,
-        index="btree_not_null",
-    )
     stock_move_id = fields.Many2one('stock.move', index='btree_not_null')
     cogs_move_ids = fields.Many2many(
         "stock.move", string="COGS stock moves",
@@ -16,64 +11,8 @@ class AccountMoveLine(models.Model):
         compute="_compute_cogs_move_ids",
     )
 
-    def _compute_account_id(self):
-        super()._compute_account_id()
-        for line in self:
-            if not line.move_id.is_purchase_document():
-                continue
-            if not line._eligible_for_stock_account():
-                continue
-            fiscal_position = line.move_id.fiscal_position_id
-            accounts = line.with_company(line.company_id).product_id.product_tmpl_id.get_product_accounts(fiscal_pos=fiscal_position)
-
-            if line.product_id.valuation == 'real_time' and accounts['stock_valuation']:
-                line.account_id = accounts['stock_valuation']
-
     def _compute_cogs_move_ids(self):
         self.cogs_move_ids = False
-
-    @api.onchange('product_id')
-    def _inverse_product_id(self):
-        super(AccountMoveLine, self.filtered(lambda l: l.display_type != 'cogs'))._inverse_product_id()
-
-    def _eligible_for_stock_account(self):
-        self.ensure_one()
-        if not self.product_id.is_storable:
-            return False
-        return all(not m._is_dropshipped() for m in self.cogs_move_ids)
-
-    def _stock_account_prepare_cogs_vals(self):
-        """ Values of the two COGS journal items (interim + expense) of the invoice line. """
-        self.ensure_one()
-        move = self.move_id
-        if not self._eligible_for_stock_account() or self.product_id.valuation != 'real_time':
-            return []
-        accounts = self.product_id.product_tmpl_id.get_product_accounts(fiscal_pos=move.fiscal_position_id)
-        stock_account = accounts['stock_valuation']
-        credit_expense_account = accounts['expense'] or move.journal_id.default_account_id
-        if not stock_account or not credit_expense_account:
-            return []
-
-        sign = -1 if move.move_type == 'out_refund' else 1
-        price_unit = self._get_cogs_value()
-        amount_currency = sign * self.product_uom_id._compute_quantity(self.quantity, self.product_id.uom_id) * price_unit
-
-        common_vals = {
-            'name': self.name[:64] if self.name else '',
-            'move_id': move.id,
-            'partner_id': move.commercial_partner_id.id,
-            'product_id': self.product_id.id,
-            'product_uom_id': self.product_uom_id.id,
-            'quantity': self.quantity,
-            'analytic_distribution': self.analytic_distribution,
-            'display_type': 'cogs',
-            'tax_ids': [],
-            'cogs_origin_id': self.id,
-        }
-        return [
-            dict(common_vals, price_unit=price_unit, amount_currency=-amount_currency, account_id=stock_account.id),
-            dict(common_vals, price_unit=-price_unit, amount_currency=amount_currency, account_id=credit_expense_account.id),
-        ]
 
     def _set_cogs(self):
         """Re-evaluate the COGS of the originating invoice lines after the value of
@@ -104,20 +43,6 @@ class AccountMoveLine(models.Model):
                     'amount_currency': -amount if on_stock_account else amount,
                     'balance': -amount if on_stock_account else amount,
                 })
-
-    def _get_gross_unit_price(self):
-        if self.product_uom_id.is_zero(self.quantity):
-            return self.price_unit
-
-        if self.discount != 100:
-            if not any(t.price_include for t in self.tax_ids) and self.discount:
-                price_unit = self.price_unit * (1 - self.discount / 100)
-            else:
-                price_unit = self.price_subtotal / self.quantity
-        else:
-            price_unit = self.price_unit
-
-        return -price_unit if self.move_id.move_type == 'in_refund' else price_unit
 
     def _get_cogs_value(self):
         """ Get the COGS price unit in the product's default unit of measure.

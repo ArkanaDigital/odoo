@@ -30,7 +30,7 @@ class PosOrder(models.Model):
                     def get_expected_qty_to_ship_later():
                         pos_pickings = so_line.pos_order_line_ids.order_id.picking_ids
                         if pos_pickings and all(pos_picking.state in ['confirmed', 'assigned'] for pos_picking in pos_pickings):
-                            return sum((so_line._convert_qty(so_line, pos_line.qty, 'p2s') for pos_line in
+                            return sum((so_line._convert_qty(so_line, pos_line._get_qty_to_move(), 'p2s') for pos_line in
                                         so_line.pos_order_line_ids if so_line.product_id.type != 'service'), 0)
                         return 0
 
@@ -40,7 +40,7 @@ class PosOrder(models.Model):
                         new_qty = 0
                     stock_move.product_uom_qty = so_line.compute_uom_qty(new_qty, stock_move, False)
                     # If the product is delivered with more than one step, we need to update the quantity of the other steps
-                    for move in so_line_stock_move_ids.filtered(lambda m: m.state in ['waiting', 'confirmed', 'assigned'] and m.product_id == stock_move.product_id):
+                    for move in so_line_stock_move_ids.filtered(lambda m: m.picking_id and m.state in ['waiting', 'confirmed', 'assigned'] and m.product_id == stock_move.product_id):
                         move.product_uom_qty = stock_move.product_uom_qty
                         waiting_picking_ids.add(move.picking_id.id)
                     waiting_picking_ids.add(picking.id)

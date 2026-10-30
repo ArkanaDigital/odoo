@@ -8,9 +8,9 @@ from collections import defaultdict
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 from odoo.fields import Domain
+from odoo.tools import groupby
 from odoo.tools.image import is_image_size_above
 from odoo.tools.sql import SQL
-from odoo.tools.translate import mark_as_copy
 
 _logger = logging.getLogger(__name__)
 PRICE_CONTEXT_KEYS = ['pricelist', 'quantity', 'uom', 'date']
@@ -21,15 +21,19 @@ class ProductTemplate(models.Model):
     _inherit = ['mail.thread', 'mail.activity.mixin', 'image.mixin']
     _description = "Product"
     _explanation = "The abstract base representation of a product. It defines the generic properties (name, category, price) that apply to all its variants. If a product has no variations (like size/color), this acts as the main product record."
-    _order = "is_favorite desc, name"
+    _order = "is_favorite desc, name, id"
     _check_company_auto = True
     _check_company_domain = models.check_company_domain_parent_of
 
     @api.model
     def default_get(self, fields):
         res = super().default_get(fields)
-        if ('uom_id' in fields and not res.get('uom_id')) or self.env.context.get('default_uom_id') is False:
-            res['uom_id'] = self._default_uom_id().id
+        if 'uom_id' in fields and not res.get('uom_id'):
+            clean_ctxt = dict(self.env.context)
+            clean_ctxt.pop('default_uom_id', None)
+            # Since uom is required, always fallback on a default (if any) even when the context
+            # gives an empty default value.
+            res['uom_id'] = self.with_context(clean_ctxt).default_get(['uom_id']).get('uom_id', False)
         return res
 
     @api.ormcache()
@@ -50,7 +54,7 @@ class ProductTemplate(models.Model):
     def _domain_fixed_pricelist_rule_ids(self):
         return self._domain_pricelist_rule_ids() & Domain('compute_price', '=', 'fixed')
 
-    name = fields.Char('Name', index='trigram', required=True, translate=True, copy=mark_as_copy('name'))
+    name = fields.Char('Name', index='trigram', required=True, translate=True)
     sequence = fields.Integer('Sequence', default=1, help='Gives the sequence order when displaying a product list')
     description = fields.Html(
         'Description', translate=True)
@@ -189,7 +193,12 @@ class ProductTemplate(models.Model):
     show_qty_update_button = fields.Boolean(compute='_compute_show_qty_update_button')
 
     # related to display product product information if is_product_variant
-    barcode = fields.Char('Barcode', compute='_compute_barcode', inverse='_set_barcode', search='_search_barcode')
+    barcode = fields.Char(
+        string="Barcode",
+        compute="_compute_barcode",
+        inverse="_set_barcode",
+        store=True,
+    )
     default_code = fields.Char(
         'Internal Reference', compute='_compute_default_code',
         inverse='_set_default_code', store=True)
@@ -314,10 +323,78 @@ class ProductTemplate(models.Model):
         for p in self:
             p.product_variant_id = p.product_variant_ids[:1].id
 
-    @api.constrains('company_id')
+    def _get_barcodes_by_company(self):
+        return [
+            (company_id, [t.barcode for t in templates if t.barcode])
+            for company_id, templates in groupby(self, lambda t: t.company_id.id)
+        ]
+
+    def _get_barcode_search_domain(self, barcodes_within_company, company_id):
+        domain = [('barcode', 'in', barcodes_within_company)]
+        if company_id:
+            domain.append(('company_id', 'in', (False, company_id)))
+        return domain
+
+    def _check_duplicated_template_barcodes(self, barcodes_within_company, company_id):
+        """Check that no two *templates* share the same barcode."""
+        domain = self._get_barcode_search_domain(barcodes_within_company, company_id)
+        templates_by_barcode = self.sudo()._read_group(
+            domain, ['barcode'], ['id:recordset'], having=[('__count', '>', 1)],
+        )
+
+        duplicates_as_str = "\n".join(
+            self.env['product.product']._build_duplicate_barcode_error_string(
+                barcode, ((duplicate_templates - self) or duplicate_templates)._filtered_access('read')
+            )
+            for barcode, duplicate_templates in templates_by_barcode
+        )
+
+        if duplicates_as_str:
+            duplicates_as_str += "\n\n" + self.env['product.product']._build_duplicate_barcode_error_note()
+            raise ValidationError(_("Barcode(s) already assigned:\n\n%s", duplicates_as_str))
+
+    def _check_duplicated_variant_barcodes(self, barcodes_within_company, company_id):
+        """Check that no *variant* shares this template's barcode, unless it is the
+        template's own mirrored variant.
+
+        Only the mirrored variant of a *single-variant* template is excluded: that's the
+        one case where `barcode` is intentionally identical on both records, kept in sync
+        by `_compute_barcode`/`_set_barcode`. As soon as a template has several variants,
+        its `barcode` is independent, manually-set data, so one of its own variants sharing
+        that barcode is a genuine duplicate and must still be reported.
+        """
+        domain = Domain(self._get_barcode_search_domain(barcodes_within_company, company_id))
+        mirrored_variant_ids = self.filtered(
+            lambda template: len(template.product_variant_ids) == 1
+        ).product_variant_id.ids
+        domain &= Domain('id', 'not in', mirrored_variant_ids)
+
+        variants_by_barcode = self.env['product.product'].sudo()._read_group(
+            domain, ['barcode'], ['id:recordset'],
+        )
+
+        duplicates_as_str = "\n".join(
+            self.env['product.product']._build_duplicate_barcode_error_string(barcode, duplicate_variants._filtered_access('read'))
+            for barcode, duplicate_variants in variants_by_barcode
+        )
+
+        if duplicates_as_str:
+            duplicates_as_str += "\n\n" + self.env['product.product']._build_duplicate_barcode_error_note()
+            raise ValidationError(_("Barcode(s) already assigned:\n\n%s", duplicates_as_str))
+
     def _check_barcode_uniqueness(self):
-        for template in self:
-            template.product_variant_ids._check_barcode_uniqueness()
+        """Called explicitly from create()/write() when 'barcode' or 'company_id'
+        is touched.
+        """
+        if self.env.context.get('skip_barcode_uniqueness_check'):
+            return
+        # Barcodes should only be unique within a company
+        self_ctx = self.with_context(skip_preprocess_gs1=True, skip_barcode_uniqueness_check=True)
+        self_ctx.flush_model()
+        self_ctx.env['product.product'].flush_model()
+        for company_id, barcodes_within_company in self_ctx._get_barcodes_by_company():
+            self_ctx._check_duplicated_template_barcodes(barcodes_within_company, company_id)
+            self_ctx._check_duplicated_variant_barcodes(barcodes_within_company, company_id)
 
     @api.depends('company_id')
     def _compute_currency_id(self):
@@ -398,6 +475,8 @@ class ProductTemplate(models.Model):
         self._set_product_variant_field('standard_price')
 
     def _search_standard_price(self, operator, value):
+        if operator in Domain.NEGATIVE_OPERATORS:
+            return NotImplemented
         return [('product_variant_ids.standard_price', operator, value)]
 
     @api.depends('type')
@@ -430,6 +509,8 @@ class ProductTemplate(models.Model):
         return prod_available
 
     def _search_qty_available(self, operator, value):
+        if operator in Domain.NEGATIVE_OPERATORS:
+            return NotImplemented
         return [('product_variant_ids.qty_available', operator, value)]
 
     def _set_qty_available(self):
@@ -466,18 +547,15 @@ class ProductTemplate(models.Model):
     def _compute_is_product_variant(self):
         self.is_product_variant = False
 
-    @api.depends('product_variant_ids.barcode')
+    @api.depends('product_variant_ids.barcode', 'product_variant_ids.active')
     def _compute_barcode(self):
-        self._compute_template_field_from_variant_field('barcode')
-
-    def _search_barcode(self, operator, value):
-        subquery = self.with_context(active_test=False)._search([
-            ('product_variant_ids.barcode', operator, value),
-        ])
-        return [('id', 'in', subquery)]
+        for template in self.filtered(lambda template: len(template.product_variant_ids) == 1):
+            template.barcode = template.product_variant_ids.barcode
 
     def _set_barcode(self):
-        self._set_product_variant_field('barcode')
+        for template in self:
+            if len(template.product_variant_ids) == 1:
+                template.product_variant_ids.barcode = template.barcode
 
     @api.depends('sale_ok')
     def _compute_show_sales_price_page(self):
@@ -571,10 +649,13 @@ class ProductTemplate(models.Model):
 
     @api.depends('product_variant_ids.default_code')
     def _compute_default_code(self):
-        self._compute_template_field_from_variant_field('default_code')
+        for template in self.filtered(lambda template: len(template.product_variant_ids) == 1):
+            template.default_code = template.product_variant_ids.default_code
 
     def _set_default_code(self):
-        self._set_product_variant_field('default_code')
+        for template in self:
+            if len(template.product_variant_ids) == 1:
+                template.product_variant_ids.default_code = template.default_code
 
     @api.depends('type')
     def _compute_product_tooltip(self):
@@ -688,7 +769,7 @@ class ProductTemplate(models.Model):
             template.base_unit_name = template.base_unit_id.name or template.uom_name
 
     @api.model
-    def load(self, fields, data):
+    def load(self, fields, data, *, limit=None):
         """
         Data import for products depends on the presence of variants.
         If 'import_attribute_values' is present, then the product.template files
@@ -716,7 +797,7 @@ class ProductTemplate(models.Model):
         if data_list_templates:
             template_fields = list(fields)
             template_fields.pop(column_no)
-            result = super().load(template_fields, data_list_templates)
+            result = super().load(template_fields, data_list_templates, limit=limit)
             if any(message['type'] == 'error' for message in result['messages']):
                 return result
         else:
@@ -724,7 +805,7 @@ class ProductTemplate(models.Model):
 
         if data_list_products:
             ProductProduct = self.env['product.product'].with_context(from_template_import=True)
-            result_product = ProductProduct.load(fields, data_list_products)
+            result_product = ProductProduct.load(fields, data_list_products, limit=limit)
             if any(message['type'] == 'error' for message in result_product['messages']):
                 return result_product
 
@@ -751,12 +832,15 @@ class ProductTemplate(models.Model):
             if related_vals:
                 template.write(related_vals)
 
+        if any('barcode' in vals or 'company_id' in vals for vals in vals_list):
+            templates._check_barcode_uniqueness()
+
         return templates
 
     def write(self, vals):
         if 'uom_id' in vals:
             products = self.filtered(lambda template: template.uom_id.id != vals['uom_id']).product_variant_ids
-            products.with_context(skip_uom_conversion=True)._update_uom(vals['uom_id'])
+            products.sudo().with_context(skip_uom_conversion=True)._update_uom(vals['uom_id'])
         res = super().write(vals)
         if (self.env.context.get("create_product_product", True) and 'attribute_line_ids' in vals) or (vals.get('active') and len(self.product_variant_ids) == 0):
             self._create_variant_ids()
@@ -774,6 +858,8 @@ class ProductTemplate(models.Model):
         for product_template in self:
             if "type" in vals and vals.get("type") != "combo":
                 product_template.combo_ids = False
+        if 'barcode' in vals or 'company_id' in vals:
+            self._check_barcode_uniqueness()
         return res
 
     def action_archive(self):
@@ -828,12 +914,11 @@ class ProductTemplate(models.Model):
             if variant_specific_pricings:
                 def get_combination_key(variant, attribute_line_ids):
                     return frozenset(
-                        variant.product_template_variant_value_ids.mapped(
-                            lambda v: (
-                                attribute_line_ids.index(v.attribute_line_id.id),
-                                v.product_attribute_value_id.id,
-                            )
+                        (
+                            attribute_line_ids.index(ptav.attribute_line_id.id),
+                            ptav.product_attribute_value_id.id,
                         )
+                        for ptav in variant.product_template_variant_value_ids
                     )
 
                 template_copy_line_ids = template_copy.attribute_line_ids.ids
@@ -1481,6 +1566,20 @@ class ProductTemplate(models.Model):
         resulting empty combination is actually possible or not.
         """
         return next(self._get_possible_combinations(necessary_values), self.env['product.template.attribute.value'])
+
+    def _get_first_available_combination(self, necessary_values=None):
+        """Return the first combination that is actually available to the customer.
+
+        Unlike `_get_first_possible_combination`, this is the override point for modules that
+        want to filter out combinations that are technically possible but not available (e.g.
+        out of stock), falling back to the first possible one if none qualify.
+
+        :param product.template.attribute.value necessary_values: attribute values that must be part
+        of the returned combination.
+        :return: the first available combination, or an empty recordset if there is none.
+        :rtype: `product.template.attribute.value` recordset
+        """
+        return self._get_first_possible_combination(necessary_values)
 
     def _cartesian_product(self, product_template_attribute_values_per_line):
         """

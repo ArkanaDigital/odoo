@@ -9,6 +9,14 @@ class VendorDelayReport(models.Model):
     _name = 'vendor.delay.report'
     _description = "Vendor Delay Report"
     _auto = False
+    _depends = {
+        'stock.move': ['purchase_line_id', 'product_id', 'date', 'state'],
+        'stock.move.line': ['move_id', 'quantity', 'uom_id'],
+        'purchase.order.line': ['product_id', 'partner_id', 'product_uom_qty', 'date_promised'],
+        'product.product': ['product_tmpl_id'],
+        'product.template': ['uom_id', 'categ_id'],
+        'uom.uom': ['factor'],
+    }
 
     partner_id = fields.Many2one('res.partner', 'Vendor', readonly=True)
     product_id = fields.Many2one('product.product', 'Product', readonly=True)
@@ -32,7 +40,15 @@ SELECT pol.id                   AS id,
        Sum(CASE
              WHEN (m.state = 'done' and pol.date_promised::date >= m.date::date) THEN ((ml.quantity * ml_uom.factor) / pt_uom.factor)
              ELSE 0
-           END)                 AS qty_on_time
+           END)                 AS qty_on_time,
+       CASE
+         WHEN pol.product_uom_qty != 0 THEN
+           Sum(CASE
+                 WHEN (m.state = 'done' and pol.date_promised::date >= m.date::date) THEN ((ml.quantity * ml_uom.factor) / pt_uom.factor)
+                 ELSE 0
+               END) / pol.product_uom_qty * 100
+         ELSE 100
+       END                      AS on_time_rate
 FROM   stock_move m
        JOIN purchase_order_line pol
          ON pol.id = m.purchase_line_id

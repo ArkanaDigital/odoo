@@ -9,7 +9,7 @@ import {
     untrack,
 } from "@odoo/owl";
 import { hasTouch } from "@web/core/browser/feature_detection";
-import { onWillRender, useLayoutEffect } from "@web/owl2/utils";
+import { onWillRender } from "@web/owl2/utils";
 import { areDatesEqual, formatDate, formatDateTime, parseDate, parseDateTime } from "../l10n/dates";
 import { makePopover } from "../popover/popover_hook";
 import { registry } from "../registry";
@@ -249,22 +249,16 @@ export const datetimePickerService = {
                  * @param {KeyboardEvent} ev
                  */
                 function onInputKeydown(ev) {
-                    if (ev.key == "Enter" && ev.ctrlKey) {
-                        ev.preventDefault();
-                        const abort = updateValueFromInputs();
-                        if (abort) {
-                            return;
-                        }
-                        return open(ev.target === getInput(1) ? 1 : 0);
-                    }
                     switch (ev.key) {
-                        case "Enter":
-                        case "Escape": {
+                        case "Enter": {
                             const abort = updateValueFromInputs();
                             if (abort) {
                                 return;
                             }
                             return saveAndClose();
+                        }
+                        case "Escape": {
+                            return updateInputsFromValue();
                         }
                         case "Tab": {
                             if (
@@ -457,10 +451,10 @@ export const datetimePickerService = {
                         return true;
                     }
                     // Iterate over the current value slots rather than the inputs:
-                    // a target-only picker (e.g. gantt scale selector, builder
-                    // datetimepicker) has no input elements, in which case every
-                    // value must be preserved as-is. Indexing an absent input keeps
-                    // the current value, so the just-selected value is never wiped.
+                    // a target-only picker has no input elements, in which case
+                    // every value must be preserved as-is. Indexing an absent input
+                    // keeps the current value, so the just-selected value is never
+                    // wiped.
                     const values = ensureArray(pickerProps.value).map((currentValue, i) => {
                         const el = inputs[i];
                         if (!el || el.tagName?.toLowerCase() !== "input") {
@@ -575,10 +569,21 @@ export const datetimePickerService = {
 
                     onMounted(setup);
                     onWillDestroy(destroy);
-                    useLayoutEffect(initInputs, getInputs);
 
-                    // Note: this `onPatched` callback must be called after the `useLayoutEffect` since
-                    // the effect may change input values that will be selected by the patch callback.
+                    // `initInputs` must run after mount and after each patch, but only when the set
+                    // of input elements returned by `getInputs` actually changes.
+                    let previousInputs = null;
+                    const initInputsIfChanged = () => {
+                        const inputs = getInputs();
+                        if (previousInputs && shallowEqual(previousInputs, inputs)) {
+                            return;
+                        }
+                        previousInputs = inputs;
+                        initInputs(...inputs);
+                    };
+                    onMounted(initInputsIfChanged);
+                    onPatched(initInputsIfChanged);
+
                     onPatched(function focusIfNeeded() {
                         if (shouldFocus && isOpen() && !useBottomSheet()) {
                             focusActiveInput();

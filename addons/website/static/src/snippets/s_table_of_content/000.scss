@@ -2,7 +2,8 @@
     .s_table_of_content_navbar_wrap {
         &.s_table_of_content_navbar_sticky {
             &.s_table_of_content_horizontal_navbar, &.s_table_of_content_vertical_navbar .s_table_of_content_navbar {
-                @include o-position-sticky($top: 0px);
+                position: sticky;
+                top: 0px;
             }
             &.s_table_of_content_vertical_navbar .s_table_of_content_navbar {
                 overflow: auto;
@@ -16,16 +17,18 @@
         &.s_table_of_content_vertical_navbar .s_table_of_content_navbar {
             overflow-wrap: break-word;
 
-            > a.list-group-item-action {
+            > a.list-group-item-action, > span[data-oe-translation-state] > a.list-group-item-action {
                 background: none;
                 color: inherit;
                 opacity: 0.7;
-                font-weight: $font-weight-normal + 100;
+                font-weight: calc(var(--o-bs-font-weight-normal) + 100);
                 padding-left: 3px;
                 transition: padding 0.1s;
 
                 &:before {
-                    @include o-position-absolute(10px, auto, 10px, 0);
+                    position: absolute;
+                    inset-block: 10px;
+                    inset-inline-start: 0;
                     width: 2px;
                     content: "";
                 }
@@ -55,21 +58,21 @@
                     opacity: 1;
 
                     &:before {
-                        background-color: map-get($theme-colors, 'primary');
+                        background-color: var(--primary);
                     }
                 }
             }
         }
         &.s_table_of_content_horizontal_navbar {
             z-index: 1;
-            padding-top: $navbar-padding-y;
-            padding-bottom: $navbar-padding-y;
-            margin-bottom: $spacer * 2;
+            padding-top: var(--o-bs-navbar-padding-y);
+            padding-bottom: var(--o-bs-navbar-padding-y);
+            margin-bottom: calc(var(--o-bs-spacer) * 2);
 
             .s_table_of_content_navbar {
                 display: inline;
 
-                > a {
+                > a, > span[data-oe-translation-state] > a {
                     &.list-group-item-action {
                         width: auto;
                     }

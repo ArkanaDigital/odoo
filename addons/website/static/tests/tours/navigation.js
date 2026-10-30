@@ -1,4 +1,3 @@
-import { stepUtils } from "@web_tour/tour_utils";
 import { insertSnippet, registerWebsitePreviewTour } from "@website/js/tours/tour_utils";
 
 registerWebsitePreviewTour("website_editing_awaits_navigation", {}, () => [
@@ -7,10 +6,13 @@ registerWebsitePreviewTour("website_editing_awaits_navigation", {}, () => [
         trigger: ".o_menu_systray_item.o_edit_website_container > button",
         run: "click",
     },
-    stepUtils.waitIframeIsReady(),
+    {
+        content: "Wait until the iframe is ready",
+        trigger: ":iframe body[is-ready=true]",
+    },
     {
         content: "Can insert a snippet",
-        trigger: ".o-website-builder_sidebar",
+        trigger: ".o_website_builder_sidebar",
     },
     ...insertSnippet({
         id: "s_banner",

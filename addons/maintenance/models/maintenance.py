@@ -275,7 +275,7 @@ class MaintenanceRequest(models.Model):
             team = MT.search([], limit=1)
         return team.id
 
-    name = fields.Char('Subjects', required=True)
+    name = fields.Char('Subjects', required=True, copy=True)
     company_id = fields.Many2one('res.company', string='Company', required=True,
         default=lambda self: self.env.company)
     description = fields.Html('Description')
@@ -336,9 +336,11 @@ class MaintenanceRequest(models.Model):
         first_stage_obj = self.env['maintenance.stage'].search([], order="sequence asc", limit=1)
         self.write({'state': 'normal', 'stage_id': first_stage_obj.id})
 
-    @api.constrains('schedule_end')
-    def _check_schedule_end(self):
+    @api.constrains('schedule_date', 'schedule_end')
+    def _check_schedule_interval(self):
         for request in self:
+            if bool(request.schedule_date) != bool(request.schedule_end):
+                raise ValidationError(self.env._("Scheduled Date and Scheduled End must either both be set or both be empty."))
             if request.schedule_date and request.schedule_end and request.schedule_date > request.schedule_end:
                 raise ValidationError(self.env._("End date cannot be earlier than start date."))
 
@@ -439,8 +441,6 @@ class MaintenanceRequest(models.Model):
         for request in maintenance_requests:
             if request.owner_user_id or request.user_ids:
                 request._add_followers()
-            if request.equipment_id and not request.maintenance_team_id:
-                request.maintenance_team_id = request.maintenance_team_id
             if request.close_date and request.state != 'done':
                 request.close_date = False
             if not request.close_date and request.state == 'done':
@@ -529,14 +529,31 @@ class MaintenanceTeam(models.Model):
 
     @api.depends('request_ids.state')
     def _compute_todo_requests(self):
+        request_model = self.env['maintenance.request']
+        requests_by_team = request_model.search_fetch(
+            [
+                ('maintenance_team_id', 'in', self.ids),
+                ('state', 'not in', ['done', 'cancelled']),
+            ],
+            ['maintenance_team_id', 'schedule_date', 'priority', 'state'],
+        ).grouped('maintenance_team_id')
+        empty_requests = request_model.browse()
+
         for team in self:
-            domain = [('maintenance_team_id', '=', team.id), ('state', 'not in', ['done', 'cancelled'])]
-            team.todo_request_ids = self.env['maintenance.request'].search(domain)
-            data = self.env['maintenance.request']._read_group(domain, ['schedule_date:year', 'priority', 'state'], ['__count'])
-            team.todo_request_count = sum(count for (_, _, _, count) in data)
-            team.todo_request_count_date = sum(count for (schedule_date, _, _, count) in data if schedule_date)
-            team.todo_request_count_high_priority = sum(count for (_, priority, _, count) in data if priority == '3')
-            team.todo_request_count_changes_requested = sum(count for (_, _, state, count) in data if state == 'changes_requested')
+            team_requests = requests_by_team.get(team, empty_requests)
+            team.todo_request_ids = team_requests
+            team.todo_request_count = len(team_requests)
+            date_count = high_priority_count = changes_requested_count = 0
+            for request in team_requests:
+                if request.schedule_date:
+                    date_count += 1
+                if request.priority == '3':
+                    high_priority_count += 1
+                if request.state == 'changes_requested':
+                    changes_requested_count += 1
+            team.todo_request_count_date = date_count
+            team.todo_request_count_high_priority = high_priority_count
+            team.todo_request_count_changes_requested = changes_requested_count
             team.todo_request_count_unscheduled = team.todo_request_count - team.todo_request_count_date
 
     @api.depends('equipment_ids')

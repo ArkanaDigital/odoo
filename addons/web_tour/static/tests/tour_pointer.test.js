@@ -1,14 +1,21 @@
 /** @odoo-module **/
 
-import { advanceTime, after, beforeEach, describe, expect, test } from "@odoo/hoot";
-import { leave, queryFirst, waitFor } from "@odoo/hoot-dom";
 import {
+    advanceTime,
+    after,
     animationFrame,
+    beforeEach,
+    describe,
     disableAnimations,
     enableTransitions,
+    expect,
+    leave,
+    queryFirst,
     runAllTimers,
-} from "@odoo/hoot-mock";
-import { Component, xml, proxy } from "@odoo/owl";
+    test,
+    waitFor,
+} from "@odoo/hoot";
+import { Component, proxy, xml } from "@odoo/owl";
 import {
     contains,
     defineModels,
@@ -19,13 +26,12 @@ import {
 } from "@web/../tests/web_test_helpers";
 import { Dialog } from "@web/core/dialog/dialog";
 import { registry } from "@web/core/registry";
-import { TourInteractive } from "@web_tour/js/tour_interactive/tour_interactive";
+import { TourInteractive } from "@web_tour/tour_interactive/tour_interactive";
 import { Tour, TourStep } from "./tour_models";
 
 describe.current.tags("desktop");
 
 class Counter extends Component {
-    static props = ["*"];
     static template = xml/*html*/ `
         <div class="counter">
             <div class="interval">
@@ -67,7 +73,7 @@ beforeEach(() => {
 });
 
 after(() => {
-    TourInteractive.observer.disconnect();
+    TourInteractive.current?.stop();
 });
 
 defineModels([Tour, TourStep]);
@@ -87,7 +93,6 @@ test("scrolling to next step should update the pointer's height", async (assert)
     });
     enableTransitions();
     class Root extends Component {
-        static props = ["*"];
         static components = { Counter };
         static template = xml/*html*/ `
             <div class="scrollable-parent" style="overflow-y: scroll; height: 150px;">
@@ -166,7 +171,6 @@ test("should show only 1 pointer at a time", async () => {
         ],
     });
     class Root extends Component {
-        static props = ["*"];
         static components = { Counter };
         static template = xml/*html*/ `
             <t>
@@ -204,7 +208,6 @@ test("hovering to the anchor element should show the content and not when conten
         ],
     });
     class Root extends Component {
-        static props = ["*"];
         static components = { Counter };
         static template = xml/*html*/ `
             <t>
@@ -252,7 +255,6 @@ test("pointer is added on top of overlay's stack", async () => {
     ];
     Tour._records = [{ name: "tour1" }];
     class DummyDialog extends Component {
-        static props = ["*"];
         static components = { Dialog };
         static template = xml`
             <Dialog>
@@ -262,21 +264,18 @@ test("pointer is added on top of overlay's stack", async () => {
         `;
     }
     class Root extends Component {
-        static props = ["*"];
-        static components = {};
         static template = xml``;
     }
 
     await mountWithCleanup(Root);
 
-    await getService("tour_service").startTour("tour1", { mode: "manual" });
+    await getService("tour_service").startTour("tour1", { mode: "manual", fromDB: true });
     getService("dialog").add(DummyDialog, {});
     await animationFrame();
     expect(`.o-overlay-item`).toHaveCount(2);
     // the pointer should be after the dialog
     expect(".o-overlay-item:eq(0) .modal").toHaveCount(1);
-    await animationFrame();
-    expect(".o-overlay-item:eq(1) .o_tour_pointer").toHaveCount(1);
+    await waitFor(".o-overlay-item:eq(1) .o_tour_pointer");
 
     await contains(".modal .a").click();
     await animationFrame();
@@ -297,7 +296,6 @@ test("next step with new anchor at same position", async () => {
     });
 
     class Dummy extends Component {
-        static props = ["*"];
         state = proxy({ bool: true });
         static template = xml/*html*/ `
             <button class="foo w-100" t-if="this.state.bool" t-on-click="() => { this.state.bool = false; }">Foo</button>
@@ -305,7 +303,6 @@ test("next step with new anchor at same position", async () => {
         `;
     }
     class Root extends Component {
-        static props = ["*"];
         static components = { Dummy };
         static template = xml/*html*/ `
             <t>
@@ -356,7 +353,6 @@ test("points to next step", async () => {
         ],
     });
     class Root extends Component {
-        static props = ["*"];
         static components = { Counter };
         static template = xml`
             <t>
@@ -384,7 +380,6 @@ test("scroller pointer to reach next step", async () => {
         ],
     });
     class Root extends Component {
-        static props = ["*"];
         static components = { Counter };
         static template = xml/*html*/ `
             <div class="scrollable-parent" style="overflow-y: scroll; height: 150px;">
@@ -442,7 +437,6 @@ test("scroller pointer to reach next step (X axis)", async () => {
         ],
     });
     class Root extends Component {
-        static props = ["*"];
         static components = { Counter };
         static template = xml/*html*/ `
             <div class="scrollable-parent d-flex flex-row" style="overflow-x: scroll; width: 300px;">
@@ -510,7 +504,6 @@ test("check tooltip position", async () => {
         ],
     });
     class Root extends Component {
-        static components = {};
         static template = xml/*html*/ `
             <t>
                 <div class="container">
@@ -521,7 +514,6 @@ test("check tooltip position", async () => {
                 </div>
             </t>
         `;
-        static props = ["*"];
     }
     await mountWithCleanup(Root);
     let tooltip, content;
@@ -592,7 +584,6 @@ test("check drop zone", async () => {
         ],
     });
     class Root extends Component {
-        static components = {};
         static template = xml/*html*/ `
             <t>
                 <div class="container">
@@ -609,7 +600,6 @@ test("check drop zone", async () => {
                 </div>
             </t>
         `;
-        static props = ["*"];
     }
     await mountWithCleanup(Root);
     await getService("tour_service").startTour("tour_des_drag_and_drop", { mode: "manual" });

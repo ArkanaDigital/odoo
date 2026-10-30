@@ -1,6 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 import colorsys
 import re
+from urllib.parse import urlsplit
 
 import werkzeug.urls
 from lxml import etree, html
@@ -95,6 +96,12 @@ def text_from_html(html_fragment, collapse_whitespace=False):
     return content
 
 
+def _is_dark_rgb(red, green, blue, alpha, lightness_threshold):
+    rgb = tuple(map(int, (red, green, blue)))
+    _, lightness, _ = colorsys.rgb_to_hls(*(channel / 255 for channel in rgb))
+    return (not alpha or float(alpha) > 0) and lightness < lightness_threshold
+
+
 def adapt_dark_palette_content(root):
     """Keep text and carousel controls readable with dark palettes."""
     for element in root.iter():
@@ -102,6 +109,26 @@ def adapt_dark_palette_content(root):
         if 'carousel-dark' in class_names:
             class_names.remove('carousel-dark')
             element.set('class', ' '.join(class_names))
+        # Blurred backgrounds inherit text colors from their closest preset.
+        # Dark translucent backgrounds need `o_cc1` to keep text visible.
+        if 'o_bg_blur_option' in class_names:
+            color_match = re.search(
+                r'background-color:\s*rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)'
+                r'(?:\s*,\s*([\d.]+))?\s*\)',
+                element.get('style', ''),
+            )
+            if color_match:
+                red, green, blue, alpha = color_match.groups()
+                if _is_dark_rgb(red, green, blue, alpha, 0.5):
+                    color_preset_el = element
+                    while color_preset_el is not None:
+                        color_preset_classes = color_preset_el.get('class', '').split()
+                        if 'o_cc' in color_preset_classes:
+                            if 'o_cc5' in color_preset_classes:
+                                color_preset_classes[color_preset_classes.index('o_cc5')] = 'o_cc1'
+                                color_preset_el.set('class', ' '.join(color_preset_classes))
+                            break
+                        color_preset_el = color_preset_el.getparent()
         if 'o_cc1' not in class_names and 'o_cc5' not in class_names:
             continue
         for child_el in element:
@@ -114,9 +141,10 @@ def adapt_dark_palette_content(root):
                 r'rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)',
                 child_el.get('style', ''),
             ):
-                rgb = tuple(map(int, (red, green, blue)))
-                _, lightness, _ = colorsys.rgb_to_hls(*(channel / 255 for channel in rgb))
-                if (not alpha or float(alpha) > 0) and lightness < 0.5:
+                # The 65% threshold keeps text light over all theme gradient
+                # filters (e.g. the `s_cover` filter from `theme_monglia`,
+                # which contains a color with 61% lightness).
+                if _is_dark_rgb(red, green, blue, alpha, 0.65):
                     has_dark_gradient = True
                     break
             if any(name.startswith('bg-black-') for name in child_class_names) or has_dark_gradient:
@@ -135,8 +163,9 @@ def images_from_html(html_fragment, base_url):
     if not html_fragment or not html_fragment.strip():
         return []
     tree = html.fromstring(html_fragment)
+    # urljoin only accepts URLs of base_url, but images may be hosted elsewhere
     seen = dict.fromkeys(
-        urljoin(base_url, src)
+        src if urlsplit(src).netloc else urljoin(base_url, src)
         for img in tree.xpath('//img[@src]')
         if (src := img.get('src')) and not src.startswith('data:')
     )
@@ -207,3 +236,27 @@ def create_image_attachment(env, image_path, image_name):
         'url': Attachments.get_base_url() + image_path,
     })
     return img
+
+
+def add_seo_rels_to_links(html_template):
+    """
+    Add 'nofollow', 'noopener', 'noreferrer', and 'ugc' to anchor tags.
+    This is useful to prevent users from harming SEO.
+
+    :param html_template: the html code to edit
+    :return: the updated html template
+    """
+    try:
+        tree = html.fragment_fromstring(str(html_template), create_parent="template")
+    except etree.ParserError:
+        return html_template
+    links = list(tree.iter('a'))
+    if not links:
+        return html_template
+    for link in links:
+        old_values = set(link.get("rel", "").split())
+        old_values.update(('nofollow', 'noopener', 'noreferrer', 'ugc'))
+        link.set("rel", " ".join(sorted(old_values)))
+    result = html.tostring(tree, encoding="unicode")
+    result = result[10:-11]
+    return type(html_template)(result)

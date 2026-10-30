@@ -1,12 +1,10 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 from __future__ import annotations
 
-import warnings
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
-    from typing import LiteralString
     from .fields import Field
     from .models import BaseModel
 
@@ -76,12 +74,22 @@ class Query:
         self.groupby: SQL | None = None
         self._order_groupby: list[SQL] = []
         self.having: SQL | None = None
-        self._order: SQL | None = None
+        self.order: SQL | None = None
         self.limit: int | None = None
         self.offset: int | None = None
 
         # memoized result
         self._ids: tuple[int, ...] | None = None
+
+    def __copy__(self):
+        assert isinstance(self, Query)
+        cls = type(self)
+        query = cls.__new__(cls)
+        query.__dict__ = self.__dict__.copy()
+        query._joins = query._joins.copy()
+        query._where_clauses = query._where_clauses.copy()
+        query._order_groupby = query._order_groupby.copy()
+        return query
 
     @staticmethod
     def make_alias(alias: str, link: str) -> str:
@@ -114,56 +122,10 @@ class Query:
         self._joins[alias] = (sql_kind, table, condition)
         self._ids = self._ids and None
 
-    def add_where(self, where_clause: LiteralString | SQL, where_params=()):
+    def add_where(self, where_clause: SQL):
         """ Add a condition to the where clause. """
-        if isinstance(where_clause, str) or where_params:
-            warnings.warn("Since 20.0, use only SQL in the where clause", DeprecationWarning, stacklevel=2)
-        self._where_clauses.append(SQL(where_clause, *where_params))  # pylint: disable = sql-injection
+        self._where_clauses.append(where_clause)
         self._ids = self._ids and None
-
-    def join(self, lhs_alias: str, lhs_column: str, rhs_table: str | SQL, rhs_column: str, link: str) -> str:
-        """
-        Perform a join between a table already present in the current Query object and
-        another table.  This method is essentially a shortcut for methods :meth:`~.make_alias`
-        and :meth:`~.add_join`.
-
-        :param str lhs_alias: alias of a table already defined in the current Query object.
-        :param str lhs_column: column of `lhs_alias` to be used for the join's ON condition.
-        :param str rhs_table: name of the table to join to `lhs_alias`.
-        :param str rhs_column: column of `rhs_alias` to be used for the join's ON condition.
-        :param str link: used to generate the alias for the joined table, this string should
-            represent the relationship (the link) between both tables.
-        """
-        warnings.warn("Since 20.0, use TableSQL.join or add_join", DeprecationWarning, stacklevel=2)
-        assert lhs_alias in self._joins, "Alias %r not in %s" % (lhs_alias, str(self))
-        rhs_alias = self.make_alias(lhs_alias, link)
-        condition = SQL("%s = %s", SQL.identifier(lhs_alias, lhs_column), SQL.identifier(rhs_alias, rhs_column))
-        self.add_join('JOIN', rhs_alias, rhs_table, condition)
-        return rhs_alias
-
-    def left_join(self, lhs_alias: str, lhs_column: str, rhs_table: str | SQL, rhs_column: str, link: str) -> str:
-        """ Add a LEFT JOIN to the current table (if necessary), and return the
-        alias corresponding to ``rhs_table``.
-
-        See the documentation of :meth:`join` for a better overview of the
-        arguments and what they do.
-        """
-        warnings.warn("Since 20.0, use TableSQL.join or add_join", DeprecationWarning, stacklevel=2)
-        assert lhs_alias in self._joins, "Alias %r not in %s" % (lhs_alias, str(self))
-        rhs_alias = self.make_alias(lhs_alias, link)
-        condition = SQL("%s = %s", SQL.identifier(lhs_alias, lhs_column), SQL.identifier(rhs_alias, rhs_column))
-        self.add_join('LEFT JOIN', rhs_alias, rhs_table, condition)
-        return rhs_alias
-
-    @property
-    def order(self) -> SQL | None:
-        return self._order
-
-    @order.setter
-    def order(self, value: SQL | LiteralString | None):
-        if isinstance(value, str):
-            warnings.warn("Since 20.0, use SQL values only", DeprecationWarning, stacklevel=2)
-        self._order = SQL(value) if value is not None else None  # pylint: disable = sql-injection
 
     @property
     def table(self) -> TableSQL:
@@ -189,11 +151,9 @@ class Query:
         """ Return whether the query is known to return nothing. """
         return self._ids == ()
 
-    def select(self, *args: SQL | LiteralString) -> SQL:
+    def select(self, *args: SQL) -> SQL:
         """ Return the SELECT query as an ``SQL`` object. """
-        if not all(isinstance(a, SQL) for a in args):
-            warnings.warn("Since 20.0. select takes only SQL arguments")
-        select_clause = SQL(", ").join(map(SQL, args)) if args else self.table.id
+        select_clause = SQL(", ").join(args) if args else self.table.id
         return SQL(
             "%s%s%s%s%s%s%s%s",
             SQL("SELECT %s", select_clause),
@@ -201,18 +161,16 @@ class Query:
             SQL(" WHERE %s", self.where_clause) if self._where_clauses else _SQL_EMPTY,
             SQL(" GROUP BY %s", self.groupby) if self.groupby else _SQL_EMPTY,
             SQL(" HAVING %s", self.having) if self.having else _SQL_EMPTY,
-            SQL(" ORDER BY %s", self._order) if self._order else _SQL_EMPTY,
+            SQL(" ORDER BY %s", self.order) if self.order else _SQL_EMPTY,
             SQL(f" LIMIT {int(self.limit)}") if self.limit is not None else _SQL_EMPTY,
             SQL(f" OFFSET {int(self.offset)}") if self.offset else _SQL_EMPTY,
         )
 
-    def subselect(self, *args: SQL | LiteralString) -> SQL:
+    def subselect(self, *args: SQL) -> SQL:
         """ Similar to :meth:`.select`, but for sub-queries.
             This one avoids the ORDER BY clause when possible,
             and includes parentheses around the subquery.
         """
-        if not all(isinstance(a, SQL) for a in args):
-            warnings.warn("Since 20.0. select takes only SQL arguments")
         if self._ids is not None and not args:
             # inject the known result instead of the subquery
             if not self._ids:
@@ -226,7 +184,7 @@ class Query:
             # in this case, the ORDER BY clause is necessary
             return SQL("(%s)", self.select(*args))
 
-        select_clause = SQL(", ").join(map(SQL, args)) if args else self.table.id
+        select_clause = SQL(", ").join(args) if args else self.table.id
         return SQL(
             "(%s%s%s%s%s)",
             SQL("SELECT %s", select_clause),

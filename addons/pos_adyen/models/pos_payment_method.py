@@ -73,9 +73,6 @@ class PosPaymentMethod(models.Model):
             'capture': 'https://pal-%s.adyen.com/pal/servlet/Payment/v52/capture',
         }
 
-    def _is_write_forbidden(self, fields):
-        return super(PosPaymentMethod, self)._is_write_forbidden(fields - {'adyen_latest_response'})
-
     def get_latest_adyen_status(self):
         self.ensure_one()
         if not self.env.su and not self.env.user.has_group('point_of_sale.group_pos_user'):
@@ -293,7 +290,7 @@ class PosPaymentMethod(models.Model):
         req = requests.post(endpoint, json=data, headers=headers, timeout=TIMEOUT)
 
         # Authentication error doesn't return JSON
-        if req.status_code == 401:
+        if req.status_code in [401, 403]:
             return {
                 'error': {
                     'status_code': req.status_code,

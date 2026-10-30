@@ -12,7 +12,7 @@ import {
     test,
     tick,
 } from "@odoo/hoot";
-import { Component, proxy, signal, useProps, xml } from "@odoo/owl";
+import { Component, proxy, signal, types as t, useProps, xml } from "@odoo/owl";
 import {
     contains,
     destroyApp,
@@ -25,6 +25,8 @@ import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
 import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
 import { useActiveElement } from "@web/core/ui/ui_plugin";
 import { HotkeyPlugin } from "@web/core/hotkeys/hotkey_plugin";
+import { usePopover } from "@web/core/popover/popover_hook";
+import { MainComponentsContainer } from "@web/core/main_components_container";
 
 const getOverlays = () => queryAllTexts(".o_web_hotkey_overlay");
 
@@ -130,7 +132,6 @@ test("[accesskey] attrs replaced by [data-hotkey]", async () => {
 test("[accesskey] attrs replaced by [data-hotkey], part 2", async () => {
     class UIOwnershipTakerComponent extends Component {
         static template = xml`<p class="owner" t-ref="this.bouhRef"><button>a</button></p>`;
-        props = useProps();
         bouhRef = signal.ref();
         setup() {
             useActiveElement(this.bouhRef);
@@ -144,7 +145,6 @@ test("[accesskey] attrs replaced by [data-hotkey], part 2", async () => {
                 <div t-on-click="() => { this.step('click'); }" accesskey="a">foo</div>
             </main>
         `;
-        props = useProps();
         setup() {
             this.state = proxy({ foo: true });
             this.step = expect.step.bind();
@@ -203,7 +203,6 @@ test("data-hotkey", async () => {
                 <button t-on-click="this.onClick" data-hotkey="b">a</button>
             </div>
         `;
-        props = useProps();
         onClick() {
             expect.step("click");
         }
@@ -232,7 +231,6 @@ test("invisible data-hotkeys are not enabled. ", async () => {
                 <button t-on-click="this.onClick" data-hotkey="b" class="myButton">a</button>
             </div>
         `;
-        props = useProps();
         onClick() {
             expect.step("click");
         }
@@ -258,7 +256,6 @@ test("hook", async () => {
     const key = "q";
     class TestComponent extends Component {
         static template = xml`<div/>`;
-        props = useProps();
         setup() {
             useHotkey(key, () => expect.step(key));
         }
@@ -315,7 +312,6 @@ test("the overlay of hotkeys is correctly displayed", async () => {
             <button t-on-click="this.onClick" data-hotkey="c">c</button>
             </div>
         `;
-        props = useProps();
         onClick(ev) {
             expect.step(`click ${ev.target.dataset.hotkey}`);
         }
@@ -347,7 +343,6 @@ test("the overlay of hotkeys is correctly displayed on MacOs", async () => {
                 <button t-on-click="this.onClick" data-hotkey="c">c</button>
             </div>
         `;
-        props = useProps();
         onClick(ev) {
             expect.step(`click ${ev.target.dataset.hotkey}`);
         }
@@ -373,7 +368,6 @@ test("the overlay of hotkeys is correctly displayed on MacOs", async () => {
 test("overlays can be toggled multiple times in a row", async () => {
     class MyComponent extends Component {
         static template = xml`<button data-hotkey="a">a</button>`;
-        props = useProps();
     }
 
     await mountWithCleanup(MyComponent);
@@ -394,6 +388,30 @@ test("overlays can be toggled multiple times in a row", async () => {
     // Hide overlays
     await keyUp("alt");
     expect(".o_web_hotkey_overlay").toHaveCount(0);
+});
+
+test("overlay modifier does not preventDefault when there are no hotkeys to overlay", async () => {
+    class MyComponent extends Component {
+        static template = xml`<div><button>no hotkey</button></div>`;
+    }
+
+    await mountWithCleanup(MyComponent);
+
+    const [event] = await keyDown("alt");
+    expect(".o_web_hotkey_overlay").toHaveCount(0);
+    expect(event.defaultPrevented).toBe(false);
+});
+
+test("overlay modifier prevents default when hotkey overlays are shown", async () => {
+    class MyComponent extends Component {
+        static template = xml`<button data-hotkey="a">a</button>`;
+    }
+
+    await mountWithCleanup(MyComponent);
+
+    const [event] = await keyDown("alt");
+    expect(".o_web_hotkey_overlay").toHaveCount(1);
+    expect(event.defaultPrevented).toBe(true);
 });
 
 test("MacOS usability", async () => {
@@ -432,7 +450,6 @@ test("[data-hotkey] alt is required", async () => {
     const key = "a";
     class TestComponent extends Component {
         static template = xml`<div><button t-on-click="this.onClick" data-hotkey="${key}">a</button></div>`;
-        props = useProps();
         onClick() {
             expect.step(key);
         }
@@ -487,7 +504,6 @@ test("[data-hotkey] never allow repeat", async () => {
     const key = "a";
     class TestComponent extends Component {
         static template = xml`<div><button t-on-click="this.onClick" data-hotkey="${key}">a</button></div>`;
-        props = useProps();
         onClick() {
             expect.step(key);
         }
@@ -521,7 +537,6 @@ test("hotkeys evil 👹", async () => {
 test("component can register many hotkeys", async () => {
     class MyComponent extends Component {
         static template = xml`<div><button t-on-click="this.onClick" data-hotkey="c">c</button></div>`;
-        props = useProps();
         setup() {
             useHotkey("a", () => expect.step("callback:a"));
             useHotkey("b", () => expect.step("callback:b"));
@@ -548,7 +563,6 @@ test("many components can register same hotkeys (call order matters)", async () 
                     <button t-on-click="this.onClick" data-hotkey="z">z</button>
                 </div>
             `;
-            props = useProps();
             setup() {
                 useHotkey("a", () => expect.step(`${name}:a`));
                 useHotkey("b", () => expect.step(`${name}:b`));
@@ -645,6 +659,59 @@ test("registrations and elements belong to the correct UI owner", async () => {
     expect.verifySteps(["MyComponent1 subscription", "MyComponent1 [data-hotkey]"]);
 });
 
+test("hotkey of a component opened from a popover", async () => {
+    class ItemsPopover extends Component {
+        static template = xml`
+            <div class="o_items_popover">
+                <button class="o_item" t-on-click="() => this.props.onSelect()">Item</button>
+            </div>
+        `;
+        props = useProps({ close: t.function(), onSelect: t.function() });
+    }
+
+    class Panel extends Component {
+        static template = xml`<div class="o_panel">Panel</div>`;
+        setup() {
+            useHotkey("a", () => expect.step("panel hotkey"));
+        }
+    }
+
+    class Parent extends Component {
+        static components = { MainComponentsContainer, Panel };
+        static template = xml`
+            <div>
+                <button class="o_open_popover" t-on-click="this.openPopover">Open</button>
+                <Panel t-if="this.isPanelOpen()"/>
+            </div>
+            <MainComponentsContainer/>
+        `;
+        isPanelOpen = signal(false);
+        popover = usePopover(ItemsPopover);
+        openPopover(ev) {
+            this.popover.open(ev.target, { onSelect: () => this.onSelect() });
+        }
+        onSelect() {
+            this.isPanelOpen.set(true);
+            this.popover.close();
+        }
+    }
+
+    // Mount the main components container in the same app, as in the webclient, so that the
+    // panel is mounted and the popover removed in the same animation frame.
+    await mountWithCleanup(Parent, { noMainContainer: true });
+    await contains(".o_open_popover").click();
+    expect(".o_items_popover").toHaveCount(1);
+    expect(getService("ui").activeElement).toBe(queryOne(".o_popover"));
+
+    await contains(".o_item").click();
+    expect(".o_panel").toHaveCount(1);
+    expect(".o_items_popover").toHaveCount(0);
+    expect(getService("ui").activeElement).toBe(document);
+
+    await press("a");
+    expect.verifySteps(["panel hotkey"]);
+});
+
 test("replace the overlayModifier for non-MacOs", async () => {
     class MyComponent extends Component {
         static template = xml`
@@ -652,7 +719,6 @@ test("replace the overlayModifier for non-MacOs", async () => {
                 <button t-on-click="this.onClick" data-hotkey="b">b</button>
             </div>
         `;
-        props = useProps();
         onClick() {
             expect.step("click");
         }
@@ -679,7 +745,6 @@ test("replace the overlayModifier for MacOs", async () => {
             <button t-on-click="this.onClick" data-hotkey="b">b</button>
             </div>
         `;
-        props = useProps();
         onClick() {
             expect.step("click");
         }
@@ -701,7 +766,6 @@ test("replace the overlayModifier for MacOs", async () => {
 test("protects editable elements", async () => {
     class Comp extends Component {
         static template = xml`<div><input class="foo"/></div>`;
-        props = useProps();
         setup() {
             useHotkey("arrowleft", () => expect.step("called"));
         }
@@ -721,7 +785,6 @@ test("protects editable elements", async () => {
 test("protects editable elements: can bypassEditableProtection", async () => {
     class Comp extends Component {
         static template = xml`<div><input class="foo"/></div>`;
-        props = useProps();
         setup() {
             useHotkey("arrowleft", () => expect.step("called"), { bypassEditableProtection: true });
         }
@@ -741,7 +804,6 @@ test("protects editable elements: can bypassEditableProtection", async () => {
 test("protects editable elements: an editable can allow hotkeys", async () => {
     class Comp extends Component {
         static template = xml`<div><input class="foo" data-allow-hotkeys="true"/><input class="bar"/></div>`;
-        props = useProps();
         setup() {
             useHotkey("arrowleft", () => expect.step("called"));
         }
@@ -809,7 +871,6 @@ test("within iframes", async () => {
 test("callback: received context", async () => {
     class A extends Component {
         static template = xml`<button class="a">a</button>`;
-        props = useProps();
         setup() {
             useHotkey("a", expect.step);
         }
@@ -817,7 +878,6 @@ test("callback: received context", async () => {
     const fixture = getFixture();
     class B extends Component {
         static template = xml`<button class="b">b</button>`;
-        props = useProps();
         setup() {
             useHotkey("b", expect.step, { area: () => fixture });
         }
@@ -838,7 +898,6 @@ test("operating area can be restricted", async () => {
             <div class="one" tabindex="0">one</div>
             <div class="two" tabindex="0" t-ref="this.areaRef">two</div>
         `;
-        props = useProps();
         areaRef = signal.ref();
         setup() {
             useHotkey(
@@ -867,7 +926,6 @@ test("operating area and UI active element", async () => {
     expect.assertions(5);
     class UIOwnershipTakerComponent extends Component {
         static template = xml`<p class="owner" t-ref="this.bouhRef"><button>a</button></p>`;
-        props = useProps();
         bouhRef = signal.ref();
         setup() {
             useActiveElement(this.bouhRef);
@@ -882,7 +940,6 @@ test("operating area and UI active element", async () => {
                 <div class="two" tabindex="0" t-ref="this.areaRef">two</div>
             </main>
         `;
-        props = useProps();
         areaRef = signal.ref();
         setup() {
             this.state = proxy({ foo: false });
@@ -934,7 +991,6 @@ test("validating option", async () => {
     let isAvailable = false;
     class A extends Component {
         static template = xml``;
-        props = useProps();
         setup() {
             useHotkey(
                 "space",
@@ -964,7 +1020,6 @@ test("operation area with validating option", async () => {
             <div class="one" tabindex="0">one</div>
             <div class="two" tabindex="0" t-ref="this.areaRef">two</div>
         `;
-        props = useProps();
         areaRef = signal.ref();
         setup() {
             useHotkey(
@@ -1004,7 +1059,6 @@ test("operation area with validating option", async () => {
 test("mixing hotkeys with and without operation area", async () => {
     class A extends Component {
         static template = xml`<div class="root" tabindex="0" t-ref="this.areaRef">root</div>`;
-        props = useProps();
         areaRef = signal.ref();
         setup() {
             useHotkey("space", () => expect.step("withoutArea"));
@@ -1021,7 +1075,6 @@ test("mixing hotkeys with and without operation area", async () => {
 test("native browser space key ' ' is correctly translated to 'space' ", async () => {
     class A extends Component {
         static template = xml``;
-        props = useProps();
         setup() {
             useHotkey("space", () => expect.step("space"));
         }
@@ -1037,7 +1090,6 @@ test("native browser space key ' ' is correctly translated to 'space' ", async (
 test("useHotkey can display an overlay over a DOM element ", async () => {
     class A extends Component {
         static template = xml`<div><button class="target">Should be overlayed</button></div>`;
-        props = useProps();
         setup() {
             useHotkey(
                 "alt+a",
@@ -1065,7 +1117,6 @@ test("useHotkey can display an overlay over a DOM element ", async () => {
 test("Support '<' and '>' in hotkeys", async () => {
     class MyComponent extends Component {
         static template = xml``;
-        props = useProps();
         setup() {
             useHotkey("<", () => expect.step("<"));
             useHotkey(">", () => expect.step(">"));

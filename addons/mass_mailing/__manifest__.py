@@ -55,18 +55,8 @@
         'views/mailing_templates_portal_management.xml',
         'views/mailing_templates_portal_unsubscribe.xml',
         'views/themes_templates.xml',
+        'views/themes_templates_blocks.xml',
         'views/snippets_themes.xml',
-        'views/snippets/mass_mailing_columns_snippets.xml',
-        'views/snippets/mass_mailing_footer_snippets.xml',
-        'views/snippets/mass_mailing_headers_snippets.xml',
-        'views/snippets/mass_mailing_headings_snippets.xml',
-        'views/snippets/mass_mailing_images_snippets.xml',
-        'views/snippets/mass_mailing_inner_snippets.xml',
-        'views/snippets/mass_mailing_marketing_snippets.xml',
-        'views/snippets/mass_mailing_masonry_snippets.xml',
-        'views/snippets/mass_mailing_people_snippets.xml',
-        'views/snippets/mass_mailing_text_snippets.xml',
-        'views/snippets/mass_mailing_website_snippets.xml',
         'security/ir.access.csv',
     ],
     'demo': [
@@ -84,7 +74,8 @@
             ('include', 'html_builder.assets'),
             ('remove', 'web/static/fonts/fonts.scss'),
             'mass_mailing/static/src/builder/**/*',
-            ('remove', 'mass_mailing/static/src/builder/**/*.inside.scss'),
+            'mass_mailing/static/src/snippets/**/*.xml',
+            ('remove', 'mass_mailing/static/src/builder/**/*.inside.css'),
         ],
         # Minimal assets for mass_mailing isolated iframes from web.
         'mass_mailing.assets_iframe_helpers': [
@@ -100,11 +91,22 @@
             'web/static/src/scss/animation.scss',
             'web/static/src/scss/mimetypes.scss',
             'web/static/src/scss/ui.scss',
+            'web/static/src/core/utils/text_overflow.css',
         ],
         # Minimal assets for theme selector iframe
         'mass_mailing.assets_iframe_theme_selector': [
             ('include', 'mass_mailing.assets_iframe_helpers'),
+            'html_editor/static/src/scss/css_variables.scss',
+            'html_builder/static/src/scss/css_variables.scss',
             'mass_mailing/static/src/themes/iframe_assets/**/*',
+        ],
+        # Assets for theme selector template preview shadowdom
+        'mass_mailing.assets_theme_selector_template_shadowdom': [
+            'mass_mailing/static/src/fields/template_preview_field/theme_selector_template_preview/**/*.shadowdom.css'
+        ],
+        # Assets for mailing template kanban card shadowdom
+        'mass_mailing.assets_mailing_template_kanban_card_shadowdom': [
+            'mass_mailing/static/src/fields/template_preview_field/mailing_template_kanban_card/**/*.shadowdom.css'
         ],
         # Common style for mass_mailing mail iframes.
         'mass_mailing.assets_iframe_style_base': [
@@ -120,6 +122,7 @@
             ('include', 'mass_mailing.assets_mail_themes'),
             'mass_mailing/static/src/scss/mass_mailing_mail.scss',
             'mass_mailing/static/src/iframe_assets/**/*',
+            'mass_mailing/static/src/snippets/**/*.scss',
         ],
         # Complete style assets required to view the mail content.
         # convert_inline ONLY uses this and inline styles.
@@ -141,7 +144,9 @@
             ('include', 'html_editor.assets_editor'),
             ('include', 'html_builder.assets_inside_builder_iframe'),
             ('include', 'mass_mailing.assets_iframe_style_base'),
-            'mass_mailing/static/src/builder/**/*.inside.scss'
+            'html_editor/static/src/scss/css_variables.scss',
+            'html_builder/static/src/scss/css_variables.scss',
+            'mass_mailing/static/src/builder/**/*.inside.css'
         ],
         'mass_mailing.iframe_add_dialog': [
             ('include', 'html_builder.iframe_add_dialog'),
@@ -162,23 +167,27 @@
             'mass_mailing/static/src/views/format_utils.js',
             'mass_mailing/static/src/views/fields/**/*',
             'mass_mailing/static/src/views/mailing_filter*/**/*.js',
+            'mass_mailing/static/src/views/mailing_template_kanban_view/**/*',
             'mass_mailing/static/src/editor/**/*',
             'mass_mailing/static/src/fields/**/*',
             'mass_mailing/static/src/themes/*',
+            'mass_mailing/static/src/utils/**/*',
             'mass_mailing/static/src/themes/theme_selector/**/*',
             'mass_mailing/static/src/iframe/**/*',
             'mass_mailing/static/src/scss/mass_mailing.scss',
-            'mass_mailing/static/src/scss/mass_mailing_mobile.scss',
+            'mass_mailing/static/src/scss/mass_mailing_mobile.css',
             'mass_mailing/static/src/scss/mass_mailing_mobile_preview.scss',
             'mass_mailing/static/src/js/tours/**/*',
             # Don't include dark mode files in light mode
-            ('remove', 'mass_mailing/static/src/**/*.dark.scss'),
+            ('remove', 'mass_mailing/static/src/**/*.dark.css'),
+            # Don't include shadowdom specific style
+            ('remove', 'mass_mailing/static/src/**/*.shadowdom.css'),
         ],
         'web.assets_backend_lazy': [
             'mass_mailing/static/src/views/mass_mailing_subscription_graph_renderer.js',
         ],
         'web.assets_web_dark': [
-            'mass_mailing/static/src/**/*.dark.scss',
+            'mass_mailing/static/src/**/*.dark.css',
         ],
         'mass_mailing.assets_mail_themes': [
             'mass_mailing/static/src/scss/themes/**/*',
@@ -191,9 +200,8 @@
         ],
         'web.assets_unit_tests': [
             ('include', 'mass_mailing.assets_builder'),
-            'mass_mailing/static/tests/mailing_contact_to_list.test.js',
-            'mass_mailing/static/tests/mass_mailing_html_field.test.js',
-            'mass_mailing/static/tests/mass_mailing_link_plugin.test.js',
+            'mass_mailing/static/tests/**/*',
+            ('remove', 'mass_mailing/static/tests/tours/**/*'),
         ],
     },
     'post_init_hook': '_update_demo_data',

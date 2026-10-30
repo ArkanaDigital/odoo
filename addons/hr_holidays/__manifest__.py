@@ -25,6 +25,7 @@ A synchronization with an internal agenda (Meetings of the CRM module) is also p
 """,
     'depends': ['hr_work_entry', 'hr_calendar', 'resource'],
     'data': [
+        'data/hr_time_rule_data.xml',
         'data/report_paperformat.xml',
         'data/mail_activity_type_data.xml',
         'data/mail_message_subtype_data.xml',
@@ -59,13 +60,22 @@ A synchronization with an internal agenda (Meetings of the CRM module) is also p
 
         'views/hr_views.xml',
         'views/hr_holidays_views.xml',
+        'views/hr_time_rule_views.xml',
         'security/ir.access.csv',
     ],
     'other_files': [
+        'data/public_holidays/public_holidays_ar.csv',
         'data/public_holidays/public_holidays_au.csv',
         'data/public_holidays/public_holidays_be.csv',
+        'data/public_holidays/public_holidays_br.csv',
+        'data/public_holidays/public_holidays_ca.csv',
         'data/public_holidays/public_holidays_ch.csv',
+        'data/public_holidays/public_holidays_cl.csv',
+        'data/public_holidays/public_holidays_co.csv',
+        'data/public_holidays/public_holidays_do.csv',
+        'data/public_holidays/public_holidays_ec.csv',
         'data/public_holidays/public_holidays_eg.csv',
+        'data/public_holidays/public_holidays_gt.csv',
         'data/public_holidays/public_holidays_hk.csv',
         'data/public_holidays/public_holidays_in.csv',
         'data/public_holidays/public_holidays_jo.csv',
@@ -76,12 +86,15 @@ A synchronization with an internal agenda (Meetings of the CRM module) is also p
         'data/public_holidays/public_holidays_mx.csv',
         'data/public_holidays/public_holidays_my.csv',
         'data/public_holidays/public_holidays_nl.csv',
+        'data/public_holidays/public_holidays_pa.csv',
+        'data/public_holidays/public_holidays_pe.csv',
         'data/public_holidays/public_holidays_pl.csv',
         'data/public_holidays/public_holidays_ro.csv',
         'data/public_holidays/public_holidays_sa.csv',
         'data/public_holidays/public_holidays_sk.csv',
         'data/public_holidays/public_holidays_tr.csv',
         'data/public_holidays/public_holidays_us.csv',
+        'data/public_holidays/public_holidays_uy.csv',
     ],
     'demo': [
         'data/hr_holidays_demo.xml',
@@ -94,13 +107,13 @@ A synchronization with an internal agenda (Meetings of the CRM module) is also p
             'hr_holidays/static/src/**/*',
             ('remove', 'hr_holidays/static/src/views/graph/**'),
             # Don't include dark mode files in light mode
-            ('remove', 'hr_holidays/static/src/**/*.dark.scss'),
+            ('remove', 'hr_holidays/static/src/**/*.dark.css'),
         ],
         'web.assets_backend_lazy': [
             'hr_holidays/static/src/views/graph/**',
         ],
         "web.assets_web_dark": [
-            'hr_holidays/static/src/**/*.dark.scss',
+            'hr_holidays/static/src/**/*.dark.css',
         ],
         'im_livechat.assets_embed_core': [
             'hr_holidays/static/src/core/common/**/*',

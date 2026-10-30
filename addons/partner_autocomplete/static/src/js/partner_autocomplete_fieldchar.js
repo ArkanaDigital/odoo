@@ -31,13 +31,13 @@ export class PartnerAutoCompleteCharField extends CharField {
     getSources(fieldName) {
         return [
             {
-                options: async (request, shouldSearchWorldWide) => {
+                options: async (request, shouldSearchWorldwide, shouldIncludeBranches) => {
                     if (await this.validateSearchTerm(request)) {
                         let queryCountryId = this.props.record.data?.country_id ? this.props.record.data.country_id.id : false;
-                        if (shouldSearchWorldWide){
+                        if (shouldSearchWorldwide){
                         	queryCountryId = 0;
                         }
-                        const suggestions = await this.partnerAutocomplete.autocomplete(fieldName, request, queryCountryId);
+                        const suggestions = await this.partnerAutocomplete.autocomplete(fieldName, request, queryCountryId, shouldIncludeBranches);
                         return suggestions.map((suggestion) => ({
                             cssClass: "partner_autocomplete_dropdown_char",
                             data: suggestion,
@@ -87,6 +87,8 @@ export class PartnerAutoCompleteCharField extends CharField {
                 this.props.record.load();
             }
         }
+
+        this.props.record.model.bus.trigger("FIELD_IS_DIRTY", false);
     }
 }
 

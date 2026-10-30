@@ -44,6 +44,21 @@ class PosOrder(models.Model):
                 invoice_vals['invoice_payment_term_id'] = False
             if sale_orders[0].partner_invoice_id != sale_orders[0].partner_id:
                 invoice_vals['partner_id'] = sale_orders[0].partner_invoice_id.id
+            if not invoice_vals.get('reversed_entry_id'):
+                refs = list(dict.fromkeys(so.client_order_ref or so.name for so in sale_orders if so.client_order_ref or so.name))
+                invoice_vals['ref'] = ', '.join(refs)[:2000]
+
+            origins = []
+            for order in self:
+                order_sos = order.lines.sale_order_origin_id
+                if order_sos:
+                    origins.extend(order_sos.mapped('name'))
+                elif order.pos_reference:
+                    origins.append(order.pos_reference)
+                elif order.name:
+                    origins.append(order.name)
+            if origins:
+                invoice_vals['invoice_origin'] = ', '.join(dict.fromkeys(origins))
         return invoice_vals
 
     def action_pos_order_paid(self):
@@ -69,8 +84,7 @@ class PosOrder(models.Model):
                 line not in used_pos_lines
                 and line.product_id == pos_order.config_id.down_payment_product_id
             ))
-            downpayment_refund_lines = downpayment_pos_order_lines.filtered('refunded_orderline_id')
-            new_downpayment_lines = downpayment_pos_order_lines - downpayment_refund_lines
+            downpayment_refund_lines, new_downpayment_lines = downpayment_pos_order_lines.partitioned('refunded_orderline_id')
 
             for refund_line in downpayment_refund_lines:
                 original_sale_line = refund_line.refunded_orderline_id.sale_order_line_id

@@ -7,8 +7,9 @@ MEMBER_CATEGORIES.push(
         sequence: 5,
         label: _t("In this call"),
         sequenceGroup: 10,
-        icon: "videocam",
-        headerClass: "text-success pt-0",
+        icon: "volume_up_f",
+        headerClass: "text-success pt-0 o-discuss-ChannelMemberList-groupInCallHeader",
+        groupClass: "o-mail-callBordered",
         /** @param {import("models").DiscussChannel} channel */
         getMembers: (channel) =>
             channel.rtc_session_ids

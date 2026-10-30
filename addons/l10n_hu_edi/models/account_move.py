@@ -11,7 +11,7 @@ from markupsafe import Markup
 from odoo import Command, _, api, fields, models
 from odoo.http import request
 from odoo.exceptions import LockError, UserError, ValidationError
-from odoo.tools import BinaryBytes, formatLang, float_round, float_repr, cleanup_xml_node, groupby
+from odoo.tools import BinaryBytes, formatLang, float_compare, float_is_zero, float_round, float_repr, cleanup_xml_node, groupby
 from odoo.tools.misc import split_every
 from odoo.tools.bank_account_number import normalize_account_number
 from odoo.addons.l10n_hu_edi.models.l10n_hu_edi_connection import format_bool, L10nHuEdiConnection, L10nHuEdiConnectionError
@@ -134,6 +134,12 @@ class AccountMove(models.Model):
         if self.country_code == 'HU' and self.delivery_date:
             return self.delivery_date
         return super()._get_invoice_currency_rate_date()
+
+    def _get_default_currency_rate_date(self):
+        self.ensure_one()
+        if self.country_code == 'HU' and self.delivery_date:
+            return self.delivery_date
+        return super()._get_default_currency_rate_date()
 
     @api.depends('l10n_hu_edi_messages')
     def _compute_message_html(self):
@@ -276,19 +282,18 @@ class AccountMove(models.Model):
         return chain_invoices
 
     def _l10n_hu_get_currency_rate(self):
-        """ Get the invoice currency / HUF rate.
-
-            We don't use `invoice_currency_rate` to avoid rounding error as 1/0.002470 ≃ 404.87,
-            and we want exactly 404.87, i.e. the rate given by the MNB of Hungary, to avoid NAV error
-            upon XML submission.
-        """
+        """ Get the invoice currency / HUF rate. """
         self.ensure_one()
-        return self.env['res.currency']._get_conversion_rate(
-            from_currency=self.currency_id,
-            to_currency=self.env.ref('base.HUF'),
-            company=self.company_id,
-            date=self._get_invoice_currency_rate_date(),
-        )
+
+        if self.company_currency_id == self.env.ref('base.HUF'):
+            return 1 / self.invoice_currency_rate
+        else:
+            return self.env['res.currency']._get_conversion_rate(
+                from_currency=self.currency_id,
+                to_currency=self.env.ref('base.HUF'),
+                company=self.company_id,
+                date=self._get_invoice_currency_rate_date(),
+            )
 
     def _l10n_hu_edi_set_chain_index(self):
         """ Set the l10n_hu_invoice_chain_index field. """
@@ -891,7 +896,7 @@ class AccountMove(models.Model):
                 'lineNumberReference': base_invoice != self and line_number,
                 'lineExpressionIndicator': line.product_id and line.product_uom_id,
                 'lineNatureIndicator': {False: 'OTHER', 'service': 'SERVICE'}.get(line.product_id.type, 'PRODUCT'),
-                'lineDescription': line.name.replace('\n', ' '),
+                'lineDescription': (line.label or '').replace('\n', ' '),
             }
 
             if 'is_downpayment' in line and line.is_downpayment:
@@ -908,16 +913,17 @@ class AccountMove(models.Model):
                     last_reconciled_payment = reconciled_moves.filtered(lambda m: m.origin_payment_id or m.statement_line_id).sorted('date', reverse=True)[:1]
 
                     if last_reconciled_payment:
+                        paid_advance_invoice = advance_invoices.filtered(lambda m: last_reconciled_payment in m._get_reconciled_amls().move_id)[0]
                         line_values.update({
-                            'advanceOriginalInvoice': advance_invoices.filtered(lambda m: last_reconciled_payment in m._get_reconciled_amls().move_id)[0].name,
+                            'advanceOriginalInvoice': paid_advance_invoice.name,
                             'advancePaymentDate': last_reconciled_payment.date,
-                            'advanceExchangeRate': last_reconciled_payment._l10n_hu_get_currency_rate(),
+                            'advanceExchangeRate': paid_advance_invoice._l10n_hu_get_currency_rate(),
                         })
 
             if line.display_type == 'product':
                 vat_tax = line.tax_ids.filtered(lambda t: t.l10n_hu_tax_type)
 
-                if line.quantity == 0.0 or line.discount == 100.0:
+                if float_is_zero(line.quantity, precision_digits=2) or float_compare(line.discount, 100.0, precision_digits=2) == 0:
                     price_unit_signed = 0.0
                 else:
                     price_unit_signed = sign * line.price_subtotal / (1 - line.discount / 100) / line.quantity
@@ -1410,6 +1416,9 @@ class AccountMove(models.Model):
                     ))
             if product := product_values.get('product'):
                 line_vals['product_id'] = product.id
+                prefix = f'{product.display_name} '
+                if line_vals['name'].startswith(prefix):
+                    line_vals['name'] = line_vals['name'].removeprefix(prefix)
             move_vals['invoice_line_ids'].append(Command.create(line_vals))
 
         post_process_data = {

@@ -4,7 +4,7 @@
     <t t-name="web.PivotRenderer">
         <div>
             <t t-call="{{ this.props.buttonTemplate }}"/>
-            <div t-if="this.model.hasData() and this.model.metaData.activeMeasures.length" t-att-class="this.uiService.isSmall ? 'table-responsive' : ''" class="o_pivot mx-3">
+            <div t-if="this.model.hasData() and this.model.metaData.activeMeasures.length" t-att-class="this.uiService.isSmall ? 'table-responsive' : ''" class="o_pivot o_sample_data_disabled mx-3">
                 <table
                     class="table-hover table table-sm table-bordered table-borderless"
                     t-att-class="{ o_enable_linking: !this.model.metaData.disableLinking }"
@@ -32,6 +32,7 @@
                                         o_empty: cell.value === undefined,
                                         'cursor-pointer': cell.value !== undefined and !this.model.metaData.disableLinking,
                                         'fw-bold': cell.isBold,
+                                        ...this.getCellDecorationClasses(cell)
                                     }" t-custom-click.synthetic="(ev, isMiddleClick) => this.onOpenView(cell, isMiddleClick)"
                                     t-on-mouseover="this.onMouseEnter" t-on-mouseout="this.onMouseLeave">
                                     <t t-if="cell.value !== undefined">

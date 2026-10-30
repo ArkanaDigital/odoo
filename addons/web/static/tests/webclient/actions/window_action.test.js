@@ -1,7 +1,7 @@
 import { expect, test } from "@odoo/hoot";
 import { click, queryAllTexts, waitFor } from "@odoo/hoot-dom";
 import { animationFrame, runAllTimers } from "@odoo/hoot-mock";
-import { Component, useProps, xml } from "@odoo/owl";
+import { Component, xml } from "@odoo/owl";
 import {
     MockServer,
     clickSave,
@@ -37,14 +37,14 @@ import {
     webModels,
 } from "@web/../tests/web_test_helpers";
 
-import { browser } from "@web/core/browser/browser";
+import { location, browser } from "@web/core/browser/browser";
 import { router, routerBus } from "@web/core/browser/router";
 import { registry } from "@web/core/registry";
 import { redirect } from "@web/core/utils/urls";
 import { useSetupAction } from "@web/search/action_hook";
 import { listView } from "@web/views/list/list_view";
 import { FormViewDialog } from "@web/views/view_dialogs/form_view_dialog";
-import { clearUncommittedChanges } from "@web/webclient/actions/action_service";
+import { clearUncommittedChanges } from "@web/webclient/actions/action_plugin";
 import { WebClient } from "@web/webclient/webclient";
 
 const { ResCompany, ResPartner, ResUsers } = webModels;
@@ -737,7 +737,7 @@ test("A deleted form view can be shown when history back", async () => {
     await contains(".o_list_view .o_data_row .o_data_cell").click();
     expect(".o_form_view").toHaveCount(1, { message: "The form view should be displayed" });
     expect(".o_last_breadcrumb_item").toHaveText("First record");
-    expect(browser.location.pathname).toBe("/odoo/action-3/1");
+    expect(location.pathname).toBe("/odoo/action-3/1");
 
     // Delete the current record
     await contains(".o_cp_action_menus [data-icon='more_vert']").click();
@@ -747,7 +747,7 @@ test("A deleted form view can be shown when history back", async () => {
     // The form view is automatically switched to the next record
     expect(".o_last_breadcrumb_item").toHaveText("Second record");
     await runAllTimers();
-    expect(browser.location.pathname).toBe("/odoo/action-3/2");
+    expect(location.pathname).toBe("/odoo/action-3/2");
 
     // Go back to the previous (now deleted) record
     browser.history.back();
@@ -755,7 +755,7 @@ test("A deleted form view can be shown when history back", async () => {
 
     expect(".o_form_view").toHaveCount(1, { message: "The form view should be displayed" });
     expect(".o_last_breadcrumb_item").toHaveText("First record");
-    expect(browser.location.pathname).toBe("/odoo/action-3/1");
+    expect(location.pathname).toBe("/odoo/action-3/1");
 
     expect.verifyErrors([
         "It seems the records with IDs 1 cannot be found. They might have been deleted.",
@@ -1926,10 +1926,9 @@ test("stored action is restored correctly with domain", async () => {
 test("current_action doesn't contains _originalAction", async () => {
     class myActionComponent extends Component {
         static template = xml`<div>This is a Client Action</div>`;
-        props = useProps();
     }
 
-    const myAction = (env, action) => {
+    const myAction = (action) => {
         registry.category("actions").add("myAction", myActionComponent, { force: true });
         return action;
     };
@@ -2297,11 +2296,11 @@ test("Call twice clearUncommittedChanges in a row does not save twice", async ()
     expect(".o_form_view .o_form_editable").toHaveCount(1);
 
     await contains(".o_field_widget[name=foo] input").edit("val");
-    clearUncommittedChanges(getMockEnv());
+    clearUncommittedChanges(getMockEnv().bus);
 
     await animationFrame();
     expect(".modal").toHaveCount(0);
-    clearUncommittedChanges(getMockEnv());
+    clearUncommittedChanges(getMockEnv().bus);
 
     await animationFrame();
     expect(".modal").toHaveCount(0);

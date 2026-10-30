@@ -1,4 +1,6 @@
-import { markup, proxy } from "@odoo/owl";
+import { ChannelMember } from "@mail/discuss/core/common/channel_member_model";
+
+import { proxy } from "@odoo/owl";
 
 import { registry } from "@web/core/registry";
 
@@ -10,8 +12,6 @@ export class DiscussCoreCommon {
     constructor(env, services) {
         this.busService = services.bus_service;
         this.env = env;
-        this.notificationService = services.notification;
-        this.orm = services.orm;
         this.presence = services.presence;
         this.store = services["mail.store"];
     }
@@ -25,20 +25,6 @@ export class DiscussCoreCommon {
             this.store.insert(payload.store_data);
             this._handleNotificationNewMessage(payload, metadata);
         });
-        this.busService.subscribe("discuss.channel/transient_message", (payload) => {
-            const { body, channel_id } = payload;
-            const lastMessageId = this.store.getLastMessageId();
-            const message = this.store["mail.message"].insert({
-                author_id: this.store.odoobot,
-                body: markup(body),
-                id: lastMessageId + 0.01,
-                subtype_id: this.store.mt_note,
-                is_transient: true,
-                thread: { id: channel_id, model: "discuss.channel" },
-            });
-            message.thread.messages.push(message);
-            message.thread.transientMessages.push(message);
-        });
         this.env.bus.addEventListener("mail.message/delete", ({ detail: { message, notifId } }) => {
             const self_member_id = message.channel_id?.self_member_id;
             if (self_member_id) {
@@ -51,6 +37,31 @@ export class DiscussCoreCommon {
                 }
             }
         });
+        this.store.onChange(
+            () => [this.presence.isOdooFocused()],
+            (isOdooFocused) => {
+                if (isOdooFocused) {
+                    return;
+                }
+                const timeout = setTimeout(
+                    () => this.hideReadNewMessageSeparators(),
+                    ChannelMember.NEW_MESSAGE_SEPARATOR_STALE_DELAY
+                );
+                return () => clearTimeout(timeout);
+            },
+            { immediate: true }
+        );
+    }
+
+    /**
+     * Hide the new message separators of the displayed channels that only mark
+     * read messages, as the user has been away from Odoo for a while.
+     */
+    async hideReadNewMessageSeparators() {
+        await this.store.chatHub.initPromise;
+        for (const channel of this.store.displayedChannels) {
+            channel.self_member_id?.hideReadNewMessageSeparatorUi();
+        }
     }
 
     /**
@@ -70,6 +81,7 @@ export class DiscussCoreCommon {
         if (!channel) {
             return;
         }
+        await this.store.chatHub.initPromise;
         const message = this.store["mail.message"].get(store_data["mail.message"][0]);
         if (!message) {
             return;
@@ -83,7 +95,7 @@ export class DiscussCoreCommon {
             if (message.isSelfAuthored) {
                 channel.onNewSelfMessage(message);
             } else {
-                if (channel.isDisplayed && channel.self_member_id?.new_message_separator_ui === 0) {
+                if (channel.self_member_id?.shouldMoveNewMessageSeparatorUi(message)) {
                     channel.self_member_id.new_message_separator_ui = message.id;
                 }
                 if (!channel.isDisplayed && channel.self_member_id) {
@@ -130,14 +142,7 @@ export class DiscussCoreCommon {
 }
 
 export const discussCoreCommon = {
-    dependencies: [
-        "bus_service",
-        "mail.out_of_focus",
-        "mail.store",
-        "notification",
-        "orm",
-        "presence",
-    ],
+    dependencies: ["bus_service", "mail.out_of_focus", "mail.store", "presence"],
     /**
      * @param {import("@web/env").OdooEnv} env
      * @param {import("services").ServiceFactories} services

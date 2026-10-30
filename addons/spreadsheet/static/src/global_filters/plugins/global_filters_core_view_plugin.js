@@ -9,12 +9,10 @@
  * @typedef {import("@spreadsheet").DateDefaultValue} DateDefaultValue
  */
 
-import { _t } from "@web/core/l10n/translation";
 import { Domain } from "@web/core/domain";
 import { user } from "@web/core/user";
 
-import { EvaluationError, helpers } from "@odoo/o-spreadsheet";
-import { CommandResult } from "@spreadsheet/o_spreadsheet/cancelled_reason";
+import { helpers } from "@odoo/o-spreadsheet";
 
 import {
     checkFilterAndValue,
@@ -22,14 +20,14 @@ import {
     getDateRange,
     getDateGlobalFilterValueFromDefault,
 } from "@spreadsheet/global_filters/helpers";
-import { OdooCoreViewPlugin } from "@spreadsheet/plugins";
+import { OdooEvaluationPlugin } from "@spreadsheet/plugins";
 import { serializeDate } from "@web/core/l10n/dates";
 import { getFilterCellValue, getFilterValueDomain } from "../helpers";
 const { DateTime } = luxon;
 
 const { toNumber } = helpers;
 
-export class GlobalFiltersCoreViewPlugin extends OdooCoreViewPlugin {
+export class GlobalFiltersCoreViewPlugin extends OdooEvaluationPlugin {
     static getters = /** @type {const} */ ([
         "getFilterDisplayValue",
         "getGlobalFilterByName",
@@ -40,43 +38,34 @@ export class GlobalFiltersCoreViewPlugin extends OdooCoreViewPlugin {
         "getTextFilterOptions",
         "getTextFilterOptionsFromRanges",
     ]);
+    validators = {
+        SET_GLOBAL_FILTER_VALUE: this.checkGlobalFilterValue,
+    };
+
+    handlers = {
+        SET_GLOBAL_FILTER_VALUE: this.onSetGlobalFilterValue,
+        REMOVE_GLOBAL_FILTER: this.onRemoveGlobalFilter,
+    };
+
     constructor(config) {
         super(config);
         this.values = {};
     }
 
-    /**
-     * Check if the given command can be dispatched
-     *
-     * @param {import("@spreadsheet").AllCommand} cmd Command
-     */
-    allowDispatch(cmd) {
-        switch (cmd.type) {
-            case "SET_GLOBAL_FILTER_VALUE": {
-                return checkFilterAndValue(this.getters, cmd.id, cmd.value);
-            }
-        }
-        return CommandResult.Success;
+    checkGlobalFilterValue(cmd) {
+        return checkFilterAndValue(this.getters, cmd.id, cmd.value);
     }
 
-    /**
-     * Handle a spreadsheet command
-     *
-     * @param {import("@spreadsheet").AllCommand} cmd
-     */
-    handle(cmd) {
-        switch (cmd.type) {
-            case "SET_GLOBAL_FILTER_VALUE":
-                if (cmd.value === undefined) {
-                    this._clearGlobalFilterValue(cmd.id);
-                } else {
-                    this._setGlobalFilterValue(cmd.id, cmd.value);
-                }
-                break;
-            case "REMOVE_GLOBAL_FILTER":
-                delete this.values[cmd.id];
-                break;
+    onSetGlobalFilterValue(cmd) {
+        if (cmd.value === undefined) {
+            this._clearGlobalFilterValue(cmd.id);
+        } else {
+            this._setGlobalFilterValue(cmd.id, cmd.value);
         }
+    }
+
+    onRemoveGlobalFilter(cmd) {
+        delete this.values[cmd.id];
     }
 
     // -------------------------------------------------------------------------
@@ -157,12 +146,25 @@ export class GlobalFiltersCoreViewPlugin extends OdooCoreViewPlugin {
             .filter((filter) => this.isGlobalFilterActive(filter.id)).length;
     }
 
-    getFilterDisplayValue(filterName) {
-        const filter = this.getGlobalFilterByName(filterName);
-        if (!filter) {
-            throw new EvaluationError(
-                _t(`Filter "%(filter_name)s" not found`, { filter_name: filterName })
+    /**
+     * Get the global filter with the given name
+     *
+     * @param {string} label Label
+     * @returns {GlobalFilter|undefined}
+     */
+    getGlobalFilterByName(label) {
+        return this.getters
+            .getGlobalFilters()
+            .find(
+                (filter) =>
+                    this.getters.dynamicTranslate(filter.label) ===
+                    this.getters.dynamicTranslate(label)
             );
+    }
+
+    getFilterDisplayValue(filter) {
+        if (!filter) {
+            throw new Error("Filter not found");
         }
         switch (filter.type) {
             case "date":
@@ -271,22 +273,6 @@ export class GlobalFiltersCoreViewPlugin extends OdooCoreViewPlugin {
     // -------------------------------------------------------------------------
     // Private
     // -------------------------------------------------------------------------
-
-    /**
-     * Get the global filter with the given name
-     *
-     * @param {string} label Label
-     * @returns {GlobalFilter|undefined}
-     */
-    getGlobalFilterByName(label) {
-        return this.getters
-            .getGlobalFilters()
-            .find(
-                (filter) =>
-                    this.getters.dynamicTranslate(filter.label) ===
-                    this.getters.dynamicTranslate(label)
-            );
-    }
 
     _getDateFilterDisplayValue(filter) {
         const value = this.getGlobalFilterValue(filter.id);

@@ -11,7 +11,6 @@ from odoo.modules import Manifest
 from odoo.tools import translate
 from odoo.tools.misc import file_path
 
-
 from .utils import _local_web_translations
 
 _logger = logging.getLogger(__name__)
@@ -47,7 +46,7 @@ class WebClient(http.Controller):
         return {"modules": translations_per_module,
                 "lang_parameters": None}
 
-    @http.route('/web/webclient/translations', type='http', auth='public', cors='*', readonly=True)
+    @http.route('/web/webclient/translations', type='http', auth='public', cors='*', replica=True)
     def translations(self, hash=None, mods=None, lang=None):
         """
         Load the translations for the specified language and modules
@@ -60,10 +59,9 @@ class WebClient(http.Controller):
         if mods:
             mods = mods.split(',')
         else:
-            mods = request.env.registry._init_modules.union(odoo.tools.config['server_wide_modules'])
+            mods = request.env['ir.http']._get_web_translations_modules()
 
-        if lang and lang not in {code for code, _ in request.env['res.lang'].sudo().get_installed()}:
-            lang = None
+        lang = request.env['ir.http']._get_web_translations_lang(lang)
 
         current_hash = request.env["ir.http"].with_context(cache_translation_data=True)._get_web_translations_hash(mods, lang)
 
@@ -89,6 +87,14 @@ class WebClient(http.Controller):
             ('Cache-Control', f'public, max-age={STATIC_CACHE_LONG}'),
         ])
 
+    @http.route('/website/translations', type='http', auth='public', replica=True, sitemap=False)
+    def get_website_translations(self, hash=None, lang=None, mods=None):
+        IrHttp = request.env['ir.http'].sudo()
+        modules = IrHttp._get_translation_frontend_modules_name()
+        if mods:
+            modules += mods.split(',')
+        return self.translations(hash, mods=','.join(modules), lang=lang)
+
     @http.route('/web/webclient/version_info', type='jsonrpc', auth="none")
     def version_info(self):
         return {
@@ -97,7 +103,7 @@ class WebClient(http.Controller):
             'server_serie': release.serie,
         }
 
-    @http.route('/web/tests', type='http', auth='user', readonly=True)
+    @http.route('/web/tests', type='http', auth='user', replica=True)
     def unit_tests_suite(self, mod=None, **kwargs):
         return request.render('web.unit_tests_suite', {
             'session_info': {
@@ -107,7 +113,7 @@ class WebClient(http.Controller):
             },
         })
 
-    @http.route('/web/bundle/<string:bundle_name>', auth='public', methods=['GET'], readonly=True)
+    @http.route('/web/bundle/<string:bundle_name>', auth='public', methods=['GET'], replica=True)
     def bundle(self, bundle_name, **bundle_params):
         """
         Request the definition of a bundle, including its javascript and css bundled assets
@@ -144,7 +150,7 @@ class ModelTranslations(http.Controller):
             case _:
                 return "text"
 
-    @http.route("/web/translations/get_translation_for_field", type="jsonrpc", methods=["POST"], auth="user", readonly=True)
+    @http.route("/web/translations/get_translation_for_field", type="jsonrpc", methods=["POST"], auth="user", replica=True)
     def get_translation_for_field(self, res_model: str, field_name: str, res_id: int, target_lang: str | None = None, context: dict | None = None) -> dict:
         """
         For a record (res_model, res_id), retrieves the translation terms for the field "field_name",

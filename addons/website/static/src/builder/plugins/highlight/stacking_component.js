@@ -1,5 +1,5 @@
 import { useLayoutEffect } from "@web/owl2/utils";
-import { xml, Component, proxy } from "@odoo/owl";
+import { xml, Component, proxy, useProps, t } from "@odoo/owl";
 import { POSITION_BUS } from "@web/core/position/position_hook";
 
 export function useStackingComponentState() {
@@ -18,19 +18,19 @@ export class StackingComponent extends Component {
         <t t-foreach="this.stack" t-as="componentSpec" t-key="componentSpec.id">
             <div data-prevent-closing-overlay="true" t-if="componentSpec_last" t-attf-class="{{this.props.class}} {{componentSpec_last ? '': 'd-none' }}" t-att-style="this.props.style">
                 <div t-if="this.stack.length > 1 || componentSpec.title" class="d-flex align-items-center">
-                    <button t-if="this.stack.length > 1 and componentSpec.withPrevious" class="oi btn btn-secondary bg-transparent border-0" data-icon="keyboard_arrow_left" t-on-click="this.props.stackState.pop"></button>
+                    <button t-if="this.stack.length > 1 and componentSpec.withPrevious" class="oi btn btn-secondary bg-transparent border-0" data-icon="keyboard_arrow_left" aria-label="Go back" t-on-click="this.props.stackState.pop"></button>
                     <span t-out="componentSpec.title" t-att-class="{ 'cursor-pointer': componentSpec.withPrevious }" t-on-click="this.props.stackState.pop"/>
                 </div>
                 <t t-component="componentSpec.component" t-props="componentSpec.props" />
             </div>
         </t>
     `;
-    static props = {
-        stackState: { type: Object },
-        class: { type: String, optional: true },
-        style: { type: String, optional: true },
-        close: { type: Function, optional: true },
-    };
+    props = useProps({
+        stackState: t.object(),
+        class: t.string().optional(),
+        style: t.string().optional(),
+        close: t.function().optional(),
+    });
     setup() {
         this.stack = proxy(this.props.stackState.stack);
         useLayoutEffect(

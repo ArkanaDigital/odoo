@@ -15,7 +15,7 @@ class PaymentProvider(models.Model):
     website_id = fields.Many2one(
         "website",
         check_company=True,
-        copy=False,  # handled in `copy` override to prevent company inconsistencies
+        copy=False,  # handled in `copy_data` override to prevent company inconsistencies
         ondelete="restrict",
     )
 
@@ -49,7 +49,8 @@ class PaymentProvider(models.Model):
 
     def get_base_url(self):
         # Give priority to url_root to handle multi-website cases
-        if request and request.httprequest.url_root:
+        # except for cron jobs, because SH attaches a request to them, whose url might not be reachable
+        if request and request.httprequest.url_root and not self.env.context.get('cron_id'):
             # Some domain names can use non-Latin script or alphabet or the Latin
             # alphabet-based characters with diacritics or ligatures. They are
             # stored as ASCII strings using Punycode transcription in the DNS
@@ -57,10 +58,15 @@ class PaymentProvider(models.Model):
             return iri_to_uri(request.httprequest.url_root)
         return super().get_base_url()
 
-    def copy(self, default=None):
-        res = super().copy(default=default)
-        if not default or 'website_id' not in default:
-            for src, copy in zip(self, res):
-                if src.website_id and src.company_id in copy.company_id.parent_ids:
-                    copy.website_id = src.website_id
-        return res
+    def copy_data(self, default=None):
+        """Override of `payment` to keep the website on copies in the same company hierarchy."""
+        default = dict(default or {})
+        vals_list = super().copy_data(default=default)
+        if "website_id" not in default:
+            for provider, vals in zip(self, vals_list):
+                # `website_id` has `check_company` set, so the copy keeps the website only if the
+                # source provider's company is one of its own parent companies
+                company = self.env["res.company"].browse(vals["company_id"])
+                if provider.website_id and provider.company_id in company.parent_ids:
+                    vals["website_id"] = provider.website_id.id
+        return vals_list

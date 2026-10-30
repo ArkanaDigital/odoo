@@ -13,9 +13,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server saas~18.3\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-26 19:11+0000\n"
-"PO-Revision-Date: 2026-06-20 07:25+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-09-11 17:44+0000\n"
+"PO-Revision-Date: 2026-09-09 14:03+0000\n"
+"Last-Translator: \"Tony Ng (ngto)\" <ngto@odoo.com>\n"
 "Language-Team: Chinese (Traditional Han script) <https://translate.odoo.com/"
 "projects/odoo-master/portal/zh_Hant/>\n"
 "Language: zh_TW\n"
@@ -23,7 +23,21 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: portal
+#: model:ir.module.module,description:base.module_portal
+msgid ""
+"\n"
+"This module adds required base code for a fully integrated customer portal.\n"
+"It contains the base controller class and base templates. Business addons\n"
+"will add their specific templates and controllers to extend the customer\n"
+"portal.\n"
+"\n"
+"This module contains most code coming from odoo v10 website_portal. Purpose\n"
+"of this module is to allow the display of a customer portal without having\n"
+"a dependency towards website editing and customization capabilities."
+msgstr ""
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_my_security
@@ -39,7 +53,7 @@ msgstr "過期 %s 天"
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_docs_entry
 msgid "'Icon for %s' % entry.name"
-msgstr ""
+msgstr "'%s 的圖示' % entry.name"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_my_security
@@ -56,32 +70,27 @@ msgstr ""
 "                                        請複製你的登入名稱 ("
 
 #. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.address_form_fields
-msgid ""
-"<br/>\n"
-"                            If you want to modify it, update"
-msgstr ""
-
-#. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_footer
 msgid ""
 "<i class=\"fw-light oi me-2\" data-icon=\"keyboard_arrow_left\"/>Discard"
 msgstr "<i class=\"fw-light oi me-2\" data-icon=\"keyboard_arrow_left\"/> 捨棄"
 
 #. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.portal_back_in_edit_mode
-msgid "<i class=\"oi me-1\" data-icon=\"east\"/>Back to edit mode"
-msgstr "<i class=\"oi me-1\" data-icon=\"east\"/> 返回編輯模式"
+#: model_terms:ir.ui.view,arch_db:portal.portal_my_contact
+msgid ""
+"<i class=\"oi m-auto ms-auto me-3\" data-icon=\"mail\" role=\"img\" aria-"
+"label=\"Send Message\"/>"
+msgstr ""
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.my_addresses
-msgid "<i class=\"oi me-2\" data-icon=\"add\"/>Add Address"
+msgid "<i class=\"oi me-1\" data-icon=\"add\"/>Add"
 msgstr ""
 
 #. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.profile_picture_card
-msgid "<i class=\"oi oi-filled\" data-icon=\"edit\" title=\"Edit\"/>"
-msgstr ""
+#: model_terms:ir.ui.view,arch_db:portal.portal_back_in_edit_mode
+msgid "<i class=\"oi me-1\" data-icon=\"east\"/>Back to edit mode"
+msgstr "<i class=\"oi me-1\" data-icon=\"east\"/> 返回編輯模式"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.side_content
@@ -132,11 +141,6 @@ msgstr ""
 "頁\" title=\"下一頁\"/>"
 
 #. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.profile_picture_card
-msgid "<i class=\"oi\" data-icon=\"delete\" title=\"Clear\"/>"
-msgstr ""
-
-#. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_my_security
 msgid ""
 "<i title=\"Documentation\" class=\"oi oi-fw o_button_icon\" data-"
@@ -144,22 +148,6 @@ msgid ""
 msgstr ""
 "<i title=\"系統使用說明\" class=\"oi oi-fw o_button_icon\" data-"
 "icon=\"info\"/>"
-
-#. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.address_form_fields
-msgid ""
-"<small class=\"form-text text-muted\">\n"
-"                    Changing country is not allowed once document(s) have\n"
-"                    been issued for your account. Please contact us directly "
-"for this\n"
-"                    operation.\n"
-"                </small>"
-msgstr ""
-"<small class=\"form-text text-muted\">\n"
-"                    若已有文件為你的帳戶發出，就不可再修改\n"
-"                    國家/地區。要進行此操作，\n"
-"                    請直接聯絡我們。\n"
-"                </small>"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.pager
@@ -200,6 +188,11 @@ msgid "<span class=\"small me-1 navbar-text\">Sort By:</span>"
 msgstr "<span class=\"small me-1 navbar-text\">排列依據：</span>"
 
 #. module: portal
+#: model_terms:ir.ui.view,arch_db:portal.portal_my_contact
+msgid "<span class=\"small text-muted\">Your Contact</span>"
+msgstr ""
+
+#. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_share_template
 msgid "<strong>Open </strong>"
 msgstr "<strong> 打開 </strong>"
@@ -228,6 +221,12 @@ msgid "Access warning"
 msgstr "存取警告"
 
 #. module: portal
+#: model_terms:ir.ui.view,arch_db:portal.portal_breadcrumbs
+#: model_terms:ir.ui.view,arch_db:portal.portal_my_details
+msgid "Account Details"
+msgstr ""
+
+#. module: portal
 #. odoo-python
 #: code:addons/portal/controllers/portal.py:0
 msgid "Account deleted!"
@@ -241,7 +240,7 @@ msgstr "加入備註"
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.my_addresses
 msgid "Add an address"
-msgstr ""
+msgstr "新增地址"
 
 #. module: portal
 #. odoo-javascript
@@ -289,7 +288,7 @@ msgstr "已經註冊"
 #. odoo-javascript
 #: code:addons/portal/static/src/interactions/portal_profile_editor.js:0
 msgid "An error occurred while saving your profile."
-msgstr ""
+msgstr "儲存你的個人檔案時，發生錯誤。"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_form_fields
@@ -314,14 +313,18 @@ msgstr "帳單地址"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_management
-#: model_terms:ir.ui.view,arch_db:portal.my_addresses
 msgid "Billing address"
 msgstr "賬單地址"
 
 #. module: portal
+#: model_terms:ir.ui.view,arch_db:portal.my_addresses
+msgid "Billing addresses"
+msgstr ""
+
+#. module: portal
 #: model:ir.model.fields,field_description:portal.field_portal_entry__category
 msgid "Category"
-msgstr ""
+msgstr "類別"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_my_security
@@ -332,11 +335,17 @@ msgstr "更改密碼"
 #. odoo-python
 #: code:addons/portal/controllers/portal.py:0
 msgid ""
-"Changing VAT number is not allowed once document(s) have been issued for "
-"your account. Please contact us directly for this operation."
+"Changing %(field_description)s is not allowed once document(s) have been "
+"issued for your account. Please contact us directly for this operation."
 msgstr ""
-"若已有文件為你的帳戶發出，就不可再修改增值稅號碼。要進行此操作，請直接聯絡我"
-"們。"
+
+#. module: portal
+#. odoo-python
+#: code:addons/portal/controllers/portal.py:0
+msgid ""
+"Changing country is not allowed once document(s) have been issued for your "
+"account. Please contact us directly for this operation."
+msgstr ""
 
 #. module: portal
 #. odoo-python
@@ -360,8 +369,8 @@ msgid "City"
 msgstr "城市"
 
 #. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.profile_picture_card
-msgid "Clear"
+#: model_terms:ir.ui.view,arch_db:portal.address_form_fields
+msgid "City..."
 msgstr ""
 
 #. module: portal
@@ -382,17 +391,17 @@ msgstr "關閉"
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.message_thread
 msgid "Communication History"
-msgstr ""
+msgstr "通訊歷程"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_form_fields
-msgid "Company Name"
-msgstr "公司名稱"
+msgid "Company"
+msgstr ""
 
 #. module: portal
 #: model:ir.model.fields,field_description:portal.field_portal_entry__is_config_card
 msgid "Config Card"
-msgstr ""
+msgstr "設定卡片配置"
 
 #. module: portal
 #: model:ir.model,name:portal.model_res_config_settings
@@ -419,7 +428,7 @@ msgstr "確認密碼"
 #. module: portal
 #: model:portal.entry,name:portal.portal_entry_base
 msgid "Connection & Security"
-msgstr ""
+msgstr "連線及保安"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_my_security
@@ -436,11 +445,6 @@ msgid "Contact"
 msgstr "聯絡人"
 
 #. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.portal_my_details
-msgid "Contact Details"
-msgstr "聯絡人詳情"
-
-#. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.wizard_view
 msgid "Contacts"
 msgstr "聯絡人"
@@ -449,9 +453,10 @@ msgstr "聯絡人"
 #. odoo-javascript
 #: code:addons/portal/static/src/interactions/portal_composer.js:0
 msgid "Could not save file %s"
-msgstr ""
+msgstr "未能儲存檔案 %s"
 
 #. module: portal
+#: model:ir.model,name:portal.model_res_country
 #: model_terms:ir.ui.view,arch_db:portal.address_form_fields
 msgid "Country"
 msgstr "國家"
@@ -459,7 +464,7 @@ msgstr "國家"
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_form_fields
 msgid "Country..."
-msgstr ""
+msgstr "國家/地區⋯"
 
 #. module: portal
 #: model:ir.model,website_form_label:portal.model_res_partner
@@ -486,6 +491,12 @@ msgstr "建立於"
 #: model:ir.model.fields,field_description:portal.field_res_config_settings__portal_allow_api_keys
 msgid "Customer API Keys"
 msgstr "客戶 API 密鑰"
+
+#. module: portal
+#: model:ir.module.module,shortdesc:base.module_portal
+#: model:ir.module.module,summary:base.module_portal
+msgid "Customer Portal"
+msgstr ""
 
 #. module: portal
 #: model:ir.model.fields,help:portal.field_portal_mixin__access_url
@@ -520,9 +531,13 @@ msgstr "收貨地址"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_management
-#: model_terms:ir.ui.view,arch_db:portal.my_addresses
 msgid "Delivery address"
 msgstr "送貨地址"
+
+#. module: portal
+#: model_terms:ir.ui.view,arch_db:portal.my_addresses
+msgid "Delivery addresses"
+msgstr ""
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_my_security
@@ -532,7 +547,7 @@ msgstr "說明"
 #. module: portal
 #: model:ir.model.fields,field_description:portal.field_portal_entry__description
 msgid "Description of Card"
-msgstr ""
+msgstr "卡片描述"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_breadcrumbs
@@ -564,7 +579,7 @@ msgstr ""
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_my_security
 msgid "Discard"
-msgstr ""
+msgstr "取消"
 
 #. module: portal
 #: model:ir.model.fields,field_description:portal.field_ir_http__display_name
@@ -578,6 +593,7 @@ msgstr ""
 #: model:ir.model.fields,field_description:portal.field_portal_wizard__display_name
 #: model:ir.model.fields,field_description:portal.field_portal_wizard_user__display_name
 #: model:ir.model.fields,field_description:portal.field_res_config_settings__display_name
+#: model:ir.model.fields,field_description:portal.field_res_country__display_name
 #: model:ir.model.fields,field_description:portal.field_res_partner__display_name
 #: model:ir.model.fields,field_description:portal.field_res_users_apikeys_description__display_name
 msgid "Display Name"
@@ -594,11 +610,6 @@ msgstr "%s 天內到期"
 #: code:addons/portal/static/src/interactions/sidebar.js:0
 msgid "Due today"
 msgstr "今天到期"
-
-#. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.profile_picture_card
-msgid "Edit"
-msgstr ""
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_card
@@ -642,7 +653,7 @@ msgstr "忘記密碼?"
 #. odoo-javascript
 #: code:addons/portal/static/src/xml/portal_security.xml:0
 msgid "Give a duration for the key's validity"
-msgstr ""
+msgstr "提供密鑰的有效期長度"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_my_security
@@ -677,6 +688,8 @@ msgid ""
 "Here is your new API key, use it instead of a password for RPC access.\n"
 "                Your login is still necessary for interactive usage."
 msgstr ""
+"這是你的新 API 密鑰，請使用它代替密碼，進行遠端程序呼叫（RPC）存取。\n"
+"                互動式操作仍需要用戶名稱及密碼登入。"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_breadcrumbs
@@ -695,6 +708,7 @@ msgstr "首頁"
 #: model:ir.model.fields,field_description:portal.field_portal_wizard__id
 #: model:ir.model.fields,field_description:portal.field_portal_wizard_user__id
 #: model:ir.model.fields,field_description:portal.field_res_config_settings__id
+#: model:ir.model.fields,field_description:portal.field_res_country__id
 #: model:ir.model.fields,field_description:portal.field_res_partner__id
 #: model:ir.model.fields,field_description:portal.field_res_users_apikeys_description__id
 msgid "ID"
@@ -712,9 +726,14 @@ msgstr ""
 "改，或聯絡你的系統管理員。"
 
 #. module: portal
+#: model_terms:ir.ui.view,arch_db:portal.address_form_fields
+msgid "If you want to modify it, update"
+msgstr ""
+
+#. module: portal
 #: model:ir.model.fields,field_description:portal.field_portal_entry__image
 msgid "Image"
-msgstr ""
+msgstr "圖片"
 
 #. module: portal
 #. odoo-javascript
@@ -777,6 +796,8 @@ msgid ""
 "It is very important that this description be clear\n"
 "                and complete,"
 msgstr ""
+"將這段描述寫得清晰、完整，\n"
+"                是非常重要的。"
 
 #. module: portal
 #: model:ir.model.fields,field_description:portal.field_portal_entry__write_uid
@@ -818,7 +839,7 @@ msgstr "登出所有裝置"
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_card
 msgid "Main Address"
-msgstr ""
+msgstr "主要地址"
 
 #. module: portal
 #: model:ir.model,name:portal.model_mail_message
@@ -829,8 +850,8 @@ msgstr "消息"
 #. odoo-python
 #: code:addons/portal/models/mail_thread.py:0
 msgid ""
-"Model %(model_name)s does not support token signature, as it does not have "
-"%(field_name)s field."
+"Model %(model_name)s does not support token signature, as it does not have %"
+"(field_name)s field."
 msgstr "模型 %(model_name)s 不支持金鑰認證，因為它沒有 %(field_name)s 欄位。"
 
 #. module: portal
@@ -848,6 +869,11 @@ msgstr "我的帳戶"
 #: model_terms:ir.ui.view,arch_db:portal.my_addresses
 msgid "My addresses"
 msgstr "我的地址"
+
+#. module: portal
+#: model_terms:ir.ui.view,arch_db:portal.address_form_fields
+msgid "Name"
+msgstr ""
 
 #. module: portal
 #. odoo-javascript
@@ -893,7 +919,7 @@ msgstr "只有內部用戶和門戶用戶才能創建API密鑰"
 #. odoo-javascript
 #: code:addons/portal/static/src/xml/portal_chatter.xml:0
 msgid "Oops! Something went wrong. Try to reload the page and log in."
-msgstr ""
+msgstr "哎呀！有東西出錯。請嘗試重新載入頁面，然後登入。"
 
 #. module: portal
 #: model:ir.model.fields,field_description:portal.field_portal_wizard__partner_ids
@@ -923,7 +949,7 @@ msgstr "電話"
 #. module: portal
 #: model:ir.model.fields,field_description:portal.field_portal_entry__placeholder_count
 msgid "Placeholder Count"
-msgstr ""
+msgstr "佔位符數目"
 
 #. module: portal
 #. odoo-javascript
@@ -946,7 +972,7 @@ msgstr "網站入口訪問網址"
 #. module: portal
 #: model:ir.model,name:portal.model_portal_entry
 msgid "Portal Entry"
-msgstr ""
+msgstr "進入門戶網站"
 
 #. module: portal
 #: model:ir.model,name:portal.model_portal_mixin
@@ -1013,7 +1039,7 @@ msgstr "相關的單據模型"
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_card
 msgid "Remove this address"
-msgstr ""
+msgstr "移除此地址"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.wizard_view
@@ -1082,11 +1108,6 @@ msgid "Send"
 msgstr "發送"
 
 #. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.portal_my_contact
-msgid "Send message"
-msgstr "發送訊息"
-
-#. module: portal
 #: model:ir.actions.act_window,name:portal.portal_share_action
 #: model_terms:ir.ui.view,arch_db:portal.portal_share_wizard
 msgid "Share Document"
@@ -1100,7 +1121,7 @@ msgstr "顯示為可選繼承"
 #. module: portal
 #: model:ir.model.fields,field_description:portal.field_portal_entry__show_in_portal
 msgid "Show in Portal"
-msgstr ""
+msgstr "在門戶網站中顯示"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.user_sign_in
@@ -1134,7 +1155,7 @@ msgstr "州 / 省"
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_form_fields
 msgid "State / Province..."
-msgstr ""
+msgstr "州 / 省⋯"
 
 #. module: portal
 #: model:ir.model.fields,field_description:portal.field_portal_wizard_user__email_state
@@ -1149,7 +1170,7 @@ msgstr "街道及門牌號碼"
 #. module: portal
 #: model:ir.model.fields,field_description:portal.field_portal_entry__url
 msgid "Target URL"
-msgstr ""
+msgstr "目標網址"
 
 #. module: portal
 #. odoo-javascript
@@ -1160,14 +1181,14 @@ msgstr "謝謝！"
 #. module: portal
 #. odoo-python
 #: code:addons/portal/controllers/portal.py:0
-msgid "The %(field_name)s is managed on your company account."
-msgstr "%(field_name)s 是以你的公司帳戶管理的。"
+msgid "The %(field_description)s is managed on your company account."
+msgstr ""
 
 #. module: portal
 #. odoo-python
 #: code:addons/portal/controllers/portal.py:0
-msgid "The %(field_name)s is managed on your main account address."
-msgstr "%(field_name)s 是在你的主帳戶地址上管理的。"
+msgid "The %(field_description)s is managed on your main account address."
+msgstr ""
 
 #. module: portal
 #. odoo-python
@@ -1290,7 +1311,7 @@ msgstr "這段文字會被包含在發給網站登入的新使用者的信件中
 #. module: portal
 #: model:ir.model.fields,field_description:portal.field_portal_entry__name
 msgid "Title of Card"
-msgstr ""
+msgstr "卡片標題"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_searchbar
@@ -1314,7 +1335,7 @@ msgstr "使用者"
 #. odoo-python
 #: code:addons/portal/controllers/portal.py:0
 msgid "User Dashboard"
-msgstr ""
+msgstr "用戶儀錶板"
 
 #. module: portal
 #: model:ir.model.fields,field_description:portal.field_portal_wizard__user_ids
@@ -1323,7 +1344,7 @@ msgstr "使用者"
 
 #. module: portal
 #. odoo-python
-#: code:addons/portal/controllers/portal.py:0
+#: code:addons/portal/models/res_country.py:0
 msgid "VAT"
 msgstr "增值稅"
 
@@ -1391,7 +1412,7 @@ msgstr "主要地址不可封存"
 #. odoo-python
 #: code:addons/portal/controllers/portal.py:0
 msgid "You cannot edit another user's profile."
-msgstr ""
+msgstr "你不可編輯其他使用者的個人檔案。"
 
 #. module: portal
 #. odoo-python
@@ -1403,7 +1424,7 @@ msgstr "任何密碼欄位都不可留空。"
 #. odoo-javascript
 #: code:addons/portal/static/src/xml/portal_chatter.xml:0
 msgid "You must be"
-msgstr ""
+msgstr "你必須為"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_my_security
@@ -1420,17 +1441,12 @@ msgstr "你應先向以下合作夥伴授予門戶網站的存取權限：%s。"
 #. odoo-python
 #: code:addons/portal/wizard/portal_wizard.py:0
 msgid "Your Account"
-msgstr ""
+msgstr "你的帳戶"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.portal_contact
 msgid "Your contact"
 msgstr "你的聯絡人"
-
-#. module: portal
-#: model_terms:ir.ui.view,arch_db:portal.address_form_fields
-msgid "Your name"
-msgstr "你的姓名"
 
 #. module: portal
 #: model_terms:ir.ui.view,arch_db:portal.address_form_fields
@@ -1478,7 +1494,7 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/portal/static/src/xml/portal_chatter.xml:0
 msgid "to post a comment."
-msgstr ""
+msgstr "以張貼評論。"
 
 #. module: portal
 #. odoo-javascript
@@ -1490,3 +1506,33 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:portal.address_form_fields
 msgid "your account details"
 msgstr "你的帳戶詳情"
+
+#~ msgid ""
+#~ "<small class=\"form-text text-muted\">\n"
+#~ "                    Changing country is not allowed once document(s) "
+#~ "have\n"
+#~ "                    been issued for your account. Please contact us "
+#~ "directly for this\n"
+#~ "                    operation.\n"
+#~ "                </small>"
+#~ msgstr ""
+#~ "<small class=\"form-text text-muted\">\n"
+#~ "                    若已有文件為你的帳戶發出，就不可再修改\n"
+#~ "                    國家/地區。要進行此操作，\n"
+#~ "                    請直接聯絡我們。\n"
+#~ "                </small>"
+
+#~ msgid "Clear"
+#~ msgstr "清除"
+
+#~ msgid "Company Name"
+#~ msgstr "公司名稱"
+
+#~ msgid "Contact Details"
+#~ msgstr "聯絡人詳情"
+
+#~ msgid "Edit"
+#~ msgstr "編輯"
+
+#~ msgid "Your name"
+#~ msgstr "你的姓名"

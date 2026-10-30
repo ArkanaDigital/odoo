@@ -10,6 +10,7 @@
             <xpath expr="//field[@name='vat']" position="after">
                 <field name="l10n_it_codice_fiscale"/>
                 <field name="l10n_it_pa_index"/>
+                <field name="l10n_it_administration_reference"/>
             </xpath>
         </field>
     </record>
@@ -25,6 +26,7 @@
                 <field name="l10n_it_pec_email" invisible="'IT' not in fiscal_country_codes or parent_id"/>
                 <field name="l10n_it_codice_fiscale" invisible="'IT' not in fiscal_country_codes or parent_id"/>
                 <field name="l10n_it_pa_index" invisible="'IT' not in fiscal_country_codes or parent_id"/>
+                <field name="l10n_it_administration_reference" invisible="'IT' not in fiscal_country_codes or parent_id"/>
             </xpath>
         </data>
         </field>
@@ -162,7 +164,9 @@
                                 <field name="l10n_it_edi_attachment_name" invisible="1"/>
                                 <field name="l10n_it_edi_attachment_file" widget="binary" filename="l10n_it_edi_attachment_name" groups="base.group_no_one" readonly="1"/>
                                 <field name="l10n_it_edi_transaction" string="Transaction ID" groups="base.group_no_one" readonly="1"/>
-                                <field name="l10n_it_document_type" string="Document Type"/>
+                                <field name="l10n_it_document_type"
+                                       string="Document Type"
+                                       domain="[('id', 'in', l10n_it_available_document_type_ids)]"/>
                                 <field name="l10n_it_payment_method" string="Payment Method"/>
                                 <field name="l10n_it_stamp_duty" widget="monetary" options="{'currency_field': 'currency_id'}" readonly="state != 'draft'"/>
                                 <field name="l10n_it_ddt_id" readonly="state != 'draft'" invisible="move_type not in ('out_invoice', 'out_refund')"/>

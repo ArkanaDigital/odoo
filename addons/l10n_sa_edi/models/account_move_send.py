@@ -2,6 +2,7 @@ import io
 import logging
 
 from odoo import api, fields, models
+from odoo.tools import config
 from odoo.tools.pdf import OdooPdfFileReader, OdooPdfFileWriter
 
 _logger = logging.getLogger(__name__)
@@ -48,15 +49,18 @@ class AccountMoveSend(models.AbstractModel):
 
         for invoice, invoice_data in invoices_data.items():
             if 'sa_edi' in invoice_data['extra_edis'] or 'sa_edi_test' in invoice_data['extra_edis']:
+                # Batch sending is processed by a cron, so the invoice can be reset to draft while it is being sent.
+                # Also skip the invoices that another transaction is working on, otherwise they get submitted to ZATCA even as draft.
+                if not self.env['res.company']._with_locked_records(records=invoice, allow_raising=False):
+                    continue
                 invoice.l10n_sa_edi_document_id._l10n_sa_post_zatca_edi(len(invoices_data.keys()) == 1)
 
     def _hook_invoice_document_after_pdf_report_render(self, invoice, invoice_data):
         # EXTENDS account
-        super()._hook_invoice_document_after_pdf_report_render(invoice, invoice_data)
-        if 'sa_edi' not in invoice_data['extra_edis'] and 'sa_edi_test' not in invoice_data['extra_edis']:
+        if not (edi_document := invoice.l10n_sa_edi_document_id):
+            super()._hook_invoice_document_after_pdf_report_render(invoice, invoice_data)
             return
 
-        edi_document = invoice.l10n_sa_edi_document_id
         attachment = edi_document.sudo().attachment_id
         if not attachment or not attachment.raw:
             if edi_document.state in ['accepted', 'warning', 'rejected']:
@@ -72,9 +76,10 @@ class AccountMoveSend(models.AbstractModel):
 
         # Post-process.
         pdf_writer = OdooPdfFileWriter()
-        pdf_writer.cloneReaderDocumentRoot(reader)
+        pdf_writer.clone_reader_document_root(reader)
         pdf_writer.addAttachment(file_name, xml_content, subtype='text/xml')
-        if not pdf_writer.is_pdfa:
+        # The fontTools package is only installed in production, so we disable the PDF/A conversion in test mode.
+        if not pdf_writer.is_pdfa and not config['test_enable']:
             try:
                 pdf_writer.convert_to_pdfa()
             except Exception:
@@ -89,3 +94,10 @@ class AccountMoveSend(models.AbstractModel):
             if "<pdfaid:conformance>B</pdfaid:conformance>" in content:
                 content.replace("<pdfaid:conformance>B</pdfaid:conformance>", "<pdfaid:conformance>A</pdfaid:conformance>")
             pdf_writer.add_file_metadata(content.encode())
+
+        # Replace the current content.
+        writer_buffer = io.BytesIO()
+        pdf_writer.write(writer_buffer)
+        pdf_values['raw'] = writer_buffer.getvalue()
+        reader_buffer.close()
+        writer_buffer.close()

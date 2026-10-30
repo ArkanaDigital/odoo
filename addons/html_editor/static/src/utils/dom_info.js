@@ -116,33 +116,6 @@ export function isStrikeThrough(node) {
 }
 
 /**
- * Return true if the given node font-size is equal to `props.size`.
- *
- * @param {Object} props
- * @param {Node} props.node A node to compare the font-size against.
- * @param {String} props.size The font-size value of the node that will be
- *     checked against.
- * @returns {boolean}
- */
-export function isFontSize(node, props) {
-    const element = closestElement(node);
-    return getComputedStyle(element)["font-size"] === props.size;
-}
-
-/**
- * Return true if the given node classlist contains `props.className`.
- *
- * @param {Object} props
- * @param {Node} node A node to compare the font-size against.
- * @param {String} props.className The name of the class.
- * @returns {boolean}
- */
-export function hasClass(node, props) {
-    const element = closestElement(node);
-    return element.classList.contains(props.className);
-}
-
-/**
  * Return true if the given node appears in a different direction than that of
  * the editable ('ltr' or 'rtl').
  *
@@ -156,13 +129,6 @@ export function hasClass(node, props) {
 export function isDirectionSwitched(node, editable) {
     const defaultDirection = editable.getAttribute("dir") || "ltr";
     return getComputedStyle(closestElement(node)).direction !== defaultDirection;
-}
-
-// /**
-//  * Return true if the given node is a row element.
-//  */
-export function isRow(node) {
-    return ["TH", "TD"].includes(node.tagName);
 }
 
 export function isZWS(node) {
@@ -404,6 +370,7 @@ export function getIconType(el) {
 export function isMediaElement(node) {
     return (
         node.nodeName === "IMG" ||
+        node.nodeName === "VIDEO" ||
         isIconElement(node) ||
         (node.classList &&
             (node.classList.contains("o_file_box") ||
@@ -600,7 +567,8 @@ export function isUnprotecting(node) {
 // This is a list of "paragraph-related elements", defined as elements that
 // behave like paragraphs. It is non-exhaustive and should not be used as a
 // standalone. @see isParagraphRelatedElement
-export const paragraphRelatedElements = ["P", "H1", "H2", "H3", "H4", "H5", "H6", "PRE"];
+export const headingTags = ["H1", "H2", "H3", "H4", "H5", "H6"];
+export const paragraphRelatedElements = ["P", ...headingTags, "PRE"];
 
 /**
  * Return true if the given node allows "paragraph-related elements".
@@ -611,6 +579,10 @@ export const paragraphRelatedElements = ["P", "H1", "H2", "H3", "H4", "H5", "H6"
  */
 export function allowsParagraphRelatedElements(node) {
     return !isParagraphRelatedElement(node) && isBlock(node);
+}
+
+export function isHeadingRelatedElement(node) {
+    return node && headingTags.includes(node.nodeName);
 }
 
 export const phrasingContent = new Set(["#text", ...phrasingTagNames]);
@@ -656,8 +628,6 @@ export function isListItemElement(node) {
     return [...listItem].includes(node.nodeName);
 }
 
-export const listItemElementSelector = [...listItem].join(",");
-
 export function isListElement(node) {
     return [...listContainers].includes(node.nodeName);
 }
@@ -666,6 +636,16 @@ export const listElementSelector = [...listContainers].join(",");
 
 export function isTableCell(node) {
     return ["TH", "TD"].includes(node.nodeName);
+}
+
+/**
+ * Returns the table's <colgroup> child.
+ *
+ * @param {HTMLTableElement} table - Table whose colgroup should be retrieved.
+ * @returns {HTMLTableColElement|null} The colgroup child, or null if none exists.
+ */
+export function getTableColgroup(table) {
+    return table.querySelector(":scope > colgroup");
 }
 
 /**
@@ -912,11 +892,11 @@ export function hasSameClasses(node, node2) {
 }
 
 export function isTextNode(node) {
-    return node.nodeType === Node.TEXT_NODE;
+    return node?.nodeType === Node.TEXT_NODE;
 }
 
 export function isElement(node) {
-    return node.nodeType === Node.ELEMENT_NODE;
+    return node?.nodeType === Node.ELEMENT_NODE;
 }
 
 export function isContentEditable(node) {

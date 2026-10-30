@@ -1,16 +1,28 @@
 import { Plugin } from "@html_editor/plugin";
 import { withSequence } from "@html_editor/utils/resource";
-import { uniqueId } from "@web/core/utils/functions";
 import { isZWS } from "@html_editor/utils/dom_info";
 import { _t } from "@web/core/l10n/translation";
 import { EDITOR_MUTATION_TYPES } from "@html_editor/core/dom_observer_plugin";
+import { escapeTextNodes } from "@html_builder/utils/escaping";
+import { selectElements } from "@html_editor/utils/dom_traversal";
+
+export class EscapeTextNodesPlugin extends Plugin {
+    static id = "escapeTextNodes";
+    /** @type {import("plugins").BuilderResources} */
+    resources = {
+        clean_for_save_processors: withSequence(100, (rootEl) => {
+            escapeTextNodes(rootEl);
+            return rootEl;
+        }),
+    };
+}
 
 /** @typedef {import("plugins").CSSSelector} CSSSelector */
 /**
  * @typedef { Object } SaveShared
  * @property { SavePlugin['save'] } save
  * @property { SavePlugin['ignoreDirty'] } ignoreDirty
- * @property { SavePlugin['groupElements'] } groupElements
+ * @property { SavePlugin['setDirtyElement'] } setDirtyElement
  */
 
 /**
@@ -18,20 +30,30 @@ import { EDITOR_MUTATION_TYPES } from "@html_editor/core/dom_observer_plugin";
  * @typedef {((el?: HTMLElement, groupedEls?: Object.<string, HTMLElement[]>) => Promise<void>)[]} on_will_save_handlers
  * Called before the save process.
  *
- * @typedef {((el: HTMLElement) => Promise<void>)[]} on_will_save_element_handlers
- * Called when saving an element (in parallel to saving the view).
- *
  * @typedef {(() => Promise<boolean>)[]} on_ready_to_save_document_handlers
  * Called concurrently as part of the save process.
  *
- * @typedef {((cleanedEls: HTMLElement[]) => Promise<boolean>)[]} save_elements_overrides
+ * @typedef {{
+ *      selector: CSSSelector;
+ *      dirtyClass: string;
+ *      match?: "closest" | "self";
+ * }[]} dirty_trackers
  *
- * @typedef {(() => HTMLElement[] | NodeList)[]} dirty_els_providers
+ * A mutation marks the element matching `selector` with `dirtyClass`. Declare one to be
+ * notified of changes to an element that cannot be saved as view arch, and pair it with
+ * `on_ready_to_save_document_handlers` to persist it another way. Declaring a tracker does
+ * not make the element savable: only `.o_savable` / `o_dirty` feeds the arch saving pipeline.
+ *
+ * `match` defaults to `"closest"`, which walks up the ancestors of the mutated element. Use
+ * `"self"` when the state you persist lives in the element's own attributes, so that changes
+ * inside it, such as editing a branded field in a descendant, do not mark it dirty. Not
+ * literally self: `handleMutations` resolves an added or removed node to its parent, so a
+ * direct child appearing or disappearing marks the element too.
  */
 
 export class SavePlugin extends Plugin {
     static id = "savePlugin";
-    static shared = ["save", "ignoreDirty", "groupElements"];
+    static shared = ["save", "ignoreDirty", "setDirtyElement"];
     static dependencies = ["history", "domReferenceMap"];
 
     /** @type {import("plugins").BuilderResources} */
@@ -39,24 +61,22 @@ export class SavePlugin extends Plugin {
         on_pending_mutations_staged_handlers: this.handleMutations.bind(this),
         on_editor_started_handlers: this.startObserving.bind(this),
         // Resource definitions:
-        clean_for_save_processors: [
-            // (root) => {
-            //     clean DOM before save (leaving edit mode)
-            //     root is the clone of a node that was o_dirty
-            // }
-        ],
-        dirty_els_providers: () => this.editable.querySelectorAll(".o_dirty"),
+        clean_for_save_processors: (rootEl) => {
+            rootEl.classList.remove("o_dirty");
+            this.removeZWSPFromEmbeddedFields(rootEl);
+            return rootEl;
+        },
+        dirty_trackers: { selector: ".o_savable", dirtyClass: "o_dirty" },
         // Do not change the sequence of this resource, it must stay the first
         // one to avoid marking dirty when not needed during the drag and drop.
         on_prepare_drag_handlers: withSequence(0, this.ignoreDirty.bind(this)),
-        on_will_save_handlers: this.removeZWSPFromEmbeddedFields.bind(this),
     };
 
-    removeZWSPFromEmbeddedFields(editableEl) {
+    removeZWSPFromEmbeddedFields(rootEl) {
         // Remove zero-width spaces left by DeletePlugin.fillEmptyInlines on
         // embedded fields to prevent saving blank model fields.
         const selector = '[data-oe-model]:not([data-oe-model="ir.ui.view"])';
-        for (const el of editableEl.querySelectorAll(selector)) {
+        for (const el of selectElements(rootEl, selector)) {
             if (isZWS(el)) {
                 el.innerHTML = "";
             }
@@ -65,36 +85,15 @@ export class SavePlugin extends Plugin {
 
     setup() {
         this.canObserve = false;
-    }
-
-    groupElements(toGroupEls) {
-        return Object.groupBy(toGroupEls, (toGroupEl) => {
-            const model = toGroupEl.dataset.oeModel;
-            const recordId = toGroupEl.dataset.oeId;
-            const field = toGroupEl.dataset.oeField;
-
-            // There are elements which have no linked model as something
-            // special is to be done "to save them". In that case, do not group
-            // those elements.
-            if (!model) {
-                return uniqueId("special-element-to-save-");
-            }
-
-            // Group elements which are from the same field of the same record.
-            return `${model}::${recordId}::${field}`;
-        });
+        this.dirtyTrackers = this.getResource("dirty_trackers");
     }
 
     async save({ shouldSkipAfterSaveHandlers = async () => true } = {}) {
         let skipAfterSaveHandlers;
         try {
-            // Get elements to save, then group them if possible.
-            const dirtyEls = this.getResource("dirty_els_providers").flatMap((p) => [...p()]);
-            const groupedElements = this.groupElements(dirtyEls);
-            await Promise.all(
-                this.trigger("on_will_save_handlers", this.editable, groupedElements)
-            );
-            await this._save(groupedElements);
+            await Promise.all(this.trigger("on_will_save_handlers", this.editable));
+            await Promise.all(this.trigger("on_ready_to_save_document_handlers"));
+            this.dependencies.history.reset();
             skipAfterSaveHandlers = await shouldSkipAfterSaveHandlers();
         } catch (error) {
             if (error.exceptionName === "odoo.exceptions.ValidationError") {
@@ -110,26 +109,6 @@ export class SavePlugin extends Plugin {
                 this.trigger("on_saved_handlers");
             }
         }
-    }
-    async _save(groupedElements) {
-        const saveProms = Object.values(groupedElements).map(async (dirtyEls) => {
-            const cleanedEls = dirtyEls.map((dirtyEl) => {
-                dirtyEl.classList.remove("o_dirty");
-                return this.processThrough("clean_for_save_processors", dirtyEl.cloneNode(true));
-            });
-            for (const saveElementsOverride of this.getResource("save_elements_overrides")) {
-                if (await saveElementsOverride(cleanedEls)) {
-                    return;
-                }
-            }
-            for (const cleanedEl of cleanedEls) {
-                await Promise.all(this.trigger("on_will_save_element_handlers", cleanedEl));
-            }
-        });
-        // used to track dirty out of the editable scope, like header, footer or wrapwrap
-        const willSaves = this.trigger("on_ready_to_save_document_handlers");
-        await Promise.all(saveProms.concat(willSaves));
-        this.dependencies.history.reset();
     }
 
     startObserving() {
@@ -172,15 +151,20 @@ export class SavePlugin extends Plugin {
             if (!targetEl) {
                 continue;
             }
-            const savableEl = targetEl.closest(".o_savable");
-            if (
-                !savableEl ||
-                savableEl.classList.contains("o_dirty") ||
-                savableEl.hasAttribute("data-oe-readonly")
-            ) {
-                continue;
+            for (const { selector, dirtyClass, match } of this.dirtyTrackers) {
+                const dirtyEl =
+                    match === "self"
+                        ? targetEl.matches(selector) && targetEl
+                        : targetEl.closest(selector);
+                if (
+                    !dirtyEl ||
+                    dirtyEl.classList.contains(dirtyClass) ||
+                    dirtyEl.hasAttribute("data-oe-readonly")
+                ) {
+                    continue;
+                }
+                dirtyEl.classList.add(dirtyClass);
             }
-            savableEl.classList.add("o_dirty");
         }
     }
 
@@ -195,5 +179,9 @@ export class SavePlugin extends Plugin {
         return () => {
             this.canObserve = true;
         };
+    }
+
+    setDirtyElement(el) {
+        el.classList.add("o_dirty");
     }
 }

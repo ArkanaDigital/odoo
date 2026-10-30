@@ -1,13 +1,33 @@
 import { DiscussAvatar } from "@mail/core/common/discuss_avatar";
-import { optionType } from "@mail/core/common/suggestion_hook";
 import { onExternalClick } from "@mail/utils/common/hooks";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 import { markEventHandled, isEventHandled } from "@web/core/utils/misc";
 
 import { Component, proxy, signal, t, useListener, useOnChange, useProps } from "@odoo/owl";
 
 import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
-import { usePosition } from "@web/core/position/position_hook";
 import { useService } from "@web/core/utils/hooks";
+
+/** @param {import("models").Store} store */
+const optionType = (store) =>
+    t.object({
+        buttonClass: t.string().optional(),
+        cannedResponse: t.instanceOf(store["mail.canned.response"]).optional(),
+        classList: t.string().optional(),
+        group: t.any().optional(),
+        help: t.string().optional(),
+        isSpecial: t.boolean().optional(),
+        label: t.string().optional(),
+        optionTemplate: t.string().optional(),
+        partner: t.instanceOf(store["res.partner"]).optional(),
+        role: t.instanceOf(store["res.role"]).optional(),
+        source: t.string().optional(),
+        thread: t.instanceOf(store["mail.thread"]).optional(),
+        title: t.string().optional(),
+        unselectable: t.boolean().optional(),
+    });
+
+/** @typedef {import("@odoo/owl").StripType<ReturnType<typeof optionType>>} Option */
 
 /**
  * Returns a string representation of the options, to tell a new set of options
@@ -39,16 +59,14 @@ export class NavigableList extends Component {
         this.store = useService("mail.store");
         const option = optionType(this.store);
         this.props = useProps({
-            anchorRef: t.signal(t.instanceOf(HTMLElement)).optional(),
             class: t.string().optional(),
-            closeOnSelect: t.boolean().optional(true),
             isLoading: t.boolean().optional(false),
+            onClose: t.function([]).optional(),
             onSelect: t.function([t.instanceOf(Event), option]),
             options: t.array(option),
             optionTemplate: t.string().optional(),
-            position: t.string().optional("bottom"),
-            rememberPosition: t.boolean().optional(),
         });
+        useAncestors({ inNavigableList: true });
         this.state = proxy({
             activeIndex: null,
             open: false,
@@ -60,15 +78,13 @@ export class NavigableList extends Component {
         onExternalClick(this.rootRef, async (ev) => {
             // Let event be handled by bubbling handlers first.
             await new Promise(setTimeout);
-            if (isEventHandled(ev, "composer.onClickTextarea")) {
+            if (
+                isEventHandled(ev, "composer.onClickInput") ||
+                isEventHandled(ev, "composer.clickInsertCannedResponse")
+            ) {
                 return;
             }
             this.close();
-        });
-        // position and size
-        usePosition(this.rootRef, () => this.props.anchorRef?.(), {
-            position: this.props.position,
-            rememberPosition: this.props.rememberPosition,
         });
         useOnChange(
             // Open on mount and when a new set of options arrives. In particular,
@@ -109,15 +125,16 @@ export class NavigableList extends Component {
     }
 
     close() {
-        if (this.props.closeOnSelect) {
-            this.state.open = false;
-            this.state.activeIndex = null;
+        this.state.open = false;
+        this.state.activeIndex = null;
+        if (this.props.options.length) {
+            this.props.onClose?.();
         }
     }
 
     /**
      * @param {Event} ev
-     * @param {import("@mail/core/common/suggestion_hook").Option} option
+     * @param {Option} option
      */
     selectOption(ev, option) {
         if (!option) {
@@ -183,6 +200,7 @@ export class NavigableList extends Component {
                 break;
             case "escape":
                 markEventHandled(ev, "NavigableList.close");
+                ev.stopPropagation();
                 this.close();
                 break;
             case "tab":

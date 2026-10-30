@@ -1,6 +1,6 @@
 import { expect, test } from "@odoo/hoot";
 import { tick } from "@odoo/hoot-mock";
-import { press } from "@odoo/hoot-dom";
+import { dblclick, press } from "@odoo/hoot-dom";
 import { patchWithCleanup } from "@web/../tests/web_test_helpers";
 import { setupEditor, testEditor } from "../_helpers/editor";
 import { getContent } from "../_helpers/selection";
@@ -106,8 +106,11 @@ test("should make two paragraphs not strikeThrough", async () => {
 
 test("should make qweb tag strikeThrough", async () => {
     await testEditor({
-        contentBefore: `<div><p t-out="'Test'" contenteditable="false">[Test]</p></div>`,
-        stepFunction: strikeThrough,
+        contentBefore: `<div><p t-out="'Test'" contenteditable="false">Test</p></div>`,
+        stepFunction: async (editor) => {
+            await dblclick("p[t-out]");
+            strikeThrough(editor);
+        },
         contentAfter: `<div>[<p t-out="'Test'" style="text-decoration-line: line-through;">Test</p>]</div>`,
         config: { includePlugins: [QWebPlugin] },
     });
@@ -218,7 +221,7 @@ test("should make a few characters strikeThrough inside table (strikeThrough)", 
         stepFunction: strikeThrough,
         contentAfterEdit: unformat(`
             <p data-selection-placeholder=""><br></p>
-            <table class="table table-bordered o_table o_selected_table">
+            <div class="o_table_wrapper"><table class="table table-bordered o_table o_selected_table">
                 <tbody>
                     <tr>
                         <td class="o_selected_td"><p><s>[abc</s></p></td>
@@ -236,7 +239,7 @@ test("should make a few characters strikeThrough inside table (strikeThrough)", 
                         <td><p><br></p></td>
                     </tr>
                 </tbody>
-            </table>
+            </table></div>
             <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>`),
     });
 });
@@ -271,4 +274,16 @@ test("should not add history commit for strikethrough on collapsed selection", a
 
     undo(editor);
     expect(getContent(el)).toBe(`<p>abcd[]</p>`);
+});
+
+test("should not apply the style on the link itself because it can't be neutralized locally", async () => {
+    const { el, editor } = await setupEditor(`<p><a href="test">[abc]</a></p>`);
+    strikeThrough(editor);
+    expect(getContent(el)).toBe(
+        `<p>\ufeff<a href="test" class="o_link_in_selection">\ufeff<s>[abc]</s>\ufeff</a>\ufeff</p>`
+    );
+    strikeThrough(editor);
+    expect(getContent(el)).toBe(
+        `<p>\ufeff<a href="test" class="o_link_in_selection">\ufeff[abc]\ufeff</a>\ufeff</p>`
+    );
 });

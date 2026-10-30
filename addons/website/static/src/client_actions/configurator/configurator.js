@@ -1,6 +1,4 @@
 import { useEnv, useLayoutEffect, useSubEnv } from "@web/owl2/utils";
-import { browser } from "@web/core/browser/browser";
-const sessionStorage = browser.sessionStorage;
 import { AutoComplete } from "@web/core/autocomplete/autocomplete";
 import { delay } from "@web/core/utils/concurrency";
 import { getDataURLFromFile, redirect } from "@web/core/utils/urls";
@@ -9,6 +7,7 @@ import { _t } from "@web/core/l10n/translation";
 import { isImageFile, svgToPNG, webpToPNG } from "@website/js/utils";
 import { escapeRegExp } from "@web/core/utils/strings";
 import { useAutofocus, useService } from "@web/core/utils/hooks";
+import { BootstrapInstance } from "@web/core/utils/bootstrap_plugin";
 import { clamp } from "@web/core/utils/numbers";
 import { registry } from "@web/core/registry";
 import { rpc } from "@web/core/network/rpc";
@@ -17,16 +16,27 @@ import { mixCssColors } from "@web/core/utils/colors";
 import { router } from "@web/core/browser/router";
 import {
     Component,
+    computed,
     onMounted,
+    onWillDestroy,
     onWillStart,
     proxy,
     signal,
+    t,
     useEffect,
     useListener,
+    usePlugin,
+    useProps,
 } from "@odoo/owl";
-import { standardActionServiceProps } from "@web/webclient/actions/action_service";
+import { standardActionServiceProps } from "@web/webclient/actions/action_plugin";
 import { fuzzyLevenshteinLookup } from "@web/core/utils/search";
 import { isBrowserSafari } from "@web/core/browser/feature_detection";
+import {
+    getConfiguratorPreviewUrl,
+    getPreviewIframeDocument,
+    replacePreviewIframeLogo,
+    scalePreviewIframe,
+} from "@website/client_actions/configurator/preview_iframe";
 
 export const ROUTES = {
     descriptionScreen: 1,
@@ -93,7 +103,6 @@ const PALETTES = {
 export const CUSTOM_BG_COLOR_ATTRS = ["menu", "footer"];
 
 const MAX_NBR_DISPLAY_MAIN_THEMES = 6;
-const DESKTOP_PREVIEW_WIDTH = 1440;
 const MIN_INDUSTRY_MATCH_CONFIDENCE = 70;
 const PREVIEW_IMAGE_LIST = [
     "landscape_md_2",
@@ -161,18 +170,23 @@ async function getRecommendedThemes(
     });
 }
 
-async function getIndustryImages(orm, industryId, theme = "") {
+async function getIndustryResources(orm, industryId, theme = "") {
     if (!industryId || industryId <= 0) {
         return {};
     }
     try {
-        return await orm.call("website", "configurator_get_images", [], {
+        return await orm.call("website", "configurator_get_custom_resources", [], {
             industry_id: industryId,
             theme,
         });
     } catch {
         return {};
     }
+}
+
+function hasCatalogData(catalog, images) {
+    const imageNames = Object.keys(catalog || {});
+    return !!imageNames.length && imageNames.every((name) => images?.[name]);
 }
 
 function updateRecommendedThemes(state, themes) {
@@ -238,19 +252,19 @@ async function ensurePreviewHeaders(state) {
 
 export class SkipButton extends Component {
     static template = "website.Configurator.SkipButton";
-    static props = {
-        skip: Function,
-        className: { type: String, optional: true },
-    };
+    props = useProps({
+        skip: t.function(),
+        className: t.string().optional(),
+    });
 }
 
 export class DescriptionScreen extends Component {
     static template = "website.Configurator.DescriptionScreen";
     static components = { SkipButton, AutoComplete };
-    static props = {
-        navigate: Function,
-        skip: Function,
-    };
+    props = useProps({
+        navigate: t.function(),
+        skip: t.function(),
+    });
     industrySelection = signal.ref();
     purposeSelectionRef = signal.ref();
     autofocusRef = signal.ref();
@@ -258,7 +272,9 @@ export class DescriptionScreen extends Component {
     scratchPositioningRef = signal.ref();
     positioningDropdownRef = signal.ref();
     setup() {
+        this.bootstrap = usePlugin(BootstrapInstance);
         this.state = useStore();
+        this.previewImages = computed(() => this.computePreviewImages());
         this.orm = useService("orm");
         useAutofocus({ ref: this.autofocusRef });
 
@@ -283,8 +299,9 @@ export class DescriptionScreen extends Component {
                     this.industrySelection()?.querySelector("input").focus();
                 }
                 if (selectedIndustry) {
-                    if (this.positioningDropdownRef()) {
-                        window.Dropdown.getOrCreateInstance(this.positioningDropdownRef()).show();
+                    const el = this.positioningDropdownRef();
+                    if (el) {
+                        this.bootstrap.getOrCreateInstance(window.Dropdown, el).show();
                     }
                     this.purposeSelectionRef()?.focus();
                 }
@@ -293,7 +310,7 @@ export class DescriptionScreen extends Component {
         );
 
         this.safariHackFocusedOutDropdown = null;
-        this.fetchImagesRequestId = 0;
+        this.fetchResourcesRequestId = 0;
     }
 
     onMounted() {
@@ -303,6 +320,7 @@ export class DescriptionScreen extends Component {
     async _setSelectedIndustry(label, id) {
         this.state.selectIndustry(label, id);
         this.setImages({});
+        this.setHasCatalog();
         this.fetchPositionings(label);
         if (id === -1) {
             id = await this.findClosestIndustryId(label);
@@ -311,24 +329,29 @@ export class DescriptionScreen extends Component {
             }
             this.state.setIndustryId(id);
         }
-        this.fetchIndustryImages(id);
+        this.fetchIndustryResources(id);
     }
 
     setImages(images) {
         this.state.images = images || {};
     }
 
-    async fetchIndustryImages(industryId) {
-        const requestId = ++this.fetchImagesRequestId;
+    setHasCatalog(catalog, images) {
+        this.state.hasCatalog = hasCatalogData(catalog, images);
+    }
+
+    async fetchIndustryResources(industryId) {
+        const requestId = ++this.fetchResourcesRequestId;
         if (!industryId || industryId <= 0) {
             return;
         }
-        const images = await getIndustryImages(this.orm, industryId);
+        const resources = await getIndustryResources(this.orm, industryId);
         if (
-            requestId === this.fetchImagesRequestId &&
+            requestId === this.fetchResourcesRequestId &&
             this.state.selectedIndustry?.id === industryId
         ) {
-            this.setImages(images);
+            this.setImages(resources.images);
+            this.setHasCatalog(resources.catalog, resources.images);
         }
     }
 
@@ -377,6 +400,7 @@ Return ONLY a JSON object with:
         ];
         this.state.positionings = [];
         this.state.selectedPositioning = undefined;
+        this.state.formerSelectedPositioning = undefined;
         this.state.positioningsLoading = true;
         try {
             const prompt = `${_t(
@@ -399,7 +423,7 @@ Return ONLY a JSON object with:
         this.state.positioningsLoading = false;
     }
 
-    get previewImages() {
+    computePreviewImages() {
         const images = this.state.images || {};
         const fallbackImageUrls = [];
         const previewImageUrls = [];
@@ -456,6 +480,7 @@ Return ONLY a JSON object with:
             this.state.selectIndustry();
         }
         this.setImages({});
+        this.setHasCatalog();
         const termsSet = this._splitToSet(term);
         const rawTerms = Array.from(termsSet);
 
@@ -618,7 +643,9 @@ Return ONLY a JSON object with:
         // outside of it
         if (isBrowserSafari() && this.safariHackFocusedOutDropdown) {
             if (ev.target.closest(".dropdown") !== this.safariHackFocusedOutDropdown) {
-                window.Dropdown.getOrCreateInstance(this.safariHackFocusedOutDropdown).hide();
+                this.bootstrap
+                    .getOrCreateInstance(window.Dropdown, this.safariHackFocusedOutDropdown)
+                    .hide();
             }
             this.safariHackFocusedOutDropdown = null;
         }
@@ -636,7 +663,7 @@ Return ONLY a JSON object with:
             return;
         }
         if (ev.relatedTarget?.closest(".dropdown") !== ev.currentTarget) {
-            window.Dropdown.getOrCreateInstance(ev.currentTarget).hide();
+            this.bootstrap.getOrCreateInstance(window.Dropdown, ev.currentTarget).hide();
         }
     }
 
@@ -644,6 +671,7 @@ Return ONLY a JSON object with:
         if (!inputValue) {
             this.state.selectIndustry(); // reset
             this.setImages({});
+            this.setHasCatalog();
         }
     }
 }
@@ -651,15 +679,26 @@ Return ONLY a JSON object with:
 export class PaletteSelectionScreen extends Component {
     static components = { SkipButton };
     static template = "website.Configurator.PaletteSelectionScreen";
-    static props = {
-        navigate: Function,
-        skip: Function,
-    };
+    props = useProps({
+        navigate: t.function(),
+        skip: t.function(),
+    });
     logoInputRef = signal.ref();
     setup() {
         this.state = useStore();
         this.notification = useService("notification");
         this.orm = useService("orm");
+        this.recommendationCancelled = false;
+        this.typingTimeouts = [];
+        this.fullRecommendation = undefined;
+        onWillDestroy(() => {
+            // Stop pending characters from updating the shared state.
+            this.recommendationCancelled = true;
+            this.typingTimeouts.forEach(clearTimeout);
+            if (this.fullRecommendation) {
+                this.state.styleRecommendation = this.fullRecommendation;
+            }
+        });
 
         if (this.state.logo) {
             this.updatePalettes();
@@ -718,7 +757,6 @@ Return ONLY a JSON object with:
 - "reason": a short, user-friendly sentence in ${userLanguage} mentioning the business context without technical color terms or color codes, like: "For a family restaurant with a cozy positioning, I'd recommend the \\"Coral\\" palette for its warm and welcoming feel."`;
         this.state.styleRecommendation = undefined;
         let palette;
-        let reason = " ";
         try {
             const response = await rpc("/html_editor/generate_text", {
                 prompt,
@@ -728,12 +766,16 @@ Return ONLY a JSON object with:
             const parsed = match && JSON.parse(match[0]);
             palette = parsed && palettes[parsed.id];
             if (palette) {
-                reason = parsed.reason || " ";
+                this.fullRecommendation = parsed.reason || " ";
             }
         } catch {
             // Silently fail — the user can still pick manually
         }
-        this.typingAnimation(reason);
+        // The RPC may finish after the screen has been destroyed.
+        if (this.recommendationCancelled) {
+            return;
+        }
+        this.typingAnimation();
         if (palette) {
             this.state.aiRecommendedPalette = palette.name;
             if (!this.state.selectedPalette) {
@@ -742,20 +784,22 @@ Return ONLY a JSON object with:
         }
     }
 
-    typingAnimation(text) {
+    typingAnimation() {
         // Mimic ChatGPT-style typing with random delays for a less linear, more
         // natural-looking response.
         const typingSpeed = 0.5;
         this.state.styleRecommendation = "";
         let delay = 0;
-        for (const type of Array.from(text)) {
+        for (const type of Array.from(this.fullRecommendation || " ")) {
             delay += (10 + Math.random() * 70) * typingSpeed;
             if (".,;:!?".includes(type)) {
                 delay += (100 + Math.random() * 180) * typingSpeed;
             }
-            setTimeout(() => {
-                this.state.styleRecommendation += type;
-            }, delay);
+            this.typingTimeouts.push(
+                setTimeout(() => {
+                    this.state.styleRecommendation += type;
+                }, delay)
+            );
         }
     }
 
@@ -866,7 +910,7 @@ Return ONLY a JSON object with:
 
 export class ApplyConfiguratorScreen extends Component {
     static template = "";
-    static props = ["*"];
+    props = useProps();
     setup() {
         this.websiteService = useService("website");
         this.configuratorProgress = 0;
@@ -1133,21 +1177,12 @@ export class ThemeSelectionScreen extends ApplyConfiguratorScreen {
         for (const iframe of document.querySelectorAll(
             ".o_theme_selection_screen .o_configurator_theme_preview_iframe"
         )) {
-            this.scalePreviewIframe(iframe);
+            scalePreviewIframe(iframe);
         }
     }
 
     getThemePreviewUrl(theme) {
-        const previewUrl = new URL("/website/configurator/preview", browser.location.origin);
-        const palette = this.state.selectedPalette || {};
-        previewUrl.searchParams.set("preview_url", theme.preview_url);
-        previewUrl.searchParams.set("theme_name", theme.name);
-        previewUrl.searchParams.set("industry_id", this.state.selectedIndustry?.id || -1);
-        previewUrl.searchParams.set("is_dark", palette.isDark ? "1" : "0");
-        for (const colorName of ["color1", "color2", "color3", "color4", "color5"]) {
-            previewUrl.searchParams.set(colorName, palette[colorName] || "");
-        }
-        return previewUrl.toString();
+        return getConfiguratorPreviewUrl(this.state, theme.name);
     }
 
     /**
@@ -1170,24 +1205,12 @@ export class ThemeSelectionScreen extends ApplyConfiguratorScreen {
         return previewHeaders[(index >= 0 ? index : 0) % previewHeaders.length];
     }
 
-    getPreviewIframeDocument(iframe) {
-        try {
-            const previewDocument = iframe.contentDocument;
-            return previewDocument?.readyState === "complete" ? previewDocument : null;
-        } catch (error) {
-            if (error.name === "SecurityError") {
-                return null;
-            }
-            throw error;
-        }
-    }
-
     replacePreviewIframeHeading(iframe) {
         const previewHeader = this.getPreviewHeader(iframe);
         if (!previewHeader) {
             return;
         }
-        const previewDocument = this.getPreviewIframeDocument(iframe);
+        const previewDocument = getPreviewIframeDocument(iframe);
         if (!previewDocument) {
             return;
         }
@@ -1224,21 +1247,6 @@ export class ThemeSelectionScreen extends ApplyConfiguratorScreen {
         }
     }
 
-    replacePreviewIframeLogo(iframe) {
-        const logo = this.state.logo;
-        if (!logo) {
-            return;
-        }
-        const previewDocument = this.getPreviewIframeDocument(iframe);
-        if (!previewDocument) {
-            return;
-        }
-        const logoImage = previewDocument.querySelector("header img, #top img, .navbar-brand img");
-        if (logoImage) {
-            logoImage.src = logo;
-        }
-    }
-
     updatePreviewIframeHeadings() {
         for (const iframe of document.querySelectorAll(
             ".o_theme_selection_screen .o_configurator_theme_preview_iframe"
@@ -1247,82 +1255,15 @@ export class ThemeSelectionScreen extends ApplyConfiguratorScreen {
         }
     }
 
-    getPreviewIframeContentSize(iframe) {
-        const iframeWindow = iframe.contentWindow;
-        const iframeDocument = this.getPreviewIframeDocument(iframe);
-        const scrollingElement = iframeDocument?.scrollingElement;
-        const documentElement = iframeDocument?.documentElement;
-        const body = iframeDocument?.body;
-        if (!iframeWindow || !scrollingElement || !documentElement) {
-            return null;
-        }
-        return {
-            width: Math.max(
-                DESKTOP_PREVIEW_WIDTH,
-                iframeWindow.innerWidth,
-                scrollingElement.scrollWidth,
-                documentElement.scrollWidth,
-                body?.scrollWidth || 0
-            ),
-            height: Math.max(
-                scrollingElement.scrollHeight,
-                documentElement.scrollHeight,
-                body?.scrollHeight || 0,
-                documentElement.offsetHeight,
-                body?.offsetHeight || 0
-            ),
-        };
-    }
-
-    scalePreviewIframe(iframe) {
-        if (!iframe) {
-            return;
-        }
-
-        const previewContainer = iframe.parentElement;
-        const availableWidth = previewContainer.clientWidth;
-        const availableHeight = previewContainer.clientHeight;
-
-        if (!availableWidth || !availableHeight) {
-            return;
-        }
-
-        iframe.style.setProperty("width", `${DESKTOP_PREVIEW_WIDTH}px`, "important");
-        // Reset to the natural viewport height before measuring
-        const naturalViewportHeight = Math.ceil(
-            availableHeight / Math.min(1, availableWidth / DESKTOP_PREVIEW_WIDTH)
-        );
-        iframe.style.setProperty("height", `${naturalViewportHeight}px`, "important");
-
-        const contentSize = this.getPreviewIframeContentSize(iframe);
-        const iframeWidth = contentSize?.width || DESKTOP_PREVIEW_WIDTH;
-        const scale = Math.min(1, availableWidth / iframeWidth);
-        const fallbackContentHeight = (availableHeight * 2) / scale;
-        const iframeHeight = Math.ceil(contentSize?.height || fallbackContentHeight);
-        // The iframe is scaled, so the scroll distance must use the scaled
-        // height, not the raw document height.
-        const scrollDistance = Math.max(0, iframeHeight * scale - availableHeight);
-
-        iframe.style.setProperty("width", `${iframeWidth}px`, "important");
-        iframe.style.setProperty("height", `${iframeHeight}px`, "important");
-        iframe.style.setProperty(
-            "--o-configurator-iframe-scroll-distance",
-            `${Math.floor(scrollDistance)}px`
-        );
-        iframe.style.setProperty("--o-configurator-iframe-scale", scale);
-        iframe.style.setProperty("transform-origin", "top left");
-        iframe.style.setProperty("flex", "0 0 auto", "important");
-    }
-
     async onPreviewIframeLoad(ev) {
         const iframe = ev.currentTarget;
         this.replacePreviewIframeHeading(iframe);
-        this.replacePreviewIframeLogo(iframe);
+        replacePreviewIframeLogo(iframe, this.state.logo);
         iframe.parentElement.classList.add("o_preview_loaded");
-        this.scalePreviewIframe(iframe);
+        scalePreviewIframe(iframe);
         // The ImageLazyLoading interaction gives lazy images min-height: 1px
         // until they load, so the initial measurement underestimates the page height.
-        const iframeDoc = this.getPreviewIframeDocument(iframe);
+        const iframeDoc = getPreviewIframeDocument(iframe);
         if (!iframeDoc) {
             return;
         }
@@ -1343,10 +1284,11 @@ export class ThemeSelectionScreen extends ApplyConfiguratorScreen {
                     })
             )
         );
-        this.scalePreviewIframe(iframe);
+        scalePreviewIframe(iframe);
     }
 
     async chooseTheme(themeName) {
+        this.state.selectedThemeName = themeName;
         await this.applyConfigurator(themeName);
     }
 
@@ -1469,11 +1411,10 @@ export class Configurator extends Component {
         ThemeSelectionScreen,
     };
     static template = "website.Configurator.Configurator";
-    static props = { ...standardActionServiceProps };
+    props = useProps({ ...standardActionServiceProps });
 
     setup() {
         this.orm = useService("orm");
-        this.action = useService("action");
         this.website = useService("website");
 
         // Using the back button must update the router state.
@@ -1601,12 +1542,12 @@ export class Configurator extends Component {
             delete storedState.selectedPurpose;
             delete storedState.formerSelectedPurpose;
             let themes = [];
-            let images = {};
+            let resources = {};
             if (storedState.selectedIndustry && storedState.selectedPalette) {
                 themes = await getRecommendedThemes(this.orm, storedState);
             }
             if (storedState.selectedIndustry?.id > 0) {
-                images = await getIndustryImages(
+                resources = await getIndustryResources(
                     this.orm,
                     storedState.selectedIndustry.id,
                     themes[0]?.name || ""
@@ -1614,7 +1555,8 @@ export class Configurator extends Component {
             }
             return Object.assign(r, {
                 ...storedState,
-                images,
+                images: resources.images || {},
+                hasCatalog: hasCatalogData(resources.catalog, resources.images),
                 palettes,
                 themes,
                 previewHeaders: [],
@@ -1641,7 +1583,9 @@ export class Configurator extends Component {
             formerSelectedPositioning: undefined,
             selectedIndustry: undefined,
             images: {},
+            hasCatalog: false,
             selectedPalette: undefined,
+            selectedThemeName: undefined,
             recommendedPalette: undefined,
             styleRecommendation: undefined,
             aiRecommendedPalette: undefined,
@@ -1662,6 +1606,7 @@ export class Configurator extends Component {
             logoAttachmentId: state.logoAttachmentId,
             selectedIndustry: state.selectedIndustry,
             selectedPalette: state.selectedPalette,
+            selectedThemeName: state.selectedThemeName,
             positionings: state.positionings,
             selectedPositioning: state.selectedPositioning,
             formerSelectedPositioning: state.formerSelectedPositioning,
@@ -1680,14 +1625,21 @@ export class Configurator extends Component {
             title: _t("Building your website."),
             bottomMessageTemplate: "website.website_loader.tour_tip",
         });
-        const redirectUrl = await this.orm.call("website", "configurator_skip");
+        await this.orm.call("website", "configurator_skip");
         this.clearStorage();
-        redirectUrl.params.path = "/website/lang/default?r=/";
-        redirectUrl.params.enable_editor = true;
         // Here the website service goToWebsite method is not used because
         // the web client needs to be reloaded after the configurator has
         // updated the website.
-        await this.action.doAction(redirectUrl);
+        const defaultLanguagePath = encodeURIComponent("/website/lang/default?r=/");
+        this.website.redirectOutFromLoader({
+            redirectAction: () => {
+                redirect(
+                    `/odoo/action-website.website_preview?website_id=${encodeURIComponent(
+                        this.websiteId
+                    )}&path=${defaultLanguagePath}&enable_editor=1`
+                );
+            },
+        });
     }
 }
 

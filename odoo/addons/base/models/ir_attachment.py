@@ -31,7 +31,7 @@ from odoo.tools import (
     str2bool,
 )
 from odoo.tools.binary import EMPTY_BINARY, BinaryBytes, BinaryValue
-from odoo.tools.constants import PREFETCH_MAX
+from odoo.tools.constants import IN_MAX
 from odoo.tools.mimetypes import guess_file_mimetype, guess_mimetype
 from odoo.tools.misc import limited_field_access_token
 
@@ -41,7 +41,7 @@ if typing.TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 SECURITY_FIELDS = ('res_model', 'res_id', 'create_uid', 'public', 'res_field')
 MAX_COMODELS_FOR_DOMAIN = 5
-MAX_SEARCH_LIMIT = PREFETCH_MAX * 10
+MAX_SEARCH_LIMIT = IN_MAX * 10
 CREATE_FROM_STREAM_FLAG = object()  # sentinel that cannot be given over RPC
 DIRECTORY_MODE = 0o751
 GC_FILE_SUFFIX = '.__gc'
@@ -193,12 +193,14 @@ class IrAttachment(models.Model):
                     with open(tmp_path, 'wb') as tmp_file:
                         shutil.copyfileobj(bin_value, tmp_file)
                         tmp_file.flush()
-                        if hasattr(os, 'fchmod'):
-                            os.fchmod(tmp_file.fileno(), 0o444)  # r--r--r--
-                        else:
-                            os.chmod(tmp_path, 0o444)  # r--r--r--
+                        with contextlib.suppress(PermissionError):
+                            if hasattr(os, 'fchmod'):
+                                os.fchmod(tmp_file.fileno(), 0o444)  # r--r--r--
+                            else:
+                                os.chmod(tmp_path, 0o444)  # r--r--r--
                 else:
-                    os.chmod(tmp_path, 0o444)  # r--r--r--
+                    with contextlib.suppress(PermissionError):
+                        os.chmod(tmp_path, 0o444)  # r--r--r--
 
                 # "commit" the file by moving it to its right place
                 try:
@@ -251,11 +253,10 @@ class IrAttachment(models.Model):
         # GC_GRACE_PERIOD is set to a sensible default, if the DB is configured
         # with a larger value respect it.
         [[grace_db]] = self.env.execute_query(SQL("""
-            SELECT MAX(setting::int) / 1000
-            FROM pg_settings
-            WHERE vartype = 'integer' AND unit = 'ms'
-            AND name IN ('idle_in_transaction_session_timeout', 'transaction_timeout')
-            AND setting <> '0'
+            SELECT EXTRACT(epoch FROM GREATEST(
+                NULLIF(current_setting('idle_in_transaction_session_timeout', true), '0')::interval,
+                NULLIF(current_setting('transaction_timeout', true), '0')::interval
+            ))::int
         """))
         self._gc_file_store_unsafe(grace_period=max(GC_GRACE_PERIOD, min((grace_db or 0) * 2, GC_GRACE_PERIOD_MAX)))
 
@@ -283,6 +284,7 @@ class IrAttachment(models.Model):
                     if check_file.endswith(GC_FILE_SUFFIX):
                         # leftover from a previous GC
                         # move the file back if it exists
+                        fname = fname.removesuffix(GC_FILE_SUFFIX)
                         try:
                             full_path = self._full_path(fname)
                             os.replace(full_path + GC_FILE_SUFFIX, full_path)
@@ -292,11 +294,14 @@ class IrAttachment(models.Model):
                             _logger.info("filestore gc was interrupted, moved back %s", filename)
                         # move the check file back, ignore if file already exists
                         original_check_file = check_file.removesuffix(GC_FILE_SUFFIX)
-                        try:
-                            if not os.path.exists(original_check_file):
-                                os.rename(check_file, original_check_file)
-                        except OSError:
+                        if os.path.exists(original_check_file):
                             os.unlink(check_file)
+                        else:
+                            try:
+                                os.rename(check_file, original_check_file)
+                            except OSError:
+                                _logger.info("filestore gc failed to add back %s", original_check_file)
+                                os.unlink(check_file)
                     elif os.path.getmtime(check_file) < limit_time:
                         # we can collect the file
                         yield (fname, check_file)
@@ -305,7 +310,7 @@ class IrAttachment(models.Model):
         # for each chunk.
         checked = 0
         removed = 0
-        for name_pairs in split_every(self.env.cr.IN_MAX, files_to_gc()):
+        for name_pairs in split_every(IN_MAX, files_to_gc()):
             # start a new transaction (see latest data) and release locks of
             # previous loop which we don't want modified during processing
             self.env.cr.commit()
@@ -587,7 +592,7 @@ class IrAttachment(models.Model):
         """
         return ['base.group_system']
 
-    name = fields.Char('Name', required=True)
+    name = fields.Char('Name', required=True, copy=True)
     description = fields.Text('Description')
     res_name = fields.Char('Resource Name', compute='_compute_res_name')
     res_model = fields.Char('Resource Model')
@@ -645,17 +650,6 @@ class IrAttachment(models.Model):
                     "Attachment %(record)s cannot have res_id: %(res_id)s",
                     record=record, res_id=record))
 
-    @api.model
-    def check(self, mode, values=None):
-        """ Restricts the access to an ir.attachment, according to referred mode """
-        warnings.warn("Since 19.0, use check_access", DeprecationWarning, stacklevel=2)
-        # Always require an internal user (aka, employee) to access to a attachment
-        if not (self.env.is_admin() or self.env.user._is_internal()):
-            raise AccessError(_("Sorry, you are not allowed to access this document."))
-        self.check_access(mode)
-        if values and any(self._inaccessible_comodel_records({values.get('res_model'): [values.get('res_id')]}, mode)):
-            raise AccessError(_("Sorry, you are not allowed to access this document."))
-
     def _make_access_error_message(self, operation, domain):
         if not domain.is_false():
             return AccessError(self.env._(
@@ -690,10 +684,11 @@ class IrAttachment(models.Model):
         self.fetch(SECURITY_FIELDS)  # fetch only these fields
         user_model = self.sudo(False)
         forbidden_ids = set()
+        is_system = user_model.env.is_system()
         for attachment in self:
             att_id = attachment.id
             res_model, res_id = attachment.res_model, attachment.res_id
-            if not user_model.env.is_system():
+            if not is_system:
                 if not res_id and attachment.create_uid.id != self.env.uid:
                     forbidden_ids.add(att_id)
                     continue
@@ -745,6 +740,9 @@ class IrAttachment(models.Model):
         if 0 < len(res_model_names or ()) <= MAX_COMODELS_FOR_DOMAIN:
             env = self.with_context(active_test=False).env
             check_res_fields = not self.env.is_system() and tuple(condition_values(self, 'res_field', domain) or ()) != (False,)
+            inverse_field = self.env.context.get('search_from_field')
+            if not self._fields['res_id'] in self.env.registry.field_inverses.get(inverse_field, ()):
+                inverse_field = None
             for res_model_name in res_model_names:
                 comodel = env.get(res_model_name)
                 if comodel is None:
@@ -756,6 +754,9 @@ class IrAttachment(models.Model):
                 comodel_domain = Domain('id', 'in', comodel_res_ids) if comodel_res_ids else Domain.TRUE
                 if operation != 'read':
                     comodel_domain &= comodel._access_domain(operation).optimize_full(comodel.sudo())
+                elif inverse_field and inverse_field.model_name == res_model_name:
+                    # reading from an inverse, access rights already checked
+                    comodel = comodel.sudo()
                 query = comodel._search(comodel_domain)
                 if query.is_empty():
                     continue
@@ -779,7 +780,7 @@ class IrAttachment(models.Model):
         records = self.sudo().with_context(active_test=False).search_fetch(
             domain & Domain('res_model', '!=', False) & ~sec_domain, SECURITY_FIELDS, order='id', limit=MAX_SEARCH_LIMIT).sudo(False)
         if len(records) == MAX_SEARCH_LIMIT:  # avoid out of memory
-            raise ValueError(self.env._("Cannot search, too many attachments"))
+            raise UserError(self.env._("Cannot search, too many attachments"))
         records = records._filtered_access(operation)
         # [('id', 'any!', query_with_ids)] is optimized in sec_domain
         return sec_domain | Domain('id', 'any!', records._as_query(ordered=False))
@@ -814,7 +815,7 @@ class IrAttachment(models.Model):
                 yield res_model, res_id
 
     @api.model
-    def _search(self, domain, offset=0, limit=None, order=None, *, active_test=True, bypass_access=False):
+    def _search(self, domain, offset=0, limit=None, order=None, *, bypass_access=False, **kw):
         assert not self._active_name, "active name not supported on ir.attachment"
         domain = Domain(domain)
         if (
@@ -826,11 +827,26 @@ class IrAttachment(models.Model):
 
         domain = domain.optimize_full(self)
         if self.env.su or bypass_access or domain.is_false():
-            return super()._search(domain, offset, limit, order, active_test=active_test, bypass_access=bypass_access)
+            return super()._search(domain, offset, limit, order, bypass_access=bypass_access, **kw)
         if self.env.context.get('_generating_sql_for_fields'):
             raise ValueError("Cannot generate SQL for whole ir.attachment")
         if 0 < len(condition_values(self, 'res_model', domain) or ()) <= MAX_COMODELS_FOR_DOMAIN:
-            return super()._search(domain, offset, limit, order, active_test=active_test, bypass_access=bypass_access)
+            return super()._search(domain, offset, limit, order, **kw)
+
+        # Filter in SQL with the read access domain, where res_access_* keep
+        # the attachments they may accept and conditions SQL cannot express
+        # keep every attachment. The check in Python drops the rest.
+        def to_sql(cond):
+            if cond.field_expr in ('res_access_read', 'res_access_write'):
+                if cond.operator == 'in' and set(cond.value) == {True} and not self.env.is_system():
+                    # a linked record, or no record and created by the user
+                    return Domain('res_id', '!=', False) | Domain('create_uid', '=', self.env.uid)
+                return Domain.TRUE
+            if not cond._field(self)._description_searchable:
+                return Domain.TRUE
+            return cond
+
+        domain &= self._access_domain('read').optimize(self).map_conditions(to_sql)
 
         self_sudo = self.sudo().with_context(active_test=False)
         ordered = bool(order)
@@ -850,14 +866,14 @@ class IrAttachment(models.Model):
                 domain,
                 SECURITY_FIELDS,
                 offset=sub_offset,
-                limit=PREFETCH_MAX,
+                limit=IN_MAX,
                 order=order,
             ).sudo(False)
             result.extend(records._filtered_access('read')._ids)
-            if len(records) < PREFETCH_MAX:
+            if len(records) < IN_MAX:
                 # There are no more records
                 break
-            sub_offset += PREFETCH_MAX
+            sub_offset += IN_MAX
         return self.browse(result[offset:limit])._as_query(ordered)
 
     def write(self, vals):
@@ -890,17 +906,19 @@ class IrAttachment(models.Model):
                 vals['raw'] = attachment.raw
         return vals_list
 
-    def unlink(self):
+    @api.ondelete(at_uninstall=True)
+    def _delete_file_hook(self):
         # First delete in the database, *then* in the filesystem if the
         # database allowed it. Helps avoid errors when concurrent transactions
         # are deleting the same file, and some of the transactions are
         # rolled back by PostgreSQL (due to concurrent updates detection).
         to_delete = OrderedSet(attach.store_fname for attach in self if attach.store_fname)
-        res = super().unlink()
-        for file_path in to_delete:
-            self._file_delete(file_path)
 
-        return res
+        def _post_hook():
+            for file_path in to_delete:
+                self._file_delete(file_path)
+
+        return _post_hook
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -909,10 +927,10 @@ class IrAttachment(models.Model):
         if self.env.context.get('ir_attachment_from_stream') is not CREATE_FROM_STREAM_FLAG:
             # remove computed field depending of raw
             vals_list = [{
-                key: value
-                for key, value
-                in vals.items()
-                if key not in ('file_size', 'checksum', 'store_fname')
+                **vals,
+                'file_size': 0,
+                'checksum': False,
+                'store_fname': False,
             } for vals in vals_list]
         raw_map = {}
 
@@ -976,11 +994,14 @@ class IrAttachment(models.Model):
                 raise UserError(_("Attachment is not encoded in base64."))
             checksum = self._compute_checksum(vals['raw'] or b'')
             # Create only if record does not already exist for checksum and mimetype
-            result += self.sudo().search([
+            # only reuse the attachments the current user can write, as callers may
+            # link new attachments to them (e.g. the resized variants of an image).
+            existing = self.sudo().search([
                 ['id', '!=', False],  # No implicit condition on res_field.
                 ['checksum', '=', checksum],
                 ['mimetype', '=', vals['mimetype']],
-            ], limit=1) or self.create(vals)
+            ], limit=100, order='res_field nulls first, id').with_env(self.env)._filtered_access('write')[:1]
+            result += existing or self.create(vals)
         return result
 
     def _generate_access_token(self):
@@ -1159,6 +1180,9 @@ class IrAttachment(models.Model):
             return
         if self.type == 'url':
             raise ValidationError(_("URL attachment (%s) shouldn't be migrated to local.", self.id))
+
+
+IrAttachment._inverse_raw.__override__ = False  # whitelist super()
 
 
 class LocalBinaryFile(BinaryValue):

@@ -1,5 +1,4 @@
 import { rpc } from "@web/core/network/rpc";
-import { browser } from "@web/core/browser/browser";
 
 export const STREAM_TYPE = Object.freeze({
     AUDIO: "audio",
@@ -209,7 +208,7 @@ export class PeerToPeer extends EventTarget {
         isCameraOn: false,
         isScreenSharingOn: false,
     });
-    /** @type {String[]} */
+    /** @type {RTCIceServer[]} */
     _iceServers;
     _isPendingNotify = false;
     _notificationsToSend = new Map();
@@ -273,7 +272,7 @@ export class PeerToPeer extends EventTarget {
      * @param {any} channelId
      * @param {object} [options]
      * @param {Info} [options.info={}]
-     * @param {array} [options.iceServers=DEFAULT_ICE_SERVERS]
+     * @param {RTCIceServer[]} [options.iceServers=DEFAULT_ICE_SERVERS]
      */
     connect(selfId, channelId, { info = {}, iceServers = DEFAULT_ICE_SERVERS } = {}) {
         if (!IS_CLIENT_RTC_COMPATIBLE) {
@@ -330,7 +329,7 @@ export class PeerToPeer extends EventTarget {
     }
     removePeer(id) {
         const recoverTimeoutId = this._recoverTimeouts.get(id);
-        browser.clearTimeout(recoverTimeoutId);
+        window.clearTimeout(recoverTimeoutId);
         this._recoverTimeouts.delete(id);
         const peer = this.peers.get(id);
         if (!peer) {
@@ -677,7 +676,7 @@ export class PeerToPeer extends EventTarget {
             Math.min(peer.connectRetryDelay * 1.5, MAXIMUM_RECONNECT_DELAY) + 1000 * Math.random();
         this._recoverTimeouts.set(
             id,
-            browser.setTimeout(async () => {
+            window.setTimeout(async () => {
                 const peer = this.peers.get(id);
                 this._recoverTimeouts.delete(id);
                 const connectionSuccess =

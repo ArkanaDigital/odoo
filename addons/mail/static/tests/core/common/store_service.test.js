@@ -1,12 +1,25 @@
 import { Message } from "@mail/core/common/message_model";
 
-import { defineMailModels, start } from "@mail/../tests/mail_test_helpers";
+import { defineMailModels, start, startServer } from "@mail/../tests/mail_test_helpers";
 
 import { expect, test } from "@odoo/hoot";
 
-import { getService, patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { destroyApp, getService, serverState } from "@web/../tests/web_test_helpers";
+import { patch } from "@web/core/utils/patch";
 
 defineMailModels();
+
+test("destroying the app disposes the store", async () => {
+    await start();
+    const store = getService("mail.store");
+    store.onChange(
+        () => [],
+        () => () => expect.step("store disposed")
+    );
+    await expect.waitForSteps([]);
+    destroyApp();
+    await expect.waitForSteps(["store disposed"]);
+});
 
 test("store.insert can delete record", async () => {
     await start();
@@ -18,7 +31,7 @@ test("store.insert can delete record", async () => {
 });
 
 test("store.insert deletes record without creating it", async () => {
-    patchWithCleanup(Message, {
+    patch(Message, {
         new() {
             const message = super.new(...arguments);
             expect.step(`new-${message.id}`);
@@ -35,7 +48,7 @@ test("store.insert deletes record without creating it", async () => {
 });
 
 test("store.insert deletes record after relation created it", async () => {
-    patchWithCleanup(Message, {
+    patch(Message, {
         new() {
             const message = super.new(...arguments);
             expect.step(`new-${message.id}`);
@@ -80,4 +93,42 @@ test("store.insert different PY model having same JS model", async () => {
     expect(Boolean(store["discuss.channel"].get(1))).toBe(true);
     expect(Boolean(store["discuss.channel"].get(2))).toBe(true);
     expect(Boolean(store["discuss.channel"].get(3))).toBe(true);
+});
+
+test("no push notification while user is busy", async () => {
+    await startServer();
+    patch(parent.document, { hasFocus: () => false });
+    patch(navigator.serviceWorker, {
+        controller: {
+            postMessage(data) {
+                expect.step(data);
+            },
+        },
+    });
+    await start();
+    const store = getService("mail.store");
+    await store.isReady;
+    const requestDisplay = () =>
+        navigator.serviceWorker.dispatchEvent(
+            new MessageEvent("message", {
+                data: {
+                    type: "notification-display-request",
+                    payload: {
+                        correlationId: "push",
+                        model: "res.partner",
+                        res_id: serverState.partnerId,
+                    },
+                },
+            })
+        );
+    // online
+    store.self_user.im_status = "online";
+    requestDisplay();
+    await expect.waitForSteps([]);
+    // busy
+    store.self_user.im_status = "busy";
+    requestDisplay();
+    await expect.waitForSteps([
+        { type: "notification-display-response", payload: { correlationId: "push" } },
+    ]);
 });

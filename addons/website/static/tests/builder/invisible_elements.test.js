@@ -8,7 +8,8 @@ import { unformat } from "@html_editor/../tests/_helpers/format";
 import { describe, expect, test } from "@odoo/hoot";
 import { click, queryAllTexts, queryFirst, queryOne, waitFor } from "@odoo/hoot-dom";
 import { xml } from "@odoo/owl";
-import { contains, patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { contains } from "@web/../tests/web_test_helpers";
+import { patch } from "@web/core/utils/patch";
 import {
     addDropZoneSelector,
     defineWebsiteModels,
@@ -23,7 +24,7 @@ defineWebsiteModels();
 test("click on invisible elements in the invisible elements tab (check eye icon)", async () => {
     await setupWebsiteBuilder(`${invisibleEl}`);
     expect(queryOne(".o_we_invisible_el_panel .o_we_invisible_entry")).toHaveText(
-        "Invisible Element"
+        "Invisible Element\n(Click to show)"
     );
     expect(queryOne(".o_we_invisible_el_panel .o_we_invisible_entry i")).toHaveAttribute(
         "data-icon",
@@ -84,7 +85,7 @@ test("Add an element on the invisible elements tab", async () => {
     });
     await click(
         queryFirst(
-            ".o-snippets-menu #snippet_groups .o_snippet_thumbnail .o_snippet_thumbnail_area"
+            ".o_hb_snippets_menu #snippet_groups .o_snippet_thumbnail .o_snippet_thumbnail_area"
         )
     );
     await waitForSnippetDialog();
@@ -107,13 +108,13 @@ test("mobile and desktop invisible elements panel", async () => {
         <div class="o_snippet_desktop_invisible" data-name="Popup3"></div>
     `);
     expect(queryAllTexts(".o_we_invisible_el_panel .o_we_invisible_entry")).toEqual([
-        "Popup1",
-        "Popup3",
+        "Popup1\n(Click to hide)",
+        "Popup3\n(Click to show)",
     ]);
     await toggleMobilePreview();
     expect(queryAllTexts(".o_we_invisible_el_panel .o_we_invisible_entry")).toEqual([
-        "Popup1",
-        "Popup2",
+        "Popup1\n(Click to hide)",
+        "Popup2\n(Click to show)",
     ]);
 });
 
@@ -122,11 +123,11 @@ test("mobile and desktop option container", async () => {
         <section class="o_snippet_desktop_invisible"></section>
     `);
     await contains(".o_we_invisible_el_panel .o_we_invisible_entry").click();
-    expect(".options-container").toBeVisible();
+    expect(".o_hb_options_container").toBeVisible();
     await toggleMobilePreview();
-    expect(".options-container").toBeVisible();
+    expect(".o_hb_options_container").toBeVisible();
     await toggleMobilePreview();
-    expect(".options-container").not.toHaveCount();
+    expect(".o_hb_options_container").not.toHaveCount();
 });
 
 test("desktop option undo after override", async () => {
@@ -152,13 +153,13 @@ test("keep the option container of a visible snippet even if there are hidden sn
         <section class="o_snippet_mobile_invisible"></section>
     `);
     await contains(":iframe #my_el").click();
-    expect(".options-container").toBeVisible();
+    expect(".o_hb_options_container").toBeVisible();
     await toggleMobilePreview();
-    expect(".options-container").toBeVisible();
+    expect(".o_hb_options_container").toBeVisible();
 });
 
 test("invisible elements efficiency", async () => {
-    patchWithCleanup(InvisibleElementsPanel.prototype, {
+    patch(InvisibleElementsPanel.prototype, {
         updateInvisibleElementsPanel(invisibleEls) {
             if (invisibleEls.length) {
                 expect.step("update invisible panel");
@@ -234,7 +235,7 @@ describe("drop invisible elements", () => {
                 snippets: getSnippetInfos(snippetConditionalInvisible),
             });
             await contains(
-                ".o-snippets-menu #snippet_groups div[data-snippet-group=a] .o_snippet_thumbnail .o_snippet_thumbnail_area"
+                ".o_hb_snippets_menu #snippet_groups div[data-snippet-group=a] .o_snippet_thumbnail .o_snippet_thumbnail_area"
             ).click();
             await waitForSnippetDialog();
             expect(
@@ -247,7 +248,7 @@ describe("drop invisible elements", () => {
                 snippets: getSnippetInfos(snippetDesktopInvisible),
             });
             await contains(
-                ".o-snippets-menu #snippet_groups div[data-snippet-group=a] .o_snippet_thumbnail .o_snippet_thumbnail_area"
+                ".o_hb_snippets_menu #snippet_groups div[data-snippet-group=a] .o_snippet_thumbnail .o_snippet_thumbnail_area"
             ).click();
             await waitForSnippetDialog();
             expect(
@@ -260,7 +261,7 @@ describe("drop invisible elements", () => {
                 snippets: getSnippetInfos(snippetInnerDesktopInvisible),
             });
             await contains(
-                ".o-snippets-menu #snippet_groups div[data-snippet-group=a] .o_snippet_thumbnail .o_snippet_thumbnail_area"
+                ".o_hb_snippets_menu #snippet_groups div[data-snippet-group=a] .o_snippet_thumbnail .o_snippet_thumbnail_area"
             ).click();
             await waitForSnippetDialog();
             expect(
@@ -275,7 +276,7 @@ describe("drop invisible elements", () => {
                 snippets: getSnippetInfos(snippetMobileInvisible),
             });
             await contains(
-                ".o-snippets-menu #snippet_groups div[data-snippet-group=custom] .o_snippet_thumbnail .o_snippet_thumbnail_area"
+                ".o_hb_snippets_menu #snippet_groups div[data-snippet-group=custom] .o_snippet_thumbnail .o_snippet_thumbnail_area"
             ).click();
             await waitForSnippetDialog();
             await waitFor(".o_add_snippet_dialog :iframe .o_custom_snippet_edit");
@@ -289,7 +290,7 @@ describe("drop invisible elements", () => {
                 snippets: getSnippetInfos(snippetDesktopInvisible),
             });
             await contains(
-                ".o-snippets-menu #snippet_groups div[data-snippet-group=custom] .o_snippet_thumbnail .o_snippet_thumbnail_area"
+                ".o_hb_snippets_menu #snippet_groups div[data-snippet-group=custom] .o_snippet_thumbnail .o_snippet_thumbnail_area"
             ).click();
             await waitForSnippetDialog();
             await waitFor(".o_add_snippet_dialog :iframe .o_custom_snippet_edit");
@@ -303,7 +304,7 @@ describe("drop invisible elements", () => {
                 snippets: getSnippetInfos(snippetConditionalInvisible),
             });
             await contains(
-                ".o-snippets-menu #snippet_groups div[data-snippet-group=custom] .o_snippet_thumbnail .o_snippet_thumbnail_area"
+                ".o_hb_snippets_menu #snippet_groups div[data-snippet-group=custom] .o_snippet_thumbnail .o_snippet_thumbnail_area"
             ).click();
             await waitForSnippetDialog();
             await waitFor(".o_add_snippet_dialog :iframe .o_custom_snippet_edit");
@@ -317,7 +318,7 @@ describe("drop invisible elements", () => {
                 snippets: getSnippetInfos(snippetDesktopAndConditionalInvisible),
             });
             await contains(
-                ".o-snippets-menu #snippet_groups div[data-snippet-group=custom] .o_snippet_thumbnail .o_snippet_thumbnail_area"
+                ".o_hb_snippets_menu #snippet_groups div[data-snippet-group=custom] .o_snippet_thumbnail .o_snippet_thumbnail_area"
             ).click();
             await waitForSnippetDialog();
             await waitFor(".o_add_snippet_dialog :iframe .o_custom_snippet_edit");

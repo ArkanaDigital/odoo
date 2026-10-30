@@ -3,6 +3,8 @@
 from freezegun import freeze_time
 
 from odoo import Command, fields
+from odoo.exceptions import ValidationError
+
 from odoo.addons.im_livechat.tests import chatbot_common
 from odoo.addons.bus.tests.common import BusResult
 from odoo.tests.common import JsonRpcException, new_test_user
@@ -191,7 +193,8 @@ class ChatbotCase(MailCommon, chatbot_common.ChatbotCase):
                     "body": [
                         "markup",
                         (
-                            '<div class="o_mail_notification" data-oe-type="channel-joined">invited <a href="#" data-oe-model="res.partner" data-oe-id="'
+                            '<div class="o_mail_notification" data-oe-type="channel-joined">invited '
+                            f'<a href="/mail/view?model=res.partner&amp;res_id={self.partner_employee.id}" data-oe-model="res.partner" data-oe-id="'
                             f'{self.partner_employee.id}" class="o_mail_redirect">@Ernest Employee</a> to the conversation</div>'
                         ),
                     ],
@@ -349,7 +352,6 @@ class ChatbotCase(MailCommon, chatbot_common.ChatbotCase):
                     {
                         "discuss.channel": [
                             {
-                                "avatar_cache_key": discuss_channel.avatar_cache_key,
                                 "id": discuss_channel.id,
                                 "name": "OdooBot Ernest Employee",
                             },
@@ -541,6 +543,77 @@ class ChatbotCase(MailCommon, chatbot_common.ChatbotCase):
         self.assertFalse(step_2.triggering_answer_ids, "Step 2 still has stale triggering answers.")
         self.assertFalse(step_3.triggering_answer_ids, "Step 3 still has stale triggering answers.")
 
+    def test_store_chatbot_answers_batched(self):
+        channels = self.env["discuss.channel"].create([
+            {"name": f"Livechat {i}", "channel_type": "livechat"}
+            for i in range(4)
+        ])
+        selection_answer, raw_answer, *_ = self.env["chatbot.message"].create([
+            {
+                "discuss_channel_id": channels[0].id,
+                "script_step_id": self.step_dispatch.id,
+                "user_script_answer_id": self.step_dispatch_buy_software.id,
+            },
+            {
+                "discuss_channel_id": channels[1].id,
+                "script_step_id": self.step_email.id,
+                "user_raw_answer": "<p>test@example.com</p>",
+            },
+            {
+                "discuss_channel_id": channels[2].id,
+                "script_step_id": self.step_email.id,
+            },
+            {
+                "discuss_channel_id": channels[3].id,
+                "script_step_id": self.step_email.id,
+                "user_raw_answer": "<p>unrelated@example.com</p>",
+            },
+        ])
+        # Warm related fields to isolate the answer lookup.
+        Store().add(channels[:3], "_store_livechat_extra_fields")._build_result()
+        with self.assertQueryCount(1):
+            data = Store().add(channels[:3], "_store_livechat_extra_fields")._build_result()
+        self.assertEqual(
+            {channel["id"]: channel["chatbot_message_ids"] for channel in data["discuss.channel"]},
+            {
+                channels[0].id: [selection_answer.id],
+                channels[1].id: [raw_answer.id],
+                channels[2].id: [],
+            },
+        )
+        self.assertEqual(
+            {message["id"] for message in data["chatbot.message"]},
+            {selection_answer.id, raw_answer.id},
+        )
+
+    def test_chatbot_answers_shown_in_info_panel_even_when_messages_not_loaded(self):
+        operator = new_test_user(
+            self.env,
+            login="operator_chatbot_test",
+            groups="base.group_user,im_livechat.im_livechat_group_manager",
+        )
+        data = self.make_jsonrpc_request(
+            "/im_livechat/get_session",
+            {
+                "chatbot_script_id": self.chatbot_script.id,
+                "channel_id": self.livechat_channel.id,
+            },
+        )
+        discuss_channel = self.env["discuss.channel"].browse(data["channel_id"])
+        self._post_answer_and_trigger_next_step(
+            discuss_channel, chatbot_script_answer=self.step_dispatch_buy_software
+        )
+        self._post_answer_and_trigger_next_step(discuss_channel, email="test@example.com")
+        # Fill the channel so the chatbot answer messages are not part of the initially
+        # loaded messages.
+        for i in range(100):
+            discuss_channel.sudo().message_post(body=f"filler {i}", message_type="comment")
+        self.start_tour(
+            f"/odoo/discuss?active_id={discuss_channel.id}",
+            "im_livechat_info_panel_tour",
+            login=operator.login,
+        )
+
     def test_chatbot_without_operator(self):
         chatbot_script = self.env["chatbot.script"].create({"title": "Question bot"})
         self.env["chatbot.script.step"].create([
@@ -576,3 +649,10 @@ class ChatbotCase(MailCommon, chatbot_common.ChatbotCase):
             "chatbot_script_id": chatbot_script.id,
         })
         self.assertTrue(discuss_channel.livechat_end_dt, "The livechat session must be inactive since there is no operator available.")
+
+    def test_invalid_regex_url_raises_validation_error(self):
+        with self.assertRaisesRegex(ValidationError, "The URL Regex '\\[' is not valid."):
+            self.env["im_livechat.channel.rule"].create({
+                "channel_id": self.livechat_channel.id,
+                "regex_url": "[",
+            })

@@ -26,9 +26,8 @@ class TestSaleMrpFlowCommon(ValuationReconciliationTestCommon, TestSaleCommon):
 
         # Required for `uom_id` to be visible in the view
         cls._enable_uom()
-        mto_route = cls.env.ref('stock.route_warehouse0_mto')
-        mto_route.active = True
-        mto_route.product_selectable = True
+        cls.route_mto = cls.company_data['default_warehouse'].mto_pull_id.route_id
+        cls.route_mto.active = True
 
         # Useful models
         cls.StockMove = cls.env['stock.move']
@@ -1444,15 +1443,13 @@ class TestSaleMrpFlow(TestSaleMrpFlowCommon):
         self.assertEqual(move_component_kg.product_uom_qty, 0.59)
 
     def test_product_type_service_1(self):
-        route_manufacture = self.company_data['default_warehouse'].manufacture_pull_id.route_id.id
-        route_mto = self.company_data['default_warehouse'].mto_pull_id.route_id.id
         self.uom_unit = self.env.ref('uom.product_uom_unit')
 
         # Create finished product
         finished_product = self.env['product.product'].create({
             'name': 'Geyser',
             'is_storable': True,
-            'route_ids': [(4, route_mto), (4, route_manufacture)],
+            'route_ids': [Command.set([self.route_mto.id])],
         })
 
         # Create service type product
@@ -1492,16 +1489,14 @@ class TestSaleMrpFlow(TestSaleMrpFlowCommon):
 
         Cancel the delivery and the production order. Then duplicate
         the delivery. Another production order should be created."""
-        route_manufacture = self.company_data['default_warehouse'].manufacture_pull_id.route_id
-        route_mto = self.company_data['default_warehouse'].mto_pull_id.route_id
-        route_mto.rule_ids.procure_method = "make_to_order"
+        self.route_mto.rule_ids.procure_method = "make_to_order"
         self.uom_unit = self.env.ref('uom.product_uom_unit')
 
         # Create finished product
         finished_product = self.env['product.product'].create({
             'name': 'Geyser',
             'is_storable': True,
-            'route_ids': [(4, route_mto.id), (4, route_manufacture.id)],
+            'route_ids': [Command.set([self.route_mto.id])],
         })
 
         product_raw = self.env['product.product'].create({
@@ -1546,16 +1541,14 @@ class TestSaleMrpFlow(TestSaleMrpFlowCommon):
 
         Cancel the production order and the delivery. Then duplicate
         the delivery. Another production order should be created."""
-        route_manufacture = self.company_data['default_warehouse'].manufacture_pull_id.route_id
-        route_mto = self.company_data['default_warehouse'].mto_pull_id.route_id
-        route_mto.rule_ids.procure_method = "make_to_order"
+        self.route_mto.rule_ids.procure_method = "make_to_order"
         self.uom_unit = self.env.ref('uom.product_uom_unit')
 
         # Create finished product
         finished_product = self.env['product.product'].create({
             'name': 'Geyser',
             'is_storable': True,
-            'route_ids': [(4, route_mto.id), (4, route_manufacture.id)],
+            'route_ids': [Command.set([self.route_mto.id])],
         })
 
         product_raw = self.env['product.product'].create({
@@ -1741,6 +1734,7 @@ class TestSaleMrpFlow(TestSaleMrpFlowCommon):
         """
 
         # Create environment
+        self.env.company._activate_or_create_pricelists()  # no default pricelist on the template company
         self.env.company.currency_id = self.env.ref('base.USD')
         self.env.company.anglo_saxon_accounting = True
         self.partner = self.env['res.partner'].create({'name': 'Test Partner'})
@@ -2572,13 +2566,11 @@ class TestSaleMrpFlow(TestSaleMrpFlowCommon):
     def test_bidirectional_so_mo_link_with_mtso(self):
         """Test the link from the Manufacturing Order to the Sale Order
         when using the MTSO (Make To Stock or Make To Order) procurement method."""
-        # Set the MTO and Manufacture routes on the product
-        route_manufacture = self.company_data['default_warehouse'].manufacture_pull_id.route_id
-        route_mto = self.company_data['default_warehouse'].mto_pull_id.route_id
-        self.product_a.route_ids = [Command.set([route_manufacture.id, route_mto.id])]
+        # Set the MTO route on the product
+        self.product_a.route_ids = [Command.link(self.route_mto.id)]
         self.env['mrp.bom'].create({'product_tmpl_id': self.product_a.product_tmpl_id.id})
         # Set the procure method to 'mts_else_mto'
-        route_mto.rule_ids.filtered(lambda r: r.location_dest_id.usage == 'production').procure_method = 'mts_else_mto'
+        self.route_mto.rule_ids.filtered(lambda r: r.location_dest_id.usage == 'production').procure_method = 'mts_else_mto'
         # Create and confirm a Sale Order
         sale_order = self.env['sale.order'].create({
             'partner_id': self.partner.id,
@@ -2656,11 +2648,8 @@ class TestSaleMrpFlow(TestSaleMrpFlowCommon):
         Test that processing the different MOs of a split production correctly
         updates the picking SM's quantity.
         """
-        # Set product up with MTO + Manufacture with (empty) BoM
-        product = self._cls_create_product('Split Product', self.uom_unit, routes=[
-            self.company_data['default_warehouse'].mto_pull_id.route_id,
-            self.company_data['default_warehouse'].manufacture_pull_id.route_id,
-        ])
+        # Set product up with MTO + (empty) BoM
+        product = self._cls_create_product('Split Product', self.uom_unit, routes=[self.route_mto])
         self.env['mrp.bom'].create({
             'product_tmpl_id': product.product_tmpl_id.id,
             'uom_id': self.env.ref('uom.product_uom_unit').id,
@@ -2703,10 +2692,7 @@ class TestSaleMrpFlow(TestSaleMrpFlowCommon):
         """
         warehouse = self.company_data['default_warehouse']
         warehouse.manufacture_steps = 'pbm'
-        self.product.route_ids = [Command.set([
-            warehouse.mto_pull_id.route_id.id,
-            warehouse.manufacture_pull_id.route_id.id,
-        ])]
+        self.product.route_ids = [Command.link(self.route_mto.id)]
         self.env['mrp.bom'].create({
             'product_tmpl_id': self.product.product_tmpl_id.id,
             'uom_id': self.uom_unit.id,
@@ -2729,6 +2715,34 @@ class TestSaleMrpFlow(TestSaleMrpFlowCommon):
         self.assertEqual(len(mos.move_raw_ids.move_orig_ids.picking_id), 2)
         self.assertEqual(len(so.picking_ids), 1)
         self.assertEqual(so.picking_ids.move_ids.product_qty, 20)
+
+    def test_reassign_component_picking_sale_order_keeps_mo_reference(self):
+        """Check that linking the components transfer of an MTO manufacturing order to another sales order
+        keeps the further component needs of that manufacturing order in the same transfer, and that linking
+        it back leaves that transfer with the references of its own supply chain only."""
+        warehouse = self.company_data['default_warehouse']
+        warehouse.manufacture_steps = 'pbm'
+        self.product.route_ids = [Command.set(warehouse.mto_pull_id.route_id.ids)]
+        self.env['mrp.bom'].create({
+            'product_tmpl_id': self.product.product_tmpl_id.id,
+            'bom_line_ids': [Command.create({'product_id': self.component_a.id, 'product_qty': 1})],
+        })
+        so_1, so_2 = self.env['sale.order'].create([{
+            'partner_id': self.partner.id,
+            'order_line': [Command.create({'product_id': self.product.id, 'product_uom_qty': 1})],
+        } for _ in range(2)])
+        so_1.action_confirm()
+        mo = so_1.mrp_production_ids
+        component_pick = mo.move_raw_ids.move_orig_ids.picking_id
+        # Link the component pick to the other so and check it is still linked to its supply chain
+        component_pick.sale_id = so_2
+        mo.move_raw_ids.product_uom_qty = 3
+        self.assertEqual(mo.move_raw_ids.move_orig_ids.picking_id, component_pick)
+        self.assertRecordValues(component_pick.move_ids, [{'product_id': self.component_a.id, 'product_uom_qty': 3}])
+        # Link the component pick back to its original so and check it removes its link to so_2's reference
+        component_pick.sale_id = so_1
+        self.assertEqual(component_pick.reference_ids, so_1.stock_reference_ids)
+        self.assertFalse(so_2.stock_reference_ids.move_ids)
 
     def test_separate_child_mo_for_shared_component(self):
         """Ensure that when confirming a Sale Order with multiple MTO products
@@ -2897,10 +2911,7 @@ class TestSaleMrpFlow(TestSaleMrpFlowCommon):
             'name': 'Test MTO Finished',
             'is_storable': True,
             'categ_id': self.stock_account_product_categ.id,
-            'route_ids': [Command.set([
-                self.env.ref('stock.route_warehouse0_mto').id,
-                self.env.ref('mrp.route_warehouse0_manufacture').id
-            ])],
+            'route_ids': [Command.set([self.route_mto.id])],
         })
         self.env['mrp.bom'].create({
             'product_tmpl_id': product.product_tmpl_id.id,
@@ -3083,7 +3094,7 @@ class TestSaleMrpAccessRights(TransactionCase):
         self.user_mrp_only.group_ids += sales_personal_document
         mto_route = self.warehouse.mto_pull_id.route_id
         mto_route.active = True
-        self.finished_product.route_ids = mto_route | self.warehouse.manufacture_pull_id.route_id
+        self.finished_product.route_ids = [Command.link(mto_route.id)]
 
         so = self.env['sale.order'].create({
             'partner_id': self.env['res.partner'].create({'name': 'MTO Test Customer'}).id,

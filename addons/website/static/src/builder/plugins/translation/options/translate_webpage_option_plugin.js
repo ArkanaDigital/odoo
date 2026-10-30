@@ -5,6 +5,7 @@ import { _t } from "@web/core/l10n/translation";
 import { rpc } from "@web/core/network/rpc";
 import { registry } from "@web/core/registry";
 import { uniqueId } from "@web/core/utils/functions";
+import { closestElement } from "@html_editor/utils/dom_traversal";
 
 /**
  * @typedef { Object } TranslateWebpageOptionShared
@@ -16,7 +17,7 @@ import { uniqueId } from "@web/core/utils/functions";
  */
 export class TranslateToAction extends BuilderAction {
     static id = "translateWebpageAI";
-    static dependencies = ["translateWebpageOption", "translation", "history", "domObserver"];
+    static dependencies = ["builderActions", "translateWebpageOption", "translation"];
 
     setup() {
         this.canTimeout = false;
@@ -139,7 +140,7 @@ export class TranslateToAction extends BuilderAction {
                 enqueueTranslation(el, uniqueId("ta_"), text, "textContent");
             }
             if (el.classList.contains("o_translatable_attribute")) {
-                for (const attr of ["alt", "title", "placeholder", "value"]) {
+                for (const attr of ["alt", "title", "placeholder", "aria-label", "value"]) {
                     if (el.hasAttribute(attr)) {
                         const attrValue = el.getAttribute(attr);
                         enqueueTranslation(el, uniqueId("ta_"), attrValue, attr);
@@ -150,7 +151,10 @@ export class TranslateToAction extends BuilderAction {
                 while (walker.nextNode()) {
                     const node = walker.currentNode;
                     const text = node.textContent;
-                    enqueueTranslation(node, uniqueId("t_"), text);
+                    // o_translatable_text is handled above
+                    if (!closestElement(node, "textarea.o_translatable_text")) {
+                        enqueueTranslation(node, uniqueId("t_"), text);
+                    }
                 }
             }
         }
@@ -233,7 +237,6 @@ export class TranslateToAction extends BuilderAction {
      */
     applyTranslationsToDOM(translationMap, responses) {
         let numOfFailedTranslationNodes = translationMap.size;
-        const allMutations = [];
 
         for (const response of responses) {
             let translations;
@@ -257,49 +260,19 @@ export class TranslateToAction extends BuilderAction {
                     }
                 } else if (id.startsWith("ta_")) {
                     const { el, attribute } = node;
-                    const attributeInfo =
-                        this.dependencies.translation.getTranslationInfo(el)?.[attribute];
-                    if (attributeInfo) {
-                        const oldValue = attributeInfo.translation;
-                        const oldTranslationState = el.dataset.oeTranslationState;
-                        const applyAttributeChange = (attr, value) => {
-                            attr.translation = value;
-                            el.dataset.oeTranslationState =
-                                value === oldValue ? oldTranslationState : "translated";
-                            if (attribute === "textContent" || attribute === "value") {
-                                el.value = value;
-                            } else {
-                                el.setAttribute(attribute, value);
-                            }
-                        };
-
-                        allMutations.push({
-                            apply: () => applyAttributeChange(attributeInfo, text),
-                            revert: () => applyAttributeChange(attributeInfo, oldValue),
-                        });
+                    const translateAction =
+                        this.dependencies.builderActions.getAction("translateAttribute");
+                    const translateSpec = { editingElement: el, params: { mainParam: attribute } };
+                    if (
+                        this.dependencies.translation.hasTranslatedAttribute(el, attribute) &&
+                        text != translateAction.getValue(translateSpec)
+                    ) {
+                        el.dataset.oeTranslationState = "translated";
+                        translateAction.apply({ ...translateSpec, value: text });
                     }
                 }
             }
         }
-
-        if (allMutations.length > 0) {
-            this.dependencies.domObserver.applyCustomMutation({
-                apply: () => {
-                    for (const mutation of allMutations) {
-                        mutation.apply();
-                    }
-                },
-                revert: () => {
-                    for (let i = allMutations.length - 1; i >= 0; i--) {
-                        allMutations[i].revert();
-                    }
-                },
-            });
-            // Single commit for all translations, so that undo/redo is easier
-            // to manage for the user.
-            this.dependencies.history.commit();
-        }
-
         return numOfFailedTranslationNodes;
     }
 

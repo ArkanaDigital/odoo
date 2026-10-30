@@ -39,6 +39,7 @@
 
     <xpath expr="//t[@id='snippet_specific_options']" position="after">
         <add_to_cart_option selector=".s_add_to_cart"/>
+        <button_style_option selector=".s_add_to_cart_btn"/>
         <dynamic_snippet_category_item_options
             template="website_sale.dynamicSnippetCategoryItemOptions"
             selector=".s_dynamic_category_item, .all_products"
@@ -100,7 +101,8 @@
     </xpath>
 
     <xpath expr="//device_visibility_option" position="after">
-        <dynamic_snippet_products_option selector=".s_dynamic_snippet_products"/>
+        <dynamic_snippet_products_option selector=".s_dynamic_snippet_products:not(.s_dynamic_snippet_products_grid)"/>
+        <dynamic_snippet_products_grid_option selector=".s_dynamic_snippet_products_grid"/>
         <dynamic_snippet_category_option
             selector="section.s_dynamic_snippet_category"
             groups='["website.group_website_designer"]'/>

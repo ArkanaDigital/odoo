@@ -1,14 +1,12 @@
 import {
-    click,
-    contains,
     defineMailModels,
     insertText,
     openFormView,
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
-import { describe, expect, test } from "@odoo/hoot";
-import { mockService, onRpc } from "@web/../tests/web_test_helpers";
+import { describe, expect, test, waitFor } from "@odoo/hoot";
+import { contains, mockService, onRpc } from "@web/../tests/web_test_helpers";
 
 describe.current.tags("desktop");
 defineMailModels();
@@ -17,26 +15,26 @@ test("activity mark done popover simplest layout", async () => {
     const pyEnv = await startServer();
     const partnerId = pyEnv["res.partner"].create({});
     pyEnv["mail.activity"].create({
-        activity_category: "not_upload_file",
         can_write: true,
         res_id: partnerId,
         res_model: "res.partner",
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await click(".btn:text('Done')");
-    await contains(".o-mail-ActivityMarkAsDone");
-    await contains(".o-mail-ActivityMarkAsDone textarea[placeholder='Write Feedback']");
-    await contains(".o-mail-ActivityMarkAsDone button[aria-label='Done and Schedule Next']");
-    await contains(".o-mail-ActivityMarkAsDone button[aria-label='Done']");
-    await contains(".o-mail-ActivityMarkAsDone button:text('Discard')");
+    await contains(".btn:text('Done'):count(1)").click();
+    await waitFor(".o-mail-ActivityMarkAsDone:count(1)");
+    await waitFor(".o-mail-ActivityMarkAsDone textarea[placeholder='Write Feedback']:count(1)");
+    await waitFor(
+        ".o-mail-ActivityMarkAsDone button[aria-label='Done and Schedule Next']:count(1)"
+    );
+    await waitFor(".o-mail-ActivityMarkAsDone button[aria-label='Done']:count(1)");
+    await waitFor(".o-mail-ActivityMarkAsDone button:text('Discard'):count(1)");
 });
 
 test("activity mark done popover mark done without feedback", async () => {
     const pyEnv = await startServer();
     const partnerId = pyEnv["res.partner"].create({});
     const activityId = pyEnv["mail.activity"].create({
-        activity_category: "not_upload_file",
         can_write: true,
         res_id: partnerId,
         res_model: "res.partner",
@@ -53,8 +51,8 @@ test("activity mark done popover mark done without feedback", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await click(".btn:text('Done')");
-    await click(".o-mail-ActivityMarkAsDone button[aria-label='Done']");
+    await contains(".btn:text('Done'):count(1)").click();
+    await contains(".o-mail-ActivityMarkAsDone button[aria-label='Done']:count(1)").click();
     await expect.waitForSteps(["action_feedback"]);
 });
 
@@ -62,7 +60,6 @@ test("activity mark done popover mark done with feedback", async () => {
     const pyEnv = await startServer();
     const partnerId = pyEnv["res.partner"].create({});
     const activityId = pyEnv["mail.activity"].create({
-        activity_category: "not_upload_file",
         can_write: true,
         res_id: partnerId,
         res_model: "res.partner",
@@ -85,12 +82,12 @@ test("activity mark done popover mark done with feedback", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await click(".btn:text('Done')");
+    await contains(".btn:text('Done'):count(1)").click();
     await insertText(
         ".o-mail-ActivityMarkAsDone textarea[placeholder='Write Feedback']",
         "This task is done"
     );
-    await click(".o-mail-ActivityMarkAsDone button[aria-label='Done']");
+    await contains(".o-mail-ActivityMarkAsDone button[aria-label='Done']:count(1)").click();
     await expect.waitForSteps(["action_feedback"]);
 });
 
@@ -98,7 +95,6 @@ test("activity mark done popover mark done and schedule next", async () => {
     const pyEnv = await startServer();
     const partnerId = pyEnv["res.partner"].create({});
     const activityId = pyEnv["mail.activity"].create({
-        activity_category: "not_upload_file",
         can_write: true,
         res_id: partnerId,
         res_model: "res.partner",
@@ -130,12 +126,14 @@ test("activity mark done popover mark done and schedule next", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await click(".btn:text('Done')");
+    await contains(".btn:text('Done'):count(1)").click();
     await insertText(
         ".o-mail-ActivityMarkAsDone textarea[placeholder='Write Feedback']",
         "This task is done"
     );
-    await click(".o-mail-ActivityMarkAsDone button[aria-label='Done and Schedule Next']");
+    await contains(
+        ".o-mail-ActivityMarkAsDone button[aria-label='Done and Schedule Next']:count(1)"
+    ).click();
     await expect.waitForSteps(["action_feedback_schedule_next"]);
 });
 
@@ -143,7 +141,6 @@ test("[technical] activity mark done & schedule next with new action", async () 
     const pyEnv = await startServer();
     const partnerId = pyEnv["res.partner"].create({});
     pyEnv["mail.activity"].create({
-        activity_category: "not_upload_file",
         can_write: true,
         res_id: partnerId,
         res_model: "res.partner",
@@ -168,8 +165,10 @@ test("[technical] activity mark done & schedule next with new action", async () 
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await click(".btn:text('Done')");
-    await click(".o-mail-ActivityMarkAsDone button[aria-label='Done and Schedule Next']");
+    await contains(".btn:text('Done'):count(1)").click();
+    await contains(
+        ".o-mail-ActivityMarkAsDone button[aria-label='Done and Schedule Next']:count(1)"
+    ).click();
     await doActionCalled;
     await expect.waitForSteps(["activity_action"]);
 });

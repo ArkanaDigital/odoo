@@ -23,14 +23,20 @@ This addon provides an extensible, maintainable editor.
             "html_editor/static/src/main/media/video/providers/**/*",
             "html_editor/static/src/main/media/video/utils.js",
         ],
+        'web.assets_frontend_lazy': [
+            ('remove', 'html_editor/static/src/main/media/video/abstract_third_party_video.js'),
+            ('remove', 'html_editor/static/src/main/media/video/providers/**/*'),
+            ('remove', 'html_editor/static/src/main/media/video/utils.js'),
+        ],
         'web.assets_frontend': [
+            'html_editor/static/src/scss/css_variables.scss',
             ('include', 'html_editor.assets_media_dialog'),
             ('include', 'html_editor.assets_readonly'),
             'html_editor/static/src/public/**/*',
             'html_editor/static/src/scss/html_editor.common.scss',
             'html_editor/static/src/scss/html_editor.frontend.scss',
             'html_editor/static/src/scss/base_style.scss',
-            'html_editor/static/src/main/selection_placeholder_plugin.scss',
+            'html_editor/static/src/main/selection_placeholder_plugin.css',
         ],
         'web.assets_backend': [
             ('include', 'html_editor.assets_editor'),
@@ -39,7 +45,7 @@ This addon provides an extensible, maintainable editor.
             'html_editor/static/lib/vkbeautify/**/*',
             'html_editor/static/src/scss/base_style.scss',
             'html_editor/static/src/scss/html_editor.common.scss',
-            'html_editor/static/src/scss/html_editor.backend.scss',
+            'html_editor/static/src/scss/html_editor.backend.css',
         ],
         'html_editor.assets_editor': [
             'web/static/lib/dompurify/DOMpurify.js',
@@ -59,7 +65,7 @@ This addon provides an extensible, maintainable editor.
             'html_editor/static/src/others/qweb_plugin*',
             'html_editor/static/src/others/autofocus_plugin*',
             'html_editor/static/src/services/**/*',
-            ('remove', 'html_editor/static/src/**/*.dark.scss'),
+            ('remove', 'html_editor/static/src/**/*.dark.css'),
         ],
         'html_editor.assets_history_diff': [
             'html_editor/static/lib/diff2html/diff2html.min.css',
@@ -73,18 +79,18 @@ This addon provides an extensible, maintainable editor.
         'html_editor.assets_readonly': [
             'html_editor/static/src/components/html_viewer/**/*',
             'html_editor/static/src/local_overlay_container.*',
-            'html_editor/static/src/main/local_overlay.scss',
+            'html_editor/static/src/main/local_overlay.css',
             'html_editor/static/src/position_hook.*',
             'html_editor/static/src/html_migrations/**/*',
-            'html_editor/static/src/main/list/list.scss',
+            'html_editor/static/src/main/list/list.css',
             'html_editor/static/src/main/media/file.scss',
             'html_editor/static/src/others/embedded_component_utils.js',
             'html_editor/static/src/others/embedded_components/core/**/*',
             'html_editor/static/src/utils/**/*',
-            'html_editor/static/src/others/qweb_plugin.scss',
+            'html_editor/static/src/others/qweb_plugin.css',
         ],
         "web.assets_web_dark": [
-            'html_editor/static/src/**/*.dark.scss',
+            'html_editor/static/src/**/*.dark.css',
         ],
         'web.assets_tests': [
             'html_editor/static/tests/tours/**/*',
@@ -122,7 +128,10 @@ This addon provides an extensible, maintainable editor.
         'html_editor.assets_prism_dark': [
             'web/static/lib/prismjs/prism.js',
             'web/static/lib/prismjs/themes/okaida.css',
-        ]
+        ],
+        'web._assets_bootstrap_backend': [
+            'html_editor/static/src/scss/css_variables.scss',
+        ],
     },
     'license': 'LGPL-3'
 }

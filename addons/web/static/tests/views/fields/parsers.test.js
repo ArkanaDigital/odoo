@@ -118,11 +118,31 @@ test("parseFloat", () => {
     expect(() => parseFloat("abbc")).toThrow();
     expect(() => parseFloat("-")).toThrow();
     expect(() => parseFloat("12e22222")).toThrow(); // Too big
+
+    // Mathematical expression with arithmetic operation
+    let operation = parseFloat("+=5", { allowOperation: true });
+    expect(operation.operator).toBe("+");
+    expect(operation.operand).toBe(5);
+    expect(operation.compute(10)).toBe(15);
+
+    // the operand can be a formula
+    operation = parseFloat("*=2*3", { allowOperation: true });
+    expect(operation.operator).toBe("*");
+    expect(operation.operand).toBe(6);
+    expect(operation.compute(10)).toBe(60);
+
+    operation = parseFloat("/ = (1+1)", { allowOperation: true });
+    expect(operation.operator).toBe("/");
+    expect(operation.operand).toBe(2);
+    expect(operation.compute(10)).toBe(5);
+
+    patchWithCleanup(localization, { decimalPoint: ",", thousandsSep: "." });
+    operation = parseFloat("-=1,5+0,5", { allowOperation: true });
+    expect(operation.operator).toBe("-");
+    expect(operation.operand).toBe(2);
 });
 
 test("parseFloatTime", () => {
-    expect(parseFloatTime("=1")).toBe(1);
-    expect(parseFloatTime(" =1")).toBe(1);
     expect(parseFloatTime("0")).toBe(0);
     expect(parseFloatTime("100")).toBe(100);
     expect(parseFloatTime("100.00")).toBe(100);
@@ -165,6 +185,10 @@ test("parseFloatTime", () => {
     localization.thousandsSep = ".";
     localization.decimalPoint = ",";
     expect(parseFloatTime("0,5")).toBe(0.5);
+
+    // Division by 0 is rejected instead of producing an unformattable Infinity/NaN
+    expect(() => parseFloatTime("/=0")).toThrow();
+    expect(() => parseFloatTime("=6h/0")).toThrow();
 });
 
 test("parseInteger", () => {

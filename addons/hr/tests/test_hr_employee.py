@@ -10,8 +10,12 @@ from odoo.fields import Domain
 from odoo.tests import Form, users, new_test_user, HttpCase, tagged, TransactionCase
 from odoo.addons.hr.tests.common import TestHrCommon
 from odoo.tools import mute_logger
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import AccessError, UserError, ValidationError
 from psycopg2.errors import NotNullViolation
+
+# 1x1 px pictures, to tell an employee's own photo from its user's avatar.
+IMG_1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC'
+IMG_2 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYPgPAAEDAQAIicLsAAAAAElFTkSuQmCC'
 
 
 @tagged('at_install', '-post_install')  # LEGACY at_install, fails post install
@@ -287,11 +291,8 @@ class TestHrEmployee(TestHrCommon):
             Check that the `work_contact_id` information is no longer
             updated when an employee's `user_id` is added to another employee.
         """
-        user = self.env['res.users'].create({
-            'name': 'Test',
-            'login': 'test',
-            'email': 'test@example.com',
-        })
+        user = self.env.ref('base.test_user')
+        user.email = 'test@example.com'
         employee_A, employee_B = self.env['hr.employee'].create([
             {
                 'name': 'Employee A',
@@ -316,12 +317,11 @@ class TestHrEmployee(TestHrCommon):
         """ Ensure that all the user infos needed to display the avatar popover card
             are available on the model hr.employee.
         """
-        user = self.env['res.users'].create([{
-            'name': 'Test user',
-            'login': 'test',
+        user = self.env.ref('base.test_user')
+        user.write({
             'email': 'test@odoo.perso',
             'phone': '+32488990011',
-        }])
+        })
         employee = self.env['hr.employee'].create([{
             'name': 'Test employee',
             'user_id': user.id,
@@ -345,6 +345,7 @@ class TestHrEmployee(TestHrCommon):
         # Try to set the user with existing employee in the company, on a new employee form
         employee_form = Form(self.env['hr.employee'].with_user(self.res_users_hr_officer).with_company(company=test_company.id))
         employee_form.name = "Second employee"
+        employee_form.work_location_id = self.work_location
         employee_form.user_id = self.res_users_hr_officer
         with mute_logger('odoo.sql_db'), self.assertRaises(UniqueViolation), self.assertRaises(ValidationError):
             employee_form.save()
@@ -352,6 +353,7 @@ class TestHrEmployee(TestHrCommon):
         employee_2 = self.env['hr.employee'].create({
             'name': 'Hr 2 - employee',
             'company_id': test_company.id,
+            'work_location_id': self.work_location.id,
         })
 
         # Try to set the user with existing employee in the company, on another existing employee
@@ -386,6 +388,7 @@ class TestHrEmployee(TestHrCommon):
             'user_id': test_user.id,
             'company_id': test_company.id,
             'bank_account_ids': [Command.link(bank_account.id)],
+            'work_location_id': self.work_location.id
         })
         # change user -> bank account change company
         with Form(test_employee) as employee_form:
@@ -496,25 +499,45 @@ class TestHrEmployee(TestHrCommon):
         self.assertEqual(employee_norbert.image_1920.content, user_norbert.image_1920.content)
         self.assertEqual(employee_norbert.avatar_1920.content, user_norbert.avatar_1920.content)
 
-    def test_badge_validation(self):
-        # check employee's barcode should be a sequence of digits and alphabets
+    def test_avatar_own_picture_kept_on_user_write(self):
+        # check employee's picture stays when user's avatar changes
+        user = self.env['res.users'].create({'name': 'Solal Meyer', 'login': 'solal5321'})
         employee = self.env['hr.employee'].create({
-            'name': 'Badge Employee'
+            'user_id': user.id,
+            'image_1920': IMG_1,
+        })
+        own_picture = employee.image_1920.content
+        self.assertNotEqual(own_picture, user.image_1920.content)
+
+        user.write({
+            'image_1920': IMG_2,
+        })
+        self.assertEqual(employee.image_1920.content, own_picture)
+
+    def test_avatar_missing_picture_set_on_user_write(self):
+        # check employee without picture still follows the user's avatar.
+        # the employee took its user's generated avatar on creation
+        self.employee_without_image.image_1920 = False
+
+        self.user_without_image.write({'image_1920': IMG_2})
+        self.assertEqual(self.employee_without_image.image_1920.content, self.user_without_image.image_1920.content)
+
+    def test_badge_validation(self):
+        # check employee's barcode should be printable ASCII characters except spaces
+        employee = self.env['hr.employee'].create({
+            'name': 'Badge Employee',
         })
 
         employee_form = Form(employee)
-        employee_form.barcode = 'Test@badge1'
-        with self.assertRaises(ValidationError):
-            employee_form.save()
-
-        employee_form.barcode = 'Testàë@badge'
-        with self.assertRaises(ValidationError):
-            employee_form.save()
-
-        employee_form.barcode = 'Testbadge2'
+        employee_form.barcode = 'Test@badge_1'
         employee_form.save()
 
-        self.assertEqual(employee_form.barcode, 'Testbadge2')
+        self.assertEqual(employee_form.barcode, 'Test@badge_1')
+
+        for invalid_barcode in ('Testàë@badge', 'Test badge', ' Testbadge', 'Testbadge ', 'Testbadge\n', 'A' * 19):
+            with self.subTest(barcode=invalid_barcode), self.assertRaises(ValidationError):
+                employee_form.barcode = invalid_barcode
+                employee_form.save()
 
     def test_search_hr_employee_no_access(self):
         new_user = new_test_user(self.env, 'employee')
@@ -537,19 +560,23 @@ class TestHrEmployee(TestHrCommon):
             'tz': 'Asia/Tokyo',
         })
         self.assertTrue(employee.resource_calendar_id)
-        self.assertFalse(employee.is_flexible)
-        self.assertFalse(employee.is_fully_flexible)
+        self.assertFalse(employee._is_flexible())
+        self.assertFalse(employee._is_fully_flexible())
 
-        employee.resource_calendar_id = False
-        employee.hours_per_week = 40
-        employee.hours_per_day = 8
-        self.assertTrue(employee.is_flexible)
-        self.assertFalse(employee.is_fully_flexible)
+        flexible_calendar = self.env['resource.calendar'].create({
+            'name': 'Flexible Calendar',
+            'calendar_type': 'undefined',
+            'attendance_ids': [],
+            'hours_per_week': 40,
+            'hours_per_day': 8,
+        })
+        employee.resource_calendar_id = flexible_calendar
+        self.assertTrue(employee._is_flexible())
+        self.assertFalse(employee._is_fully_flexible())
 
-        employee.hours_per_week = 0
-        employee.hours_per_day = 0
-        self.assertTrue(employee.is_flexible)
-        self.assertTrue(employee.is_fully_flexible)
+        flexible_calendar.write({'hours_per_week': 0, 'hours_per_day': 0})
+        self.assertTrue(employee._is_flexible())
+        self.assertTrue(employee._is_fully_flexible())
 
     def test_resource_calendar_sync_with_employee_one(self):
         calendar = self.env['resource.calendar'].create({
@@ -597,6 +624,50 @@ class TestHrEmployee(TestHrCommon):
             employee_form.job_id = first_job
             self.assertEqual(employee_form.job_title, first_job.name)
 
+    def test_flexible_working_hours(self):
+        """
+        Test to verify that get_unusual_days() return false for flexible work schedule
+        """
+
+        employeeA = self.env['hr.employee'].create({
+            'name': 'Employee',
+            'date_version': datetime(2025, 1, 1),
+            'contract_date_start': datetime(2025, 1, 1),
+        })
+
+        # Testing employeA on regular working schedule
+        days = employeeA._get_unusual_days(str(datetime(2025, 1, 1)), str(datetime(2025, 12, 31)))
+        self.assertTrue(days)
+        self.assertTrue(days['2025-01-04'])
+
+        # Assigning flexible work hours to employeeA
+        flexible_calendar = self.env['resource.calendar'].create({
+            'name': 'Flexible Calendar',
+            'company_id': employeeA.company_id.id,
+            'calendar_type': 'undefined',
+            'hours_per_week': 40,
+        })
+        employeeA.current_version_id.write({
+            'resource_calendar_id': flexible_calendar.id,
+        })
+        days = employeeA._get_unusual_days(str(datetime(2025, 1, 1)), str(datetime(2025, 12, 31)))
+        self.assertTrue(days)
+        self.assertFalse(days['2025-01-04'])
+
+    def test_unusual_days_before_contract_start(self):
+        """
+        The days of a version before the start of its contract are unusual days.
+        """
+        employee = self.env['hr.employee'].create({
+            'name': 'Employee',
+            'date_version': datetime(2025, 1, 1),
+        })
+        employee.version_id.with_context(sync_contract_dates=True).contract_date_start = datetime(2025, 1, 15)
+        days = employee._get_unusual_days(str(datetime(2025, 1, 1)), str(datetime(2025, 1, 31)))
+        # Monday 06/01/2025 is before the contract start, Monday 20/01/2025 is in contract
+        self.assertTrue(days['2025-01-06'])
+        self.assertFalse(days['2025-01-20'])
+
     def test_user_creation_from_employee_with_invalid_email(self):
         employee = self.env['hr.employee'].create({
             'name': 'Test Employee',
@@ -642,6 +713,26 @@ class TestHrEmployee(TestHrCommon):
         no_email_emp = self.env['hr.employee'].create({'name': 'No Email'})
         with self.assertRaises(ValidationError):
             no_email_emp.user_id = no_email_emp._get_or_create_light_user()
+
+    def test_employee_form_links_user_of_work_email(self):
+        user = self.env['res.users'].create({'name': 'Free', 'login': 'free_login', 'email': 'free@example.com'})
+        portal_user = self.env['res.users'].create({
+            'name': 'Portal', 'login': 'portal@example.com', 'group_ids': [Command.set(self.env.ref('base.group_portal').ids)]})
+
+        employee_form = Form(self.env['hr.employee'])
+        employee_form.name = 'Portal'
+        employee_form.work_email = portal_user.login
+        self.assertFalse(employee_form.user_id)
+        employee_form.work_email = 'Free <free@example.com>'
+        self.assertEqual(employee_form.user_id, user)
+        employee = employee_form.save()
+
+        # the user already is an employee of the company
+        employee_form = Form(self.env['hr.employee'])
+        employee_form.name = 'Other'
+        employee_form.work_email = 'free@example.com'
+        self.assertFalse(employee_form.user_id)
+        self.assertEqual(employee.user_id, user)
 
     def test_user_contact_phone_sync(self):
         partner = self.env['res.partner'].create({'name': 'Partner Test'})
@@ -760,6 +851,7 @@ class TestHrEmployee(TestHrCommon):
         employee = self.env['hr.employee'].create({
             'name': 'Phone Employee',
             'company_id': company.id,
+            'work_location_id': self.work_location.id,
         })
         with Form(employee) as form:
             form.emergency_phone = '0456998877'
@@ -836,6 +928,27 @@ class TestHrEmployee(TestHrCommon):
         result = self.env['hr.employee'].search([('child_ids', '!=', False)])
         self.assertNotIn(employee_1, result)
 
+    def test_read_public_inherited_fields_without_hr_access(self):
+        """Users without access to hr.employee can read the public fields inherited from the
+        version, and searching on private fields raises an AccessError."""
+        job = self.env['hr.job'].create({'name': 'Public Job'})
+        department = self.env['hr.department'].create({'name': 'Public Department'})
+        employee = self.env['hr.employee'].create({
+            'name': 'Public Employee',
+            'job_id': job.id,
+            'job_title': 'Public Job Title',
+            'department_id': department.id,
+            'private_email': 'private@example.com',
+        })
+        internal_user = new_test_user(self.env, login='internal_user', groups='base.group_user')
+        self.env.invalidate_all()
+        employee_as_user = self.env['hr.employee'].with_user(internal_user).search([('id', '=', employee.id)])
+        self.assertEqual(employee_as_user.job_title, 'Public Job Title')
+        self.assertEqual(employee_as_user.job_id, job)
+        self.assertEqual(employee_as_user.department_id, department)
+        with self.assertRaises(AccessError):
+            self.env['hr.employee'].with_user(internal_user).search([('private_email', '!=', False)])
+
 
 @tagged('-at_install', 'post_install')
 class TestHrEmployeeLinks(HttpCase):
@@ -872,8 +985,8 @@ class TestVersionCron(TransactionCase):
         super().setUpClass()
 
         # Will be used for default employee version address (contains phone)
-        cls.env.user.company_id = cls.env['res.company'].create(
-            {'name': 'Pokémon Center', 'phone': '+32404040404'}
+        cls.env.user.company_id = cls.add_class_company(
+            'base.test_company', {'name': 'Pokémon Center', 'phone': '+32404040404'}
         )
 
         # Employee has a default version that will be overridden
@@ -945,6 +1058,21 @@ class TestVersionCron(TransactionCase):
             self.employee.distance_home_work,
             "distance_home_work should have changed after calling _cron_update_current_version_id()",
         )
+
+    def test_get_version_without_any_version(self):
+        """
+        _get_version() should not raise an IndexError and should return an
+        empty recordset when the employee has no version at all, neither
+        active nor archived (e.g. an employee left over by a faulty
+        migration script).
+        """
+        # Bypass the ORM guards preventing an employee from losing its last
+        # version (_unlink_except_last_version, write() on 'active'), as
+        # this is precisely the invalid state a bad migration can produce.
+        self.env.cr.execute("DELETE FROM hr_version WHERE employee_id = %s", (self.employee.id,))
+        self.employee.invalidate_recordset(['version_ids'])
+        self.assertFalse(self.employee.version_ids)
+        self.assertFalse(self.employee._get_version())
 
 
 @tagged('-at_install', 'post_install')

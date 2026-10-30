@@ -412,6 +412,43 @@ test("properties: access to parent", async () => {
 });
 
 /**
+ * The edit mode can be turned on after the setup of the field, in which case
+ * the write access on the definition record should still be checked.
+ */
+test("properties: edit mode enabled after the setup", async () => {
+    onRpc("has_access", () => true);
+
+    patchWithCleanup(PropertiesField.prototype, {
+        setup() {
+            super.setup();
+            this.state.isInEditMode = true;
+        },
+    });
+
+    await mountView({
+        type: "form",
+        resModel: "partner",
+        resId: 1,
+        arch: /* xml */ `
+            <form>
+                <sheet>
+                    <group>
+                        <field name="company_id"/>
+                        <field name="properties"/>
+                    </group>
+                </sheet>
+            </form>`,
+    });
+
+    await click(".o_property_field:first-child .o_field_property_open_popover");
+    await animationFrame();
+
+    expect(".o_field_property_definition_type input").toHaveValue("Text", {
+        message: "the definition popover must be editable, not readonly",
+    });
+});
+
+/**
  * Test the creation of a new property.
  */
 test("properties: add a new property", async () => {
@@ -2272,6 +2309,42 @@ test("properties: open section by default", async () => {
     await animationFrame();
 
     expect(getGroups()).toEqual([[["SEPARATOR 1", "property_1"]], [["SEPARATOR 3", "property_3"]]]);
+});
+
+test.tags("mobile");
+test("properties: labels of folded properties are hidden on mobile", async () => {
+    onRpc("has_access", () => true);
+    ResCompany._records[0].definitions = [
+        { name: "property_1", string: "Separator 1", type: "separator", fold_by_default: false },
+        { name: "property_2", string: "Property 2", type: "char" },
+    ];
+    delete Partner._records[1].properties.property_1; // remove char value
+
+    await mountView({
+        type: "form",
+        resModel: "partner",
+        resId: 2,
+        arch: /* xml */ `
+            <form>
+                <sheet>
+                    <group>
+                        <field name="company_id"/>
+                        <field name="properties"/>
+                    </group>
+                </sheet>
+            </form>`,
+    });
+
+    expect("[property-name='property_2']").not.toHaveClass("o_property_folded");
+    expect("[property-name='property_2'] .o_field_property_label").toBeVisible();
+    expect("[property-name='property_2'] .o_property_field_value").toBeVisible();
+
+    await click("div[property-name='property_1'] .o_field_property_group_label");
+    await animationFrame();
+
+    expect("[property-name='property_2']").toHaveClass("o_property_folded");
+    expect("[property-name='property_2'] .o_field_property_label").not.toBeVisible();
+    expect("[property-name='property_2'] .o_property_field_value").not.toBeVisible();
 });
 
 test.tags("desktop");

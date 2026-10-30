@@ -10,24 +10,27 @@ import {
     queryAll,
     queryAllTexts,
     queryOne,
+    setInputFiles,
     waitFor,
     waitForNone,
 } from "@odoo/hoot-dom";
 import { animationFrame } from "@odoo/hoot-mock";
 import {
     contains,
+    getService,
     makeMockServer,
     mockService,
     mountView,
     onRpc,
-    patchWithCleanup,
     serverState,
 } from "@web/../tests/web_test_helpers";
+import { patch } from "@web/core/utils/patch";
 import {
     click,
-    contains as waitForContains,
+    contains as mailContains,
     defineMailModels,
     mailModels,
+    onRpcBefore,
     openFormView,
     openView,
     registerArchs,
@@ -43,7 +46,7 @@ defineMailModels([]);
 
 let htmlEditor;
 beforeEach(() => {
-    patchWithCleanup(HtmlComposerMessageField.prototype, {
+    patch(HtmlComposerMessageField.prototype, {
         onEditorLoad(editor) {
             htmlEditor = editor;
             return super.onEditorLoad(...arguments);
@@ -53,7 +56,7 @@ beforeEach(() => {
 
 test("media dialog: upload", async function () {
     const { promise: isUploaded, resolve: resolveUpload } = Promise.withResolvers();
-    patchWithCleanup(FileSelector.prototype, {
+    patch(FileSelector.prototype, {
         async onUploaded() {
             await super.onUploaded(...arguments);
             resolveUpload();
@@ -119,8 +122,8 @@ test("media dialog: upload", async function () {
     await press("Enter");
 
     // upload test
-    await waitForContains(".modal-title", { text: "Select a media" });
-    await waitForContains("[name='attachment_ids'] .o_attachment[title='test.jpg']", { count: 0 });
+    await mailContains(".modal-title", { text: "Select a media" });
+    await waitForNone("[name='attachment_ids'] .o_attachment[title='test.jpg']");
     const fileInputs = queryAll(".o_select_media_dialog input.d-none.o_file_input");
     const fileB64 =
         "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD3+iiigD//2Q==";
@@ -140,7 +143,7 @@ test("media dialog: upload", async function () {
     });
 
     await isUploaded;
-    await waitForContains("[name='attachment_ids'] .o_attachment[title='test.jpg']", { count: 1 });
+    await waitFor("[name='attachment_ids'] .o_attachment[title='test.jpg']:count(1)");
 
     await contains(".o_form_button_save").click();
     await expect.waitForSteps(["web_save"]);
@@ -171,21 +174,61 @@ test("mention a partner", async () => {
     const editable = queryOne(`.odoo-editor-editable`);
     setSelection({ anchorNode: editable.firstChild, anchorOffset: 0 });
     await htmlInsertText(htmlEditor, "@");
-    expect(".overlay .o-mail-MentionList input[placeholder='Search for a user...']").toBeFocused();
-    expect(".overlay .o-mail-NavigableList .o-mail-NavigableList-item").toHaveCount(0);
-
-    await press("a");
-    await waitFor(".overlay .o-mail-NavigableList .o-mail-NavigableList-item");
+    await expect.waitForSteps(["get_mention_suggestions: "]);
+    await htmlInsertText(htmlEditor, "a");
+    await expect.waitForSteps(["get_mention_suggestions: a"]);
+    await waitFor(".overlay .o-mail-NavigableList .o-mail-NavigableList-item:count(1)");
     expect(queryAllTexts(".overlay .o-mail-NavigableList .o-mail-NavigableList-item")).toEqual([
         "Mitchell Admin",
     ]);
-    expect.verifySteps(["get_mention_suggestions: a"]);
 
     await press("enter");
     await animationFrame();
     expect(getContent(editable)).toBe(
-        `<p>\uFEFF<a href="/odoo/res.partner/${serverState.partnerId}" class="o_mail_redirect" data-oe-id="${serverState.partnerId}" data-oe-model="res.partner" target="_blank" contenteditable="false">@Mitchell Admin</a>\uFEFF[]</p>`
+        `<p>\uFEFF<a href="/odoo/res.partner/${serverState.partnerId}" class="o_mail_redirect" data-oe-id="${serverState.partnerId}" data-oe-model="res.partner" target="_blank" contenteditable="false">@Mitchell Admin</a>\uFEFF&nbsp;[]</p>`
     );
+});
+
+test("send the canned responses inserted", async () => {
+    onRpc("mail.compose.message", "action_send_mail", ({ kwargs }) => {
+        expect.step(`action_send_mail: ${kwargs.context.canned_response_ids}`);
+        return { type: "ir.actions.act_window_close" };
+    });
+    mailModels.MailComposeMessage._views = {
+        "form,false": `
+        <form js_class="mail_composer_form">
+            <field name="body" type="html" widget="html_composer_message"/>
+            <footer>
+                <button string="Log" name="action_send_mail" type="object" class="o_mail_send"/>
+            </footer>
+        </form>`,
+    };
+    const pyEnv = await startServer();
+    const cannedResponseId = pyEnv["mail.canned.response"].create({
+        source: "hello",
+        substitution: "Hello, how may I help you?",
+    });
+    const composerId = pyEnv["mail.compose.message"].create({
+        body: "<p><br></p>",
+        model: "res.partner",
+        res_ids: JSON.stringify([serverState.partnerId]),
+    });
+    await start();
+    await getService("action").doAction({
+        res_id: composerId,
+        res_model: "mail.compose.message",
+        target: "new",
+        type: "ir.actions.act_window",
+        views: [[false, "form"]],
+    });
+    await waitFor(".modal .odoo-editor-editable");
+    const editable = queryOne(".modal .odoo-editor-editable");
+    setSelection({ anchorNode: editable.firstChild, anchorOffset: 0 });
+    await htmlInsertText(htmlEditor, "::");
+    await click(".o-mail-NavigableList-item:text('hello Hello, how may I help you?')");
+    await mailContains(".modal .odoo-editor-editable:contains('Hello, how may I help you?')");
+    await click(".modal .o_mail_send");
+    await expect.waitForSteps([`action_send_mail: ${cannedResponseId}`]);
 });
 
 describe("Remove attachments", () => {
@@ -210,21 +253,21 @@ describe("Remove attachments", () => {
         await openFormView("res.partner", serverState.partnerId);
         await click("button:text('Log note')");
         await click("button[title='Open Full Composer']");
-        await waitFor(".odoo-editor-editable");
-        const anchorNode = queryOne(".odoo-editor-editable div.o-paragraph");
+        await waitFor(".modal .odoo-editor-editable");
+        const anchorNode = queryOne(".modal .odoo-editor-editable div.o-paragraph");
         setSelection({ anchorNode, anchorOffset: 0 });
         await insertText(htmlEditor, "/file");
         await press("Enter");
         await expect.waitForSteps(["File Uploaded"]);
         await waitFor("[name='attachment_ids'] a:contains('file.txt')");
-        await waitFor(".odoo-editor-editable .o_file_box:has(a:contains('file.txt'))");
+        await waitFor(".modal .odoo-editor-editable .o_file_box:has(a:contains('file.txt'))");
         await click("[name='attachment_ids'] button:has(i[data-icon='close'])");
         await waitForNone("[name='attachment_ids'] a:contains('file.txt')");
-        await waitForNone(".odoo-editor-editable .o_file_box:has(a:contains('file.txt'))");
+        await waitForNone(".modal .odoo-editor-editable .o_file_box:has(a:contains('file.txt'))");
     });
 
     test("should remove image from html editor if removed from attachment list", async () => {
-        patchWithCleanup(FileSelector.prototype, {
+        patch(FileSelector.prototype, {
             async onUploaded() {
                 await super.onUploaded(...arguments);
                 expect.step("Image Uploaded");
@@ -255,8 +298,8 @@ describe("Remove attachments", () => {
         await openFormView("res.partner", serverState.partnerId);
         await click("button:text('Log note')");
         await click("button[title='Open Full Composer']");
-        await waitFor(".odoo-editor-editable");
-        const anchorNode = queryOne(".odoo-editor-editable div.o-paragraph");
+        await waitFor(".modal .odoo-editor-editable");
+        const anchorNode = queryOne(".modal .odoo-editor-editable div.o-paragraph");
         setSelection({ anchorNode, anchorOffset: 0 });
         await insertText(htmlEditor, "/image");
         await press("Enter");
@@ -268,9 +311,60 @@ describe("Remove attachments", () => {
         manuallyDispatchProgrammaticEvent(fileInput, "change");
         await expect.waitForSteps(["Image Uploaded"]);
         await waitFor("[name='attachment_ids'] a:contains('test.jpg')");
-        await waitFor(".odoo-editor-editable img[data-attachment-id='1']");
+        await waitFor(".modal .odoo-editor-editable img[data-attachment-id='1']");
         await click("[name='attachment_ids'] button:has(i[data-icon='close'])");
         await waitForNone("[name='attachment_ids'] a:contains('test.jpg')");
-        await waitForNone(".odoo-editor-editable img[data-attachment-id='1']");
+        await waitForNone(".modal .odoo-editor-editable img[data-attachment-id='1']");
     });
+});
+
+test("wait for attachments to be uploaded before sending message", async function () {
+    const uploadRelease = Promise.withResolvers();
+    const mailSent = Promise.withResolvers();
+    onRpcBefore("/mail/attachment/upload", async () => {
+        expect.step("upload");
+        await uploadRelease.promise;
+    });
+    onRpc("mail.compose.message", "web_save", ({ args }) => {
+        expect.step("web_save");
+        expect(args[1].attachment_ids).toHaveLength(1);
+    });
+    onRpc("action_send_mail", () => {
+        expect.step("action_send_mail");
+        mailSent.resolve();
+        return { type: "ir.actions.act_window_close" };
+    });
+
+    const pyEnv = await startServer();
+    const resId = pyEnv["mail.compose.message"].create({
+        display_name: "Some Composer",
+        body: "Hello World!",
+        attachment_ids: [],
+        model: "res.partner",
+        res_ids: JSON.stringify([serverState.partnerId]),
+    });
+    const arch = `
+        <form>
+            <field name="model" invisible="1"/>
+            <field name="res_ids" invisible="1"/>
+            <field name="body" type="html"/>
+            <button string="Send" name="action_send_mail" type="object" class="o_mail_send"/>
+            <field name="attachment_ids" widget="mail_composer_attachment_selector"/>
+        </form>
+    `;
+    await start();
+    await openFormView("mail.compose.message", resId, { arch });
+
+    const file = new File(["test"], "fake_file.txt", { type: "text/plain" });
+    await click(".o_field_mail_composer_attachment_selector button");
+    await setInputFiles([file]);
+    await expect.waitForSteps(["upload"]);
+
+    await click(".o_mail_send");
+    await animationFrame();
+    expect.verifySteps([]);
+
+    uploadRelease.resolve();
+    await mailSent.promise;
+    expect.verifySteps(["web_save", "action_send_mail"]);
 });

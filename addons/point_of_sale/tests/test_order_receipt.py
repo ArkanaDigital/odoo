@@ -1,8 +1,11 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
+import base64
 import logging
 from datetime import datetime
 from unittest.mock import patch
+
+from freezegun import freeze_time
 
 from odoo import Command
 from odoo.tests import tagged
@@ -205,8 +208,8 @@ class TestPosOrderReceipt(TestPointOfSaleHttpCommon, CommonPosTest):
             'receipt_header': 'This is a test header for receipt',
             'receipt_footer': 'This is a test footer for receipt',
             'logo': BinaryBytes(image.encode()),
+            'iface_tax_included': "total",
         })
-        self.main_pos_config.with_user(self.pos_user).open_ui()
         data = {
             'frontend_data': None,
             'backend_data': None,
@@ -217,12 +220,22 @@ class TestPosOrderReceipt(TestPointOfSaleHttpCommon, CommonPosTest):
             data['frontend_data'] = frontend_data
             data['backend_data'] = backend_data
 
-        with patch.object(self.env.registry['pos.order'], 'get_order_frontend_receipt_data', get_order_frontend_receipt_data, create=True):
-            self.start_pos_tour("test_receipt_data")
-            self.compare_receipt_data(data['frontend_data'], data['backend_data'])
+        def run_tour_and_compare():
+            with patch.object(self.env.registry['pos.order'], 'get_order_frontend_receipt_data', get_order_frontend_receipt_data, create=True):
+                self.start_pos_tour("test_receipt_data")
+                self.compare_receipt_data(data['frontend_data'], data['backend_data'])
 
-            logo_image = data['backend_data']['image']['logo']
-            self.assertTrue(logo_image.startswith('data:image/svg+xml;base64,'))
+        self.main_pos_config.with_user(self.pos_user).open_ui()
+        session = self.main_pos_config.current_session_id
+        run_tour_and_compare()
+        session.close_session_from_ui()
+
+        self.main_pos_config.iface_tax_included = "subtotal"
+        self.main_pos_config.with_user(self.pos_user).open_ui()
+        run_tour_and_compare()
+
+        logo_image = data['backend_data']['image']['logo']
+        self.assertTrue(logo_image.startswith('data:image/svg+xml;base64,'))
 
     def compare_change_receipt_data(self, frontend, backend):
         for key, value in frontend.items():
@@ -374,7 +387,6 @@ class TestPosOrderReceipt(TestPointOfSaleHttpCommon, CommonPosTest):
         })
         self.main_pos_config.write({
             'preparation_printer_ids': [(4, printer.id)],
-            'module_pos_restaurant': True,
         })
 
         order, _ = self.create_backend_pos_order({
@@ -425,6 +437,57 @@ class TestPosOrderReceipt(TestPointOfSaleHttpCommon, CommonPosTest):
             product_ids = [d['product_id'] for d in ticket['changes']['data']]
             self.assertEqual(product_ids, [product_a.id], "Standalone ticket should only have product A")
 
+    def test_group_by_categ_receipts(self):
+        """Customer receipt lines and preparation ticket groups follow the PoS category sequence."""
+        food, drinks = self.env['pos.category'].create([
+            {'name': 'Food', 'sequence': 2},
+            {'name': 'Drinks', 'sequence': 1},
+        ])
+        lemonade, napkins, cheeseburger, cola, fries = self.env['product.product'].create([
+            {'name': name, 'available_in_pos': True, 'pos_categ_ids': categ.ids}
+            for name, categ in [
+                ('Lemonade', drinks),
+                ('Napkins', self.env['pos.category']),
+                ('Cheeseburger', food),
+                ('Cola', drinks),
+                ('Fries', food),
+            ]
+        ])
+        burger_menu = self.env['product.product'].create({
+            'name': 'Burger Menu',
+            'type': 'combo',
+            'available_in_pos': True,
+            'combo_ids': [Command.create({
+                'name': 'Menu Combo',
+                'combo_item_ids': [Command.create({'product_id': p.id}) for p in cheeseburger | cola],
+            })],
+            'pos_categ_ids': food.ids,
+        })
+        self.main_pos_config.iface_group_by_categ = True
+
+        order, _ = self.create_backend_pos_order({
+            'pos_config': self.main_pos_config,
+            'line_data': [
+                {'product_id': product.id, 'qty': 1}
+                for product in [lemonade, napkins, burger_menu, cheeseburger, cola, fries]
+            ],
+        })
+        menu_line = order.lines.filtered(lambda l: l.product_id == burger_menu)
+        order.lines.filtered(lambda l: l.product_id in cheeseburger | cola).combo_parent_id = menu_line
+
+        receipt_lines = order.order_receipt_generate_data()['lines']
+        self.assertEqual(
+            [line['product_data']['display_name'] for line in receipt_lines],
+            ['Lemonade', 'Burger Menu', 'Cheeseburger', 'Cola', 'Fries', 'Napkins'],
+        )
+
+        changes = order._generate_preparation_change_for_categories(set((food | drinks).ids))
+        groups = order._generate_preparation_receipt_data(changes)[0]['changes']['groupedData']
+        self.assertEqual(
+            [(group['name'], [line['basic_name'] for line in group['data']]) for group in groups],
+            [('Drinks', ['Lemonade', 'Burger Menu', 'Cola']), ('Food', ['Burger Menu', 'Cheeseburger', 'Fries'])],
+        )
+
     def test_total_item_count(self):
         setup_product_combo_items(self)
         self.weighted_product = self.env['product.template'].create({
@@ -458,3 +521,150 @@ class TestPosOrderReceipt(TestPointOfSaleHttpCommon, CommonPosTest):
             ],
         })
         self.assertEqual(order.order_receipt_generate_data()['extra_data']['total_item_count'], 5)
+
+    def _create_receipt_test_order(self, date_order, preset_time=False):
+        preset = self.env['pos.preset'].create({
+            'name': 'Online Order',
+            'use_timing': True,
+        })
+        return self.env['pos.order'].create({
+            'company_id': self.env.company.id,
+            'session_id': self.main_pos_config.current_session_id.id,
+            'date_order': date_order,
+            'preset_id': preset.id,
+            'preset_time': preset_time,
+            'amount_total': 0,
+            'amount_paid': 0,
+            'amount_tax': 0,
+            'amount_return': 0,
+            'lines': [Command.create({
+                'product_id': self.example_simple_product.product_variant_id.id,
+                'qty': 1,
+                'price_unit': 5.80,
+                'price_subtotal': 5.80,
+                'price_subtotal_incl': 5.80,
+            })],
+        })
+
+    def _get_preparation_extra_data(self, order):
+        changes = order._generate_preparation_change_for_categories(set(self.category.ids))
+        data = order._generate_preparation_receipt_data(changes)
+        self.assertTrue(data, "the order has one new line, it must produce a ticket")
+        return data[0]['extra_data']
+
+    def test_change_receipt_times_use_shop_timezone(self):
+        """
+        Preparation ticket times must use the shop timezone, not the acting user's,
+        since backend users (public user, OdooBot, self ordering user) may have no tz.
+        """
+        self.env.company.tz = 'Europe/Brussels'  # UTC+2
+        public_user = self.env.ref('base.public_user')
+        self.assertFalse(public_user.tz, "the public user carries no timezone")
+
+        self.main_pos_config.with_user(self.pos_user).open_ui()
+        with freeze_time('2026-08-27 11:16:53'):
+            order = self._create_receipt_test_order('2026-08-27 11:16:53', '2026-08-27 16:15:00')
+            extra_data = self._get_preparation_extra_data(order.with_user(public_user).sudo())
+
+        self.assertEqual(extra_data['time'], '13:16', "13:16 in Brussels, not 11:16 in UTC")
+        self.assertEqual(extra_data['preset_time'], '06:15 PM', "18:15 in Brussels, not 16:15 in UTC")
+
+    def test_change_receipt_preset_time_dates_the_pickup_only_when_needed(self):
+        """
+        Mirror of the JS presetDateTime getter: a pickup on the order's own day prints its
+        hour alone, one on another day prints its date too. Both days are the shop's, which
+        is what makes the first order below same-day despite spanning two UTC days.
+        """
+        self.env.company.tz = 'Europe/Brussels'  # UTC+2
+        self.main_pos_config.with_user(self.pos_user).open_ui()
+
+        # 08-27 23:30 UTC is already 08-28 01:30 in Brussels, the pickup's own day
+        same_day = self._create_receipt_test_order('2026-08-27 23:30:00', '2026-08-28 09:00:00')
+        other_day = self._create_receipt_test_order('2026-08-27 11:16:53', '2026-08-28 16:15:00')
+
+        self.assertEqual(
+            self._get_preparation_extra_data(same_day)['preset_time'],
+            '11:00 AM',
+            "same day in Brussels, even though the order was placed on the previous UTC day",
+        )
+        self.assertEqual(
+            self._get_preparation_extra_data(other_day)['preset_time'],
+            '08/28/2026 06:15:00 PM',
+            "a pickup on another day needs its date spelled out",
+        )
+
+    def _create_receipt_printer(self, **vals):
+        return self.env['pos.printer'].create({
+            'name': 'Receipt Printer',
+            'printer_type': 'epson_epos',
+            'printer_ip': '0.0.0.0',
+            'use_type': 'receipt',
+            **vals,
+        })
+
+    def test_receipt_print_data_without_printer(self):
+        """
+        Without a receipt printer, the backend can only use the browser printing flow.
+        """
+        order, _ = self.create_backend_pos_order({
+            'pos_config': self.main_pos_config,
+            'line_data': [{'product_id': self.example_simple_product.product_variant_id.id, 'qty': 1}],
+        })
+
+        data = order.get_receipt_print_data()
+        self.assertFalse(data['printers'])
+        self.assertIn('pos-receipt', data['receipt_html'])
+
+    def test_receipt_print_data_with_printers(self):
+        """
+        Each usable printer gets a receipt, ready to be sent to it by the client.
+        """
+        printer = self._create_receipt_printer(paper_size='58')
+        label_printer = self._create_receipt_printer(name='Label Printer', paper_size='label')
+        self.main_pos_config.write({
+            'receipt_printer_ids': [Command.set((printer + label_printer).ids)],
+        })
+
+        order, _ = self.create_backend_pos_order({
+            'pos_config': self.main_pos_config,
+            'line_data': [{'product_id': self.example_simple_product.product_variant_id.id, 'qty': 1}],
+        })
+        data = order.get_receipt_print_data()
+
+        self.assertEqual(
+            [p['id'] for p in data['printers']], printer.ids,
+            "Label printers expect ZPL, they can't print the receipt template",
+        )
+        self.assertEqual(data['printers'][0]['printer_ip'], '0.0.0.0')
+        self.assertIn('<epos-print', data['printers'][0]['receipt'])
+        self.assertIn('pos-receipt', data['receipt_html'])
+
+    def test_receipt_print_format(self):
+        """
+        Printers behind an IoT box are given an image, the ePOS ones a document.
+        """
+        order, _ = self.create_backend_pos_order({
+            'pos_config': self.main_pos_config,
+            'line_data': [{'product_id': self.example_simple_product.product_variant_id.id, 'qty': 1}],
+        })
+        self.assertIn('<epos-print', order._order_receipt_generate_for_format('epos', '80'))
+        self.assertTrue(
+            base64.b64decode(order._order_receipt_generate_for_format('image', '80')),
+            "An IoT box expects the receipt as a base64 image",
+        )
+
+    def test_receipt_paper_style(self):
+        """
+        The receipt is rendered for the paper size of the printer it is sent to.
+        """
+        order, _ = self.create_backend_pos_order({
+            'pos_config': self.main_pos_config,
+            'line_data': [{'product_id': self.example_simple_product.product_variant_id.id, 'qty': 1}],
+        })
+        self.assertIn('width: 360px', order._order_receipt_paper_style_css('58'))
+        self.assertIn('width: 512px', order._order_receipt_paper_style_css('80'))
+        self.assertIn('width: 240px', order._order_receipt_paper_style_css('tm_l100_40'))
+        self.assertIn(
+            'width: 512px', order._order_receipt_paper_style_css(False),
+            "An unknown paper size falls back on the size the receipt is designed for",
+        )

@@ -23,12 +23,11 @@ import { closestElement } from "@html_editor/utils/dom_traversal";
 
 /**
  * @typedef {Object} TranslationShared
- * @property {TranslationPlugin["getTranslationInfo"]} getTranslationInfo
- * @property {TranslationPlugin["updateTranslationMap"]} updateTranslationMap
+ * @property {TranslationPlugin["hasTranslatedAttribute"]} hasTranslatedAttribute
+ * @property {TranslationPlugin["getDirtyAttributeTranslationsInfo"]} getDirtyAttributeTranslationsInfo
  */
 
 /**
- * @typedef {((translateEl: HTMLElement, spanEl: HTMLElement, attr: string) => void)[]} on_get_dirty_translations_handlers
  * @typedef {((editableEls: HTMLElement[]) => void)[]} on_nodes_marked_translatable_handlers
  */
 
@@ -36,6 +35,7 @@ const TRANSLATED_ATTRS = [
     "placeholder",
     "title",
     "alt",
+    "aria-label",
     "value",
     "data-oe-translate-src",
     "data-oe-translate-srcset",
@@ -77,12 +77,12 @@ function findOEditable(containerEl) {
 
 export class TranslationPlugin extends Plugin {
     static id = "translation";
-    static shared = ["getTranslationInfo", "updateTranslationMap"];
+    static dependencies = ["builderActions"];
+    static shared = ["hasTranslatedAttribute", "getDirtyAttributeTranslationsInfo"];
 
     /** @type {import("plugins").WebsiteResources} */
     resources = {
         clean_for_save_processors: this.cleanForSave.bind(this),
-        dirty_els_providers: this.getDirtyTranslations.bind(this),
         on_replicated_handlers: ({ sourceEl, targetEl }) => {
             targetEl.classList.toggle("o_dirty", sourceEl.classList.contains("o_dirty"));
         },
@@ -175,16 +175,6 @@ export class TranslationPlugin extends Plugin {
                 sticky: false,
             });
         };
-        // The TOC navbar lives under `.o_not_editable`, so its translation
-        // spans are excluded from `findOEditable`. Iterate them explicitly
-        // so `handleToC` can align their source SHA with the matching
-        // heading and tag them with `o_translation_without_style`.
-        const tocNavTranslationEls = this.editable.querySelectorAll(
-            ".s_table_of_content_navbar_wrap [data-oe-translation-source-sha]"
-        );
-        for (const translateEl of new Set([...this.editableEls, ...tocNavTranslationEls])) {
-            this.handleToC(translateEl);
-        }
         const savableInsideNotEditableEls = this.editable.querySelectorAll(
             ".o_not_editable .o_savable, .o_not_editable .o_savable_attribute"
         );
@@ -196,16 +186,6 @@ export class TranslationPlugin extends Plugin {
                 continue;
             }
             this.addDomListener(savableInsideNotEditableEl, "click", showNotification);
-        }
-        // Keep the original values of elToTranslationInfoMap so that we know
-        // which translations have been updated.
-        /** @type {ElToTranslationInfoMap} */
-        this.originalElToTranslationInfoMap = new Map();
-        for (const [translateEl, translationInfo] of this.elToTranslationInfoMap) {
-            this.originalElToTranslationInfoMap.set(
-                translateEl,
-                JSON.parse(JSON.stringify(translationInfo))
-            );
         }
     }
     /**
@@ -332,34 +312,6 @@ export class TranslationPlugin extends Plugin {
         }
     }
 
-    handleToC(translateEl) {
-        if (translateEl.closest(".s_table_of_content_navbar_wrap")) {
-            // Make sure the same translation ids are used
-            const href = translateEl.closest("a").getAttribute("href");
-            const headerEl = translateEl
-                .closest(".s_table_of_content")
-                .querySelector(`${href} [data-oe-translation-source-sha]`);
-            if (headerEl) {
-                if (
-                    translateEl.dataset.oeTranslationSourceSha !==
-                    headerEl.dataset.oeTranslationSourceSha
-                ) {
-                    // Use the same identifier for the generated navigation
-                    // label and its associated header so that the general
-                    // synchronization mechanism kicks in.
-                    // The initial value is kept to be restored before save in
-                    // order to keep the translation of the unstyled label
-                    // distinct from the one of the header.
-                    translateEl.dataset.oeTranslationSaveSha =
-                        translateEl.dataset.oeTranslationSourceSha;
-                    translateEl.dataset.oeTranslationSourceSha =
-                        headerEl.dataset.oeTranslationSourceSha;
-                }
-                translateEl.classList.add("o_translation_without_style");
-            }
-        }
-    }
-
     markTranslatableNodes() {
         // attributes
         for (const [translateEl, translationInfo] of this.elToTranslationInfoMap) {
@@ -385,11 +337,12 @@ export class TranslationPlugin extends Plugin {
     }
     /**
      * @param {HTMLElement} translateEl - the element whose attribute
-     * translations we want to get.
-     * @returns {ElementTranslationInfo} translationInfo
+     * translations we want to check.
+     * @param {string} attrName - attribute to translate
+     * @returns {boolean} whether the given attribute is in the translation map
      */
-    getTranslationInfo(translateEl) {
-        return this.elToTranslationInfoMap.get(translateEl);
+    hasTranslatedAttribute(translateEl, attrName) {
+        return attrName in this.elToTranslationInfoMap.get(translateEl);
     }
     /**
      * @param {HTMLElement} translateEl - element on which the translatable
@@ -406,56 +359,30 @@ export class TranslationPlugin extends Plugin {
         this.elToTranslationInfoMap.get(translateEl)[attrName].translation =
             translationEl.innerHTML;
     }
-    /**
-     * @param {HTMLElement} translateEl - element on which the translatable
-     * attribute is
-     * @param {string} translation - new translation
-     * @param {string} attrName - attribute to translate
-     */
-    updateTranslationMap(translateEl, translation, attrName) {
-        if (!this.elToTranslationInfoMap.get(translateEl)) {
-            throw new Error(
-                `Translation map was not set up: cannot update ${attrName} on ${translateEl.nodeName}`
-            );
-        }
-        this.elToTranslationInfoMap.get(translateEl)[attrName].translation = translation;
-    }
 
     /**
-     * Gets the modified translations
-     * @returns {HTMLElement[]}
+     * Gets the modified translations info
+     * @returns {AttributeTranslationInfo[]}
      */
-    getDirtyTranslations() {
-        const dirtyEls = [];
+    getDirtyAttributeTranslationsInfo() {
+        const dirtyInfo = [];
         for (const [translateEl, translationInfo] of this.elToTranslationInfoMap) {
             for (const [attr, data] of Object.entries(translationInfo)) {
-                if (
-                    this.originalElToTranslationInfoMap.get(translateEl)[attr].translation !==
-                    data.translation
-                ) {
-                    const spanEl = document.createElement("span");
-                    for (const [name, value] of Object.entries(data)) {
-                        spanEl.dataset[name] = value;
-                    }
-                    const translation = spanEl.dataset.translation;
-                    delete spanEl.dataset.translation;
-                    spanEl.innerHTML = translation;
-                    this.trigger("on_get_dirty_translations_handlers", translateEl, spanEl, attr);
-                    dirtyEls.push(spanEl);
+                const translation = this.dependencies.builderActions
+                    .getAction("translateAttribute")
+                    .getValue({ editingElement: translateEl, params: { mainParam: attr } });
+                if (data.translation !== translation) {
+                    dirtyInfo.push({ ...data, translation });
                 }
             }
         }
-        return dirtyEls;
+        return dirtyInfo;
     }
 
     cleanForSave(root) {
         root.querySelectorAll(".o_savable_attribute").forEach((el) => {
             el.classList.remove("o_savable_attribute");
         });
-        if (root.dataset.oeTranslationSaveSha) {
-            root.dataset.oeTranslationSourceSha = root.dataset.oeTranslationSaveSha;
-            delete root.dataset.oeTranslationSaveSha;
-        }
         return root;
     }
 }

@@ -27,7 +27,7 @@ class MrpWorkorder(models.Model):
 
     def _prepare_analytic_line_values(self, account_field_values, amount, unit_amount):
         self.ensure_one()
-        return {
+        values = {
             'name': _("[WC] %s", self.display_name),
             'amount': amount,
             **account_field_values,
@@ -38,6 +38,9 @@ class MrpWorkorder(models.Model):
             'ref': self.production_id.name,
             'category': 'manufacturing_order',
         }
+        if self.production_id.state == 'done' and self.production_id.date_finished:
+            values['date'] = fields.Date.context_today(self.production_id, timestamp=self.production_id.date_finished)
+        return values
 
     def _create_or_update_analytic_entry(self):
         for wo in self.sudo():
@@ -54,7 +57,20 @@ class MrpWorkorder(models.Model):
             if wc_analytic_line_vals:
                 self.sudo().wc_analytic_account_line_ids += self.env['account.analytic.line'].sudo().create(wc_analytic_line_vals)
 
-    def unlink(self):
-        sudo_self = self.sudo()
-        (sudo_self.mo_analytic_account_line_ids | sudo_self.wc_analytic_account_line_ids).unlink()
-        return super().unlink()
+    def _clear_journal_entries(self):
+        account_moves = self.sudo().time_ids.account_move_line_id.move_id
+        account_moves.button_draft()
+        account_moves.unlink()
+
+    def _action_reset_to_progress(self):
+        self._clear_journal_entries()
+        super()._action_reset_to_progress()
+
+    def _action_reset_to_draft(self):
+        self._clear_journal_entries()
+        super()._action_reset_to_draft()
+
+    def _delete_extra(self):
+        yield from super()._delete_extra()
+        yield self.mo_analytic_account_line_ids
+        yield self.wc_analytic_account_line_ids

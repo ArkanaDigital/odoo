@@ -1,34 +1,34 @@
 /** @typedef {import("./record").Record} Record */
 /** @typedef {import("./record_list").RecordList} RecordList */
+/** @typedef {import("./store").Store} Store */
 
 import { ManyFieldVersion, SingleFieldVersion, SKIP_REVISION } from "@mail/model/field_version";
 import { isCommandList, isMany, normalizeManyCommands, untrackFunctions } from "@mail/model/misc";
 import { RecordInternal } from "@mail/model/record_internal";
-import { parseRawValue } from "@mail/utils/common/local_storage";
 import { incrementFn } from "@mail/utils/common/signal";
 
 import { computed, htmlEscape, markup, signal } from "@odoo/owl";
 
-import { browser } from "@web/core/browser/browser";
 import { deserializeDate, deserializeDateTime } from "@web/core/l10n/dates";
 
 const Markup = markup().constructor;
 
-/** @typedef {string} LocalStorageKey */
 /** @typedef {string} FieldName */
 
 export class StoreInternal extends RecordInternal {
-    /** @type {Map<import("./record").Record, Map<string, true>>} */
+    /**
+     * See {@link Store#MAKE_UPDATE}.
+     * @type {Map<import("./record").Record, Map<string, true>>}
+     */
     FC_QUEUE = new Map(); // field-computes
-    /** @type {Map<import("./record").Record, Map<string, Map<import("./record").Record, true>>>} */
-    FA_QUEUE = new Map(); // field-onadds
-    /** @type {Map<import("./record").Record, Map<string, Map<import("./record").Record, true>>>} */
-    FD_QUEUE = new Map(); // field-ondeletes
-    /** @type {Map<import("./record").Record, Map<string, true>>} */
-    FU_QUEUE = new Map(); // field-onupdates
-    /** @type {Map<Record, true>} */
+    /**
+     * See {@link Store#MAKE_UPDATE}.
+     * @type {Map<Record, true>}
+     */
     RD_QUEUE = new Map(); // record-deletes
+    /** See {@link Store#MAKE_UPDATE}. */
     ERRORS = [];
+    /** See {@link Store#MAKE_UPDATE}. */
     UPDATE = 0;
     /**
      * The owl app this store belongs to, needed by the scope of each of its
@@ -37,20 +37,17 @@ export class StoreInternal extends RecordInternal {
      * @type {import("@odoo/owl").App}
      */
     app;
-    /**
-     * Number of update functions currently running, nested included. An owl
-     * computed() field holds its last value while one runs, as the relations
-     * it reads are written one by one. onAdd, onDelete and onUpdate run
-     * outside of them, at depth 0, so they read fresh values.
-     */
+    /** See {@link Store#MAKE_UPDATE}. */
     updateDepth = signal(0);
     raiseUpdateDepth = incrementFn(this.updateDepth);
     lowerUpdateDepth = incrementFn(this.updateDepth, -1);
     /**
-     * Whether an update function is being run. A computed of the depth, so a
-     * held field only recomputes when this flips, not on every nested raise.
+     * A computed of the depth, so a held field only recomputes when this
+     * flips, not on every nested raise. See {@link Store#MAKE_UPDATE}.
      */
     isUpdateInProgress = computed(() => this.updateDepth() > 0);
+    /** See {@link Store#MAKE_UPDATE}. */
+    isDrainingQueues = signal(false);
     /**
      * Current version context used in the current store insert operation.
      *
@@ -63,51 +60,14 @@ export class StoreInternal extends RecordInternal {
      * }}
      */
     currentInsertVersion = null;
-    /**
-     * Map of local storage keys of fields synced with local storage to the record and field name.
-     *
-     * @type {Map<LocalStorageKey, Map<Record, FieldName>>}
-     */
-    localStorageKeyToRecordFields = new Map();
 
     constructor() {
         super(...arguments);
         untrackFunctions(this, ["lowerUpdateDepth", "raiseUpdateDepth"]);
-        this.onStorage = this.onStorage.bind(this);
-        browser.addEventListener("storage", this.onStorage);
-    }
-    /**
-     * Indicates whether the current update cycle was triggered by a
-     * `storage` event. Used to prevent writing back to the local
-     * storage and creating a feedback loop.
-     */
-    isUpdatingFromStorageEvent = false;
-    onStorage(ev) {
-        const entryMap = this.localStorageKeyToRecordFields.get(ev.key);
-        if (!entryMap) {
-            return;
-        }
-        this.isUpdatingFromStorageEvent = true;
-        try {
-            for (const [record, fieldName] of entryMap.entries()) {
-                if (ev.newValue === null) {
-                    record._proxy[fieldName] = record._.fieldsDefault.get(fieldName);
-                } else {
-                    const parsed = parseRawValue(ev.newValue);
-                    if (!parsed) {
-                        record._proxy[fieldName] = record._.fieldsDefault.get(fieldName);
-                    } else {
-                        record._proxy[fieldName] = parsed.value;
-                    }
-                }
-            }
-        } finally {
-            this.isUpdatingFromStorageEvent = false;
-        }
     }
 
     /**
-     * @param {"compute"|"onAdd"|"onDelete"|"onUpdate"} type
+     * @param {"compute"|"delete"} type
      * @param {...any} params
      */
     ADD_QUEUE(type, ...params) {
@@ -131,67 +91,16 @@ export class StoreInternal extends RecordInternal {
                 recMap.set(fieldName, true);
                 break;
             }
-            case "onAdd": {
-                /** @type {[import("./record").Record, string, import("./record").Record]} */
-                const [record, fieldName, addedRec] = params;
-                const Model = record.Model;
-                if (!Model._.fieldsOnAdd.get(fieldName)) {
-                    return;
-                }
-                let recMap = this.FA_QUEUE.get(record);
-                if (!recMap) {
-                    recMap = new Map();
-                    this.FA_QUEUE.set(record, recMap);
-                }
-                let fieldMap = recMap.get(fieldName);
-                if (!fieldMap) {
-                    fieldMap = new Map();
-                    recMap.set(fieldName, fieldMap);
-                }
-                fieldMap.set(addedRec, true);
-                break;
-            }
-            case "onDelete": {
-                /** @type {[import("./record").Record, string, import("./record").Record]} */
-                const [record, fieldName, removedRec] = params;
-                const Model = record.Model;
-                if (!Model._.fieldsOnDelete.get(fieldName)) {
-                    return;
-                }
-                let recMap = this.FD_QUEUE.get(record);
-                if (!recMap) {
-                    recMap = new Map();
-                    this.FD_QUEUE.set(record, recMap);
-                }
-                let fieldMap = recMap.get(fieldName);
-                if (!fieldMap) {
-                    fieldMap = new Map();
-                    recMap.set(fieldName, fieldMap);
-                }
-                fieldMap.set(removedRec, true);
-                break;
-            }
-            case "onUpdate": {
-                /** @type {[import("./record").Record, string]} */
-                const [record, fieldName] = params;
-                let recMap = this.FU_QUEUE.get(record);
-                if (!recMap) {
-                    recMap = new Map();
-                    this.FU_QUEUE.set(record, recMap);
-                }
-                recMap.set(fieldName, true);
-                break;
-            }
         }
     }
     /** @param {RecordList<Record>} recordList */
     sortRecordList(recordList, func) {
-        const recordProxies = recordList._.data.map((record) => record._proxy);
+        const recordProxies = recordList._.data().map((record) => record._proxy);
         recordProxies.sort(func);
         const records = recordProxies.map((recordProxy) => recordProxy._raw);
-        const hasChanged = recordList._.data.some((record, i) => record !== records[i]);
+        const hasChanged = recordList._.data().some((record, i) => record !== records[i]);
         if (hasChanged) {
-            recordList._.data = records;
+            recordList._.data.set(records);
         }
     }
     /**
@@ -207,9 +116,13 @@ export class StoreInternal extends RecordInternal {
             Reflect.set(record._proxy[parentFieldName], fieldName, value);
             return;
         }
+        if (Model._.fieldsComputable.has(fieldName)) {
+            console.warn(`${Model.getName()}.${fieldName} is computed: dropping the write.`);
+            return;
+        }
         const fieldType = Model._.fieldsType.get(fieldName);
         const fieldHtml = Model._.fieldsHtml.get(fieldName);
-        const sig = record._.ensureFieldSignal(record, fieldName);
+        const sig = record._.ensureFieldSignal(fieldName);
         const current = sig();
         let shouldChange = current !== value;
         if (fieldType === "datetime" && value) {
@@ -286,17 +199,6 @@ export class StoreInternal extends RecordInternal {
             });
             if (toApply === SKIP_REVISION) {
                 continue;
-            }
-            if (record.Model._.fieldsLocalStorage.has(fieldName)) {
-                // should immediately write in local storage, for immediately correct next compute
-                if (!this.isUpdatingFromStorageEvent) {
-                    const lse = record._.fieldsLocalStorage.get(fieldName);
-                    if (value === record._.fieldsDefault.get(fieldName)) {
-                        lse.remove();
-                    } else {
-                        lse.set(value);
-                    }
-                }
             }
             if (!record.Model._.fields.get(fieldName) || record.Model._.fieldsAttr.get(fieldName)) {
                 this.updateAttr(record, fieldName, toApply);

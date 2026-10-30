@@ -1,4 +1,3 @@
-import { browser } from "@web/core/browser/browser";
 import { registry } from "@web/core/registry";
 
 /** Pathname of the channel invitation link, which holds the channel secret token. */
@@ -35,13 +34,17 @@ function getMeetingViewTourSteps({ isPublicPage = false } = {}) {
                 ".o-mail-Meeting .o-mail-ActionPanel .o-mail-Thread:contains('Meeting, Jan 1')",
         },
         {
-            trigger: ".o-mail-Meeting .o-mail-ActionPanel .o-mail-Composer-input",
+            trigger: ".o-mail-Meeting .o-mail-ActionPanel .o-mail-Composer-html",
             run: "click",
         },
         { trigger: ".o-mail-Meeting [title='Chat']:not(:has(.badge))" },
         {
-            trigger: ".o-mail-Message[data-persistent]:contains('Hello everyone!')",
-            run: "hover && click .o-mail-Meeting .o-mail-Message-actions button[title='Expand']",
+            trigger: ".o-mail-Meeting .o-mail-Message[data-persistent]:contains('Hello everyone!')",
+            run: "hover",
+        },
+        {
+            trigger: ".o-mail-Meeting .o-mail-Message-actions button[title='Expand']",
+            run: "click",
         },
         {
             trigger: ".o-dropdown-item:contains('Mark as Unread')",
@@ -78,7 +81,7 @@ function getMeetingViewTourSteps({ isPublicPage = false } = {}) {
     if (isPublicPage) {
         steps.unshift(
             {
-                trigger: ".modal:has(button:text('Use Camera')) .btn-close",
+                trigger: ".modal:has(button:text('Use microphone')) .btn-close",
                 run: "click",
             },
             { trigger: "input[name='guest_name']", run: "edit Guest" },
@@ -113,8 +116,8 @@ registry
     .add("discuss.meeting_view_tour", {
         steps: () => {
             // Avoid starting with mic/camera to prevent an unhandleable browser permission popup.
-            browser.localStorage.setItem("discuss_call_preview_join_mute", "true");
-            browser.localStorage.setItem("discuss_call_preview_join_video", "false");
+            window.localStorage.setItem("discuss_call_preview_join_mute", "true");
+            window.localStorage.setItem("discuss_call_preview_join_video", "false");
             return getMeetingViewTourSteps();
         },
     })

@@ -1,8 +1,8 @@
 import { PgSnapshot } from "@mail/model/field_version";
 import { Record } from "./record";
-import { STORE_SYM, modelRegistry, untrackFunctions } from "./misc";
+import { STORE_SYM, untrackFunctions } from "./misc";
 
-import { immediateEffect, toRaw, untrack } from "@odoo/owl";
+import { untrack } from "@odoo/owl";
 
 /** @typedef {import("./record_list").RecordList} RecordList */
 
@@ -10,7 +10,9 @@ export class Store extends Record {
     static singleton = true;
     /** @type {import("./store_internal").StoreInternal} */
     _;
-    [STORE_SYM] = true;
+    get [STORE_SYM]() {
+        return true;
+    }
     storeReady = false;
 
     handleError(err) {
@@ -19,9 +21,36 @@ export class Store extends Record {
 
     warnErrors = true;
 
-    /** @param {() => any} fn */
+    /**
+     * Run `fn` as one update of the store, so that the rest of the app sees
+     * everything `fn` writes as a single change.
+     *
+     * A write sets fields and relations one by one, so the data is only
+     * consistent once the whole update is done. Until then:
+     * - A computed field keeps its last value rather than computing one from
+     *   half written data (`isUpdateInProgress`).
+     * - The computes and the record deletions that the writes ask for wait
+     *   in `FC_QUEUE` and `RD_QUEUE`, to run once at the end.
+     * - An immediate onChange waits for the update and its queues to be done
+     *   (`isDrainingQueues`), so it sees the final values.
+     * - An error does not leave the store in the middle of an update: it goes
+     *   to `ERRORS`, the update still ends, and then the first error is thrown.
+     *
+     * An update started inside another update joins the outer one (`UPDATE`,
+     * `updateDepth`): only the outermost update runs the queues.
+     *
+     * A write made while the queues drain does not raise `updateDepth`:
+     * immediate onChanges still wait for `isDrainingQueues`, computeds
+     * already run unheld between its writes, and raising it would wake every
+     * waiter twice per write.
+     *
+     * @param {() => any} fn
+     */
     MAKE_UPDATE(fn) {
-        this._.raiseUpdateDepth();
+        const isDrainWrite = this._.UPDATE !== 0 && untrack(this._.isDrainingQueues);
+        if (!isDrainWrite) {
+            this._.raiseUpdateDepth();
+        }
         this._.UPDATE++;
         let res;
         try {
@@ -30,80 +59,26 @@ export class Store extends Record {
             this.handleError(err);
         }
         this._.UPDATE--;
-        this._.lowerUpdateDepth();
+        if (this._.UPDATE === 0) {
+            this._.isDrainingQueues.set(true);
+        }
+        if (!isDrainWrite) {
+            this._.lowerUpdateDepth();
+        }
         if (this._.UPDATE === 0) {
             // pretend an increased update cycle so that nothing in queue creates many small update cycles
             this._.UPDATE++;
-            while (
-                this._.FC_QUEUE.size > 0 ||
-                this._.FA_QUEUE.size > 0 ||
-                this._.FD_QUEUE.size > 0 ||
-                this._.FU_QUEUE.size > 0 ||
-                this._.RD_QUEUE.size > 0
-            ) {
+            while (this._.FC_QUEUE.size > 0 || this._.RD_QUEUE.size > 0) {
                 const FC_QUEUE = new Map(this._.FC_QUEUE);
-                const FA_QUEUE = new Map(this._.FA_QUEUE);
-                const FD_QUEUE = new Map(this._.FD_QUEUE);
-                const FU_QUEUE = new Map(this._.FU_QUEUE);
                 const RD_QUEUE = new Map(this._.RD_QUEUE);
                 this._.FC_QUEUE.clear();
-                this._.FA_QUEUE.clear();
-                this._.FD_QUEUE.clear();
-                this._.FU_QUEUE.clear();
                 this._.RD_QUEUE.clear();
                 while (FC_QUEUE.size > 0) {
                     /** @type {[Record, Map<string, true>]} */
                     const [record, recMap] = FC_QUEUE.entries().next().value;
                     FC_QUEUE.delete(record);
                     for (const fieldName of recMap.keys()) {
-                        record._.requestCompute(record, fieldName, { force: true });
-                    }
-                }
-                while (FA_QUEUE.size > 0) {
-                    /** @type {[Record, Map<string, Map<Record, true>>]} */
-                    const [record, recMap] = FA_QUEUE.entries().next().value;
-                    FA_QUEUE.delete(record);
-                    while (recMap.size > 0) {
-                        /** @type {[string, Map<Record, true>]} */
-                        const [fieldName, fieldMap] = recMap.entries().next().value;
-                        recMap.delete(fieldName);
-                        const onAdd = record.Model._.fieldsOnAdd.get(fieldName);
-                        for (const addedRec of fieldMap.keys()) {
-                            try {
-                                onAdd?.call(record._proxy, addedRec._proxy);
-                            } catch (err) {
-                                this.handleError(err);
-                            }
-                        }
-                    }
-                }
-                while (FD_QUEUE.size > 0) {
-                    /** @type {[Record, Map<string, Map<Record, true>>]} */
-                    const [record, recMap] = FD_QUEUE.entries().next().value;
-                    FD_QUEUE.delete(record);
-                    while (recMap.size > 0) {
-                        /** @type {[string, Map<Record, true>]} */
-                        const [fieldName, fieldMap] = recMap.entries().next().value;
-                        recMap.delete(fieldName);
-                        const onDelete = record.Model._.fieldsOnDelete.get(fieldName);
-                        for (const removedRec of fieldMap.keys()) {
-                            try {
-                                onDelete?.call(
-                                    record._proxy,
-                                    removedRec.exists() ? removedRec._proxy : undefined
-                                );
-                            } catch (err) {
-                                this.handleError(err);
-                            }
-                        }
-                    }
-                }
-                while (FU_QUEUE.size > 0) {
-                    /** @type {[Record, Map<string, true>]} */
-                    const [record, map] = FU_QUEUE.entries().next().value;
-                    FU_QUEUE.delete(record);
-                    for (const fieldName of map.keys()) {
-                        record._.onUpdate(record, fieldName);
+                        record._.requestCompute(fieldName, { force: true });
                     }
                 }
                 while (RD_QUEUE.size > 0) {
@@ -111,7 +86,8 @@ export class Store extends Record {
                     const record = RD_QUEUE.keys().next().value;
                     RD_QUEUE.delete(record);
                     record._.isDeleted.set(true);
-                    delete record.Model.records[record.localId];
+                    record._.scope?.destroy();
+                    record.Model.records.delete(record.localId);
                     for (const [usingRecord, names] of record._.uses.data.entries()) {
                         for (const [name2, count] of names.entries()) {
                             for (let c = 0; c < count; c++) {
@@ -124,24 +100,16 @@ export class Store extends Record {
                         ...record.Model._.fieldsMany.keys(),
                     ]) {
                         const recordList = record[name];
-                        for (const usedRecord of recordList._.data) {
+                        for (const usedRecord of recordList._.data()) {
                             usedRecord._.uses.delete(recordList);
                         }
-                        recordList._.data.length = 0;
+                        recordList._.data.set([]);
+                        recordList._.syncLength();
                     }
-                    for (const lsFieldName of record.Model._.fieldsLocalStorage) {
-                        const { localStorageKeyToRecordFields } = record.store._;
-                        const key = record._.fieldsLocalStorage.get(lsFieldName).key;
-                        const lsKeyMap = localStorageKeyToRecordFields.get(key);
-                        lsKeyMap.delete(record);
-                        if (lsKeyMap.size === 0) {
-                            localStorageKeyToRecordFields.delete(key);
-                        }
-                    }
-                    record._runDisposeFns();
                 }
             }
             this._.UPDATE--;
+            this._.isDrainingQueues.set(false);
             if (this._.ERRORS.length) {
                 if (this.warnErrors) {
                     console.warn("Store data insert aborted due to following errors:");
@@ -169,10 +137,11 @@ export class Store extends Record {
         if ("__store_version__" in dataByModelName) {
             const versionMeta = dataByModelName.__store_version__;
             delete dataByModelName.__store_version__;
-            this._.currentInsertVersion = {
-                ...versionMeta,
-                snapshot: new PgSnapshot(versionMeta.snapshot),
-            };
+            // Only consider the new "xip_list" format. Older payloads are applied
+            // unversioned.
+            this._.currentInsertVersion = versionMeta.snapshot.xip_list
+                ? { ...versionMeta, snapshot: new PgSnapshot(versionMeta.snapshot) }
+                : null;
         }
         try {
             Record.MAKE_UPDATE(function storeInsert() {
@@ -204,61 +173,6 @@ export class Store extends Record {
         } finally {
             if (shouldCleanup) {
                 this._.currentInsertVersion = null;
-            }
-        }
-    }
-    /**
-     * Version of onChange where the callback receives observe function as param.
-     * This is useful when there's desire to postpone calling the callback function,
-     * in which the observe is also intended to have its invocation postponed.
-     *
-     * @param {Record} recordProxy
-     * @param {string|string[]} key
-     * @param {(observe: Function) => any} callback
-     * @returns {function} function to call to stop observing changes
-     */
-    _onChange(recordProxy, key, callback) {
-        function _observe() {
-            // access recordProxy[key] only once to avoid triggering reactive get() many times
-            const val = recordProxy[key];
-            if (typeof val === "object" && val !== null) {
-                void Object.keys(val);
-            }
-            if (Array.isArray(val)) {
-                void val.length;
-                void toRaw(val).forEach.call(val, (i) => i);
-            }
-        }
-        if (Array.isArray(key)) {
-            /** @type {Function[]} */
-            const arrayDisposeFns = [];
-            for (const k of key) {
-                arrayDisposeFns.push(this._onChange(recordProxy, k, callback));
-            }
-            return () => {
-                arrayDisposeFns.forEach((f) => f());
-                arrayDisposeFns.length = 0;
-            };
-        }
-        let running = false;
-        const disposeFn = untrack(() =>
-            immediateEffect(() => {
-                if (!running) {
-                    _observe();
-                } else {
-                    callback(_observe);
-                }
-            })
-        );
-        running = true;
-        return disposeFn;
-    }
-    _cleanupData(data) {
-        super._cleanupData(data);
-        if (this.Model.getName() === "Store") {
-            delete data.Models;
-            for (const [name] of modelRegistry.getEntries()) {
-                delete data[name];
             }
         }
     }

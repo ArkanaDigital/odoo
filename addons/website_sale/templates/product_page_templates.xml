@@ -63,7 +63,7 @@
                                         >
                                             <i
                                                 class="oi d-lg-none me-1" data-icon="chevron_backward"
-                                                role="img"
+                                                role="img" aria-hidden="true"
                                             />
                                             <t t-out="cat.name"/>
                                         </a>
@@ -74,14 +74,13 @@
                                 </li>
                                 <li class="breadcrumb-item d-lg-none">
                                     <a t-att-href="keep(category.website_url or shop_path)">
-                                        <i class="oi me-2" data-icon="chevron_backward" role="img"/>
+                                        <i class="oi me-2" data-icon="chevron_backward" role="img" aria-hidden="true"/>
                                         <t t-if="category.name" t-out="category.name"/>
                                         <t t-else="" t-call="website_sale.all_products_link_name"/>
                                     </a>
                                 </li>
                             </ol>
                             <div class="d-flex d-md-none gap-2 ms-auto">
-                                <t t-call="website_sale.pricelist_list"/>
                                 <t t-call="website.website_search_box_input"
                                     search_type.f="products"
                                     placeholder="placeholder"
@@ -91,9 +90,7 @@
                         </div>
                         <div
                             class="o_wsale_product_top_bar_desktop d-none d-md-inline-flex flex-wrap gap-2 w-auto mb-lg-auto"
-                        >
-                            <t t-call="website_sale.pricelist_list"/>
-                        </div>
+                        />
                     </div>
                     <div
                         t-attf-class="row align-items-lg-start {{website.product_page_cols_order == 'inverse' and 'flex-lg-row-reverse' or ''}}"
@@ -104,6 +101,7 @@
                         <div
                             t-attf-class="o_wsale_product_images col o_wsale_sticky_object"
                             t-att-data-image-amount="len(product_variant._get_images() if product_variant else product._get_images())"
+                            t-att-data-product-variant-id="product_variant.id"
                         >
                             <t t-call="website_sale.shop_product_images"/>
                         </div>
@@ -304,7 +302,7 @@
                         </ul>
                     </t>
 
-                    <t t-elif="attribute.display_type == 'pills'">
+                    <t t-elif="attribute.display_type in ('pills', 'range')">
                         <ul
                             t-att-data-attribute-id="attribute.id"
                             t-attf-class="o_wsale_product_attribute d-flex flex-wrap list-unstyled gap-2 #{'d-none' if single_and_custom else ''}"
@@ -406,9 +404,7 @@
     </template>
 
     <template id="website_sale.badge_extra_price" name="Badge Extra Price">
-        <t t-if="combination_info['show_extra_price']">
-            <t t-set="price_extra" t-value="ptav._get_extra_price(website.currency_id)"/>
-        </t>
+        <t t-set="price_extra" t-value="ptav._get_extra_price(website.currency_id)"/>
         <span
             t-if="ptav.show_price_extra and price_extra"
             t-attf-class="{{'badge text-bg-primary' if attribute.display_type != 'pills' else 'small text-muted'}}"
@@ -491,8 +487,6 @@
         <div
             t-attf-class="o_wsale_product_details_content_section o_wsale_product_details_content_section_title {{'mb-3' if not product.description_ecommerce else ''}}"
         >
-            <!-- FIXME VCR variable seems unused -->
-            <t t-set="base_url" t-value="website.get_base_url()"/>
             <h1
                 t-attf-class="h3 {{'mb-3' if not product.description_ecommerce and not is_view_active('website_sale.product_comment') else ''}}"
                 t-field="product.name"
@@ -546,7 +540,7 @@
         >
             <div
                 id="add_to_cart_wrap"
-                t-attf-class="{{'d-none' if combination_info['prevent_sale'] else 'd-flex'}} flex-grow-1 flex-lg-grow-0 flex-wrap align-items-center gap-2 {{'' if is_50_pc else ' w-100'}}"
+                t-attf-class="{{'d-none' if combination_info['prevent_sale'] or combination_info.get('is_sold_out') else 'd-inline-flex'}} flex-grow-1 flex-lg-grow-0 flex-wrap align-items-center gap-2 {{'' if is_50_pc else ' w-100'}}"
             >
                 <!-- data-action="add_to_cart" is the default, but it's needed to distinguish this
                 button from the "buy now" button in xpaths. -->
@@ -555,14 +549,35 @@
                     t-attf-class="btn btn-primary flex-grow-1"
                     data-action="add_to_cart"
                     data-animation-selector=".o_wsale_product_images"
-                    t-att-data-product-category-id="product.public_categ_ids.ids and product.public_categ_ids.ids[0]"
                     t-att-data-product-id="product_variant.id"
                     t-att-data-product-template-id="product.id"
                     t-att-data-product-type="product.type"
                     t-att-data-show-quantity="is_view_active('website_sale.product_quantity')"
                 >
-                    <i class="oi me-2" data-icon="shopping_cart"/>
+                    <i class="oi me-2" data-icon="shopping_cart" role="img" aria-hidden="true"/>
                     Add to cart
+                </button>
+            </div>
+            <div
+                id="out_of_stock_buttons_wrapper"
+                t-attf-class="{{'d-flex' if combination_info.get('is_sold_out') and not combination_info.get('prevent_sale') else 'd-none'}} flex-grow-1 flex-lg-grow-0 flex-wrap align-items-center gap-2 {{'' if is_50_pc else 'w-100'}}"
+                t-if="combination_info.get('is_storable')"
+            >
+                <button
+                    id="stock_notification_button"
+                    t-attf-class="{{'d-none' if combination_info.get('has_stock_notification') else ''}} btn btn-primary flex-grow-1 align-items-center"
+                    t-att-data-product-id="product.id"
+                >
+                    <i class="oi me-2" data-icon="mail" role="img" aria-hidden="true"/>
+                    Notify me
+                </button>
+                <button
+                    id="stock_notification_subscribed_button"
+                    t-attf-class="{{'' if combination_info.get('has_stock_notification') else 'd-none'}} btn btn-outline-primary flex-grow-1 align-items-center"
+                    disabled=""
+                >
+                    <i class="oi oi-filled me-2" data-icon="notifications" role="img" aria-hidden="true"/>
+                    Subscribed
                 </button>
             </div>
             <div
@@ -580,6 +595,31 @@
                 id="product_option_block"
                 t-attf-class="d-flex d-empty-none flex-wrap gap-2 w-100 {{'w-sm-auto' if is_50_pc and not (is_view_active('website_sale.cta_wrapper_boxed') or is_view_active('website_sale.cta_wrapper_large')) else ''}}"
             />
+        </div>
+        <div
+            id="stock_notification_wrapper"
+            t-attf-class="d-none flex-grow-1 flex-lg-grow-0 flex-wrap align-items-center mb-4 {{'' if is_50_pc else 'w-100'}}"
+        >
+            <div id="stock_notification_form" class="flex-grow-1">
+                <div id="stock_notification_input_wrapper" class="input-group">
+                    <input
+                        id="stock_notification_input"
+                        class="form-control flex-grow-1"
+                        name="email"
+                        type="text"
+                        placeholder="youremail@gmail.com"
+                        t-att-value="combination_info.get('stock_notification_email', '')"
+                    />
+                    <button
+                        id="stock_notification_submit_button"
+                        class="btn btn-primary"
+                        t-att-data-product-id="product.id"
+                    >
+                        Subscribe
+                    </button>
+                </div>
+                <div id="stock_notification_input_incorrect" class="d-none form-text text-danger"/>
+            </div>
         </div>
     </template>
 
@@ -622,6 +662,15 @@
                 </div>
             </div>
         </xpath>
+        <div id="out_of_stock_buttons_wrapper" position="attributes">
+            <attribute name="t-attf-class" remove="flex-lg-grow-0" separator=" "/>
+        </div>
+        <div id="stock_notification_wrapper" position="attributes">
+            <attribute name="t-attf-class" remove="flex-lg-grow-0 mb-4" separator=" "/>
+        </div>
+        <div id="out_of_stock_buttons_wrapper" position="after">
+            <div id="stock_notification_wrapper" position="move"/>
+        </div>
     </template>
 
     <template
@@ -651,6 +700,38 @@
                 separator=" "
             />
         </button>
+        <div id="out_of_stock_buttons_wrapper" position="attributes">
+            <attribute name="t-attf-class" remove="flex-lg-grow-0" separator=" "/>
+        </div>
+
+        <div id="stock_notification_wrapper" position="attributes">
+            <attribute name="t-attf-class" remove="flex-lg-grow-0 mb-4" separator=" "/>
+        </div>
+
+        <div id="out_of_stock_buttons_wrapper" position="after">
+            <div id="stock_notification_wrapper" position="move"/>
+        </div>
+        <button id="stock_notification_button" position="attributes">
+            <attribute
+                name="t-attf-class"
+                add="btn-lg {{('' if is_50_pc else ' px-xl-0')}}"
+                separator=" "
+            />
+        </button>
+         <button id="stock_notification_subscribed_button" position="attributes">
+            <attribute
+                name="t-attf-class"
+                add="btn-lg {{('' if is_50_pc else ' px-xl-0')}}"
+                separator=" "
+            />
+        </button>
+        <xpath expr="//div[@id='stock_notification_input_wrapper']" position="attributes">
+            <attribute
+                name="class"
+                add="stock_notification_input_group input-group-lg"
+                separator=" "
+            />
+        </xpath>
     </template>
 
     <template
@@ -762,9 +843,19 @@
         active="True"
     >
         <div t-field="product.website_description" position="after">
-            <div class="oe_structure oe_structure_solo oe_unremovable oe_unmovable" id="oe_structure_website_sale_recommended_products" t-ignore="true" t-if="product.alternative_product_ids">
+            <t
+                t-set="default_design_classes"
+                t-value="website._get_shop_products_design_classes()"
+            />
+            <div
+                class="oe_structure oe_structure_solo"
+                t-attf-class="#{'css_non_editable_mode_hidden' if not product.alternative_product_ids else ''}"
+                id="oe_structure_website_sale_recommended_products"
+                t-ignore="true"
+                t-if="product.alternative_product_ids or editable"
+            >
                 <section data-snippet="s_dynamic_snippet_products"
-                    class="oe_unmovable oe_unremovable o_no_save s_dynamic_snippet_products o_wsale_alternative_products s_dynamic pt32 pb32 o_colored_level s_product_product_borderless_1"
+                    t-attf-class="oe_website_sale oe_unmovable oe_unremovable o_no_save s_dynamic_snippet_products o_wsale_alternative_products oe_website_sale s_dynamic pt32 pb32 o_colored_level #{default_design_classes}"
                     data-name="Alternative Products" style="background-image: none;" t-att-data-filter-id="product._get_alternative_product_filter()"
                     data-template-key="website_sale.dynamic_filter_template_product_product_products_item" data-product-category-id="all" data-number-of-elements="4"
                     data-number-of-elements-small-devices="1" data-number-of-records="16" data-carousel-interval="5000" data-bs-original-title="" title="">
@@ -772,7 +863,7 @@
                         <div class="row s_nb_column_fixed">
                             <section class="s_dynamic_snippet_title oe_unremovable oe_unmovable d-flex flex-column flex-md-row justify-content-between mb-lg-0 pb-3 pb-md-0">
                                 <div>
-                                    <h4>Alternative Products</h4>
+                                    <h4>Similar products</h4>
                                     <p class="lead">These other products might interest you</p>
                                 </div>
                             </section>
@@ -851,7 +942,7 @@
                     t-att-title="minus_button_title"
                     t-att-data-min-qty-message="combination_info.get('minimum_qty_reached_message')"
                 >
-                    <i class="oi text-600" data-icon="remove"/>
+                    <i class="oi text-600" data-icon="remove" role="img" aria-hidden="true"/>
                 </button>
                 <t t-set="minimum_qty" t-value="combination_info.get('minimum_qty') or 1"/>
                 <input
@@ -867,7 +958,7 @@
                     aria-label="Add one"
                     title="Add one"
                 >
-                    <i class="oi text-600" data-icon="add"/>
+                    <i class="oi text-600" data-icon="add" role="img" aria-hidden="true"/>
                 </button>
             </div>
         </div>
@@ -904,7 +995,7 @@
                 t-att-data-product-type="product.type"
                 t-att-data-show-quantity="is_view_active('website_sale.product_quantity')"
             >
-                <i class="oi me-2" data-icon="flash_on"/>
+                <i class="oi me-2" data-icon="flash_on" role="img" aria-hidden="true"/>
                 Buy now
             </button>
         </xpath>
@@ -923,7 +1014,7 @@
 
     <template id="website_sale.tax_indication" active="False">
         <small
-            t-if="website.show_line_subtotals_tax_selection == 'tax_excluded'"
+            t-if="website.tax_display == 'tax_excluded'"
             class="text-muted text-nowrap"
         >
             (Tax excluded)
@@ -1022,7 +1113,7 @@
                         class="list-group-item list-group-item-action"
                         t-att-href="'/shop/' + slug(product) + '/document/' + str(document_sudo.id)"
                         t-att-target="target">
-                        <i class="oi me-2" t-att-data-icon="icon"/>
+                        <i class="oi me-2" t-att-data-icon="icon" role="img" aria-hidden="true"/>
                         <t t-out="attachment_sudo.name"/>
                     </a>
                 </t>
@@ -1258,7 +1349,7 @@
                         </t>
                         <t t-else=''>
                             <a target='_blank' t-attf-href='/web/content/product.template/#{product.id}/#{field.name}?download=1'>
-                                <i class='oi oi-filled' data-icon='description'></i>
+                                <i class='oi oi-filled' data-icon='description' role='img'></i>
                             </a>
                         </t>
                         <br/>
@@ -1299,7 +1390,7 @@
                     t-att-data-product-id="product_variant.id"
                     t-att-data-product-template-id="product.id"
                 >
-                    <span class="oi" data-icon="swap_horiz"/>
+                    <span class="oi" data-icon="swap_horiz" role="img" aria-hidden="true"/>
                     <span t-att-class="'d-inline ms-2' + (' d-lg-none' if website.product_page_image_width == '50_pc' and not (is_view_active('website_sale.cta_wrapper_boxed') or is_view_active('website_sale.cta_wrapper_large')) or is_view_active('website_sale.product_add_to_wishlist') else '')">Add to compare</span>
                 </button>
             </t>

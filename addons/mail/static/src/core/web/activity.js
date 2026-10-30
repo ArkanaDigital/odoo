@@ -7,14 +7,16 @@ import { propComputed } from "@mail/utils/common/hooks";
 
 import { Component, computed, t, useProps } from "@odoo/owl";
 
+import { CopyButton } from "@web/core/copy_button/copy_button";
 import { _t } from "@web/core/l10n/translation";
 import { usePopover } from "@web/core/popover/popover_hook";
 import { useService } from "@web/core/utils/hooks";
 import { pick } from "@web/core/utils/objects";
 import { FileUploader } from "@web/views/fields/file_handler";
+import { callPhoneNumber, getPhoneHref } from "@web/core/phone/phone_call";
 
 export class Activity extends Component {
-    static components = { ActivityMailTemplate, FileUploader };
+    static components = { ActivityMailTemplate, CopyButton, FileUploader };
     static template = "mail.Activity";
 
     setup() {
@@ -66,6 +68,24 @@ export class Activity extends Component {
         return this.store.daysUntil(this.activity().date_deadline);
     }
 
+    get phoneHref() {
+        return getPhoneHref(this.activity().phone);
+    }
+
+    onClickPhoneNumber(ev) {
+        const activity = this.activity();
+        return callPhoneNumber(
+            this.env,
+            {
+                activity,
+                phoneNumber: activity.phone,
+                resId: activity.res_id,
+                resModel: activity.res_model,
+            },
+            ev
+        );
+    }
+
     onClickAssign(ev) {
         if (this.assignPopover.isOpen) {
             this.assignPopover.close();
@@ -83,10 +103,9 @@ export class Activity extends Component {
     async onClickMail() {
         const activity = this.activity();
         const thread = this.thread();
-        const recipients = [
-            ...thread.suggestedRecipients,
-            ...thread.additionalRecipients
-        ].filter((r) => r.partner_id);
+        const recipients = [...thread.suggestedRecipients, ...thread.additionalRecipients].filter(
+            (r) => r.partner_id
+        );
         this.action.doAction(
             {
                 type: "ir.actions.act_window",

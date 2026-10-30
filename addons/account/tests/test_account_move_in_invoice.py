@@ -24,7 +24,6 @@ class TestAccountMoveInInvoiceOnchanges(AccountTestInvoicingCommon):
         cls.invoice = cls.init_invoice('in_invoice', products=cls.product_a + cls.product_b)
 
         cls.product_line_vals_1 = {
-            'name': 'product_a',
             'product_id': cls.product_a.id,
             'account_id': cls.product_a.property_account_expense_id.id,
             'partner_id': cls.partner_a.id,
@@ -43,7 +42,6 @@ class TestAccountMoveInInvoiceOnchanges(AccountTestInvoicingCommon):
             'date_maturity': False,
         }
         cls.product_line_vals_2 = {
-            'name': 'product_b',
             'product_id': cls.product_b.id,
             'account_id': cls.product_b.property_account_expense_id.id,
             'partner_id': cls.partner_a.id,
@@ -182,7 +180,6 @@ class TestAccountMoveInInvoiceOnchanges(AccountTestInvoicingCommon):
         self.assertInvoiceValues(self.invoice, [
             {
                 **self.product_line_vals_1,
-                'name': 'product_b',
                 'product_id': self.product_b.id,
                 'product_uom_id': self.product_b.uom_id.id,
                 'account_id': self.product_b.property_account_expense_id.id,
@@ -1007,10 +1004,18 @@ class TestAccountMoveInInvoiceOnchanges(AccountTestInvoicingCommon):
             self.env.user.group_ids -= self.env.ref('purchase.group_purchase_user')
         copy_invoice = self.invoice.copy()
 
+        banks = self.env['res.partner.bank'].create([{
+            'account_number': f'ACCOUNT{i}',
+            'partner_id': copy_invoice.partner_id.id,
+            'allow_out_payment': True,
+        } for i in range(2)])
+
         move_form = Form(self.invoice)
         move_form.invoice_line_ids.remove(0)
         move_form.invoice_line_ids.remove(0)
+        move_form.partner_bank_id = banks[1]
         move_form.invoice_vendor_bill_id = copy_invoice
+        self.assertEqual(move_form.partner_bank_id, banks[1], "The currency didn't change, so the bank shouldn't be recomputed")
         move_form.save()
 
         self.assertInvoiceValues(self.invoice, [
@@ -1817,7 +1822,6 @@ class TestAccountMoveInInvoiceOnchanges(AccountTestInvoicingCommon):
             'invoice_payment_term_id': self.pay_terms_a.id,
             'invoice_line_ids': [
                 (0, None, {
-                    'name': self.product_line_vals_1['name'],
                     'product_id': self.product_line_vals_1['product_id'],
                     'product_uom_id': self.product_line_vals_1['product_uom_id'],
                     'quantity': self.product_line_vals_1['quantity'],
@@ -1825,7 +1829,6 @@ class TestAccountMoveInInvoiceOnchanges(AccountTestInvoicingCommon):
                     'tax_ids': self.product_line_vals_1['tax_ids'],
                 }),
                 (0, None, {
-                    'name': self.product_line_vals_2['name'],
                     'product_id': self.product_line_vals_2['product_id'],
                     'product_uom_id': self.product_line_vals_2['product_uom_id'],
                     'quantity': self.product_line_vals_2['quantity'],
@@ -2871,3 +2874,12 @@ class TestAccountMoveInInvoiceOnchanges(AccountTestInvoicingCommon):
         self.assertRecordValues(move1_reversal.message_main_attachment_id, attachment_vals)
         move2_reversal = self._reverse_invoice(move2, is_modify=True)
         self.assertFalse(move2_reversal.message_main_attachment_id)
+
+    def test_in_invoice_show_journal_single_journal(self):
+        self.env['account.journal'].search([
+            ('company_id', '=', self.company_data['company'].id),
+            ('type', '=', 'purchase'),
+            ('id', '!=', self.company_data['default_journal_purchase'].id),
+        ]).action_archive()
+        move_form = Form(self.env['account.move'].with_context(default_move_type='in_invoice'))
+        self.assertFalse(move_form.show_journal)

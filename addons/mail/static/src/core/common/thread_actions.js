@@ -1,9 +1,15 @@
-import { useSubEnv } from "@web/owl2/utils";
-
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
 
-import { Action, ACTION_TAGS, useAction, UseActions } from "@mail/core/common/action";
+import {
+    Action,
+    ACTION_TAGS,
+    IS_ACTION_DEFINITION_SYM,
+    IS_ACTION_GROUP_DESCRIPTION_SYM,
+    useAction,
+    UseActions,
+} from "@mail/core/common/action";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 import { RenameThreadPlugin } from "@mail/core/common/rename_thread_plugin";
 import { SearchMessagesPanel } from "@mail/core/common/search_messages_panel";
 import { MeetingChat } from "@mail/discuss/call/common/meeting_chat";
@@ -26,16 +32,27 @@ export const threadActionsRegistry = registry.category("mail.thread/actions");
  * @param {ThreadActionDefinition} definition
  */
 export function registerThreadAction(id, definition) {
-    threadActionsRegistry.add(id, definition);
+    threadActionsRegistry.add(id, Object.assign(definition, { [IS_ACTION_DEFINITION_SYM]: true }));
+}
+
+/**
+ * @param {import("@mail/core/common/action").ActionGroupId} id
+ * @param {import("@mail/core/common/action").ActionGroupDescriptionDefinition} definition
+ */
+export function describeThreadActionGroup(id, definition) {
+    threadActionsRegistry.add(
+        id,
+        Object.assign(definition, { [IS_ACTION_GROUP_DESCRIPTION_SYM]: true })
+    );
 }
 
 registerThreadAction("fold-chat-window", {
-    btnAttrs: { "data-available-offline": true },
-    condition: ({ owner }) => owner.props.chatWindow && !owner.isDiscussSidebarChannelActions,
+    availableOffline: true,
+    condition: ({ ancestors, owner }) =>
+        ancestors.inChatWindow && !owner.isDiscussSidebarChannelActions,
     icon: "remove",
-    name: ({ owner }) => (!owner.props.chatWindow?.isOpen ? _t("Open") : _t("Fold")),
+    name: _t("Fold"),
     onSelected: ({ owner }) => owner.toggleFold(),
-    displayActive: ({ owner }) => !owner.props.chatWindow?.isOpen,
     sequence: 99,
     sequenceQuick: 20,
 });
@@ -49,8 +66,9 @@ registerThreadAction("rename-thread", {
     setup: ({ action }) => (action.editingName = useMaybePlugin(RenameThreadPlugin)?.editingName),
 });
 registerThreadAction("close", {
-    btnAttrs: { "data-available-offline": true },
-    condition: ({ owner }) => owner.props.chatWindow && !owner.isDiscussSidebarChannelActions,
+    availableOffline: true,
+    condition: ({ ancestors, owner }) =>
+        ancestors.inChatWindow && !owner.isDiscussSidebarChannelActions,
     icon: "close_small",
     name: _t("Close Chat Window (ESC)"),
     onSelected: ({ owner }) => owner.close(),
@@ -58,42 +76,28 @@ registerThreadAction("close", {
     sequenceQuick: 10,
 });
 registerThreadAction("search-messages", {
-    actionPanelComponent: SearchMessagesPanel,
-    actionPanelComponentProps: ({ thread }) => ({ thread }),
-    actionPanelOuterClass: "o-mail-SearchMessagesPanel bg-inherit",
-    condition: ({ owner, channel }) =>
-        channel &&
-        (!owner.props.chatWindow || owner.props.chatWindow.isOpen) &&
-        !owner.isDiscussSidebarChannelActions,
+    condition: ({ owner, channel }) => channel && !owner.isDiscussSidebarChannelActions,
     hotkey: "f",
     icon: "search",
     name: ({ action }) => (action.isActive ? _t("Close Search") : _t("Search Messages")),
-    sequence: 20,
-    sequenceGroup: 20,
-    setup: ({ action }) =>
-        useSubEnv({
-            searchMenu: {
-                open: () => action.actionPanelOpen(),
-                close: () => {
-                    if (action.isActive) {
-                        action.actionPanelClose();
-                    }
-                },
-            },
-        }),
+    panel: {
+        component: SearchMessagesPanel,
+        props: ({ thread }) => ({ thread }),
+    },
+    sequence: ({ owner }) => (owner.isDiscussContent ? 1 : 20),
+    sequenceGroup: ({ owner }) => (owner.isDiscussContent ? 10 : 20),
 });
 registerThreadAction("meeting-chat", {
-    actionPanelComponent: MeetingChat,
-    actionPanelOuterClass: "bg-100 border border-secondary",
+    availableOffline: true,
     badge: ({ thread }) => thread.isUnread,
     badgeIcon: ({ channel }) => !channel.importantCounter && "circle",
     badgeIconClass: ({ channel }) =>
         !channel.importantCounter && "oi-filled o-text-white opacity-75",
     badgeText: ({ channel }) => channel.importantCounter || undefined,
-    btnAttrs: { "data-available-offline": true },
-    condition: ({ owner }) => owner.env.inMeetingView,
+    condition: ({ ancestors }) => ancestors.inMeetingView,
     icon: "forum",
     name: _t("Chat"),
+    panel: { component: MeetingChat },
     sequence: 30,
     tags: ({ channel }) => {
         const tags = [];
@@ -133,5 +137,10 @@ export class UseThreadActions extends UseActions {
  * @returns {UseThreadActions_Def}
  */
 export function useThreadActions({ thread, rootRef } = {}) {
-    return useAction(threadActionsRegistry, UseThreadActions, ThreadAction, { rootRef, thread });
+    const actions = useAction(threadActionsRegistry, UseThreadActions, ThreadAction, {
+        rootRef,
+        thread,
+    });
+    useAncestors({ threadActions: actions });
+    return actions;
 }

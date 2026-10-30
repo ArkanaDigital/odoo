@@ -1,21 +1,20 @@
 import { Image } from "@html_builder/core/img";
 import { ImgGroup } from "@html_builder/core/img_group";
-import { defineMailModels } from "@mail/../tests/mail_test_helpers";
 import { expect, test, describe } from "@odoo/hoot";
 import { animationFrame } from "@odoo/hoot-dom";
-import { Component, xml } from "@odoo/owl";
-import { mountWithCleanup, patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { Component, xml, useProps } from "@odoo/owl";
+import { mountWithCleanup } from "@web/../tests/web_test_helpers";
+import { patch } from "@web/core/utils/patch";
 
 describe.current.tags("desktop");
 
-defineMailModels(); // meh
 test("ImgGroup's inner Image components should not be blocked before src load", async () => {
     const defs = {
         img1: Promise.withResolvers(),
         img2: Promise.withResolvers(),
         img3: Promise.withResolvers(),
     };
-    patchWithCleanup(Image.prototype, {
+    patch(Image.prototype, {
         loadImage() {
             const { promise: def } = defs[this.props.class];
             return Promise.all([super.loadImage(), def]);
@@ -29,7 +28,7 @@ test("ImgGroup's inner Image components should not be blocked before src load", 
                     <Image src="''" class="key"/>
                 </t>
             </ImgGroup>`;
-        static props = {};
+        props = useProps({});
 
         setup() {
             this.defs = defs;

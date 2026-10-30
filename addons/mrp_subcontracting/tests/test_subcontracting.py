@@ -19,7 +19,7 @@ class TestSubcontractingBasic(TransactionCase):
         """ Checks the creation and presence of the subcontracting location. """
         self.assertTrue(self.env.company.subcontracting_location_id)
         self.assertTrue(self.env.company.subcontracting_location_id.active)
-        company2 = self.env['res.company'].create({'name': 'Test Company'})
+        company2 = self.env['res.company'].create({'name': 'Test Company -'})
         self.assertTrue(company2.subcontracting_location_id)
         self.assertTrue(self.env.company.subcontracting_location_id != company2.subcontracting_location_id)
 
@@ -217,13 +217,10 @@ class TestSubcontractingFlows(TestMrpSubcontractingCommon):
         resupply_sub_on_order_route.product_selectable = True
         (self.comp1 + self.comp2).write({'route_ids': [(6, None, [resupply_sub_on_order_route.id])]})
 
-        # Tick "manufacture" and MTO on self.comp2
-        mto_route = self.env.ref('stock.route_warehouse0_mto')
+        # Tick MTO on self.comp2
+        mto_route = self.warehouse.mto_pull_id.route_id
         mto_route.active = True
-        manufacture_route = self.env['stock.route'].search([('name', '=', 'Manufacture')])
-        (mto_route + manufacture_route).product_selectable = True
-        self.comp2.write({'route_ids': [(4, manufacture_route.id, None)]})
-        self.comp2.write({'route_ids': [(4, mto_route.id, None)]})
+        self.comp2.route_ids = [Command.link(mto_route.id)]
 
         # Create a receipt picking from the subcontractor
         picking_form = Form(self.env['stock.picking'])
@@ -279,12 +276,10 @@ class TestSubcontractingFlows(TestMrpSubcontractingCommon):
         """
         # Required for `location_id` to be visible in the view
         self.env.user.group_ids += self.env.ref('stock.group_stock_multi_locations')
-        # Tick "manufacture" and MTO on self.comp2
-        mto_route = self.env.ref('stock.route_warehouse0_mto')
+        # Tick MTO on self.comp2
+        mto_route = self.warehouse.mto_pull_id.route_id
         mto_route.active = True
-        manufacture_route = self.env['stock.route'].search([('name', '=', 'Manufacture')])
-        (mto_route + manufacture_route).product_selectable = True
-        self.comp2.write({'route_ids': [(6, None, [manufacture_route.id, mto_route.id])]})
+        self.comp2.route_ids = [Command.link(mto_route.id)]
         picking_type_in = self.env.ref('stock.picking_type_in')
         self.env.ref('mrp_subcontracting.route_resupply_subcontractor_mto').active = False
 
@@ -602,6 +597,55 @@ class TestSubcontractingFlows(TestMrpSubcontractingCommon):
         self.assertEqual(report_values['lines']['components'][0]['bom_cost'], 25)
         self.assertEqual(report_values['lines']['components'][1]['bom_cost'], 5)
 
+    def test_backorder_with_subcontracting(self):
+        """
+        Test that a subcontracted move is not marked as picked when its quantity is updated.
+        """
+        receipt = self.env['stock.picking'].create({
+            'picking_type_id': self.warehouse.in_type_id.id,
+            'partner_id': self.subcontractor_partner1.id,
+            'location_id': self.ref('stock.stock_location_suppliers'),
+            'location_dest_id': self.warehouse.lot_stock_id.id,
+            'move_ids': [
+                Command.create({
+                    'product_id': self.finished.id,
+                    'product_uom_qty': 5.0,
+                }),
+                Command.create({
+                    'product_id': self.comp1.id,
+                    'product_uom_qty': 5.0,
+                }),
+            ]
+        })
+        receipt.action_confirm()
+        self.assertRecordValues(receipt.move_ids, [
+            {'is_subcontract': True, 'quantity': 5.0, 'picked': False},
+            {'is_subcontract': False, 'quantity': 5.0, 'picked': False},
+        ])
+        receipt.move_ids[0].quantity = 2
+        receipt.move_ids[1].quantity = 4
+        self.assertRecordValues(receipt.move_ids, [
+            {'quantity': 2.0, 'picked': False},
+            {'quantity': 4.0, 'picked': False},
+        ])
+        backorder_wizard = Form.from_action(self.env, receipt.button_validate()).save()
+        backorder_wizard.process()
+        self.assertRecordValues(receipt.move_ids, [
+            {'quantity': 2.0, 'picked': True, 'state': 'done'},
+            {'quantity': 4.0, 'picked': True, 'state': 'done'},
+        ])
+        backorder = receipt.backorder_ids
+        self.assertRecordValues(backorder.move_ids, [
+            {'quantity': 3.0, 'picked': False},
+            {'quantity': 1.0, 'picked': False},
+        ])
+        backorder.button_validate()
+        self.assertEqual(backorder.state, 'done')
+        self.assertRecordValues(backorder.move_ids, [
+            {'quantity': 3.0, 'picked': True, 'state': 'done'},
+            {'quantity': 1.0, 'picked': True, 'state': 'done'},
+        ])
+
     def test_several_backorders(self):
         def process_picking(picking, qty):
             picking.move_ids.quantity = qty
@@ -678,7 +722,6 @@ class TestSubcontractingFlows(TestMrpSubcontractingCommon):
             self.assertEqual(prod_qty, self.env['stock.quant']._gather(product, production_location).quantity)
 
         in_pck_type = self.env.ref('stock.picking_type_in')
-        in_pck_type.write({'show_operations': True})
 
         finished = self.env['product.product'].create({'name': 'Finished Product', 'is_storable': True})
         component = self.env['product.product'].create([{'name': 'Component', 'is_storable': True}])
@@ -931,7 +974,6 @@ class TestSubcontractingFlows(TestMrpSubcontractingCommon):
     def test_replenish_with_subcontracting_bom(self):
         """ Checks that a subcontracting bom cannot trigger a 'Manufacture' replenish.
         """
-        self.warehouse.route_ids.filtered(lambda r: r.get_external_id()).product_selectable = False
         self.assertEqual(self.finished.bom_ids.type, 'subcontract')
         self.finished.seller_ids.unlink()
         replenish_wizard = self.env['product.replenish'].create({
@@ -980,14 +1022,20 @@ class TestSubcontractingFlows(TestMrpSubcontractingCommon):
         # Change consumption by removing the second line
         action = receipt.move_ids.action_show_subcontract_details()
         mo = self.env['mrp.production'].browse(action['res_id'])
-        line_to_remove = mo.move_line_raw_ids[0]
+        line_to_remove = mo.move_line_raw_ids[1]
         alternate_product = self.env['product.product'].create({'name': 'Alternate product', 'is_storable': True})
-        with Form.from_action(self.env, mo.move_raw_ids[0].action_show_details()) as move_form:
-            move_form.move_line_ids.remove(0)
-            with move_form.move_line_ids.new() as ml:
+        self.env['stock.quant']._update_available_quantity(alternate_product, self.subcontractor_partner1.property_stock_subcontractor, 1)
+        portal_view = self.env.ref('mrp_subcontracting.mrp_production_subcontracting_portal_form_view')
+        with Form(mo.with_context(action['context']), view=portal_view.id) as mo_form:
+            mo_form.move_line_raw_ids.remove(1)
+            with mo_form.move_line_raw_ids.new() as ml:
                 ml.product_id = alternate_product
                 ml.quantity = 1
 
+        self.assertFalse(self.env['stock.move.line'].search([
+            ('move_id', '=', False),
+            ('product_id', '=', alternate_product.id),
+        ]))
         receipt.button_validate()
         self.assertTrue(any(ml.product_id == alternate_product for ml in mo.move_line_raw_ids))
         self.assertFalse(line_to_remove.exists())
@@ -1169,7 +1217,7 @@ class TestSubcontractingFlows(TestMrpSubcontractingCommon):
     def test_flow_tracked_only_finished(self):
         """ Test when only the finished product is tracked """
         self.finished.tracking = "serial"
-        self.comp1.tracking = "none"
+        self.comp1.tracking = False
         nb_finished_product = 3
         # Create a receipt picking from the subcontractor
         picking_form = Form(self.env['stock.picking'])
@@ -1819,7 +1867,6 @@ class TestSubcontractingSerialMassReceipt(TransactionCase):
         receipt.move_line_ids[1].write({
             'quantity': 1,
             'expiration_date': '2025-08-10',
-            'removal_date': '2025-08-02',
             'lot_id': sn2.id,
         })
         expiry_action = receipt.button_validate()

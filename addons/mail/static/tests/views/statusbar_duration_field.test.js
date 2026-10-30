@@ -1,12 +1,12 @@
 import {
-    contains,
+    contains as mailContains,
     mailModels,
     openFormView,
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
 import { ResPartner } from "@mail/../tests/mock_server/mock_models/res_partner";
-import { describe, test } from "@odoo/hoot";
+import { describe, test, waitFor } from "@odoo/hoot";
 import { defineModels, fields, models } from "@web/../tests/web_test_helpers";
 
 describe.current.tags("desktop");
@@ -34,18 +34,18 @@ test("status bar duration field used in form view", async () => {
             [stageIds[0]]: 7 * 24 * 60 + 30,
             [stageIds[1]]: 3 * 60,
             [stageIds[3]]: 24 * 2 * 60 + 5 * 60,
-            'd': '2026-03-11 05:12:22',
-            's': stageIds[2],
+            d: "2026-03-11 05:12:22",
+            s: stageIds[2],
         },
     });
     await start();
     await openFormView("res.partner", partnerId, {
         arch: `<form><field name="stage_id" widget="statusbar_duration"/></form>`,
     });
-    await contains("span[title='7 days, 30 minutes']", {
+    await mailContains("span[title='7 days, 30 minutes']", {
         parent: [".o_statusbar_status button:has(:text('New'))"],
     });
-    await contains("span[title='3 hours']", { parent: ["button:has(:text('Qualified'))"] });
-    await contains("button:text('Proposition')");
-    await contains("span[title='2 days, 5 hours']", { parent: ["button:has(:text('Won'))"] });
+    await mailContains("span[title='3 hours']", { parent: ["button:has(:text('Qualified'))"] });
+    await waitFor("button:text('Proposition'):count(1)");
+    await mailContains("span[title='2 days, 5 hours']", { parent: ["button:has(:text('Won'))"] });
 });

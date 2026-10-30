@@ -17,6 +17,7 @@ export class BuilderSlidingPanel extends Component {
         fullHeight: t.boolean().optional(false),
         darkBackground: t.boolean().optional(false),
         openByDefault: t.boolean().optional(false),
+        onClose: t.function().optional(),
     });
 
     slidingPanelRef = signal.ref();
@@ -30,7 +31,7 @@ export class BuilderSlidingPanel extends Component {
         });
         onMounted(() => {
             const slidingPanelEl = this.slidingPanelRef();
-            const optionsContainerEl = slidingPanelEl.closest("div.options-container");
+            const optionsContainerEl = slidingPanelEl.closest("div.o_hb_options_container");
             this.state.optionContainerName = optionsContainerEl.dataset.containerTitle;
             optionsContainerEl.parentElement.append(slidingPanelEl);
 
@@ -55,25 +56,26 @@ export class BuilderSlidingPanel extends Component {
         slidingPanelEl.classList.remove(
             "d-none",
             "d-block",
-            "hb-panel-slide-in",
-            "hb-panel-slide-out"
+            "o_hb_panel_slide_in",
+            "o_hb_panel_slide_out"
         );
         slidingPanelEl.classList.add(className);
     }
 
     showSlidingPanel() {
         this.state.contentRendered = true;
-        this.updateDisplay("hb-panel-slide-in");
+        this.updateDisplay("o_hb_panel_slide_in");
         this.updateDisplayTimeout = setTimeout(() => this.updateDisplay("d-block"), 200);
     }
 
     hideSlidingPanel() {
-        this.updateDisplay("hb-panel-slide-out");
+        this.updateDisplay("o_hb_panel_slide_out");
         // We set a timeout slightly shorter than 200 because some flicker may
         // happen otherwise.
         this.updateDisplayTimeout = setTimeout(() => {
             this.updateDisplay("d-none");
             this.openButtonRef().focus();
+            this.props.onClose?.();
         }, 180);
     }
 

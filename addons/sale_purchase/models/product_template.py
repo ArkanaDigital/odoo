@@ -26,10 +26,6 @@ class ProductTemplate(models.Model):
     def _get_saleable_tracking_types(self):
         return super()._get_saleable_tracking_types() + ['subcontract']
 
-    @api.model
-    def _get_product_types_allow_zero_price(self):
-        return super()._get_product_types_allow_zero_price() + ['subcontract']
-
     @api.model_create_multi
     def create(self, vals_list):
         templates = super().create(vals_list)
@@ -42,6 +38,14 @@ class ProductTemplate(models.Model):
         for template in self.filtered(lambda t: t.service_tracking == 'subcontract'):
             template._check_vendor_for_service_tracking_subcontract(template.seller_ids)
         return res
+
+    def copy_data(self, default=None):
+        vals_list = super().copy_data(default=default)
+        for vals in vals_list:
+            # The vendors are not copied, so the copy can't be subcontracted
+            if vals.get('service_tracking') == 'subcontract' and not vals.get('seller_ids'):
+                vals['service_tracking'] = 'no'
+        return vals_list
 
     def _prepare_service_tracking_tooltip(self):
         if self.service_tracking == 'subcontract':

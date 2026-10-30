@@ -1,10 +1,21 @@
-import { Component, onWillUnmount, proxy, types, useProps, useScope } from "@odoo/owl";
+import {
+    Component,
+    onWillUnmount,
+    proxy,
+    types,
+    usePlugin,
+    useProps,
+    useScope,
+    xml,
+} from "@odoo/owl";
+
+import { BaseAction } from "@mail/core/common/action_list";
 
 import { CallPermissionDeniedDialog } from "@mail/discuss/call/common/call_permission_denied_dialog";
 import { loadLamejs } from "@mail/discuss/voice_message/common/voice_message_service";
 import { monitorAudio } from "@mail/utils/common/media_monitoring";
-import { browser } from "@web/core/browser/browser";
 import { _t } from "@web/core/l10n/translation";
+import { NotificationPlugin } from "@web/core/notifications/notification_plugin";
 import { useService } from "@web/core/utils/hooks";
 import { Mp3Encoder } from "./mp3_encoder";
 
@@ -34,6 +45,14 @@ export class VoiceRecorder extends Component {
     get cancelTitle() {
         return _t("Cancel");
     }
+}
+
+/** Component of the voice-recording action of a composer, @see BaseAction */
+export class VoiceRecorderAction extends BaseAction {
+    static components = { VoiceRecorder };
+    static template = xml`
+        <VoiceRecorder composer="this.action.params.composer" state="this.action.owner.voiceRecorder"/>
+    `;
 }
 
 export const patchable = {
@@ -90,7 +109,7 @@ export function useVoiceRecorder(params = {}, options = {}) {
         },
     });
     const dialog = useService("dialog");
-    const notification = useService("notification");
+    const notification = usePlugin(NotificationPlugin);
     const store = useService("mail.store");
     const config = { bitRate: 128 }; // 128 or 160 kbit/s – mid-range bitrate quality
     onWillUnmount(() => {
@@ -119,7 +138,7 @@ export function useVoiceRecorder(params = {}, options = {}) {
         state.isActionPending = true;
         if (!microphone) {
             try {
-                const sourceWindow = options.rootRef?.()?.ownerDocument?.defaultView || browser;
+                const sourceWindow = options.rootRef?.()?.ownerDocument?.defaultView || window;
                 microphone = await sourceWindow.navigator.mediaDevices.getUserMedia({
                     audio: store.settings.audioConstraints,
                 });
@@ -139,11 +158,11 @@ export function useVoiceRecorder(params = {}, options = {}) {
         }
         state.elapsed = "00 : 00";
         state.recording = true;
-        audioContext = new browser.AudioContext();
+        audioContext = new window.AudioContext();
 
         await loadLamejs();
         await audioContext.audioWorklet.addModule("/discuss/voice/worklet_processor");
-        processor = new browser.AudioWorkletNode(audioContext, "processor");
+        processor = new window.AudioWorkletNode(audioContext, "processor");
         processor.port.onmessage = (e) => {
             if (state.recording && !startTimeStamp) {
                 startTimeStamp = e.timeStamp;

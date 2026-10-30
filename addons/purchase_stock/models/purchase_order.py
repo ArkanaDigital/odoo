@@ -20,7 +20,7 @@ class PurchaseOrder(models.Model):
     incoming_picking_count = fields.Integer("Incoming Shipment count", compute='_compute_incoming_picking_count')
     picking_ids = fields.Many2many('stock.picking', compute='_compute_picking_ids', string='Receptions', copy=False, store=True)
     dest_address_id = fields.Many2one('res.partner', compute='_compute_dest_address_id', store=True, readonly=False)
-    picking_type_id = fields.Many2one('stock.picking.type', 'Deliver To', required=True, index=True, default=_default_picking_type, domain="['|', ('warehouse_id', '=', False), ('warehouse_id.company_id', '=', company_id)]",
+    picking_type_id = fields.Many2one('stock.picking.type', 'Deliver To', required=True, index=True, default=_default_picking_type, domain=lambda self: [('code', 'in', self._get_allowed_picking_code()), '|', ('warehouse_id.company_id', 'in', self.env.companies.ids), ('warehouse_id', '=', False)],
         help="This will determine operation type of incoming shipment")
     default_location_dest_id_usage = fields.Selection(related='picking_type_id.default_location_dest_id.usage', string='Destination Location Type',
         help="Technical field used to display the Drop Ship Address", readonly=True)
@@ -176,10 +176,12 @@ class PurchaseOrder(models.Model):
             products.ids, child_field='order_line', section_id=ctx.get('section_id')
         )
         for product in products:
+            uom = product.seller_ids.filtered(lambda x: x.partner_id == self.partner_id)[:1].uom_id or product.uom_id
+            suggested_qty = product.uom_id._compute_quantity(product.suggested_qty, uom)
             suggest_line = self.env['purchase.order.line']._prepare_purchase_order_line(
                 product,
-                product.suggested_qty,
-                product.uom_id,
+                suggested_qty,
+                uom,
                 self.company_id,
                 self.partner_id,
                 self
@@ -369,6 +371,10 @@ class PurchaseOrder(models.Model):
         return wh_stock_loc
 
     @api.model
+    def _get_allowed_picking_code(self):
+        return ['incoming']
+
+    @api.model
     def _get_picking_type(self, company_id):
         picking_type = self.env['stock.picking.type'].search([('code', '=', 'incoming'), ('warehouse_id.company_id', '=', company_id)])
         if not picking_type:
@@ -385,8 +391,11 @@ class PurchaseOrder(models.Model):
 
     def _create_picking(self):
         for order in self.filtered(lambda po: po.state == 'purchase'):
+            is_multi_company = order.company_id != order.sudo().picking_type_id.company_id
             if any(product.type == 'consu' for product in order.order_line.product_id):
                 order = order.with_company(order.company_id)
+                if is_multi_company:
+                    order = order.sudo()
                 moves = order.order_line._create_stock_moves()
                 moves = moves.filtered(lambda x: x.state not in ('done', 'cancel')).with_context(move_picking_partner_id=self.partner_id).sudo()._action_confirm()
                 seq = 0

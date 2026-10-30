@@ -1,7 +1,7 @@
-import { Component, onWillStart, proxy, usePlugin } from "@odoo/owl";
+import { Component, onWillStart, proxy, t, usePlugin, useProps } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 
-import { useSpreadsheetNotificationStore } from "@spreadsheet/hooks";
+import { useSpreadsheetNotificationPlugin } from "@spreadsheet/hooks";
 
 import * as spreadsheet from "@odoo/o-spreadsheet";
 import { Spreadsheet, Model } from "@odoo/o-spreadsheet";
@@ -11,15 +11,15 @@ import { DebugModePlugin } from "@web/core/debug_mode_plugin";
 export class PublicDashboard extends Component {
     static template = "spreadsheet_dashboard.PublicDashboard";
     static components = { Spreadsheet };
-    static props = {
-        dataUrl: String,
-        mode: { type: String, optional: true },
-    };
+    props = useProps({
+        dataUrl: t.string(),
+        mode: t.string().optional(),
+    });
 
     debugMode = usePlugin(DebugModePlugin);
 
     setup() {
-        useSpreadsheetNotificationStore();
+        useSpreadsheetNotificationPlugin();
         this.http = useService("http");
         this.state = proxy({
             isFilterShown: false,
@@ -48,7 +48,6 @@ export class PublicDashboard extends Component {
                 mode: "dashboard",
                 custom: {
                     env: this.env,
-                    isFrozenSpreadsheet: true,
                 },
             },
             this.data.revisions || []

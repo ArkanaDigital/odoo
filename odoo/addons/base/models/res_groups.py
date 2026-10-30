@@ -5,8 +5,10 @@ from collections import defaultdict
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 from odoo.fields import Command, Domain
-from odoo.tools import SetDefinitions
-from odoo.tools.translate import mark_as_copy
+from odoo.tools import SetDefinitions, SQL
+
+
+REGULAR_VALUE = object()
 
 
 class ResGroups(models.Model):
@@ -17,7 +19,7 @@ class ResGroups(models.Model):
     _order = 'privilege_id, sequence, name, id'
     _clear_cache_name = 'groups'
     _clear_cache_on_fields = {'implied_ids', 'implied_by_ids'}
-    name = fields.Char(required=True, translate=True, copy=mark_as_copy('name'))
+    name = fields.Char(required=True, translate=True)
     user_ids = fields.Many2many('res.users', 'res_groups_users_rel', 'gid', 'uid', help='Users explicitly in this group')
     all_user_ids = fields.Many2many('res.users', string='Users and implied users',
         compute='_compute_all_user_ids', search='_search_all_user_ids', inverse='_inverse_all_user_ids')
@@ -138,22 +140,43 @@ class ResGroups(models.Model):
                 # as 'group' does not imply any of the user type groups, no user
                 # with 'group' may end up having two disjoint groups
                 continue
-            domain = (
-                # user is active
-                Domain('active', '=', True)
-                # and user has 'group', and thus also has 'user_type_group'
-                & Domain('group_ids', 'in', group.all_implied_by_ids.ids)
-                # and user has another user type group
-                & Domain('group_ids', 'in', (user_type_groups - user_type_group).all_implied_by_ids.ids)
-            )
-            user = self.env['res.users'].search(domain, order='id', limit=1)
-            if user:
+
+            group_ids = group.all_implied_by_ids.ids
+            disjoint_group_ids = (user_type_groups - user_type_group).all_implied_by_ids.ids
+
+            user_ids = self.env.execute_query(SQL(
+                """
+                SELECT group_rel.uid
+                  FROM res_groups_users_rel AS group_rel
+                  JOIN res_groups_users_rel AS disjoint_rel
+                    ON disjoint_rel.uid = group_rel.uid
+                  JOIN res_users
+                    ON res_users.id = group_rel.uid
+                   AND res_users.active
+                 WHERE group_rel.gid = ANY(%s)
+                   AND disjoint_rel.gid = ANY(%s)
+                 LIMIT 1
+                """,
+                disjoint_group_ids,
+                group_ids,
+                to_flush=(
+                    self._fields['user_ids'],
+                    self.env['res.users']._fields['active'],
+                ),
+            ))
+            if user_ids:
+                user = self.env['res.users'].browse(user_ids[0][0])
                 disjoint_groups = user.all_group_ids & user_type_groups
                 raise ValidationError(self.env._(
                     "User %(user)s cannot be at the same time in exclusive groups %(groups)s.",
                     user=repr(user.name),
                     groups=", ".join(repr(g.display_name) for g in disjoint_groups),
                 ))
+
+    @api.constrains('user_ids')
+    def _check_at_least_one_administrator(self):
+        # same check as on res.users, when users are removed from the group side
+        self.env['res.users']._check_at_least_one_administrator()
 
     @api.ondelete(at_uninstall=False)
     def _unlink_except_settings_group(self):
@@ -224,6 +247,8 @@ class ResGroups(models.Model):
             if any(n_.startswith('-') for n_ in names):
                 raise UserError(self.env._('The name of the group can not start with "-"'))
 
+        internal_group_ids = self._get_internal_group_ids()
+
         # invalidate caches before updating groups, since the recomputation of
         # field 'share' depends on method has_group()
         # DLE P139
@@ -257,7 +282,35 @@ class ResGroups(models.Model):
         # when writing
         if any(self._ids) and not self.env.su:
             self.env['ir.access']._clear_caches()
+
+        if self.env.context.get('apply_regular_group') is not REGULAR_VALUE:
+            self._apply_group_regular()
+
+        # If the group implications linked to group_user are modified,
+        # `res.users.share` / `res.partner.partner_share` are recomputed.
+        if internal_group_ids != self._get_internal_group_ids():
+            self.env['res.users']._recompute_user_share()
+
         return res
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        internal_group_ids = self._get_internal_group_ids()
+        res = super().create(vals_list)
+        self._apply_group_regular()
+        if internal_group_ids != self._get_internal_group_ids():
+            self.env['res.users']._recompute_user_share()
+        return res
+
+    @api.ondelete(at_uninstall=False)
+    def _unlink_recompute_user_share(self):
+        internal_group_ids = self._get_internal_group_ids()
+
+        def apply_groups():
+            self._apply_group_regular()
+            if internal_group_ids != self._get_internal_group_ids():
+                self.env['res.users']._recompute_user_share()
+        return apply_groups
 
     def _ensure_xml_id(self):
         """Return the groups external identifiers, creating the external identifier for groups missing one"""
@@ -299,7 +352,9 @@ class ResGroups(models.Model):
                 ))
 
     def _search_all_user_ids(self, operator, value):
-        return [('all_implied_by_ids.user_ids', operator, value)]
+        if operator in Domain.NEGATIVE_OPERATORS:
+            return NotImplemented
+        return Domain('all_implied_by_ids.user_ids', operator, value)
 
     @api.depends('implied_ids')
     def _compute_implied_count(self):
@@ -378,6 +433,111 @@ class ResGroups(models.Model):
         groups = self.all_implied_ids.filtered(lambda g: implied_group in g.implied_ids)
         groups.write({'implied_ids': [Command.unlink(implied_group.id)]})
 
+    @api.model
+    def _get_internal_group_ids(self):
+        """ Return the ids of the groups whose members are internal users, i.e.
+        ``base.group_user`` and every group implying it. """
+        group_definitions = self._get_group_definitions()
+        group_user_id = group_definitions.get_id('base.group_user')
+        return (group_user_id, *group_definitions.get_subset_ids([group_user_id]))
+
+    def _get_light_group_xmlids(self):
+        """List of XML IDs of groups considered light
+
+        Addons that declare light groups extend this method to append their
+        own XML IDs (see e.g. ``hr_holidays``, ``point_of_sale``).
+        """
+        return (
+            'base.group_user',
+            'base.group_portal',
+            'base.group_public',
+            'base.group_everyone',
+            'base.group_no_one',
+            'base.group_multi_currency',
+            'base.default_user_group',
+            'base.group_multi_company',
+        )
+
+    def _apply_group_regular(self):
+        group_definitions = self._get_group_definitions()
+        group_user_regular_id = group_definitions.get_id('base.group_user_regular')
+        if not group_user_regular_id:
+            return
+
+        # All groups not marked as light are regular
+
+        light_group_ids = {gid for xid in self._get_light_group_xmlids() if (gid := group_definitions.get_id(xid))}
+        all_group_ids = group_definitions.get_all_ids()
+        regular_group_ids = set(all_group_ids) - light_group_ids - {group_user_regular_id}
+        # ``base.default_user_group`` is a container of the groups granted to new
+        # users, not a functional access group held for its own rights.
+        if default_user_group_id := group_definitions.get_id('base.default_user_group'):
+            regular_group_ids.discard(default_user_group_id)
+
+        # The group is only applied to groups with the fewest rights for each privilege.
+
+        data_privileges = self._get_view_group_hierarchy()['privileges']
+        data_groups = self._get_view_group_hierarchy()['groups']
+
+        regular_sorted_ids = sorted(regular_group_ids, key=lambda gid: (pid := data_groups[gid]['privilege_id']) and data_privileges[pid]['group_ids'].index(gid))
+
+        privilege_ids = set()
+        ids = []
+        for gid in regular_sorted_ids:
+            if not (pid := data_groups[gid]['privilege_id']) or not (set(data_groups[gid]['implied_ids']) & regular_group_ids):
+                ids.append(gid)
+            elif pid not in privilege_ids:
+                ids.append(gid)
+                privilege_ids.add(pid)
+
+        # save
+
+        group_user_regular = self.browse(group_user_regular_id)
+        if set(ids) != set(group_user_regular.implied_by_ids.ids):
+            group_user_regular.with_context(apply_regular_group=REGULAR_VALUE).implied_by_ids = [Command.set(ids)]
+
+    def _is_light_groups(self):
+        """Check if the set of groups provided is light or not"""
+        group_definitions = self._get_group_definitions()
+        light_groups = {group_definitions.get_id(xid) for xid in self._get_light_group_xmlids()}
+        return set(self.ids) <= light_groups
+
+    def _reduce_to_light_groups(self):
+        """ Reduce the group recordset to its light-group equivalents.
+
+        Groups in `self` that are already light groups (or implied by them) are
+        retained. Non-light groups are mapped to their closest implied light group
+        belonging to the same privilege hierarchy.
+
+        see: `_get_light_group_xmlids`
+
+        :return: A recordset containing only the mapped light groups.
+        :rtype: res.groups
+        """
+        group_definitions = self._get_group_definitions()
+        light_groups = self.browse(gid for xid in self._get_light_group_xmlids() if (gid := group_definitions.get_id(xid)))
+
+        data_privileges = self._get_view_group_hierarchy()['privileges']
+        data_groups = self._get_view_group_hierarchy()['groups']
+
+        # Keep only the light groups.
+        # We then add the light groups according to the privilege hierarchy
+        result = self & light_groups
+
+        for group in self - light_groups:
+            privilege_id = data_groups[group.id]['privilege_id']
+            if not privilege_id:
+                continue
+            sorted_intermediates = (
+                # The intermediaries who are light are ordered to have the valid group with the most rights.
+                (group.all_implied_ids & light_groups)
+                .filtered(lambda g: data_groups[g.id]['privilege_id'] == privilege_id)
+                .sorted(lambda g: data_privileges[data_groups[g.id]['privilege_id']]['group_ids'].index(g.id))
+            )
+            result |= sorted_intermediates[:1]
+
+        return result
+
     def _compute_view_group_hierarchy(self):
         self.view_group_hierarchy = self._get_view_group_hierarchy()
 
@@ -423,10 +583,10 @@ class ResGroups(models.Model):
     def _get_group_definitions(self):
         """ Return the definition of all the groups as a :class:`~odoo.tools.SetDefinitions`. """
         groups = self.sudo().search([], order='id')
-        id_to_ref = groups.get_external_id()
+        id_to_refs = groups._get_external_ids()
         data = {
             group.id: {
-                'ref': id_to_ref[group.id] or str(group.id),
+                'refs': id_to_refs[group.id] or [str(group.id)],
                 'supersets': group.implied_ids.ids,
                 'disjoints': group.disjoint_ids.ids,
             }

@@ -123,13 +123,14 @@ class TestWebsiteAllPerformance(TestWebsitePerformanceCommon, TestWebsitePriceLi
             'sale_ok': True,
             'website_published': True,
         })
-        cls.product_images = cls.env['product.image'].with_context(default_product_tmpl_id=cls.productC.product_tmpl_id.id).create([{
+        cls.product_images = cls.env['product.image'].create([{
             'name': 'Template image',
             'image_1920': blue_image,
+            'product_tmpl_id': cls.productC.product_tmpl_id.id,
         }, {
-            'name': 'Variant image',
+            'name': 'Template image 2',
             'image_1920': red_image,
-            'product_variant_id': cls.productC.id,
+            'product_tmpl_id': cls.productC.product_tmpl_id.id,
         }])
 
         for i in range(20):
@@ -155,12 +156,16 @@ class TestWebsiteAllPerformance(TestWebsitePerformanceCommon, TestWebsitePriceLi
             images = [{
                 'name': 'Template image',
                 'image_1920': blue_image,
+                'product_tmpl_id': template.id,
             }]
             if i % 2:
                 images.append({
                     'name': 'Variant image',
                     'image_1920': red_image,
-                    'product_variant_id': variant.id,
+                    'attribute_value_ids': [
+                        Command.link(value) for value in variant.product_template_attribute_value_ids.ids
+                    ],
+                    'product_tmpl_id': template.id,
                 })
             cls.env['product.image'].create(images)
 
@@ -181,7 +186,7 @@ class TestWebsiteAllPerformance(TestWebsitePerformanceCommon, TestWebsitePriceLi
                 'product_tmpl_id': cls.templateC.id,
                 'price_discount': 20,
                 'min_quantity': 2,
-                'compute_price': 'formula',
+                'compute_price': 'discount',
             })],
         })
         tax_group = cls.env['account.tax.group'].create({'name': 'Test 6%'})
@@ -294,21 +299,19 @@ class TestWebsiteAllPerformance(TestWebsitePerformanceCommon, TestWebsitePriceLi
 
     def _get_queries_shop(self):
         html = self.url_open('/shop').text
-        self.assertIn(f'<img src="/web/image/product.product/{self.productC.id}/', html)
+        self.assertIn(f'<img src="/web/image/product.image/{self.productC.product_template_image_ids.ids[0]}/', html)
         self.assertIn(f'<img src="/web/image/product.template/{self.productA.product_tmpl_id.id}/', html)
-        self.assertIn(f'<img src="/web/image/product.image/{self.product_images.ids[1]}/', html)
+        self.assertIn(f'<img src="/web/image/product.image/{self.product_images.ids[0]}/', html)
 
         # To add queries here you must ask the permission to al
         queries = {
-            'res_company': 2,
-            'product_pricelist': 4,
+            'res_company': 1,
+            'product_pricelist': 3,
             'product_template': 3,
             'product_tag': 1,
             'product_public_category': 2,
             'product_product': 1,
             'product_template_attribute_line': 2,
-            'res_users': 1,
-            'res_partner': 2,
             'product_category': 1,
             'product_pricelist_item': 1,
             'account_tax': 1,
@@ -316,9 +319,8 @@ class TestWebsiteAllPerformance(TestWebsitePerformanceCommon, TestWebsitePriceLi
             'product_ribbon': 1,
             'product_attribute_value': 3,
             'product_attribute': 1,
-            'ir_attachment': 4,
-            'product_image': 3,
-            'product_template_attribute_value': 1,
+            'ir_attachment': 2,
+            'product_image': 2,
             'ir_ui_view': 2,
             'website_menu': 1,
             'website_page': 1,
@@ -334,11 +336,8 @@ class TestWebsiteAllPerformance(TestWebsitePerformanceCommon, TestWebsitePriceLi
 
         if self._has_demo_data():
             queries['product_product'] += 2
-            queries['ir_attachment'] += 1
             queries['product_ribbon'] += 1
             queries['res_company'] += 1
-        else:
-            queries['product_template_attribute_value'] += 3
 
         if self.env['res.groups']._is_feature_enabled('uom.group_uom'):
             queries['uom_uom'] = 1
@@ -353,16 +352,17 @@ class TestWebsiteAllPerformance(TestWebsitePerformanceCommon, TestWebsitePriceLi
         # To increase the query count you must ask the permission to al
         queries = self._get_queries_shop()
 
+        queries['account_tax'] += 1
         if self.env["res.groups"]._is_feature_enabled("product.group_show_uom_price"):
             queries += 1
             queries['product_product'] += 1
 
         if self._has_demo_data():
-            queries['account_tax'] += 1
             queries['account_account_tag'] = 1
-            queries['ir_attachment'] += -1
+            queries['res_users'] = 1
+            queries['res_partner'] = 1
             queries['product_ribbon'] += -1
-            queries['product_template_attribute_value'] += 2
+            queries['product_template_attribute_value'] = 2
 
         self._check_url_hot_query('/shop', sum(queries.values()), queries)
 
@@ -384,12 +384,15 @@ class TestWebsiteAllPerformanceShop(TestWebsiteAllPerformance):
 
         queries['account_tax'] += 1
         queries['account_account_tag'] = 2
+        queries['res_company'] += 1
+        queries['res_users'] = 1
+        queries['res_partner'] = 1
 
         if self.env['res.groups']._is_feature_enabled('uom.group_uom'):
-            queries['uom_uom'] += 2
+            queries['uom_uom'] += 1
 
         if self._has_demo_data():
             queries['ir_attachment'] += -1
-            queries['product_template_attribute_value'] += 2
+            queries['product_template_attribute_value'] = 2
 
         self._check_url_hot_query('/shop', sum(queries.values()), queries)

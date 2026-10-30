@@ -84,7 +84,7 @@ class PageUrlField extends UrlField {
         return value;
     }
     get isTranslatable() {
-        return this.props.record.fields[this.props.name].translate;
+        return this.props.record.isFieldTranslatable(this.props.name);
     }
 }
 
@@ -101,10 +101,10 @@ registry.category("fields").add("page_url", pageUrlField);
  */
 export class ImageRadioField extends Component {
     static template = "website.FieldImageRadio";
-    static props = {
+    props = useProps({
         ...standardFieldProps,
-        images: { type: Array, element: String },
-    };
+        images: t.array(t.string()),
+    });
 
     setup() {
         const selection = this.props.record.fields[this.props.name].selection;

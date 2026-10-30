@@ -59,12 +59,12 @@ class AccountMove(models.Model):
     l10n_in_reseller_partner_id = fields.Many2one(
         comodel_name='res.partner',
         string="Reseller",
-        domain=[('vat', '!=', False)],
+        domain=[('has_vat', '=', True)],
         help="Only Registered Reseller"
     )
     l10n_in_journal_type = fields.Selection(string="Journal Type", related='journal_id.type')
     l10n_in_warning = fields.Json(compute="_compute_l10n_in_warning")
-    l10n_in_is_gst_registered_enabled = fields.Boolean(related='company_id.l10n_in_is_gst_registered')
+    l10n_in_is_gst_registered_enabled = fields.Boolean(compute="_compute_l10n_in_is_gst_registered_enabled")
     l10n_in_tds_deduction = fields.Selection(related='commercial_partner_id.l10n_in_pan_entity_id.tds_deduction', string="TDS Deduction")
 
     # self - invoice related field
@@ -192,7 +192,7 @@ class AccountMove(models.Model):
     def _onchange_name_warning(self):
         if (
             self.country_code == 'IN'
-            and self.company_id.l10n_in_is_gst_registered
+            and self.company_id.l10n_in_gst_registration_type
             and self.journal_id.type == 'sale'
             and self.name
             and (len(self.name) > 16 or not re.match(r'^[a-zA-Z0-9-\/]+$', self.name))
@@ -252,7 +252,7 @@ class AccountMove(models.Model):
                 }
 
             if (
-                company.l10n_in_is_gst_registered
+                company.l10n_in_gst_registration_type == 'regular'
                 and company.l10n_in_hsn_code_digit
                 and (filtered_lines := move.invoice_line_ids.filtered(line_filter_func))
                 and (not company.l10n_in_disable_b2c_hsn_reporting
@@ -341,6 +341,11 @@ class AccountMove(models.Model):
         standard_moves.l10n_in_adjustment_type = 'standard'
         (self - standard_moves).l10n_in_adjustment_type = False
 
+    @api.depends('company_id.l10n_in_gst_registration_type')
+    def _compute_l10n_in_is_gst_registered_enabled(self):
+        for record in self:
+            record.l10n_in_is_gst_registered_enabled = bool(record.company_id.l10n_in_gst_registration_type)
+
     def _l10n_in_get_invoice_totals_for_self_invoice(self):
         """
         Returns a customized tax_totals dictionary for the PDF report.
@@ -419,7 +424,7 @@ class AccountMove(models.Model):
         posted = super()._post(soft)
         gst_treatment_name_mapping = {k: v for k, v in
                              self._fields['l10n_in_gst_treatment']._description_selection(self.env)}
-        for move in posted.filtered(lambda m: m.country_code == 'IN' and m.company_id.l10n_in_is_gst_registered and m.is_sale_document()):
+        for move in posted.filtered(lambda m: m.country_code == 'IN' and m.company_id.l10n_in_gst_registration_type and m.is_sale_document()):
             if move.l10n_in_state_id and not move.l10n_in_state_id.l10n_in_tin:
                 raise UserError(_("Please set a valid TIN Number on the Place of Supply %s", move.l10n_in_state_id.name))
             if not move.company_id.state_id:
@@ -613,21 +618,37 @@ class AccountMove(models.Model):
         # we set the section on the invoice lines
         moves.line_ids._set_l10n_in_gstr_section(tax_tags_dict)
 
-    def _get_l10n_in_invoice_label(self):
+    def _get_base_document_title(self):
         self.ensure_one()
+
+        if (
+            self.company_id.account_fiscal_country_id.code != 'IN'
+            or self.move_type not in {'out_invoice', 'in_invoice'}
+            or (self.is_debit_note() and self.move_type == 'out_invoice')
+            or (
+                self.move_type == 'in_invoice'
+                and not self.l10n_in_is_self_invoice
+            )
+        ):
+            return super()._get_base_document_title()
+
+        if self.move_type == 'in_invoice':
+            return self.env._("Tax Invoice")
+
         exempt_types = {'exempt', 'nil_rated', 'non_gst'}
-        if self.country_code != 'IN' or not self.is_sale_document(include_receipts=False):
-            return
         gst_treatment = self.l10n_in_gst_treatment
         company = self.company_id
         tax_types = set(self.invoice_line_ids.tax_ids.mapped('l10n_in_tax_type'))
-        if company.l10n_in_is_gst_registered and tax_types:
-            if gst_treatment in ['overseas', 'special_economic_zone']:
-                return 'Tax Invoice'
-            elif tax_types.issubset(exempt_types):
-                return 'Bill of Supply'
-            elif tax_types.isdisjoint(exempt_types):
-                return 'Tax Invoice'
-            elif gst_treatment in ['unregistered', 'consumer']:
-                return 'Invoice-cum-Bill of Supply'
-        return 'Invoice'
+        if company.l10n_in_gst_registration_type == "regular" and tax_types:
+            if gst_treatment in ["overseas", "special_economic_zone"]:
+                return self.env._("Tax Invoice")
+            if tax_types.issubset(exempt_types):
+                return self.env._("Bill of Supply")
+            if tax_types.isdisjoint(exempt_types):
+                return self.env._("Tax Invoice")
+            if gst_treatment in ["unregistered", "consumer"]:
+                return self.env._("Invoice-cum-Bill of Supply")
+        elif company.l10n_in_gst_registration_type == "composition":
+            return self.env._("Bill of Supply")
+
+        return self.env._("Invoice")

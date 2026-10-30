@@ -13,7 +13,7 @@
                     <attribute name="editable">bottom</attribute>
                 </xpath>
                 <xpath expr="//list" position="inside">
-                    <field name="company_id" column_invisible="True"/>
+                    <field name="company_id" column_invisible="True"/> <!-- loaded for check_company on product_id/partner_id below; later reintroduced as an optional="hide" column -->
                 </xpath>
                 <xpath expr="//field[@name='company_id']" position="attributes">
                     <attribute name="readonly">0</attribute>
@@ -82,6 +82,13 @@
                                    nolabel="1" colspan="2"/>
                         </group>
                     </group>
+                </group>
+                <group name="group_general" position="inside">
+                    <label id="forecasted_qty_no_stock" for="virtual_available" invisible="type != 'consu' or not is_storable"/>
+                    <div name="forecasted_qty_no_stock" class="o_row w-100" invisible="type != 'consu' or not is_storable">
+                        <field name="virtual_available" style="max-width: fit-content;" readonly="True" help="Quantity on hand minus outgoing quantity from Sales Orders plus incoming quantity from Purchase Orders"/>
+                        <field name="uom_name" class="ms-2 oe_inline" groups="uom.group_uom"/>
+                    </div>
                 </group>
             </field>
         </record>
@@ -207,8 +214,19 @@
             </field>
         </record>
 
-        <record id="product_view_search_catalog" model="ir.ui.view">
+        <record id="product_view_search_catalog_inherit" model="ir.ui.view">
             <field name="name">product.view.search.catalog.inherit.purchase</field>
+            <field name="model">product.product</field>
+            <field name="inherit_id" ref="product.product_view_search_catalog"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='seller_ids']" position="replace">
+                    <field name="sold_by_vendor_id" string="Vendor" invisible="not context.get('is_purchase_document', False)"/>
+                </xpath>
+            </field>
+        </record>
+
+        <record id="product_view_search_catalog" model="ir.ui.view">
+            <field name="name">product.view.search.catalog.purchase</field>
             <field name="model">product.product</field>
             <field name="mode">primary</field>
             <field name="inherit_id" ref="product.product_view_search_catalog"/>
@@ -217,8 +235,42 @@
                     <separator/>
                     <filter string="In the Order"
                             name="products_in_purchase_order"
-                            domain="[('is_in_purchase_order', '=', True)]"/>
+                            domain="[('catalog_is_in_order', '=', True)]"/>
                 </xpath>
+            </field>
+        </record>
+
+    <record id="product_product_purchase_tree_view" model="ir.ui.view">
+        <field name="name">product.product.purchase.list</field>
+        <field name="model">product.product</field>
+        <field name="inherit_id" ref="product.product_product_tree_view"/>
+        <field name="arch" type="xml">
+            <field name="qty_available" position="after">
+                <field name="virtual_available" string="Forecasted" invisible="not is_storable" decoration-danger="virtual_available &lt; 0" optional="show" decoration-bf="1" sum="Total Forecasted" readonly="1"/>
+            </field>
+        </field>
+    </record>
+
+    <record id="product_template_purchase_tree_view" model="ir.ui.view">
+        <field name="name">product.template.purchase.list</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_tree_view"/>
+        <field name="arch" type="xml">
+            <field name="qty_available" position="after">
+                <field name="virtual_available" string="Forecasted" invisible="not is_storable" decoration-danger="virtual_available &lt; 0" optional="show" decoration-bf="1" sum="Total Forecasted" readonly="1"/>
+            </field>
+        </field>
+    </record>
+
+        <record id="view_category_property_form" model="ir.ui.view">
+            <field name="name">product.category.property.form.inherit.purchase</field>
+            <field name="model">product.category</field>
+            <field name="inherit_id" ref="account.view_category_property_form"/>
+            <field name="arch" type="xml">
+                <field name="property_account_expense_categ_id" position="after">
+                    <field name="property_account_bills_to_receive_id" options="{'no_create': True}" decoration-muted="not property_account_bills_to_receive_active"/>
+                    <field name="property_account_billed_not_received_id" options="{'no_create': True}" decoration-muted="not property_account_billed_not_received_active"/>
+                </field>
             </field>
         </record>
 

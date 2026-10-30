@@ -41,6 +41,21 @@ class TestWorkEntry(TestWorkEntryBase):
             'wage': 1000,
         })
 
+    def test_work_entries_values_from_dates(self):
+        """ Plain dates cover whole days in the version timezone. """
+        version = self.richard_emp.version_ids.filtered(lambda v: v.name == 'dodo')
+        self.assertEqual(version._get_tz(), 'Europe/Brussels')
+        vals_from_dates = version._get_work_entries_values(date(2015, 11, 2), date(2015, 11, 6))
+        vals_from_datetimes = version._get_work_entries_values(
+            datetime(2015, 11, 1, 23, 0, 0),  # 2015-11-02 00:00:00 in Brussels (UTC+1)
+            datetime(2015, 11, 6, 22, 59, 59, 999999),  # 2015-11-06 23:59:59.999999 in Brussels
+        )
+        self.assertEqual(vals_from_dates, vals_from_datetimes)
+        self.assertEqual(
+            sum((vals['date_stop'] - vals['date_start']).total_seconds() / 3600 for vals in vals_from_dates),
+            40,
+        )
+
     def test_work_entry_timezone(self):
         """ Test work entries with different timezone """
         hk_resource_calendar_id = self.env['resource.calendar'].create({
@@ -164,11 +179,20 @@ class TestWorkEntry(TestWorkEntryBase):
             {'name': 'emp fullyflex std'},
             {'name': 'emp fullyflex std'},
         ])
-        self.env['hr.version'].create([{
-            'employee_id': emp_flex_std.id,
-            'resource_calendar_id': False,
+        calendar_flex, calendar_fully_flex = self.env['resource.calendar'].create([{
+            'name': 'Flexible Calendar',
+            'calendar_type': 'undefined',
+            'attendance_ids': [],
             'hours_per_week': 21,
             'hours_per_day': 3,
+        }, {
+            'name': 'Fully Flexible Calendar',
+            'calendar_type': 'undefined',
+            'attendance_ids': [],
+        }])
+        self.env['hr.version'].create([{
+            'employee_id': emp_flex_std.id,
+            'resource_calendar_id': calendar_flex.id,
             'date_version': datetime(2025, 9, 1),
             'contract_date_start': datetime(2025, 9, 1),
             'contract_date_end': datetime(2025, 9, 15),
@@ -198,9 +222,7 @@ class TestWorkEntry(TestWorkEntryBase):
         },
         {
             'employee_id': emp_std_flex.id,
-            'resource_calendar_id': False,
-            'hours_per_week': 21,
-            'hours_per_day': 3,
+            'resource_calendar_id': calendar_flex.id,
             'date_version': datetime(2025, 9, 16),
             'contract_date_start': datetime(2025, 9, 16),
             'contract_date_end': datetime(2025, 9, 30),
@@ -210,9 +232,7 @@ class TestWorkEntry(TestWorkEntryBase):
         },
         {
             'employee_id': emp_fullyflex_std.id,
-            'resource_calendar_id': False,
-            'hours_per_week': 0,
-            'hours_per_day': 0,
+            'resource_calendar_id': calendar_fully_flex.id,
             'date_version': datetime(2025, 9, 1),
             'contract_date_start': datetime(2025, 9, 1),
             'contract_date_end': datetime(2025, 9, 15),
@@ -242,9 +262,7 @@ class TestWorkEntry(TestWorkEntryBase):
         },
         {
             'employee_id': emp_std_fullyflex.id,
-            'resource_calendar_id': False,
-            'hours_per_week': 0,
-            'hours_per_day': 0,
+            'resource_calendar_id': calendar_fully_flex.id,
             'date_version': datetime(2025, 9, 16),
             'contract_date_start': datetime(2025, 9, 16),
             'contract_date_end': datetime(2025, 9, 30),
@@ -441,3 +459,80 @@ class TestWorkEntry(TestWorkEntryBase):
         work_entries_vals = employee.generate_work_entries(datetime(2025, 1, 1), datetime(2025, 1, 31))
         self.assertEqual(len(work_entries_vals), 23, "23 attendance")
         self.assertEqual(sum(vals['duration'] for vals in work_entries_vals), 178, "7 * 8h + 6 * 7h + 10 * 8h")
+
+    def test_export_work_entries_with_multiple_contract_versions(self):
+        employee = self.env['hr.employee'].create({
+            'name': 'Jimmy',
+            'wage': 5000.0,
+            'employee_type_id': self.env.ref('hr.contract_type_employee').id,
+            'date_version': date(2026, 1, 1),
+            'contract_date_start': date(2026, 1, 1),
+        })
+        employee.create_version({
+            'date_version': date(2026, 2, 1),
+        })
+
+        export = self.env['hr.export.work.entries'].create({}).download_export()
+
+        self.assertTrue(export['url'])
+        self.assertEqual(export['name'], 'Download Export')
+
+    def test_attendance_display_name_mixed_time_types(self):
+        """
+        Test that computing display_name for a batch of attendances with and without
+        work_entry_type_id does not overwrite the custom names with the default 'A'.
+        """
+        calendar = self.env['resource.calendar'].create({
+            'name': 'Variable Calendar',
+            'calendar_type': 'variable',
+            'attendance_ids': False,
+        })
+
+        wfh_type = self.env.ref('hr_work_entry.generic_work_entry_type_home_working')
+
+        attendances = self.env['resource.calendar.attendance'].create([
+            {
+                'calendar_id': calendar.id,
+                'duration_hours': 8.0,
+                'duration_based': True,
+                'recurrency': False,
+                'date': date(2026, 10, 5),
+                'work_entry_type_id': wfh_type.id,
+            },
+            {
+                'calendar_id': calendar.id,
+                'duration_hours': 4.0,
+                'duration_based': True,
+                'recurrency': False,
+                'date': date(2026, 10, 6),
+                'work_entry_type_id': False,  # No Time Type
+            }
+        ])
+
+        att_wfh, att_empty = attendances[0], attendances[1]
+
+        self.assertIn(
+            "HW", att_wfh.display_name,
+            "The 'HW' display_code was lost in the display_name."
+        )
+        self.assertNotIn(
+            " A", att_wfh.display_name,
+            "The default 'A' overwrote the Time Type display."
+        )
+        self.assertTrue(
+            att_empty.display_name.endswith(" A"),
+            "The attendance without a Time Type should keep its default trailing 'A'."
+        )
+
+    def test_export_work_entries_employee_versions(self):
+        export = self.env['hr.export.work.entries'].create({
+            'reference_year': 2024,
+            'reference_month': '6',
+        })
+        amendment = self.richard_emp.create_version({'date_version': date(2024, 6, 15)})
+        employee_line = self.env['hr.export.work.entries.employee'].create({
+            'export_id': export.id,
+            'employee_id': self.richard_emp.id,
+        })
+        self.assertIn(amendment, employee_line.version_ids)
+        self.assertIn(self.richard_emp._get_version(date(2024, 6, 1)), employee_line.version_ids)

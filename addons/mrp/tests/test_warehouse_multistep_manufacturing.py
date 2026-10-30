@@ -36,13 +36,13 @@ class TestMultistepManufacturingWarehouse(TestMrpCommon):
             {
                 'name': 'Stick',
                 'uom_id': cls.uom_unit.id,
-                'tracking': 'none',
+                'is_storable': True,
                 'route_ids': [Command.set(cls.route_mto.ids)],
             },
             {
                 'name': 'Raw Stick',
                 'uom_id': cls.uom_unit.id,
-                'tracking': 'none',
+                'is_storable': True,
             },
         ])
         # Create bom for manufactured product
@@ -135,6 +135,36 @@ class TestMultistepManufacturingWarehouse(TestMrpCommon):
         pick = production.picking_ids
         self.assertEqual(pick.location_id, self.stock_location)
         self.assertEqual(pick.location_dest_id, pre_2)
+
+    def test_scrap_component_unreserves_correct_mo(self):
+        """
+        Ensure scrapping raw material from one MO, prioritise this mo to unreserve.
+
+        Two MOs each reserve 2 units of the same component, with nothing left in
+        stock beyond what both need. Scrapping those 2 units from the first MO
+        should unreserve that first MO, while the second MO's reservation must
+        remain untouched.
+        """
+        self.warehouse_1.manufacture_steps = 'pbm'
+        self.env['stock.quant']._update_available_quantity(self.raw_product, self.warehouse_1.lot_stock_id, 4)
+
+        mos = self.env['mrp.production'].create([{
+            'picking_type_id': self.warehouse_1.manu_type_id.id,
+            'bom_id': self.bom.id,
+            'product_qty': 1,
+        } for __ in range(2)])
+        mos.action_confirm()
+        mos.picking_ids.button_validate()
+        self.assertRecordValues(mos.move_raw_ids, [{'state': 'assigned'}, {'state': 'assigned'}])
+
+        scrap_form = Form.from_action(self.env, mos[0].action_scrap())
+        scrap_form.product_id = self.raw_product
+        scrap_form.quantity = 2.0
+        scrap_form.save().action_scrap()
+
+        self.assertRecordValues(mos.move_raw_ids, [{'state': 'confirmed'}, {'state': 'assigned'}])
+        self.assertFalse(mos[0].move_raw_ids.move_line_ids)
+        self.assertRecordValues(mos[1].move_raw_ids.move_line_ids, [{'quantity': 2.0}])
 
     def test_manufacturing_3_steps(self):
         """ Test MO/picking before manufacturing/picking after manufacturing
@@ -430,7 +460,7 @@ class TestMultistepManufacturingWarehouse(TestMrpCommon):
         # Create an additional BoM for component
         product_form = Form(self.env['product.product'])
         product_form.name = 'Wood'
-        product_form.tracking = 'none'
+        product_form.store_by = 'quantity'
         product_form.uom_id = self.uom_unit
         self.wood_product = product_form.save()
 
@@ -936,11 +966,11 @@ class TestMultistepManufacturingWarehouse(TestMrpCommon):
         ])
 
     def test_3_steps_manufacturing_forecast(self):
-        """Check that a confirmed MO influence the forecast of the warehouse stock"""
+        """Check that a confirmed MO influences the forecast of the warehouse stock"""
         self.warehouse_1.manufacture_steps = 'pbm_sam'
         lovely_product = self.bom_1.product_id.copy({'uom_id': self.uom_unit.id})
         self.bom_1.product_id = lovely_product
-        self.assertEqual(lovely_product.with_context(location_id=self.warehouse_1.lot_stock_id.id).virtual_available, 0.0)
+        self.assertEqual(lovely_product.with_context(location=self.warehouse_1.lot_stock_id.id).virtual_available, 0.0)
         mo = self.env['mrp.production'].create({
             'bom_id': self.bom_1.id,
             'picking_type_id': self.warehouse_1.manu_type_id.id,
@@ -948,7 +978,7 @@ class TestMultistepManufacturingWarehouse(TestMrpCommon):
         })
         mo.action_confirm()
         self.assertEqual(mo.state, 'confirmed')
-        self.assertEqual(lovely_product.with_context(location_id=self.warehouse_1.lot_stock_id.id).virtual_available, 3.0)
+        self.assertEqual(lovely_product.with_context(location=self.warehouse_1.lot_stock_id.id).virtual_available, 3.0)
 
     def test_manufacture_to_resupply_unchecks_and_unlinks_warehouse(self):
         """Unchecking Manufacture to Resupply should keep manufacture_to_resupply disabled."""

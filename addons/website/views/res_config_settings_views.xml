@@ -22,7 +22,7 @@
                 <app data-string="Website" string="Website" name="website" groups="website.group_website_designer">
                     <setting
                         id="website_creation_settings"
-                        class="bg-secondary"
+                        class="bg-warning"
                         type="header"
                     >
                         <field name="website_id" options="{'no_open': True, 'no_create': True}" title="Settings on this page will apply to this website"/>
@@ -216,7 +216,7 @@
                                 options="{'accepted_file_extensions': '.png,.jpg,.jpeg,.gif,.webp'}"
                             />
                             <div class="text-muted mt-2">
-                                <i class="oi oi-filled me-1" data-icon="info"/>
+                                <i class="oi oi-filled me-1" data-icon="info" role="img" aria-hidden="true"/>
                                 Supported formats for social share images are PNG, JPG, WEBP, or GIF.
                             </div>
                         </setting>
@@ -316,4 +316,13 @@
         sequence="45"
         groups="base.group_no_one"/>
 
+    <menuitem name="Store Locator"
+        id="res_partner_menu_store_locator"
+        parent="menu_website_global_configuration"
+        sequence="46">
+        <menuitem name="Locations"
+            id="res_partner_menu_location"
+            action="res_partner_action_location"
+        />
+    </menuitem>
 </odoo>

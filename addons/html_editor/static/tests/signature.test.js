@@ -2,9 +2,10 @@ import { describe, expect, queryAllTexts, test } from "@odoo/hoot";
 import { press } from "@odoo/hoot-dom";
 import { animationFrame, tick } from "@odoo/hoot-mock";
 import { defineModels, fields, models, serverState } from "@web/../tests/web_test_helpers";
-import { setupEditor } from "./_helpers/editor";
+import { setupEditor, testEditor } from "./_helpers/editor";
+import { unformat } from "./_helpers/format";
 import { getContent } from "./_helpers/selection";
-import { insertText, undo } from "./_helpers/user_actions";
+import { deleteBackward, insertText, undo } from "./_helpers/user_actions";
 
 class ResUsers extends models.Model {
     _name = "res.users";
@@ -27,7 +28,7 @@ test("apply 'Signature' command", async () => {
     await press("enter");
     await tick();
     expect(getContent(el)).toBe(
-        `<p>ab</p><div class="o-signature-container"><br>-- <br><h1>Hello[]</h1></div><p>cd</p>`
+        `<p>ab</p><div class="o-signature-container" contenteditable="false" data-o-mail-quote-container="1"><div data-o-mail-quote="1">-- <br><div contenteditable="true"><h1>Hello[]</h1></div></div></div><p>cd</p>`
     );
 });
 
@@ -38,10 +39,28 @@ test("undo a 'Signature' command", async () => {
     await press("enter");
     await tick();
     expect(getContent(el)).toBe(
-        `<p>abtest</p><div class="o-signature-container"><br>-- <br><h1>Hello[]</h1></div><p>cd</p>`
+        `<p>abtest</p><div class="o-signature-container" contenteditable="false" data-o-mail-quote-container="1"><div data-o-mail-quote="1">-- <br><div contenteditable="true"><h1>Hello[]</h1></div></div></div><p>cd</p>`
     );
     undo(editor);
     expect(getContent(el)).toBe("<p>abtest[]cd</p>");
+});
+
+test("should remove an emptied signature block", async () => {
+    await testEditor({
+        contentBefore: unformat(`
+            <p>ab</p>
+            <div class="o-signature-container"><p>[]<br></p></div>`),
+        stepFunction: deleteBackward,
+        contentAfter: `<p>ab</p><p>[]<br></p>`,
+    });
+});
+
+test("should ensure a delimiter, mail-quote classes, wrap content in an editable zone during edition, and unwrap it after cleanForSave", async () => {
+    await testEditor({
+        contentBefore: `<div class="o-signature-container">abracadabra</div>`,
+        contentAfterEdit: `<p data-selection-placeholder=""><br></p><div class="o-signature-container" contenteditable="false" data-o-mail-quote-container="1"><div data-o-mail-quote="1">-- <br><div contenteditable="true"><p>abracadabra</p></div></div></div><p data-selection-placeholder=""><br></p>`,
+        contentAfter: `<div class="o-signature-container" data-o-mail-quote-container="1"><div data-o-mail-quote="1">-- <br><p>abracadabra</p></div></div>`,
+    });
 });
 
 describe("availability", () => {

@@ -20,7 +20,7 @@ class TestEventSecurity(TestEventFullCommon):
     def test_event_access_employee(self):
         # Event: read ok
         event = self.test_event.with_user(self.env.user)
-        event.read(['name'])
+        event.fetch(['name'])
 
         # Event: read only
         with self.assertRaises(AccessError):
@@ -38,7 +38,7 @@ class TestEventSecurity(TestEventFullCommon):
 
         # Event Type
         with self.assertRaises(AccessError):
-            self.test_event_type.with_user(self.env.user).read(['name'])
+            self.test_event_type.with_user(self.env.user).fetch(['name'])
         with self.assertRaises(AccessError):
             self.test_event_type.with_user(self.env.user).write({'name': 'Test Write'})
 
@@ -48,16 +48,21 @@ class TestEventSecurity(TestEventFullCommon):
                 'name': 'TestStage',
             })
 
-        # Event Registration
+        # Event Registration: read ok if partner_id is current user
+        registration_1, registration_2 = self.env['event.registration'].with_user(self.admin_user).create([
+            {'event_id': self.test_event.id, 'name': 'Test Registration 1', 'partner_id': self.env.user.partner_id.id},
+            {'event_id': self.test_event.id, 'name': 'Test Registration 2'},
+        ]).with_user(self.env.user)
+        registration_1.fetch(['name'])
         with self.assertRaises(AccessError):
-            self.env['event.registration'].search([])
+            registration_2.fetch(['name'])
 
     @users('user_eventregistrationdesk')
     @mute_logger('odoo.models.unlink', 'odoo.addons.base.models.ir_access')
     def test_event_access_event_registration(self):
         # Event: read ok
         event = self.test_event.with_user(self.env.user)
-        event.read(['name', 'user_id', 'kanban_state'])
+        event.fetch(['name', 'user_id', 'kanban_state'])
 
         # Event: read only
         with self.assertRaises(AccessError):
@@ -79,7 +84,7 @@ class TestEventSecurity(TestEventFullCommon):
     def test_event_access_event_user(self):
         # Event
         event = self.test_event.with_user(self.env.user)
-        event.read(['name', 'user_id', 'kanban_state'])
+        event.fetch(['name', 'user_id', 'kanban_state'])
         event.write({'name': 'New name'})
         self.env['event.event'].create({
             'name': 'Event',
@@ -144,6 +149,39 @@ class TestEventSecurity(TestEventFullCommon):
             })
             event_config.execute()
 
+    @users('portal_test')
+    def test_event_registration_begin_date_access(self):
+        """ Check that a user without read access on 'event.event' and 'event.slot' can still find
+        its own registrations when searching on the computed 'event_begin_date' field
+        (computed from 'event_id.date_begin' or 'event_slot_id.start_datetime').
+        """
+        slot = self.env['event.slot'].with_user(self.admin_user).create({
+            'event_id': self.test_event.id,
+            'date': self.test_event.date_begin + timedelta(days=1),
+            'end_hour': 12,
+            'start_hour': 9,
+        })
+        registrations = self.env['event.registration'].with_user(self.admin_user).create([
+            {'event_id': self.test_event.id, 'name': 'Test Registration', 'partner_id': self.env.user.partner_id.id},
+            {'event_id': self.test_event.id, 'name': 'Test Slot Registration', 'partner_id': self.env.user.partner_id.id, 'event_slot_id': slot.id},
+        ]).with_user(self.env.user)
+
+        search_domain = [('id', 'in', registrations.ids), ('event_begin_date', '<=', self.test_event.date_end)]
+        # User have read access on 'event.event' and 'event.slot'.
+        registrations.event_id.fetch(['date_begin'])
+        registrations.event_slot_id.fetch(['start_datetime'])
+        # User can find its registrations when searching on 'event_begin_date'.
+        self.assertEqual(self.env['event.registration'].search(search_domain), registrations)
+
+        # Unpublishing the event removes the user's read access on the event and slot.
+        self.test_event.with_user(self.admin_user).write({'is_published': False})
+        with self.assertRaises(AccessError):
+            registrations.event_id.fetch(['date_begin'])
+        with self.assertRaises(AccessError):
+            registrations.event_slot_id.fetch(['start_datetime'])
+        # User can still find its registrations when searching on 'event_begin_date' even without the read accesses.
+        self.assertEqual(self.env['event.registration'].search(search_domain), registrations)
+
     def test_event_question_access(self):
         """ Check that some user groups have access to questions and answers only if they are linked to at
         least one published event. """
@@ -163,13 +201,13 @@ class TestEventSecurity(TestEventFullCommon):
 
         for user in restricted_users:
             with self.assertRaises(AccessError, msg=f'{user.name} should not have access to questions of unpublished events'):
-                question.with_user(user).read(['title'])
+                question.with_user(user).fetch(['title'])
             with self.assertRaises(AccessError, msg=f'{user.name} should not have access to answers of unpublished events'):
-                answer.with_user(user).read(['name'])
+                answer.with_user(user).fetch(['name'])
 
         for user in unrestricted_users:
-            question.with_user(user).read(['title'])
-            answer.with_user(user).read(['name'])
+            question.with_user(user).fetch(['title'])
+            answer.with_user(user).fetch(['name'])
 
         # To check the access of user groups to questions and answers linked to at least one published event.
         self.env['event.event'].create({
@@ -180,8 +218,8 @@ class TestEventSecurity(TestEventFullCommon):
 
         # Check that all user groups have access to questions and answers linked to at least one published event.
         for user in restricted_users + unrestricted_users:
-            question.with_user(user).read(['title'])
-            answer.with_user(user).read(['name'])
+            question.with_user(user).fetch(['title'])
+            answer.with_user(user).fetch(['name'])
 
     def test_implied_groups(self):
         """Test that the implied groups are correctly set.

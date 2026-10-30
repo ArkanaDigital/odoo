@@ -59,9 +59,6 @@ class PosPaymentMethod(models.Model):
                 if other_online_pms:
                     raise ValidationError(_("The %s already has one online payment.", config.name))
 
-    def _is_write_forbidden(self, fields):
-        return super()._is_write_forbidden(fields - {'online_payment_provider_ids'})
-
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
@@ -74,8 +71,7 @@ class PosPaymentMethod(models.Model):
             self._force_online_payment_values(vals)
             return super().write(vals)
 
-        opm = self.filtered(lambda p: p.type == 'online')
-        not_opm = self - opm
+        opm, not_opm = self.partitioned(lambda p: p.type == 'online')
 
         res = True
         if opm:
@@ -180,14 +176,13 @@ class PosPaymentMethod(models.Model):
                     "debit": 0,
                     "credit": total_amount,
                     "name": _("POS Receivable Transfer"),
-                    "partner_id": account_payment.partner_id.id,
+                    "partner_id": session.config_id._default_partner().id,
                 }),
                 Command.create({
                     "account_id": account_payment.destination_account_id.id,
                     "debit": total_amount,
                     "credit": 0,
                     "name": _("Online Payment Transfer"),
-                    "partner_id": account_payment.partner_id.id,
                 }),
             ],
         })

@@ -25,9 +25,9 @@
             'marketing_card/static/src/scss/*',
         ],
         'web.assets_frontend': [
-            'marketing_card/static/src/scss/frontend/*.scss',
+            'marketing_card/static/src/scss/frontend/*.css',
             'marketing_card/static/src/interactions/*',
-            'marketing_card/static/src/scss/linkedin_share_composer.scss',
+            'marketing_card/static/src/scss/linkedin_share_composer.css',
         ],
     },
     'application': True,

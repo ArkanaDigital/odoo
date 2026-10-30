@@ -94,7 +94,7 @@ const messagingMenuPatch = {
                         },
                     ],
                     actions:
-                        this.store.self_user?.share === false
+                        this.store.env.services.action && this.store.self_user?.share === false
                             ? [
                                   {
                                       id: "new_channel",
@@ -187,10 +187,9 @@ const messagingMenuPatch = {
         if (this.notificationTab && this["discuss.channel"]) {
             // Needactions are counted in the notification tab, but we discard them for channels
             // so that there is only +1 per channel.
-            counter -= Object.values(this["discuss.channel"].records).reduce(
-                (acc, channel) => acc + channel.message_needaction_counter,
-                0
-            );
+            counter -= this["discuss.channel"].records
+                .values()
+                .reduce((acc, channel) => acc + channel.message_needaction_counter, 0);
         }
         return counter;
     },
@@ -200,9 +199,7 @@ const messagingMenuPatch = {
     },
     /** @override */
     notificationMatchesExtra(message) {
-        return (
-            super.notificationMatchesExtra(message) && message.thread?.model !== "discuss.channel"
-        );
+        return super.notificationMatchesExtra(message) && !message.thread?.channel;
     },
 };
 patch(MessagingMenu.prototype, messagingMenuPatch);

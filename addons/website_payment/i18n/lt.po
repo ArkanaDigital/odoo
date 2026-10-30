@@ -16,10 +16,10 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0beta\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-03 17:40+0000\n"
-"PO-Revision-Date: 2026-06-21 14:28+0000\n"
+"POT-Creation-Date: 2026-08-28 17:43+0000\n"
+"PO-Revision-Date: 2026-08-31 20:38+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Lithuanian <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Lithuanian <https://translate.odoo.com/projects/odoo-s19-4/"
 "website_payment/lt/>\n"
 "Language: lt\n"
 "MIME-Version: 1.0\n"
@@ -28,7 +28,15 @@ msgstr ""
 "Plural-Forms: nplurals=4; plural=(n % 10 == 1 && (n % 100 > 19 || n % 100 < "
 "11) ? 0 : (n % 10 >= 2 && n % 10 <=9) && (n % 100 > 19 || n % 100 < 11) ? "
 "1 : n % 1 != 0 ? 2: 3);\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: website_payment
+#: model:ir.module.module,description:base.module_website_payment
+msgid ""
+"\n"
+"This is a bridge module that adds multi-website support for payment "
+"providers.\n"
+msgstr ""
 
 #. module: website_payment
 #: model_terms:ir.ui.view,arch_db:website_payment.res_config_settings_view_form
@@ -144,6 +152,11 @@ msgid "Payment Provider"
 msgstr "Mokėjimo paslaugos tiekėjas"
 
 #. module: website_payment
+#: model:ir.module.module,summary:base.module_website_payment
+msgid "Payment integration with website"
+msgstr ""
+
+#. module: website_payment
 #: model_terms:ir.ui.view,arch_db:website_payment.res_config_settings_view_form
 msgid "Payments"
 msgstr "Mokėjimai"
@@ -180,107 +193,112 @@ msgstr ""
 msgid "Website"
 msgstr "Svetainė"
 
-#~ msgid ""
-#~ ".\n"
-#~ "                        <br/>\n"
-#~ "                        We appreciate your support for our organization "
-#~ "as such.\n"
-#~ "                        <br/>\n"
-#~ "                        Regards."
-#~ msgstr ". <br/> Vertiname jūsų paramą mūsų organizacijai. <br/> Su pagarba."
+#. module: website_payment
+#: model:ir.module.module,shortdesc:base.module_website_payment
+msgid "Website Payment"
+msgstr ""
 
-#~ msgid "<b>Comment:</b>"
-#~ msgstr "<b>Komentaras:</b>"
+msgid ""
+".\n"
+"                        <br/>\n"
+"                        We appreciate your support for our organization as "
+"such.\n"
+"                        <br/>\n"
+"                        Regards."
+msgstr ". <br/> Vertiname jūsų paramą mūsų organizacijai. <br/> Su pagarba."
 
-#~ msgid "<b>Donation Date:</b>"
-#~ msgstr "<b>Aukojimo data\\:</b>"
+msgid "<b>Comment:</b>"
+msgstr "<b>Komentaras:</b>"
 
-#~ msgid "<b>Donor Email:</b>"
-#~ msgstr "<b>Aukotojo el. paštas\\:</b>"
+msgid "<b>Donation Date:</b>"
+msgstr "<b>Aukojimo data\\:</b>"
 
-#~ msgid "<b>Donor Name:</b>"
-#~ msgstr "<b>Aukotojas\\:</b>"
+msgid "<b>Donor Email:</b>"
+msgstr "<b>Aukotojo el. paštas\\:</b>"
 
-#~ msgid "<b>Payment ID:</b>"
-#~ msgstr "<b>Mokėjimo ID\\:</b>"
+msgid "<b>Donor Name:</b>"
+msgstr "<b>Aukotojas\\:</b>"
 
-#~ msgid "<b>Payment Method:</b>"
-#~ msgstr "<b>Mokėjimo būdas:</b>"
+msgid "<b>Payment ID:</b>"
+msgstr "<b>Mokėjimo ID\\:</b>"
 
-#~ msgid "<strong>Warning</strong> The currency is missing or incorrect."
-#~ msgstr "<strong>Įspėjimas</strong> Trūksta valiutos arba ji yra neteisinga."
+msgid "<b>Payment Method:</b>"
+msgstr "<b>Mokėjimo būdas:</b>"
 
-#~ msgid "Add"
-#~ msgstr "Pridėti"
+msgid "<strong>Warning</strong> The currency is missing or incorrect."
+msgstr "<strong>Įspėjimas</strong> Trūksta valiutos arba ji yra neteisinga."
 
-#~ msgid "Amount"
-#~ msgstr "Suma"
+msgid "Add"
+msgstr "Pridėti"
 
-#~ msgid "Amount ("
-#~ msgstr "Suma ("
+msgid "Amount"
+msgstr "Suma"
 
-#~ msgid "Amount("
-#~ msgstr "Suma("
+msgid "Amount ("
+msgstr "Suma ("
 
-#~ msgid "Choose Your Amount"
-#~ msgstr "Pasirinkite sumą"
+msgid "Amount("
+msgstr "Suma("
 
-#~ msgid "Country"
-#~ msgstr "Valstybė"
+msgid "Choose Your Amount"
+msgstr "Pasirinkite sumą"
 
-#~ msgid "Country is required."
-#~ msgstr "Valstybė yra privaloma"
+msgid "Country"
+msgstr "Valstybė"
 
-#~ msgid "Dear"
-#~ msgstr "Gerb."
+msgid "Country is required."
+msgstr "Valstybė yra privaloma"
 
-#~ msgid "Default Amount"
-#~ msgstr "Suma pagal nutylėjimą"
+msgid "Dear"
+msgstr "Gerb."
 
-#~ msgid "Descriptions"
-#~ msgstr "Aprašymai"
+msgid "Default Amount"
+msgstr "Suma pagal nutylėjimą"
 
-#~ msgid "Display Options"
-#~ msgstr "Rodymo parinktys"
+msgid "Descriptions"
+msgstr "Aprašymai"
 
-#~ msgid "Email"
-#~ msgstr "El. paštas"
+msgid "Display Options"
+msgstr "Rodymo parinktys"
 
-#~ msgid "Input"
-#~ msgstr "Įėjimas"
+msgid "Email"
+msgstr "El. paštas"
 
-#~ msgid "Maximum"
-#~ msgstr "Maksimaliai"
+msgid "Input"
+msgstr "Įėjimas"
 
-#~ msgid "Minimum"
-#~ msgstr "Minimaliai"
+msgid "Maximum"
+msgstr "Maksimaliai"
 
-#~ msgid "Name"
-#~ msgstr "Pavadinimas"
+msgid "Minimum"
+msgstr "Minimaliai"
 
-#~ msgid "Name is required."
-#~ msgstr "Vardas yra privalomas"
+msgid "Name"
+msgstr "Pavadinimas"
 
-#~ msgid "None"
-#~ msgstr "Nieko"
+msgid "Name is required."
+msgstr "Vardas yra privalomas"
 
-#~ msgid "Payment Details"
-#~ msgstr "Mokėjimo detalės"
+msgid "None"
+msgstr "Nieko"
 
-#~ msgid "Payment Transaction"
-#~ msgstr "Mokėjimo operacija"
+msgid "Payment Details"
+msgstr "Mokėjimo detalės"
 
-#~ msgid "Please select or enter an amount"
-#~ msgstr "Prašau pasirinkti ar įvesti sumą"
+msgid "Payment Transaction"
+msgstr "Mokėjimo operacija"
 
-#~ msgid "Recipient Email"
-#~ msgstr "Gavėjo el. paštas"
+msgid "Please select or enter an amount"
+msgstr "Prašau pasirinkti ar įvesti sumą"
 
-#~ msgid "Step"
-#~ msgstr "Žingsnis"
+msgid "Recipient Email"
+msgstr "Gavėjo el. paštas"
 
-#~ msgid "Write us a comment"
-#~ msgstr "Įrašykite savo komentarą"
+msgid "Step"
+msgstr "Žingsnis"
 
-#~ msgid "Your comment"
-#~ msgstr "Jūsų komentaras"
+msgid "Write us a comment"
+msgstr "Įrašykite savo komentarą"
+
+msgid "Your comment"
+msgstr "Jūsų komentaras"

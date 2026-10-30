@@ -62,7 +62,7 @@
                         <span t-if="this.canDeselect" t-on-click.stop="this.onInputClear" class="o_select_menu_toggler_clear position-absolute top-50 end-0 me-3">
                             <i class="oi" data-icon="close"></i>
                         </span>
-                        <span class="o_select_menu_caret align-self-center" />
+                        <span class="o_select_menu_caret o_caret_down align-self-center" />
                     </button>
                 </t>
                 <t t-set-slot="content">
@@ -103,7 +103,7 @@
             closingMode="choice.enabled ? 'all' : 'none'"
             onSelected="() => choice.enabled and this.onItemSelected(choice.value)"
             class="this.getItemClass(choice)"
-            attrs="{ 'data-choice-index': choice_index }"
+            attrs="{ 'data-choice-index': choice_index, ...choice.attrs }"
         >
             <t t-if="this.props.slots and this.props.slots.choice" t-call-slot="choice" data="choice"/>
             <t t-else="">

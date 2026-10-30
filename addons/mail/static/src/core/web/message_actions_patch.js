@@ -28,7 +28,7 @@ export function messageActionOpenFullComposer(title, context, component) {
 }
 
 registerMessageAction("reply-all", {
-    condition: ({ message, owner }) => !owner.env.inMessagingMenu && message.canReplyAll,
+    condition: ({ ancestors, message }) => !ancestors.inMessagingMenu && message.canReplyAll,
     icon: "reply",
     name: _t("Reply All"),
     onSelected: async ({ message, owner, thread }) => {
@@ -70,8 +70,8 @@ registerMessageAction("reply-all", {
     sequence: ({ message }) => (message.isSelfAuthored ? 55 : 20),
 });
 registerMessageAction("forward", {
-    condition: ({ message, owner }) => !owner.env.inMessagingMenu && message.canForward,
-    icon: "share",
+    condition: ({ ancestors, message }) => !ancestors.inMessagingMenu && message.canForward,
+    icon: "forward",
     name: _t("Forward"),
     onSelected: async ({ message, owner, store, thread }) => {
         // usually reply_to is what you want people to see as being "from"
@@ -91,14 +91,9 @@ registerMessageAction("forward", {
             signature: thread.effectiveSelf.main_user_id?.getSignatureBlock(),
         });
         const attachmentIds = message.attachment_ids.map((a) => a.id);
-        const newAttachmentIds = await store.env.services.orm.call(
-            "ir.attachment",
-            "copy",
-            [attachmentIds],
-            {
-                default: { res_model: "mail.compose.message", res_id: 0 },
-            }
-        );
+        const newAttachmentIds = await store.orm.call("ir.attachment", "copy", [attachmentIds], {
+            default: { res_model: "mail.compose.message", res_id: 0 },
+        });
         const context = {
             default_attachment_ids: newAttachmentIds,
             default_body: body,
@@ -109,4 +104,21 @@ registerMessageAction("forward", {
         messageActionOpenFullComposer(_t("Forward Message"), context, owner);
     },
     sequence: 30,
+});
+registerMessageAction("send-again", {
+    condition: ({ ancestors, message }) => !ancestors.inMessagingMenu && message.canForward,
+    icon: "send",
+    name: _t("Send Again"),
+    onSelected: ({ message, owner }) => {
+        const context = {
+            default_attachment_ids: message.attachment_ids.map((a) => a.id),
+            default_body: prepareBodyForEditing(message.body),
+            default_composition_mode: "comment",
+            default_email_add_signature: false,
+            default_partner_ids: message.partner_ids.map((p) => p.id),
+            default_partner_cc_ids: message.partner_cc_ids.map((p) => p.id),
+        };
+        messageActionOpenFullComposer(_t("Send Again"), context, owner);
+    },
+    sequence: 35,
 });

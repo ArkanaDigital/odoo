@@ -149,7 +149,7 @@ class TestUiHtmlEditor(HttpCaseWithUserDemo):
     def test_html_editor_scss(self):
         self.user_demo.write({
             'group_ids': [(6, 0, [
-                self.env.ref('base.group_user_regular').id,
+                self.env.ref('base.group_user').id,
                 self.env.ref('website.group_website_designer').id
             ])]
         })
@@ -180,6 +180,11 @@ class TestUiHtmlEditor(HttpCaseWithUserDemo):
         # Mocked for the previews in the media dialog
         mock_media_library_search.routing_type = 'json'
         HTML_Editor.media_library_search = http.route(['/html_editor/media_library_search'], type='jsonrpc', auth='user', website=True)(mock_media_library_search)
+
+        # The routing map is cached (the "routing" ormcache) with the controller endpoints
+        # baked in. When it was already built with the original method, the patch above
+        # is ignored.
+        self.env.transaction.invalidate_ormcache("routing")
 
         self.start_tour(self.env['website'].get_client_action_url('/', True), 'website_media_dialog_undraw', login='admin')
 
@@ -372,6 +377,18 @@ class TestUiTranslate(odoo.tests.HttpCase):
             'public': True,
         })
         self.start_tour(self.env['website'].get_client_action_url('/', True), 'translate_website_media', login='admin')
+
+    def test_translate_table_of_content_snippet(self):
+        lang_en = self.env.ref('base.lang_en')
+        lang_fr = self.env.ref('base.lang_fr')
+        self.env['res.lang']._activate_lang(lang_fr.code)
+        default_website = self.env.ref('base.default_website')
+        default_website.write({
+            'default_lang_id': lang_en.id,
+            'language_ids': [(6, 0, (lang_en + lang_fr).ids)],
+        })
+
+        self.start_tour(self.env['website'].get_client_action_url('/', True), 'translate_table_of_content_snippet', login='admin')
 
 
 @odoo.tests.common.tagged('post_install', '-at_install')

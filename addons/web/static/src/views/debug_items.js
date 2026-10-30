@@ -1,16 +1,16 @@
-import { _t } from "@web/core/l10n/translation";
-import { Dialog } from "@web/core/dialog/dialog";
-import { evaluateBooleanExpr } from "@web/core/py_js/py";
+import { Component, onWillStart, proxy, t, usePlugin, useProps, xml } from "@odoo/owl";
+import { CopyButton } from "@web/core/copy_button/copy_button";
 import { editModelDebug } from "@web/core/debug/debug_utils";
-import { formatDateTime, deserializeDateTime } from "@web/core/l10n/dates";
+import { Dialog } from "@web/core/dialog/dialog";
+import { deserializeDateTime, formatDate, formatDateTime } from "@web/core/l10n/dates";
+import { _t } from "@web/core/l10n/translation";
+import { ORM } from "@web/core/orm_plugin";
+import { evaluateBooleanExpr } from "@web/core/py_js/py";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { formatMany2one } from "@web/views/fields/formatters";
 import { FormViewDialog } from "@web/views/view_dialogs/form_view_dialog";
-
-import { Component, onWillStart, usePlugin, proxy, t, useProps, xml } from "@odoo/owl";
 import { serializeDate, serializeDateTime } from "../core/l10n/dates";
-import { ORM } from "@web/core/orm_plugin";
 
 const debugRegistry = registry.category("debug");
 
@@ -20,7 +20,7 @@ const debugRegistry = registry.category("debug");
 
 class GetViewDialog extends Component {
     static template = "web.DebugMenu.GetViewDialog";
-    static components = { Dialog };
+    static components = { Dialog, CopyButton };
     props = useProps({
         arch: t.string(),
         close: t.function(),
@@ -79,7 +79,7 @@ export function editSearchView({ accessRights, component }) {
     if (!accessRights.canEditView) {
         return null;
     }
-    const { searchViewId } = component.componentProps.info;
+    const { searchViewId } = component.componentProps().info;
     if (searchViewId === undefined) {
         return null;
     }
@@ -334,6 +334,10 @@ class SetDefaultDialog extends Component {
             value = value.id;
         } else if (value && fieldInfo.type === "selection") {
             displayed = fieldInfo.selection.find((option) => option[0] === value)[1];
+        } else if (value && fieldInfo.type === "date") {
+            displayed = formatDate(value);
+        } else if (value && fieldInfo.type === "datetime") {
+            displayed = formatDateTime(value);
         }
         if (
             (typeof displayed === "string" || displayed instanceof String) &&
@@ -352,9 +356,10 @@ class SetDefaultDialog extends Component {
             (field) => field.name === this.state.fieldToSet
         ).value;
 
-        if (fieldToSet.constructor.name.toLowerCase() === "date") {
+        const fieldType = this.fields[this.state.fieldToSet].type;
+        if (fieldType === "date") {
             fieldToSet = serializeDate(fieldToSet);
-        } else if (fieldToSet.constructor.name.toLowerCase() === "datetime") {
+        } else if (fieldType === "datetime") {
             fieldToSet = serializeDateTime(fieldToSet);
         }
         await this.orm.call("ir.default", "set", [

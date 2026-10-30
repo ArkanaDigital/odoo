@@ -61,6 +61,11 @@
                     <filter name="refused_leaves" string="Refused" domain="[('state', '=', 'refuse')]"/>
                 </filter>
                 <separator/>
+                <filter string="Overtime Entries" name="is_time_rule_output"
+                        domain="[('time_rule_id', '!=', False)]"/>
+                <filter string="Source Leaves" name="source_leaves"
+                        domain="[('time_rule_id', '=', False)]"/>
+                <separator/>
                 <filter string="My Time Off" name="my_leaves" domain="[('employee_id.user_id', '=', uid)]"/>
                 <filter string="My Team" name="my_team" domain="['|', ('employee_id.leave_manager_id', '=', uid), ('employee_id.user_id', '=', uid)]" help="Time off of people you are manager of"/>
                 <filter string="My Department" name="department"
@@ -107,7 +112,7 @@
         <field name="name">hr.leave.view.kanban</field>
         <field name="model">hr.leave</field>
         <field name="arch" type="xml">
-            <kanban sample="1" class="o_holidays_view_kanban" js_class="time_off_kanban_dashboard">
+            <kanban sample="1" class="o_holidays_view_kanban o_kanban_list" js_class="time_off_kanban_dashboard">
                 <header>
                     <button type="action"
                         name="%(hr_holidays.action_hr_leave_generate_multi_wizard)d"
@@ -188,7 +193,7 @@
                                                         <field name="request_hour_to" widget="float_time_selection"/>
                                                     </t>
                                                 </div>
-                                                <field name="work_entry_type_id" class="text-muted"/>
+                                                <field name="work_entry_type_id" widget="many2one_work_entry_type" class="text-muted"/>
                                             </div>
                                             <div class="col-2 o_hr_holidays_card ps-3">
                                                 <div class="fw-bold d-flex me-1">
@@ -283,7 +288,7 @@
                                             </t>
                                     </div>
                                 </div>
-                                <field name="work_entry_type_id" class="text-muted"/>
+                                <field name="work_entry_type_id" widget="many2one_work_entry_type" class="text-muted"/>
                                 <span class="text-muted">
                                     (<field name="duration_display"/>)
                                 </span>
@@ -333,7 +338,7 @@
                                 <div class="text-muted text-nowrap">(<field name="number_of_days"/> days)</div>
                             </div>
                             <div class="text-muted">
-                                <field name="work_entry_type_id" display="full"/>
+                                <field name="work_entry_type_id" widget="many2one_work_entry_type" display="full"/>
                                 <field name="date_from"/> <i class="oi" data-icon="east" title="to" /> <field name="date_to"/>
                             </div>
                         </div>
@@ -378,6 +383,7 @@
                 <field name="work_entry_type_increases_duration" class="alert alert-info d-flex mt-2" role="alert" style="white-space: pre-wrap;" invisible="not work_entry_type_increases_duration"/>
                 <div class="alert alert-info d-flex mt-2"
                         role="alert"
+                        name="support_document_alert"
                         invisible="state in ['validate', 'refuse', 'cancel'] or not work_entry_type_support_document">
                     A supporting document is required for this type of time type.
                 </div>
@@ -391,10 +397,9 @@
                                 </div>
                                 <div>
                                     <field name="work_entry_type_id" force_save="1" default_focus="1"
-                                        widget="many2one_no_save"
+                                        widget="many2one_work_entry_type"
                                         domain="[
                                             ('id', 'in', allowed_work_entry_type_ids),
-                                            ('time_off_selectable', '=', True),
                                             '|',
                                                 ('requires_allocation', '=', False),
                                                 '&amp;',
@@ -423,7 +428,7 @@
                                                required="not date_from or not date_to"
                                                options="{'end_date_field': 'request_date_to', 'always_range': True}"
                                         />
-                                        <field name="request_date_to" invisible="1"/>
+                                        <field name="request_date_to" invisible="1"/> <!-- end date of the request_date_from daterange widget (end_date_field option) -->
                                     </div>
                                     <div invisible="work_entry_type_request_unit != 'hour'">
                                         <field name="request_date_hour_from"
@@ -432,13 +437,20 @@
                                                required="1"
                                                options="{'end_date_field': 'request_date_hour_to', 'always_range': True}"
                                         />
-                                        <field name="request_date_hour_to" invisible="1"/>
+                                        <field name="request_date_hour_to" invisible="1"/> <!-- end datetime of the request_date_hour_from daterange widget (end_date_field option) -->
+                                        <!-- Needed for the onchange -->
+                                        <field name="request_hour_from" invisible="1"/> <!-- needed for the onchange recomputing the duration -->
+                                        <field name="request_hour_to" invisible="1"/> <!-- needed for the onchange recomputing the duration -->
                                     </div>
                                     <div class="d-flex gap-2" invisible="work_entry_type_request_unit != 'half_day' or not last_several_days">
                                         <field name="request_date_from_period" invisible="work_entry_type_request_unit != 'half_day'" required="work_entry_type_request_unit == 'half_day'" readonly="state != 'confirm'"/>
                                         <i class="oi" data-icon="east" aria-label="to" title="To"/>
                                         <field name="request_date_to_period" invisible="work_entry_type_request_unit != 'half_day'" required="work_entry_type_request_unit == 'half_day'" readonly="state != 'confirm'"/>
                                     </div>
+                                    <field name="is_time_rule_trimmed" invisible="1"/> <!-- read by _compute_date_from_to, which preserves the sub-day end written by the time rule instead of snapping it back to the schedule boundary -->
+                                    <!-- trimmed source / output: show exact time range set by the rule engine -->
+                                    <field name="time_rule_time_range" nolabel="1" readonly="1" class="text-muted"
+                                           invisible="not time_rule_time_range"/>
                                     <div class="d-flex gap-2" invisible="work_entry_type_request_unit == 'half_day' and not last_several_days">
                                         <field name="number_of_hours" widget="float_time" nolabel="1"
                                                readonly="state != 'confirm' or work_entry_type_request_unit != 'hour'"
@@ -447,6 +459,13 @@
                                                invisible="work_entry_type_request_unit == 'hour'"
                                                class="text-muted w-auto"/>
                                         <span class="text-muted text-nowrap" invisible="work_entry_type_request_unit == 'hour'">day(s)</span>
+                                        <div class="text-muted d-flex gap-1 me-1" invisible="not max_leaves">
+                                            (<field name="virtual_remaining_leaves" widget="float" class="w-auto" digits="[3,2]"/>
+                                            <span class="text-nowrap">remaining out of</span>
+                                            <field name="max_leaves" widget="float" class="w-auto" digits="[3,2]"/>)
+                                            <span class="text-muted text-nowrap" invisible="work_entry_type_request_unit != 'hour'">hour(s)</span>
+                                            <span class="text-muted text-nowrap" invisible="work_entry_type_request_unit == 'hour'">day(s)</span>
+                                        </div>
                                     </div>
                                     <div invisible="work_entry_type_request_unit != 'half_day' or last_several_days">
                                         <field name="work_entry_type_request_unit" invisible="1"/> <!-- Needed -->
@@ -459,6 +478,13 @@
                                                nolabel="1"
                                                required="1"
                                         />
+                                        <div class="text-muted d-flex gap-1 me-1" invisible="not max_leaves">
+                                            <field name="virtual_remaining_leaves" widget="float" class="w-auto" digits="[3,2]"/>
+                                            <span class="text-nowrap">remaining out of</span>
+                                            <field name="max_leaves" widget="float" class="w-auto" digits="[3,2]"/>
+                                            <span class="text-muted text-nowrap" invisible="work_entry_type_request_unit != 'hour'">hour(s)</span>
+                                            <span class="text-muted text-nowrap" invisible="work_entry_type_request_unit == 'hour'">day(s)</span>
+                                        </div>
                                     </div>
                                     <div invisible="not allocation_display_warning">
                                           <field class="text-danger fw-bold" name="allocation_display_warning" nolabel="1"/>
@@ -523,8 +549,14 @@
             <xpath expr="//field[@name='number_of_hours']" position="attributes">
                 <attribute name="invisible">1</attribute>
             </xpath>
+            <xpath expr="//div[@name='support_document_alert']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
             <xpath expr="//group[@name='attachments_relapse']" position="inside">
-                <field name="supported_attachment_ids" widget="many2many_binary" nolabel="1" invisible="not attachment_is_visible or state != 'confirm'" colspan="2"/>
+                <div class="d-flex align-items-baseline gap-2" colspan="2" invisible="not attachment_is_visible or state != 'confirm'">
+                    <field name="supported_attachment_ids" widget="many2many_binary" nolabel="1" class="w-auto"/>
+                    <span class="text-danger" invisible="not work_entry_type_support_document or supported_attachment_ids">Required</span>
+                </div>
             </xpath>
         </field>
     </record>
@@ -569,9 +601,32 @@
         <field name="mode">primary</field>
         <field name="priority">17</field>
         <field name="arch" type="xml">
+            <xpath expr="//group[@name='col_left']/*[1]" position="before">
+                <div class="d-flex gap-2">
+                    <i class="oi oi-lg oi-filled align-self-center" data-icon="person" title="Employee" name="employee_id"/>
+                </div>
+                <div>
+                    <field name="employee_id" groups="hr_holidays.group_hr_holidays_responsible"
+                        readonly="state != 'confirm'" widget="many2one_avatar_employee"/>
+                </div>
+            </xpath>
+            <field name="work_entry_type_id" position="attributes">
+                <attribute name="domain">[
+                    '|',
+                        ('requires_allocation', '=', False),
+                        '&amp;',
+                            ('has_valid_allocation', '=', True),
+                            '|',
+                                ('allows_negative', '=', True),
+                                '&amp;',
+                                    ('virtual_remaining_leaves', '&gt;', 0),
+                                    ('allows_negative', '=', False),
+                ]</attribute>
+            </field>
             <field name="work_entry_type_id" position="before">
                 <field name="user_id" invisible="1"/> <!-- Used in HolidaysFormViewDialog -->
             </field>
+            <div name="warning_wrong_company" position="replace"/>
         </field>
     </record>
 
@@ -583,8 +638,8 @@
                     string="Time Off Request"
                     form_view_id="%(hr_holidays.hr_leave_view_form_dashboard_manager_new_time_off)d"
                     event_open_popup="true"
-                    date_start="date_from"
-                    date_stop="date_to"
+                    date_start="request_date_hour_from"
+                    date_stop="request_date_hour_to"
                     quick_create="0"
                     show_date_picker="0"
                     show_unusual_days="True"
@@ -600,6 +655,19 @@
         </field>
     </record>
 
+    <record id="hr_leave_view_calendar_manager" model="ir.ui.view">
+        <field name="name">hr.leave.view.calendar.manager</field>
+        <field name="model">hr.leave</field>
+        <field name="inherit_id" ref="hr_holidays.hr_leave_view_dashboard"/>
+        <field name="mode">primary</field>
+        <field name="arch" type="xml">
+            <calendar position="attributes">
+                <attribute name="js_class">time_off_management_calendar</attribute>
+                <attribute name="form_view_id">%(hr_leave_view_form_dashboard_manager_new_time_off)d</attribute>
+            </calendar>
+        </field>
+    </record>
+
     <record id="hr_leave_employee_view_dashboard" model="ir.ui.view">
         <field name="name">hr.leave.employee.view.dashboard</field>
         <field name="model">hr.leave</field>
@@ -608,8 +676,8 @@
                     js_class="time_off_calendar_dashboard"
                     form_view_id="%(hr_holidays.hr_leave_view_form_dashboard_new_time_off)d"
                     event_open_popup="true"
-                    date_start="date_from"
-                    date_stop="date_to"
+                    date_start="request_date_hour_from"
+                    date_stop="request_date_hour_to"
                     mode="year"
                     quick_create="0"
                     show_date_picker="0"
@@ -640,6 +708,19 @@
 
     </record>
 
+    <record id="hr_leave_employee_view_dashboard_week" model="ir.ui.view">
+        <field name="name">hr.leave.view.dashboard.week</field>
+        <field name="model">hr.leave</field>
+        <field name="inherit_id" ref="hr_holidays.hr_leave_employee_view_dashboard"/>
+        <field name="mode">primary</field>
+        <field name="arch" type="xml">
+            <xpath expr="//calendar" position="attributes">
+                <attribute name="mode">week</attribute>
+                <attribute name="form_view_id">%(hr_holidays.hr_leave_view_form_dashboard_new_time_off_custom)d</attribute>
+            </xpath>
+        </field>
+    </record>
+
     <record id="hr_leave_view_form_manager" model="ir.ui.view">
         <field name="name">hr.leave.view.form.manager</field>
         <field name="model">hr.leave</field>
@@ -657,21 +738,6 @@
                     <field name="employee_id" groups="hr_holidays.group_hr_holidays_responsible" readonly="state in ['cancel', 'refuse', 'validate', 'validate1']" widget="many2one_avatar_employee" nolabel="1"/>
                 </div>
             </xpath>
-            <xpath expr="//field[@name='work_entry_type_id']" position="attributes">
-                <attribute name="domain">[
-                    ('id', 'in', allowed_work_entry_type_ids),
-                    ('time_off_selectable', '=', True),
-                    '|',
-                        ('requires_allocation', '=', False),
-                        '&amp;',
-                            ('has_valid_allocation', '=', True),
-                            '|',
-                                ('allows_negative', '=', True),
-                                '&amp;',
-                                    ('virtual_remaining_leaves', '&gt;', 0),
-                                    ('allows_negative', '=', False),
-                ]</attribute>
-            </xpath>
             <xpath expr="//div[@name='warning_wrong_company']" position="replace"/>
         </field>
     </record>
@@ -680,7 +746,8 @@
         <field name="name">hr.holidays.view.list</field>
         <field name="model">hr.leave</field>
         <field name="arch" type="xml">
-            <list string="Time Off Requests" sample="1" expand="context.get('expand_leave_list', False)" duplicate="false" js_class="hr_holidays_payslip_list">
+            <list string="Time Off Requests" sample="1" expand="context.get('expand_leave_list', False)" duplicate="false" js_class="hr_holidays_payslip_list"
+                  decoration-it="time_rule_id">
                 <header>
                     <button type="action"
                         name="%(hr_holidays.action_hr_leave_generate_multi_wizard)d"
@@ -705,15 +772,13 @@
                     />
                 </header>
                 <field name="employee_id" widget="many2one_avatar_employee" readonly="state in ['cancel', 'refuse', 'validate', 'validate1']" />
-                <field name="work_entry_type_id" class="fw-bold" readonly="state in ['cancel', 'refuse', 'validate', 'validate1']"/>
+                <field name="work_entry_type_id" widget="many2one_work_entry_type" readonly="state in ['cancel', 'refuse', 'validate', 'validate1']" options="{'no_open': true}" />
                 <field name="date_from" readonly="state in ['cancel', 'refuse', 'validate', 'validate1']"/>
-                <field name="date_to" readonly="state in ['cancel', 'refuse', 'validate', 'validate1']"/>
+                <field name="date_to" string="End Date" readonly="state in ['cancel', 'refuse', 'validate', 'validate1']"/>
                 <field name="duration_display" string="Duration"/>
                 <field name="name" optional="hidden"/>
                 <field name="state" widget="badge" decoration-warning="state in ('confirm','validate1')" decoration-success="state == 'validate'" decoration-danger="state == 'refuse'"/>
-                <field name="active_employee" column_invisible="True"/>
-                <field name="user_id" column_invisible="True"/>
-                <field name="message_needaction" column_invisible="True"/>
+                <field name="time_rule_id" column_invisible="1"/> <!-- drives decoration-it of the list -->
                 <button string="Approve" name="action_approve" type="object"
                     icon="thumb_up" icon_class="oi-filled"
                     invisible="not can_approve"/>
@@ -956,7 +1021,7 @@
     <record id="action_view_calendar_manager_approve" model="ir.actions.act_window.view">
         <field name="sequence" eval="4"/>
         <field name="view_mode">calendar</field>
-        <field name="view_id" ref="hr_leave_view_dashboard"/>
+        <field name="view_id" ref="hr_leave_view_calendar_manager"/>
         <field name="act_window_id" ref="hr_leave_action_action_approve_department"/>
     </record>
     <record id="action_view_activity_manager_approve" model="ir.actions.act_window.view">

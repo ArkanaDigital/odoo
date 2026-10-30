@@ -1,10 +1,18 @@
-import { describe, test, expect } from "@odoo/hoot";
-import { click, waitFor } from "@odoo/hoot-dom";
+import { describe, test, expect, advanceTime } from "@odoo/hoot";
+import { click, waitFor, resize } from "@odoo/hoot-dom";
 import { animationFrame } from "@odoo/hoot-mock";
 import { contains, mountWithCleanup } from "@web/../tests/web_test_helpers";
-import { setupPosEnv, getFilledOrder } from "@point_of_sale/../tests/unit/utils";
+import {
+    setupPosEnv,
+    getFilledOrder,
+    setupAndMountPosApp,
+} from "@point_of_sale/../tests/unit/utils";
 import { definePosModels } from "@point_of_sale/../tests/unit/data/generate_model_definitions";
 import { ProductScreen } from "@point_of_sale/app/screens/product_screen/product_screen";
+import { patch } from "@web/core/utils/patch";
+import * as PosUiUtils from "@point_of_sale/../tests/unit/ui_utils";
+import * as ResUiUtils from "@pos_restaurant/../tests/unit/ui_utils";
+const Utils = { ...PosUiUtils, ...ResUiUtils };
 
 definePosModels();
 
@@ -92,6 +100,7 @@ describe("Mobile Pay Button", () => {
         });
 
         expect(Boolean(screen.swapButton)).toBe(false);
+        await click("button:contains(In)");
         expect("button:contains('cart')").toHaveClass("btn-primary");
         expect(".pay-button:contains('Pay')").toHaveCount(1);
         expect(".pay-button:contains('Pay')").toHaveClass("btn-secondary");
@@ -121,6 +130,24 @@ describe("Mobile Pay Button", () => {
         expect(".pay-button:contains('Pay')").toHaveClass("btn-primary");
         expect(".pay-button:contains('Pay')").not.toHaveAttribute("disabled");
     });
+});
+
+test("onWillRender replaces a finalized order with a new one that keeps its table and preset", async () => {
+    const store = await setupPosEnv();
+    const table = store.models["restaurant.table"].get(2);
+    const preset = store.models["pos.preset"].get(1);
+    const order = store.addNewOrder({ table_id: table, preset_id: preset });
+
+    await mountWithCleanup(ProductScreen, { props: { orderUuid: order.uuid } });
+
+    // Simulate the order being paid from another POS while this screen still shows it.
+    order.state = "paid";
+    await animationFrame();
+
+    const newOrder = store.getOrder();
+    expect(newOrder.id).not.toBe(order.id);
+    expect(newOrder.table_id.id).toBe(table.id);
+    expect(newOrder.preset_id.id).toBe(preset.id);
 });
 
 test("select existing order when preset requires order name", async () => {
@@ -154,6 +181,34 @@ test("select existing order when preset requires order name", async () => {
     expect(currentOrder.id).toBe(order.id);
     expect(currentOrder.preset_id.id).toBe(3);
     expect(currentOrder.getName()).toBe("The Other Order");
+});
+
+test("reprint button visibility on md size", async () => {
+    await resize({ width: 820 });
+    const store = await setupAndMountPosApp({ preparation_printer_ids: [1] });
+    patch(store.ticketPrinter, {
+        async generateIframe(_template, _data) {
+            return document.createElement("iframe");
+        },
+        setIframeSizeFromPrinter(_iframe, _printer) {
+            return;
+        },
+        async generateImage() {
+            return "fake_image_data";
+        },
+        print() {
+            return { successful: true };
+        },
+    });
+    await Utils.clickTable("1");
+    Utils.clickDisplayedProduct("Steel desk");
+    await Utils.clickOrderButton();
+    await animationFrame();
+    await Utils.clickPlanButton();
+    await advanceTime(300);
+    await Utils.clickTable("1");
+    await Utils.clickReprintButton();
+    await waitFor(".floor-screen");
 });
 
 test("breakCombo with course allocation", async () => {
@@ -192,4 +247,41 @@ test("breakCombo with course allocation", async () => {
     expect(order.getOrderlines()).toHaveLength(1);
     expect(order.courses).toHaveLength(1);
     expect(order.courses[0].name).toBe("Default Course 2");
+});
+
+test("removing a line keeps its course while other lines use it", async () => {
+    const store = await setupPosEnv();
+    const order = store.addNewOrder();
+    order.config.use_course_allocation = true;
+    const screen = await mountWithCleanup(ProductScreen, { props: { orderUuid: order.uuid } });
+
+    await screen.addProductToOrder(store.models["product.template"].get(6));
+    await screen.addProductToOrder(store.models["product.template"].get(8));
+    expect(order.courses).toHaveLength(1);
+
+    const line = screen.pos.getOrder().lines.find((l) => l.full_product_name === "Wood chair");
+    store.getOrder().removeOrderline(line);
+
+    expect(order.lines).toHaveLength(1);
+    expect(order.courses).toHaveLength(1);
+    expect(order.lines[0].course_id.name).toBe("Default Course 2");
+});
+
+test("lines of a deleted course stay visible", async () => {
+    const store = await setupPosEnv();
+    const order = store.addNewOrder();
+    order.config.use_course_allocation = true;
+    const screen = await mountWithCleanup(ProductScreen, { props: { orderUuid: order.uuid } });
+
+    await screen.addProductToOrder(store.models["product.template"].get(5));
+    await screen.addProductToOrder(store.models["product.template"].get(6));
+    const course = order.lines.find((l) => l.full_product_name === "TEST 2").course_id;
+
+    // Another device deleted the course while this order still has a line in it
+    store.deviceSync.processDeletedRecords({ "restaurant.order.course": [course.id] });
+    await animationFrame();
+
+    expect(order.courses).toHaveLength(1);
+    expect(order.lines).toHaveLength(2);
+    expect(".orderline:contains('TEST 2')").toHaveCount(1);
 });

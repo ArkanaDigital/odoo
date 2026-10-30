@@ -60,13 +60,16 @@ class ProductProduct(models.Model):
                 if price:
                     self.standard_price = price
 
-    def _compute_bom_price(self, bom, boms_to_recompute=False, byproduct_bom=False):
+    def _get_bom_components_price(self, bom, boms_to_recompute=False, byproduct_bom=False):
+        """
+        Calculates only the price of the BoM components
+        """
         self.ensure_one()
         if not bom:
             return 0
         if not boms_to_recompute:
             boms_to_recompute = []
-        total = 0
+        total = bom.extra_cost if bom.type == 'normal' else 0
         for opt in bom.operation_ids:
             if opt._skip_operation_line(self):
                 continue
@@ -98,14 +101,16 @@ class ProductProduct(models.Model):
             return bom.uom_id._compute_price(total / bom.product_qty, self.uom_id)
         return 0.0
 
+    def _compute_bom_price(self, bom, boms_to_recompute=False, byproduct_bom=False):
+        return self._get_bom_components_price(bom, boms_to_recompute=boms_to_recompute, byproduct_bom=byproduct_bom)
+
     def _compute_value(self):
         """
         Exclude kit products from inventory valuation to avoid double counting.
         Only non-kit products are valuated; kits are set to zero value.
         """
-        non_kit_products = self.filtered(lambda product: not product.is_kits)
+        non_kit_products, kit_products = self.partitioned(lambda product: not product.is_kits)
         super(ProductProduct, non_kit_products)._compute_value()
-        kit_products = self - non_kit_products
         for kit_product in kit_products:
             kit_product.company_currency_id = kit_product.company_id.currency_id or self.env.company.currency_id
             kit_product.total_value = 0.0

@@ -4,16 +4,16 @@ import {
     onMounted,
     onWillDestroy,
     onWillStart,
-    onWillUpdateProps,
     proxy,
     t,
     toRaw,
     useEffect,
     useListener,
+    useOnChange,
     useScope,
 } from "@odoo/owl";
 import { localization } from "@web/core/l10n/localization";
-import { useService } from "@web/core/utils/hooks";
+import { useAsyncComputed, useService } from "@web/core/utils/hooks";
 import { useDebounced } from "@web/core/utils/timing";
 import { useEnv, useSubEnv } from "@web/owl2/utils";
 import { BuilderAction } from "./builder_action";
@@ -115,6 +115,45 @@ export function useActionInfo(props, options) {
 }
 
 /**
+ * Updates/returns the items environment when a builder component's items are
+ * props objects rather than sub-components.
+ *
+ * @param {object} item
+ * @param {object} extension
+ */
+export function useItemEnv(item, extension) {
+    if (extension) {
+        const itemEnv = Object.create(item.env);
+        const descrs = Object.getOwnPropertyDescriptors(extension);
+        const env = Object.freeze(Object.defineProperties(itemEnv, descrs));
+        item.env = env;
+    }
+    return item?.env || {};
+}
+
+/**
+ * Sets up the `selectableContext` required for options to correctly handle
+ * selectable items, which may be managed differently by each component.
+ *
+ * @param {{
+ *  add?: () => void;
+ *  remove?: () => void;
+ *  clean?: () => void;
+ *  [key: string]: any;
+ * }} params
+ */
+export function useSelectableContext({ add, remove, clean, ...config } = {}) {
+    useSubEnv({
+        selectableContext: {
+            addSelectableItem: add,
+            removeSelectableItem: remove,
+            cleanSelectedItem: clean,
+            ...config,
+        },
+    });
+}
+
+/**
  * @param {DefaultBuilderProps} props
  */
 export function useBuilderComponent(props) {
@@ -140,13 +179,15 @@ export function useBuilderComponent(props) {
     let applyTo = props.applyTo;
     updateEditingElements();
     useListener(oldEnv.editorBus, "UPDATE_EDITING_ELEMENT", updateEditingElements);
-    onWillUpdateProps(async (nextProps) => {
-        if (props.applyTo !== nextProps.applyTo) {
-            applyTo = nextProps.applyTo;
+    useOnChange(
+        () => [props.applyTo],
+        async (newApplyTo) => {
+            applyTo = newApplyTo;
             oldEnv.editorBus.trigger("UPDATE_EDITING_ELEMENT");
             await oldEnv.triggerDomUpdated();
-        }
-    });
+        },
+        { initialRun: false }
+    );
     newEnv.getEditingElements = () => editingElements;
     newEnv.getEditingElement = () => editingElements[0];
     const weContext = {};
@@ -165,21 +206,25 @@ export function useBuilderComponent(props) {
             builder: localization.direction,
         };
     }
-
-    useSubEnv(newEnv);
+    // Some component items are plain props objects rather than Owl
+    // components (e.g. `BuilderSearchSelect`). Since `useSubEnv` only
+    // works with components, those objects cannot inherit the parent
+    // environment automatically. In that case, we update their `env`
+    // manually here.
+    props.useItemEnv ? props.useItemEnv(newEnv) : useSubEnv(newEnv);
 }
 
 /**
  * @param {DefaultBuilderProps} props
  * @param {any} item
- * @param {{ onReady?: Promise }} [options]
+ * @param {{ onReady?: () => Promise<any> }} [options]
  */
 export function useDependencyDefinition(props, item, { onReady } = {}) {
     const env = useEnv();
     const scope = useScope();
     const ignore = env.ignoreBuilderItem;
     if (onReady) {
-        onReady.then(() => {
+        onReady().then(() => {
             if (!scope.isDestroyed()) {
                 env.dependencyManager.add(props.id, item, ignore);
             }
@@ -187,7 +232,6 @@ export function useDependencyDefinition(props, item, { onReady } = {}) {
     } else {
         env.dependencyManager.add(props.id, item, ignore);
     }
-
     onWillDestroy(() => {
         if (scope.status === 1 /* mounted/started */) {
             env.dependencyManager.removeByValue(item);
@@ -261,7 +305,7 @@ export function useSelectableComponent(props, { onItemChange } = {}) {
             return;
         }
         let currentItem;
-        let itemPriority = 0;
+        let itemPriority = -Infinity;
         for (const selectableItem of selectableItems) {
             if (selectableItem.isApplied() && selectableItem.priority >= itemPriority) {
                 currentItem = selectableItem;
@@ -378,6 +422,7 @@ export function useSelectableComponent(props, { onItemChange } = {}) {
                 } else {
                     ltrRtlMappedItems.get(item.ltrRtlMapping).push(item);
                 }
+                handleLtrRtl(item);
             },
             removeLtrRtlMappedItem: (item) => {
                 const mappedItems = ltrRtlMappedItems.get(item.ltrRtlMapping);
@@ -393,7 +438,6 @@ export function useSelectableComponent(props, { onItemChange } = {}) {
                     mappedItems.splice(index, 1);
                 }
             },
-            updateLtrRtlMappedItem: handleLtrRtl,
         },
     });
 }
@@ -444,7 +488,7 @@ export function useSelectableItemComponent(props, { getLabel = () => {} } = {}) 
         });
     } else {
         state = useDomState(async () => {
-            await onReady;
+            await onReady?.();
             return {
                 isActive: isSelectableActive(),
             };
@@ -505,13 +549,6 @@ export function useSelectableLtrRtlComponent({
             langDir: env.langDir,
         };
         env.selectableContext.addLtrRtlMappedItem(ltrRtlMappedItem);
-
-        onWillStart(() => {
-            env.selectableContext.updateLtrRtlMappedItem(ltrRtlMappedItem);
-        });
-        onWillUpdateProps(async () => {
-            env.selectableContext.updateLtrRtlMappedItem(ltrRtlMappedItem);
-        });
         onWillDestroy(() => {
             env.selectableContext.removeLtrRtlMappedItem(ltrRtlMappedItem);
         });
@@ -519,51 +556,32 @@ export function useSelectableLtrRtlComponent({
 }
 
 /**
- * @param {() => Iterable<BuilderCustomAction>} getAllActions
+ * Prepares the actions having a `prepare` step, again whenever their
+ * descriptions change.
+ *
+ * @param {() => BuilderCustomAction[]} getAllActions
+ * @returns {(() => Promise<void>) | null}
  */
 function usePrepareAction(getAllActions) {
-    const env = useEnv();
-    const getAction = env.editor.shared.builderActions.getAction;
-    const asyncActions = [];
-    for (const descr of getAllActions()) {
-        if (descr.actionId) {
-            const action = getAction(descr.actionId);
-            if (action.has("prepare")) {
-                asyncActions.push({ action, descr });
-            }
-        }
+    function getPreparableActions() {
+        return getAllActions().filter(
+            (descr) => descr.actionId && getAction(descr.actionId).has("prepare")
+        );
     }
-    let onReady;
-    if (asyncActions.length) {
-        let resolve;
-        onReady = new Promise((r) => {
-            resolve = r;
-        });
-        onWillStart(async function () {
-            await Promise.all(
-                asyncActions.map((obj) =>
-                    obj.action.prepare({ ...obj.descr, editingElement: env.getEditingElement() })
+
+    const env = useEnv();
+    const { getAction } = env.editor.shared.builderActions;
+    let onReady = null;
+    if (getPreparableActions().length) {
+        onReady = useAsyncComputed(() => {
+            const descrs = getPreparableActions();
+            const editingElement = env.getEditingElement();
+            return Promise.all(
+                descrs.map((descr) =>
+                    getAction(descr.actionId).prepare({ ...descr, editingElement })
                 )
             );
-            resolve();
-        });
-        onWillUpdateProps(async ({ actionParam, actionValue }) => {
-            onReady = new Promise((r) => {
-                resolve = r;
-            });
-            // TODO: should we support updating actionId?
-            await Promise.all(
-                asyncActions.map((obj) =>
-                    obj.action.prepare({
-                        ...obj.descr,
-                        actionParam: convertParamToObject(actionParam),
-                        editingElement: env.getEditingElement(),
-                        actionValue,
-                    })
-                )
-            );
-            resolve();
-        });
+        }).currentPromise;
     }
     return onReady;
 }
@@ -662,7 +680,7 @@ export function revertPreview(editor) {
  */
 export function useClickableBuilderComponent(props) {
     useBuilderComponent(props);
-    const env = useEnv();
+    const env = props.useItemEnv?.() || useEnv();
     const { getAllActions, callOperation, isApplied } = getAllActionsAndOperations(props);
     const getAction = env.editor.shared.builderActions.getAction;
 
@@ -1049,7 +1067,7 @@ export function useInputBuilderComponent(
      * @param {Element} editingElement
      */
     async function getState(editingElement) {
-        await onReady;
+        await onReady?.();
         if (!isElementConnected(editingElement)) {
             // TODO try to remove it. We need to move hook in BuilderComponent
             return {};
@@ -1067,9 +1085,9 @@ export function useInputBuilderComponent(
      * @param {Element} editingElement
      */
     function getValueFromDom(editingElement) {
-        const actionWithGetValue = getAllActions().find(
-            ({ actionId }) => getAction(actionId).getValue
-        );
+        const actionWithGetValue =
+            getAllActions().find(({ actionId }) => getAction(actionId).has("getValue")) ??
+            getAllActions()[0];
         const { actionId, actionParam } = actionWithGetValue;
         try {
             const actionValue = getAction(actionId).getValue({
@@ -1111,11 +1129,13 @@ export function useInputBuilderComponent(
     const withLoadingEffect = useWithLoadingEffect(getAllActions);
     const canTimeout = useCanTimeout(getAllActions);
 
-    onWillUpdateProps((nextProps) => {
-        if ("default" in nextProps) {
-            defaultValue = nextProps.default;
-        }
-    });
+    useOnChange(
+        () => [props.default],
+        (newDefaultValue) => {
+            defaultValue = newDefaultValue;
+        },
+        { initialRun: false }
+    );
 
     const applyOperation = env.editor.shared.history.makePreviewableAsyncOperation(callApply);
     const operationWithReload = useOperationWithReload(callApply, reload);

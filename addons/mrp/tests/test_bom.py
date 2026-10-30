@@ -5,7 +5,7 @@ from datetime import timedelta
 from odoo import exceptions, fields
 from odoo.exceptions import UserError
 from odoo.fields import Command
-from odoo.tests import Form, HttpCase, freeze_time
+from odoo.tests import Form, HttpCase, freeze_time, new_test_user
 from odoo.tools import float_compare, float_repr, float_round, format_date
 
 from odoo.addons.mrp.tests.common import TestMrpCommon
@@ -839,12 +839,9 @@ class TestBoM(TestMrpCommon):
         """
         # Workcenter is working 24/7
         self.full_availability()
-        routes = self.env.ref('mrp.route_warehouse0_manufacture')
-        routes.product_selectable = True
         pickaxe = self.env['product.product'].create({
             'name': 'Iron Pickaxe',
             'is_storable': True,
-            'route_ids': routes,
         })
         stick = self.env['product.product'].create({
             'name': 'Stick',
@@ -1419,7 +1416,6 @@ class TestBoM(TestMrpCommon):
             'name': 'Product sold in grams',
             'is_storable': True,
             'uom_id': self.uom_gm.id,
-            'route_ids': [Command.link(self.route_manufacture.id)],
         })
         # We create a BoM that manufactures 2kg of product
         self.env['mrp.bom'].create({
@@ -1796,6 +1792,14 @@ class TestBoM(TestMrpCommon):
             "There should be no difference between the MO and BoM")
         self.assertEqual(mo_1.move_byproduct_ids.product_uom_qty, bom.byproduct_ids.product_qty * 10)
 
+        # Updates the BoM again (add a component consumed in the operation).
+        bom.bom_line_ids = [Command.create({'product_id': component_2.id, 'product_qty': 1, 'operation_id': operation.id})]
+        mo_1.action_update_bom()
+        self.assertRecordValues(mo_1.move_raw_ids, [
+            {'product_id': component_1.id, 'operation_id': False, 'workorder_id': False},
+            {'product_id': component_2.id, 'operation_id': operation.id, 'workorder_id': mo_1.workorder_ids.id},
+        ])
+
         # Updates the BoM by multiplying all its quantities by 3.
         bom.product_qty *= 3
         bom.bom_line_ids[0].product_qty *= 3
@@ -1920,8 +1924,8 @@ class TestBoM(TestMrpCommon):
         with bom_form.bom_line_ids.edit(1) as bom_line:
             bom_line.product_qty = 2
         bom = bom_form.save()
-        self.assertEqual(mo_2.is_outdated_bom, False)
-        # As the quantities were changed manually, the MO will be in progress and can no longer be updated from the BOM.
+        # A progress MO is now also flagged when its BoM changes (Update BoM is available in progress).
+        self.assertEqual(mo_2.is_outdated_bom, True)
 
     def test_bom_updates_mo_after_updating_operations(self):
         """ Creates a Manufacturing Order using a BoM with operations and checks the raw moves are
@@ -2137,6 +2141,24 @@ class TestBoM(TestMrpCommon):
         })
         with self.assertRaises(exceptions.ValidationError):
             self.bom_1.active = True
+
+    def test_search_archived_bom_by_archived_product_name(self):
+        """An archived BoM must still be found when searching by the name of its
+        (also archived) product
+        """
+        self.product_4.action_archive()
+        self.assertFalse(self.bom_1.active, "archiving the product should cascade-archive its BoM")
+
+        found = self.env['mrp.bom'].search([
+            ('active', '=', False),
+            ('product_tmpl_id', 'ilike', self.product_4.name),
+        ])
+        self.assertIn(self.bom_1.id, found.ids)
+
+        still_hidden = self.env['product.template'].search([
+            ('display_name', 'ilike', self.product_4.name),
+        ])
+        self.assertFalse(still_hidden)
 
     def test_cycle_on_bom_creation(self):
         finished_product = self.bom_4.product_id
@@ -2424,7 +2446,6 @@ class TestBoM(TestMrpCommon):
         """Test to ensure that the popover shows the correct information when at least one component can not be resupplied.
         """
         bom = self.bom_1
-        bom.product_id.route_ids = [Command.set([self.route_manufacture.id])]
         popover_data = json.loads(bom.json_popover)
         # The popover displays "Not Available: Missing route info for components." because the delay is not set on the BoM.
         self.assertNotIn('delay', popover_data)
@@ -2626,6 +2647,15 @@ class TestBoM(TestMrpCommon):
                 Command.link(tmpl_attr_line_color.product_template_value_ids[0].id),
             ],
         })
+        self.assertRecordValues(order2.move_raw_ids, [
+            {'product_id': self.product_2.id, 'product_uom_qty': 1.0},
+            {'product_id': self.product_4.id, 'product_uom_qty': 1.0},
+            ])
+
+        # any onchange on the draft MO recomputes the moves on a new record
+        mo_form = Form(order2)
+        mo_form.bom_id = bom
+        mo_form.save()
         self.assertRecordValues(order2.move_raw_ids, [
             {'product_id': self.product_2.id, 'product_uom_qty': 1.0},
             {'product_id': self.product_4.id, 'product_uom_qty': 1.0},
@@ -2907,7 +2937,91 @@ class TestBoM(TestMrpCommon):
 
         # Delete all existing operations, the copy operations buttons shouldn't be visible if there is none.
         self.env['mrp.routing.workcenter'].search([]).unlink()
+        self.env.invalidate_all()  # no depends on show_copy_operations_button
         self.assertFalse(self.bom_1.show_copy_operations_button, "The copy operations button should be visible even if the current BoM is empty.")
+
+    def test_exploded_bom_lines_hierarchy_order(self):
+        """Ensure that exploded BoM list should keep the specific hierarchy order and not the default sequence order.
+
+        BoM structure:
+       ╒════════════╤═════════════════════╤═════════════════════╤═════════════════════╤═════════════╕
+       │  level 1   │       level 2       │       level 3       │       level 4       │   leval 5   │
+       ╘════════════╧═════════════════════╧═════════════════════╧═════════════════════╧═════════════╛
+        p1 ─────────┬── p3
+                    ├── Product 4 (bom) ──┬── Product 2
+                    │                     └── Product 1
+                    ├── Product 5 (kit) ──┬── Product 4 (bom) ──┬── Product 2
+                    │                     └── Product 3         └── Product 1
+                    └── p2 (bom) ─────────┬── p4
+                                          └── Product 5 (kit) ──┬── Product 4 (bom) ──┬── Product 2
+                                                                └── Product 3         └── Product 1
+        """
+
+        p1, p2, p3, p4 = self.make_prods(4)
+        p1_bom, p2_bom = self.env['mrp.bom'].create([
+            {
+                'product_tmpl_id': p1.product_tmpl_id.id,
+                'bom_line_ids': [
+                    Command.create({'product_id': p3.id}),
+                    Command.create({'product_id': self.product_4.id}),
+                    Command.create({'product_id': self.product_5.id}),
+                    Command.create({'product_id': p2.id}),
+                ],
+            }, {
+                'product_tmpl_id': p2.product_tmpl_id.id,
+                'bom_line_ids': [
+                    Command.create({'product_id': p4.id}),
+                    Command.create({'product_id': self.product_5.id}),
+                ],
+            },
+        ])
+
+        # Check that the exploded BoM lines are in the specific hierarchy order.
+        action = p1_bom.action_open_exploded_bom_lines()
+        exploded_line_ids = self.env['mrp.bom.line'].with_context(action['context']).search(action['domain']).ids
+        expected_line_ids = [
+            p1_bom.bom_line_ids[0].id,
+            p1_bom.bom_line_ids[1].id,
+            self.bom_1.bom_line_ids[0].id,
+            self.bom_1.bom_line_ids[1].id,
+            p1_bom.bom_line_ids[2].id,
+            self.bom_2.bom_line_ids[0].id,
+            self.bom_1.bom_line_ids[0].id,
+            self.bom_1.bom_line_ids[1].id,
+            self.bom_2.bom_line_ids[1].id,
+            p1_bom.bom_line_ids[3].id,
+            p2_bom.bom_line_ids[0].id,
+            p2_bom.bom_line_ids[1].id,
+            self.bom_2.bom_line_ids[0].id,
+            self.bom_1.bom_line_ids[0].id,
+            self.bom_1.bom_line_ids[1].id,
+            self.bom_2.bom_line_ids[1].id,
+        ]
+        self.assertEqual(
+            exploded_line_ids,
+            expected_line_ids,
+            "The exploded BoM lines should follow the hierarchy order, not the default sequence order.",
+        )
+
+        # Check that the search filter returns the expected exploded lines.
+        matching_line_ids = self.env['mrp.bom.line'].with_context(action['context']).search([('product_id', '=', self.product_5.id)]).ids
+        self.assertEqual(
+            matching_line_ids,
+            [p1_bom.bom_line_ids[2].id, p2_bom.bom_line_ids[1].id],
+            "Filtering the exploded BoM list should return only the matching BoM line.",
+        )
+
+    def test_bom_cycle_on_component_change(self):
+        """
+        Test that changing a BoM component to a product that creates a BoM cycle
+        raises a ValidationError when saving the BoM.
+        """
+        # bom_2 is already created in setUp for product_5 with product_4 as component
+        bom_form = Form(self.bom_1)
+        with self.assertRaises(exceptions.ValidationError):
+            with bom_form.bom_line_ids.edit(0) as bom_line:
+                bom_line.product_id = self.product_5
+            bom_form.save()
 
 
 class TestTourBoM(HttpCase):
@@ -3072,3 +3186,42 @@ class TestTourBoM(HttpCase):
                     Command.create({'product_id': c3.id, 'product_qty': 1, 'cost_share': 70}),  # All attributes
             ],
         })
+
+
+class TestMrpMobileTour(HttpCase):
+    browser_size = '375x667'
+    touch_enabled = True
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.user_mrp_user = new_test_user(
+            cls.env,
+            login='mrp_mobile',
+            password='mrp_mobile',
+            groups='mrp.group_mrp_user,mrp.group_mrp_routings',
+        )
+        cls.product, cls.component = cls.env['product.product'].create([
+            {'name': 'final product', 'is_storable': True},
+            {'name': 'component', 'is_storable': True},
+        ])
+        cls.stock_location = cls.env.ref('stock.warehouse0').lot_stock_id
+        cls.workcenter = cls.env['mrp.workcenter'].create({'name': 'Assembly'})
+        cls.bom = cls.env['mrp.bom'].create({
+            'product_tmpl_id': cls.product.product_tmpl_id.id,
+            'bom_line_ids': [Command.create({'product_id': cls.component.id, 'product_qty': 1})],
+            'operation_ids': [Command.create({'name': 'Assemble', 'workcenter_id': cls.workcenter.id})],
+        })
+
+    def test_basic_mo_process_on_mobile(self):
+        """ Check that a manufacturing order can be created, confirmed and produced on mobile. """
+        self.env['stock.quant']._update_available_quantity(self.component, self.stock_location, 1)
+        self.start_tour('/odoo/action-mrp.mrp_production_action/new', 'test_basic_mo_process_on_mobile', login=self.user_mrp_user.login)
+        mo = self.env['mrp.production'].search([('product_id', '=', self.product.id)], limit=1)
+        self.assertEqual(mo.state, 'done')
+        self.assertRecordValues(mo.workorder_ids, [
+            {'operation_id': self.bom.operation_ids.id, 'state': 'done'},
+        ])
+        self.assertRecordValues(mo.move_raw_ids, [
+            {'product_id': self.component.id, 'quantity': 1, 'state': 'done'},
+        ])

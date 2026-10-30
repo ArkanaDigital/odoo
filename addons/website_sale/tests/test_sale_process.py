@@ -68,7 +68,7 @@ class TestSaleProcess(HttpCaseWithUserDemo, WebsiteSaleCommon, HttpCaseWithWebsi
         cls.env["account.journal"].create({
             "name": "Cash - Test",
             "type": "cash",
-            "code": "CASH - Test",
+            "code": "CASH-T",
         })
 
         # Avoid Shipping/Billing address page
@@ -78,13 +78,6 @@ class TestSaleProcess(HttpCaseWithUserDemo, WebsiteSaleCommon, HttpCaseWithWebsi
         if cls.env["ir.module.module"]._get("payment_custom").state == "installed":
             transfer_provider = cls.env.ref("payment.payment_provider_transfer")
             transfer_provider.is_published = True
-
-    def test_01_admin_shop_tour(self):
-        self.start_tour(
-            self.env["website"].get_client_action_url("/shop"),
-            "website_sale.onboarding_tour",
-            login="admin",
-        )
 
     def test_01_cart_update_check(self):
         self.start_tour("/shop", "website_sale.update_cart", login="admin")
@@ -149,6 +142,19 @@ class TestSaleProcess(HttpCaseWithUserDemo, WebsiteSaleCommon, HttpCaseWithWebsi
             "is_published": True,
         })
         self.start_tour("/shop", "shop_repair_product", login=None)
+
+    def test_confirmation_does_not_prepare_signup_for_existing_user(self):
+        self.website.auth_signup_uninvited = "b2c"
+        partner = self.env.ref("base.partner_admin").sudo()
+        partner.signup_cancel()
+        order = self._create_so(partner_id=partner.id)
+
+        self.authenticate(None, None, session_extra={"sale_last_order_id": order.id})
+        response = self.url_open("/shop/confirmation")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(partner.signup_type)
+        self.assertNotIn("/web/signup?", response.text)
 
     def test_checkout_with_rewrite(self):
         # check that checkout page can be open with step rewritten

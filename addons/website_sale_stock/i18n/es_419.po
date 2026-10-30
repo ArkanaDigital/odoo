@@ -9,9 +9,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 19.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-03 17:38+0000\n"
-"PO-Revision-Date: 2026-06-20 01:31+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-09-11 17:44+0000\n"
+"PO-Revision-Date: 2026-09-11 18:06+0000\n"
+"Last-Translator: \"Fernanda Alvarez (mfar)\" <mfar@odoo.com>\n"
 "Language-Team: Spanish (Latin America) <https://translate.odoo.com/projects/"
 "odoo-master/website_sale_stock/es_419/>\n"
 "Language: es_419\n"
@@ -19,7 +19,27 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: website_sale_stock
+#: model:ir.module.module,description:base.module_website_sale_stock
+msgid ""
+"\n"
+"Manage the inventory of your products and display their availability status "
+"in your eCommerce store.\n"
+"In case of stockout, you can decide to block further sales or to keep "
+"selling.\n"
+"A default behavior can be selected in the Website settings.\n"
+"Then it can be made specific at the product level.\n"
+msgstr ""
+"\n"
+"Gestiona el inventario de tus productos y muestra su disponibilidad en tu "
+"tienda de comercio electrónico.\n"
+"En caso de falta de existencias, puedes decidir si bloqueas nuevas ventas o "
+"sigues vendiendo.\n"
+"Puedes seleccionar un comportamiento predeterminado en los ajustes del sitio "
+"web.\n"
+"Después, puedes definir un comportamiento específico para cada producto.\n"
 
 #. module: website_sale_stock
 #. odoo-javascript
@@ -99,6 +119,8 @@ msgstr "Asistente de selección del método de entrega"
 #. module: website_sale_stock
 #: model:ir.model.fields,field_description:website_sale_stock.field_choose_delivery_carrier__display_name
 #: model:ir.model.fields,field_description:website_sale_stock.field_delivery_carrier__display_name
+#: model:ir.model.fields,field_description:website_sale_stock.field_product_product__display_name
+#: model:ir.model.fields,field_description:website_sale_stock.field_product_template__display_name
 #: model:ir.model.fields,field_description:website_sale_stock.field_res_config_settings__display_name
 #: model:ir.model.fields,field_description:website_sale_stock.field_res_partner__display_name
 #: model:ir.model.fields,field_description:website_sale_stock.field_sale_order__display_name
@@ -110,6 +132,8 @@ msgstr "Mostrar nombre"
 #. module: website_sale_stock
 #: model:ir.model.fields,field_description:website_sale_stock.field_choose_delivery_carrier__id
 #: model:ir.model.fields,field_description:website_sale_stock.field_delivery_carrier__id
+#: model:ir.model.fields,field_description:website_sale_stock.field_product_product__id
+#: model:ir.model.fields,field_description:website_sale_stock.field_product_template__id
 #: model:ir.model.fields,field_description:website_sale_stock.field_res_config_settings__id
 #: model:ir.model.fields,field_description:website_sale_stock.field_res_partner__id
 #: model:ir.model.fields,field_description:website_sale_stock.field_sale_order__id
@@ -127,7 +151,7 @@ msgstr "Está publicado"
 #. odoo-javascript
 #: code:addons/website_sale_stock/static/src/js/location_selector/location_selector_dialog/location_selector_dialog.xml:0
 msgid "List view"
-msgstr ""
+msgstr "Vista de lista"
 
 #. module: website_sale_stock
 #. odoo-javascript
@@ -136,10 +160,15 @@ msgid "Loading..."
 msgstr "Cargando…"
 
 #. module: website_sale_stock
+#: model:ir.module.module,summary:base.module_website_sale_stock
+msgid "Manage product inventory & availability"
+msgstr "Gestiona el inventario y la disponibilidad de productos"
+
+#. module: website_sale_stock
 #. odoo-javascript
 #: code:addons/website_sale_stock/static/src/js/location_selector/location_selector_dialog/location_selector_dialog.xml:0
 msgid "Map view"
-msgstr ""
+msgstr "Vista de mapa"
 
 #. module: website_sale_stock
 #. odoo-python
@@ -166,12 +195,6 @@ msgstr "Horario de atención"
 #: code:addons/website_sale_stock/static/src/js/product_card/product_card.xml:0
 msgid "Out of Stock"
 msgstr "Agotado"
-
-#. module: website_sale_stock
-#. odoo-javascript
-#: code:addons/website_sale_stock/static/src/js/product/product.xml:0
-msgid "Out of stock"
-msgstr ""
 
 #. module: website_sale_stock
 #: model:ir.model.fields,field_description:website_sale_stock.field_res_partner__pickup_delivery_method_id
@@ -204,6 +227,21 @@ msgstr "Punto de recolección"
 msgid "Please select a pickup point before adding a delivery method"
 msgstr ""
 "Selecciona un punto de recolección antes de agregar un método de entrega"
+
+#. module: website_sale_stock
+#: model:ir.model,name:website_sale_stock.model_product_template
+msgid "Product"
+msgstr "Producto"
+
+#. module: website_sale_stock
+#: model:ir.module.module,shortdesc:base.module_website_sale_stock
+msgid "Product Availability"
+msgstr "Disponibilidad del producto"
+
+#. module: website_sale_stock
+#: model:ir.model,name:website_sale_stock.model_product_product
+msgid "Product Variant"
+msgstr "Variante del producto"
 
 #. module: website_sale_stock
 #: model:ir.model.fields,field_description:website_sale_stock.field_delivery_carrier__published_date
@@ -314,5 +352,8 @@ msgstr ""
 #. module: website_sale_stock
 #. odoo-javascript
 #: code:addons/website_sale_stock/static/src/js/location_selector/location_selector_dialog/location_selector_dialog.xml:0
-msgid "Your postal code"
-msgstr "Tu código postal"
+msgid "Zip or City"
+msgstr "Código postal o ciudad"
+
+#~ msgid "Out of stock"
+#~ msgstr "Agotado"

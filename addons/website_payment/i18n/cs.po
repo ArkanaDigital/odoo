@@ -15,10 +15,10 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0beta\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-03 17:40+0000\n"
-"PO-Revision-Date: 2026-06-21 21:03+0000\n"
+"POT-Creation-Date: 2026-08-28 17:43+0000\n"
+"PO-Revision-Date: 2026-08-31 20:37+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Czech <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Czech <https://translate.odoo.com/projects/odoo-s19-4/"
 "website_payment/cs/>\n"
 "Language: cs\n"
 "MIME-Version: 1.0\n"
@@ -26,7 +26,15 @@ msgstr ""
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=4; plural=(n == 1 && n % 1 == 0) ? 0 : (n >= 2 && n "
 "<= 4 && n % 1 == 0) ? 1: (n % 1 != 0 ) ? 2 : 3;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: website_payment
+#: model:ir.module.module,description:base.module_website_payment
+msgid ""
+"\n"
+"This is a bridge module that adds multi-website support for payment "
+"providers.\n"
+msgstr ""
 
 #. module: website_payment
 #: model_terms:ir.ui.view,arch_db:website_payment.res_config_settings_view_form
@@ -142,6 +150,11 @@ msgid "Payment Provider"
 msgstr "Poskytovatel platby"
 
 #. module: website_payment
+#: model:ir.module.module,summary:base.module_website_payment
+msgid "Payment integration with website"
+msgstr ""
+
+#. module: website_payment
 #: model_terms:ir.ui.view,arch_db:website_payment.res_config_settings_view_form
 msgid "Payments"
 msgstr "Platby"
@@ -178,182 +191,186 @@ msgstr ""
 msgid "Website"
 msgstr "Webová stránka"
 
-#~ msgid ""
-#~ ".\n"
-#~ "                        <br/>\n"
-#~ "                        We appreciate your support for our organization "
-#~ "as such.\n"
-#~ "                        <br/>\n"
-#~ "                        Regards."
-#~ msgstr ""
-#~ ".\n"
-#~ "                        <br/>\n"
-#~ "                        Vážíme si vaší podpory naší organizaci jako "
-#~ "takové.\n"
-#~ "                        <br/>\n"
-#~ "                        S pozdravem."
+#. module: website_payment
+#: model:ir.module.module,shortdesc:base.module_website_payment
+msgid "Website Payment"
+msgstr ""
 
-#~ msgid "<b>Comment:</b>"
-#~ msgstr "<b>Komentář:</b>"
+msgid ""
+".\n"
+"                        <br/>\n"
+"                        We appreciate your support for our organization as "
+"such.\n"
+"                        <br/>\n"
+"                        Regards."
+msgstr ""
+".\n"
+"                        <br/>\n"
+"                        Vážíme si vaší podpory naší organizaci jako takové.\n"
+"                        <br/>\n"
+"                        S pozdravem."
 
-#~ msgid "<b>Donation Date:</b>"
-#~ msgstr "<b>Datum daru:</b>"
+msgid "<b>Comment:</b>"
+msgstr "<b>Komentář:</b>"
 
-#~ msgid "<b>Donor Email:</b>"
-#~ msgstr "<b>E-mail dárce:</b>"
+msgid "<b>Donation Date:</b>"
+msgstr "<b>Datum daru:</b>"
 
-#~ msgid "<b>Donor Name:</b>"
-#~ msgstr "<b>Jméno dárce:</b>"
+msgid "<b>Donor Email:</b>"
+msgstr "<b>E-mail dárce:</b>"
 
-#~ msgid "<b>Payment ID:</b>"
-#~ msgstr "<b>ID platby:</b>"
+msgid "<b>Donor Name:</b>"
+msgstr "<b>Jméno dárce:</b>"
 
-#~ msgid "<b>Payment Method:</b>"
-#~ msgstr "<b>Platební metoda:</b>"
+msgid "<b>Payment ID:</b>"
+msgstr "<b>ID platby:</b>"
 
-#~ msgid "<strong>Warning</strong> The currency is missing or incorrect."
-#~ msgstr "<strong>Upozornění</strong> Měna chybí nebo je nesprávná."
+msgid "<b>Payment Method:</b>"
+msgstr "<b>Platební metoda:</b>"
 
-#~ msgid "A donation has been made on your website"
-#~ msgstr "Na vašem webu byl poskytnut dar"
+msgid "<strong>Warning</strong> The currency is missing or incorrect."
+msgstr "<strong>Upozornění</strong> Měna chybí nebo je nesprávná."
 
-#~ msgid "A year of cultural awakening."
-#~ msgstr "Rok kulturního probuzení."
+msgid "A donation has been made on your website"
+msgstr "Na vašem webu byl poskytnut dar"
 
-#~ msgid "Add"
-#~ msgstr "Přidat"
+msgid "A year of cultural awakening."
+msgstr "Rok kulturního probuzení."
 
-#~ msgid "Add a description here"
-#~ msgstr "Zde zadejte popis"
+msgid "Add"
+msgstr "Přidat"
 
-#~ msgid "Amount"
-#~ msgstr "Částka"
+msgid "Add a description here"
+msgstr "Zde zadejte popis"
 
-#~ msgid "Amount ("
-#~ msgstr "Částka ("
+msgid "Amount"
+msgstr "Částka"
 
-#~ msgid "Amount("
-#~ msgstr "Částka("
+msgid "Amount ("
+msgstr "Částka ("
 
-#~ msgid "Caring for a baby for 1 month."
-#~ msgstr "Péče o miminko po dobu 1 měsíce."
+msgid "Amount("
+msgstr "Částka("
 
-#~ msgid "Choose Your Amount"
-#~ msgstr "Vyberte si částku"
+msgid "Caring for a baby for 1 month."
+msgstr "Péče o miminko po dobu 1 měsíce."
 
-#~ msgid "Country"
-#~ msgstr "Země"
+msgid "Choose Your Amount"
+msgstr "Vyberte si částku"
 
-#~ msgid "Country is required."
-#~ msgstr "Země je povinná."
+msgid "Country"
+msgstr "Země"
 
-#~ msgid "Custom Amount"
-#~ msgstr "Vlastní částka"
+msgid "Country is required."
+msgstr "Země je povinná."
 
-#~ msgid "Dear"
-#~ msgstr "Vážený"
+msgid "Custom Amount"
+msgstr "Vlastní částka"
 
-#~ msgid "Default Amount"
-#~ msgstr "Výchozí částka"
+msgid "Dear"
+msgstr "Vážený"
 
-#~ msgid "Descriptions"
-#~ msgstr "Popisy"
+msgid "Default Amount"
+msgstr "Výchozí částka"
 
-#~ msgid "Display Options"
-#~ msgstr "Možnosti zobrazení"
+msgid "Descriptions"
+msgstr "Popisy"
 
-#~ msgid "Donate Now"
-#~ msgstr "Přispět nyní"
+msgid "Display Options"
+msgstr "Možnosti zobrazení"
 
-#~ msgid "Donation"
-#~ msgstr "Dar"
+msgid "Donate Now"
+msgstr "Přispět nyní"
 
-#~ msgid "Donation Button"
-#~ msgstr "Tlačítko Darování"
+msgid "Donation"
+msgstr "Dar"
 
-#~ msgid "Donation amount must be at least %.2f."
-#~ msgstr "Výše daru musí být alespoň %.2f."
+msgid "Donation Button"
+msgstr "Tlačítko Darování"
 
-#~ msgid "Donation confirmation"
-#~ msgstr "Potvrzení daru"
+msgid "Donation amount must be at least %.2f."
+msgstr "Výše daru musí být alespoň %.2f."
 
-#~ msgid "Donation notification"
-#~ msgstr "Notifikace daru"
+msgid "Donation confirmation"
+msgstr "Potvrzení daru"
 
-#~ msgid "Email"
-#~ msgstr "Email"
+msgid "Donation notification"
+msgstr "Notifikace daru"
 
-#~ msgid "Email is required."
-#~ msgstr "E-mail je povinný."
+msgid "Email"
+msgstr "Email"
 
-#~ msgid "Input"
-#~ msgstr "Vstup"
+msgid "Email is required."
+msgstr "E-mail je povinný."
 
-#~ msgid "Is Donation"
-#~ msgstr "Je dar"
+msgid "Input"
+msgstr "Vstup"
 
-#~ msgid "Is donation"
-#~ msgstr "Je dar"
+msgid "Is Donation"
+msgstr "Je dar"
 
-#~ msgid "Make a Donation"
-#~ msgstr "Vytvořit dar"
+msgid "Is donation"
+msgstr "Je dar"
 
-#~ msgid "Maximum"
-#~ msgstr "Maximum"
+msgid "Make a Donation"
+msgstr "Vytvořit dar"
 
-#~ msgid "Minimum"
-#~ msgstr "Minimum"
+msgid "Maximum"
+msgstr "Maximum"
 
-#~ msgid "Name"
-#~ msgstr "Název"
+msgid "Minimum"
+msgstr "Minimum"
 
-#~ msgid "Name is required."
-#~ msgstr "Název je povinný."
+msgid "Name"
+msgstr "Název"
 
-#~ msgid "None"
-#~ msgstr "Žádné"
+msgid "Name is required."
+msgstr "Název je povinný."
 
-#~ msgid "One year in elementary school."
-#~ msgstr "Jeden rok na základní škole."
+msgid "None"
+msgstr "Žádné"
 
-#~ msgid "One year in high school."
-#~ msgstr "Jeden rok na střední škole."
+msgid "One year in elementary school."
+msgstr "Jeden rok na základní škole."
 
-#~ msgid "Payment Details"
-#~ msgstr "Podrobnosti platby"
+msgid "One year in high school."
+msgstr "Jeden rok na střední škole."
 
-#~ msgid "Payment Transaction"
-#~ msgstr "Platební transakce"
+msgid "Payment Details"
+msgstr "Podrobnosti platby"
 
-#~ msgid "Please select or enter an amount"
-#~ msgstr "Vyberte prosím nebo zadejte částku"
+msgid "Payment Transaction"
+msgstr "Platební transakce"
 
-#~ msgid "Pre-filled Options"
-#~ msgstr "Předvyplněné možnosti"
+msgid "Please select or enter an amount"
+msgstr "Vyberte prosím nebo zadejte částku"
 
-#~ msgid "Recipient Email"
-#~ msgstr "E-mail adresáta"
+msgid "Pre-filled Options"
+msgstr "Předvyplněné možnosti"
 
-#~ msgid "Slider"
-#~ msgstr "Posuvník"
+msgid "Recipient Email"
+msgstr "E-mail adresáta"
 
-#~ msgid "Small or large, your contribution is essential."
-#~ msgstr "Malý nebo velký, váš příspěvek je nezbytný."
+msgid "Slider"
+msgstr "Posuvník"
 
-#~ msgid "Step"
-#~ msgstr "Krok"
+msgid "Small or large, your contribution is essential."
+msgstr "Malý nebo velký, váš příspěvek je nezbytný."
 
-#~ msgid "Thank you for your donation of"
-#~ msgstr "Děkujeme za váš dar ve výši"
+msgid "Step"
+msgstr "Krok"
 
-#~ msgid "There is nothing to pay."
-#~ msgstr "Není za co platit."
+msgid "Thank you for your donation of"
+msgstr "Děkujeme za váš dar ve výši"
 
-#~ msgid "Write us a comment"
-#~ msgstr "Napište nám komentář"
+msgid "There is nothing to pay."
+msgstr "Není za co platit."
 
-#~ msgid "Your comment"
-#~ msgstr "Váš komentář"
+msgid "Write us a comment"
+msgstr "Napište nám komentář"
 
-#~ msgid "made on"
-#~ msgstr "vyrobeno na"
+msgid "Your comment"
+msgstr "Váš komentář"
+
+msgid "made on"
+msgstr "vyrobeno na"

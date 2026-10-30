@@ -44,12 +44,8 @@ export class ReCaptcha {
             };
         } catch {
             return {
-                error: _t("The recaptcha site key is invalid."),
+                error: _t("The reCAPTCHA site key is invalid."),
             };
         }
     }
 }
-
-export default {
-    ReCaptcha: ReCaptcha,
-};

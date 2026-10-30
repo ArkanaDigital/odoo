@@ -15,20 +15,18 @@ Keeps account of the attendances of the employees on the basis of the
 actions(Check in/Check out) performed by them.
        """,
     'website': 'https://www.odoo.com/app/employees',
-    'depends': ['hr', 'barcodes', 'base_geolocalize'],
+    'depends': ['hr', 'hr_work_entry', 'barcodes', 'base_geolocalize'],
     'data': [
         'data/hr_attendance_data.xml',
         'security/hr_attendance_security.xml',
-        'data/hr_attendance_overtime_ruleset_data.xml',
-        'data/hr_attendance_overtime_rule_data.xml',
         'views/hr_attendance_view.xml',
         'views/hr_department_view.xml',
         'views/hr_employee_view.xml',
         'views/hr_employee_public_views.xml',
         'views/res_config_settings_views.xml',
         'views/hr_attendance_kiosk_templates.xml',
-        'views/hr_attendance_overtime_rule_views.xml',
         'views/hr_version_views.xml',
+        'views/hr_contract_template_views.xml',
         'security/ir.access.csv',
     ],
     'demo': [
@@ -42,12 +40,7 @@ actions(Check in/Check out) performed by them.
         'web.assets_backend': [
             'hr_attendance/static/src/**/*.js',
             'hr_attendance/static/src/**/*.xml',
-            'hr_attendance/static/src/scss/views/*.scss',
-            # Don't include dark mode files in light mode
-            ('remove', 'hr_attendance/static/src/**/*.dark.scss'),
-        ],
-        'web.assets_web_dark': [
-            'hr_attendance/static/src/**/*.dark.scss',
+            'hr_attendance/static/src/scss/views/*.css',
         ],
         'web.assets_unit_tests': [
             'hr_attendance/static/tests/*.test.js',
@@ -75,8 +68,16 @@ actions(Check in/Check out) performed by them.
 
             # Public Kiosk app and its components
             "hr_attendance/static/src/public_kiosk/**/*",
-            'hr_attendance/static/src/components/**/*',
-            ('remove', 'hr_attendance/static/src/components/hr_presence_status/hr_attendance_presence_status.js'),
+            "hr_attendance/static/src/components/attendance_video_stream/**/*",
+            "hr_attendance/static/src/components/break_duration_dialog/**/*",
+            "hr_attendance/static/src/components/card_layout/**/*",
+            "hr_attendance/static/src/components/confirmation/**/*",
+            "hr_attendance/static/src/components/greetings/**/*",
+            "hr_attendance/static/src/components/hooks/use_camera.js",
+            "hr_attendance/static/src/components/kiosk_barcode/**/*",
+            "hr_attendance/static/src/components/manual_selection/**/*",
+            "hr_attendance/static/src/components/new_employee_dialog/**/*",
+            "hr_attendance/static/src/components/pin_code/**/*",
 
             'hr_attendance/static/src/scss/kiosk/hr_attendance.scss',
             "web/static/src/views/fields/formatters.js",
@@ -89,8 +90,9 @@ actions(Check in/Check out) performed by them.
             # Barcode reader utils
             "barcodes/static/src/components/barcode_scanner.js",
             "barcodes/static/src/components/barcode_scanner.xml",
-            "barcodes/static/src/components/barcode_scanner.scss",
-            "barcodes/static/src/barcode_service.js",
+            "barcodes/static/src/components/barcode_scanner.css",
+            "barcodes/static/src/barcode_plugin.js",
+            ('after', 'hr_attendance/static/src/scss/kiosk/primary_variables.scss', 'hr_attendance/static/src/scss/css_variables.scss'),
 
         ],
     },

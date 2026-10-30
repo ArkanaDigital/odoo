@@ -19,7 +19,7 @@ BIZKAIA_TEST_BASE_URL = "https://pruapps.bizkaia.eus/SSII-FACT/ws"
 GIPUZKOA_BASE_URL = "https://egoitza.gipuzkoa.eus/ogasuna/sii/ficheros/v1.1"
 GIPUZKOA_TEST_BASE_URL = "https://sii-prep.egoitza.gipuzkoa.eus/JBS/HACI/SSII-FACT/ws"
 
-NAVARRA_BASE_URL = "https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aplicaciones/es/aeat/ssii/fact/ws"
+NAVARRA_BASE_URL = "https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aplicaciones/es/aeat/ssii_1_1/fact/ws"
 NAVARRA_ADDRESS = "https://siihacienda.navarra.es/SII_PRODUCCION.proxy/SiiMensajesXsdHandlet.ashx"
 NAVARRA_TEST_ADDRESS = "https://siihacienda.navarra.es/SII_PRUEBAS.proxy/SiiMensajesXsdHandlet.ashx"
 
@@ -128,6 +128,8 @@ class L10nEsEdiSiiDocument(models.Model):
         compute='_compute_xml_attachment'
     )
 
+    _latest_doc_idx = models.Index("(move_id, create_date DESC, id DESC)")
+
     # -------------------------------------------------------------------------
     # COMPUTE METHODS
     # -------------------------------------------------------------------------
@@ -138,7 +140,7 @@ class L10nEsEdiSiiDocument(models.Model):
             if doc.attachment_id:
                 doc.sii_json_file = base64.b64encode(doc.attachment_id.raw).decode('utf-8')
             else:
-                communication_type = 'A1' if doc.move_id.l10n_es_edi_csv and doc.state != 'to_cancel' else 'A0'
+                communication_type = 'A1' if doc.move_id._l10n_es_sii_has_registration_csv() and doc.state != 'to_cancel' else 'A0'
                 header = self._get_web_service_header(doc.company_id, communication_type)
                 info_list = doc.move_id._l10n_es_edi_get_invoices_info()
                 full_payload = {'Cabecera': header, 'Cuerpo': info_list}
@@ -272,7 +274,7 @@ class L10nEsEdiSiiDocument(models.Model):
                 doc.sudo().write({
                     'state': state,
                     'csv': response_data.get('csv'),
-                    'response_message': response_msg,
+                    'response_message': response_msg if state == 'accepted_with_errors' else False,
                 })
 
                 messages = {
@@ -284,6 +286,8 @@ class L10nEsEdiSiiDocument(models.Model):
                     'cancelled': self.env._("The document was cancelled by SII."),
                 }
                 doc.move_id.message_post(body=messages[state])
+                if state == 'cancelled' and doc.move_id.state == 'posted':
+                    doc.move_id.button_cancel()
 
                 if doc.state in ('accepted', 'accepted_with_errors'):
                     if not attachment:
@@ -291,8 +295,8 @@ class L10nEsEdiSiiDocument(models.Model):
                             'name': doc._get_attachment_name(),
                             'raw': json.dumps(full_payload, indent=4, ensure_ascii=False).encode('utf-8'),
                             'mimetype': 'application/json',
-                            'res_model': 'account.move',
-                            'res_id': doc.move_id.id,
+                            'res_model': doc._name,
+                            'res_id': doc.id,
                         })
                     doc.sudo().write({'attachment_id': attachment.id})
             else:

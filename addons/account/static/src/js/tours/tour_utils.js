@@ -7,7 +7,7 @@ export function showProductColumn(fieldName = "product_id") {
             run: "click",
         },
         {
-            isActive: ["desktop"],
+            isActive: ["desktop", "auto"],
             content: "Show product column",
             trigger: `.o-dropdown-item input[name="${fieldName}"]`,
             run: function ({ anchor }) {
@@ -15,6 +15,12 @@ export function showProductColumn(fieldName = "product_id") {
                     anchor.click();
                 }
             },
+        },
+        {
+            isActive: ["desktop", "manual"],
+            content: "Show product column",
+            trigger: `.o-dropdown-item input[name="${fieldName}"]`,
+            run: "click",
         },
         {
             isActive: ["desktop"],
@@ -78,8 +84,7 @@ export function addSectionFromProductCatalog() {
         {
             content: "Ensure Product is second row",
             trigger:
-                "tbody tr:nth-child(2) .o_field_product_label_section_and_note_cell:contains(Test Product)," +
-                "tbody tr:nth-child(2) div[name=account_label_text_readonly]:contains(Test Product)",
+                "tbody tr:nth-child(2) td[name=product_and_description]:contains(Test Product)",
         },
     ];
 }

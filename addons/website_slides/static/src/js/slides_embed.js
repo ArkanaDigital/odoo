@@ -25,7 +25,7 @@ export class SlidesEmbed extends Interaction {
             },
         },
         _window: {
-            "t-on-resize": this.debounced(this.refreshCurrentPage, 500),
+            "t-on-resize.passive": this.debounced(this.refreshCurrentPage, 500),
         },
         _document: {
             "t-on-fullscreenchange": this.onFullScreenChange,
@@ -91,8 +91,8 @@ export class SlidesEmbed extends Interaction {
         "#fullscreen": { "t-on-click": this.onFullScreenToggleClick },
         "#fullscreen > i": {
             "t-att-class": () => ({
-                "fullscreen": !this.isFullScreen,
-                "fullscreen_exit": this.isFullScreen,
+                fullscreen: !this.isFullScreen,
+                fullscreen_exit: this.isFullScreen,
             }),
         },
         "#slide_suggest": {
@@ -151,7 +151,7 @@ export class SlidesEmbed extends Interaction {
         const shareData = ev.currentTarget.dataset;
         this.services.dialog.add(SlideShareDialog, {
             category: shareData.category,
-            documentMaxPage: shareData.category === "document" && this.pageCount,
+            documentMaxPage: Number(shareData.category === "document" && this.pageCount) || 0,
             embedCode: shareData.embedCode || "",
             id: parseInt(shareData.id),
             name: shareData.name,

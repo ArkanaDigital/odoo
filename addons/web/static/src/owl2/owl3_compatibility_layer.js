@@ -41,25 +41,38 @@ class Component extends owl.Component {
      */
     constructor(node) {
         super(node);
-        if (this.constructor.defaultProps) {
+        if (this.constructor.props || this.constructor.defaultProps) {
             throw new Error(
-                `Component "${this.constructor.name}" defines a static "defaultProps", ` +
-                    `which Owl 3 ignores. Declare the defaults through the props schema instead, ` +
+                `Component "${this.constructor.name}" defines a static "props" or "defaultProps", ` +
+                    `which Owl 3 ignores. Declare the props schema through "useProps" instead, ` +
                     `e.g. "props = useProps({ someProp: t.string().optional(defaultValue) })".`
             );
         }
-        this.props = owl.useProps();
         this.env = useEnv();
-    }
-
-    /**
-     * @param {boolean} [deep]
-     */
-    render(deep = false) {
-        this.__owl__.render(deep === true);
     }
 }
 owl.Component = Component;
+
+owl.config = owl.useConfig;
+owl.plugin = owl.usePlugin;
+owl.props = owl.useProps;
+
+/**
+ * @param {any} component
+ * @returns {"new" | "mounted" | "destroyed"}
+ * @deprecated read the status of the component scope instead: `useScope().status`
+ *  (to compare with `STATUS` from "@odoo/owl")
+ */
+owl.status = function status(component) {
+    switch (component.__owl__.status) {
+        case owl.STATUS.NEW:
+            return "new";
+        case owl.STATUS.MOUNTED:
+            return "mounted";
+        case owl.STATUS.DESTROYED:
+            return "destroyed";
+    }
+};
 
 /**
  * @param {() => void} cb
@@ -73,23 +86,10 @@ owl.onWillRender = function onWillRender(cb) {
     };
 };
 
+/** kept for spreadsheet */
 owl.useComponent = function useComponent() {
     return owl.useScope().component;
 };
-
-/**
- * @param {HTMLElement} target
- * @param {string} eventName
- * @param {Function} handler
- * @param {any} eventParams
- */
-function useExternalListener(target, eventName, handler, eventParams) {
-    const node = owl.useScope();
-    const boundHandler = handler.bind(node.component);
-    owl.onMounted(() => target.addEventListener(eventName, boundHandler, eventParams));
-    owl.onWillUnmount(() => target.removeEventListener(eventName, boundHandler, eventParams));
-}
-owl.useExternalListener = useExternalListener; // kept for spreadsheet
 
 /**
  * @param {Function} effect
@@ -128,7 +128,7 @@ owl.useLayoutEffect = function useLayoutEffect(effect, computeDependencies = () 
 class EnvPlugin extends owl.Plugin {
     static id = "__ENV__";
     static sequence = 0;
-    env = owl.config("env");
+    env = owl.useConfig("env", owl.t.object().optional({}));
 }
 
 function useEnv() {
@@ -149,7 +149,6 @@ function useSubEnv(extension) {
     component.env = subEnv;
 }
 owl.useSubEnv = useSubEnv;
-owl.useChildSubEnv = useSubEnv; // kept for spreadsheet
 
 class VPortal extends owl.blockDom.text("").constructor {
     /**
@@ -205,7 +204,6 @@ class VPortal extends owl.blockDom.text("").constructor {
 
 class Portal extends owl.Component {
     static template = owl.xml`<t t-call-slot="default"/>`;
-    static props = { selector: String, slots: true };
 
     setup() {
         const node = this.__owl__;
@@ -232,74 +230,40 @@ class Portal extends owl.Component {
     }
 }
 
-const customDirectives = {
-    /**
-     * @param {HTMLElement} node
-     * @param {string} value
-     */
-    model: (node, value) => {
-        // kept for spreadsheet
-        node.setAttribute("t-model.proxy", value);
-    },
-    /**
-     * @param {HTMLElement} node
-     * @param {string} value
-     */
-    portal: (node, value) => {
-        if (node.nodeName.toLowerCase() !== "t") {
-            throw new Error("t-custom-portal should be on a 't' element");
-        }
-        node.setAttribute("t-component", "__globals__.Portal");
-        node.setAttribute("selector", value);
-    },
-};
-
-const globalValues = {
-    Portal,
-};
+/**
+ * @param {HTMLElement} node
+ * @param {string} value
+ */
+function portalDirective(node, value) {
+    if (node.nodeName.toLowerCase() !== "t") {
+        throw new Error("t-custom-portal should be on a 't' element");
+    }
+    node.setAttribute("t-component", "__globals__.Portal");
+    node.setAttribute("selector", value);
+}
 
 class App extends owl.App {
     /**
      * @param {any} config
      */
     constructor(config) {
-        const env = config.env ?? {};
-        if (config.plugins) {
-            if (config.plugins instanceof owl.Resource) {
-                config.plugins.add(EnvPlugin);
-            } else {
-                config.plugins.push(EnvPlugin);
-            }
-        } else {
-            config.plugins = [EnvPlugin];
-        }
-        super({
+        config = {
+            plugins: [],
+            customDirectives: {},
+            globalValues: {},
             ...config,
-            customDirectives: {
-                ...customDirectives,
-                ...config.customDirectives,
-            },
-            globalValues: {
-                ...globalValues,
-                ...config.globalValues,
-            },
-            config: config.config ? Object.assign(Object.create(config.config), { env }) : { env },
-        });
-        this.env = env;
-    }
+        };
 
-    createRoot(component, config = {}) {
-        if (config.env) {
-            component = {
-                [component.name]: class extends component {
-                    constructor(node) {
-                        owl.providePlugins([EnvPlugin], { env: config.env });
-                        super(node);
-                    }
-                },
-            }[component.name];
+        if (config.plugins instanceof owl.Resource) {
+            config.plugins.add(EnvPlugin);
+        } else {
+            config.plugins.push(EnvPlugin);
         }
-        return super.createRoot(component, config);
+
+        config.customDirectives.portal ??= portalDirective;
+        config.globalValues.Portal ??= Portal;
+
+        super(config);
     }
 }
 owl.App = App;

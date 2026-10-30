@@ -4,7 +4,8 @@ from uuid import uuid4
 
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
-from odoo.tools import format_amount
+from odoo.fields import Domain
+from odoo.tools import float_compare, float_is_zero, format_amount
 
 
 class LoyaltyCard(models.Model):
@@ -36,7 +37,9 @@ class LoyaltyCard(models.Model):
     currency_id = fields.Many2one(related="program_id.currency_id")
     # Reserved for this partner if non-empty
     partner_id = fields.Many2one(comodel_name="res.partner", index=True)
-    points = fields.Float(tracking=True)
+    points = fields.Float(
+        compute="_compute_points", inverse="_inverse_points", search="_search_points"
+    )
     point_name = fields.Char(related="program_id.portal_point_name", readonly=True)
     points_display = fields.Char(compute="_compute_points_display")
 
@@ -90,6 +93,32 @@ class LoyaltyCard(models.Model):
                     card.env._("A customer can only have one active loyalty card per program.")
                 )
 
+    @api.depends(
+        "history_ids.expiration_date",
+        "history_ids.issued",
+        "history_ids.used",
+        "history_ids.linked_loyalty_history_id",
+    )
+    def _compute_points(self):
+        points_per_card = self.env["loyalty.history"]._get_points_by_card(self)
+        for card, points in points_per_card.items():
+            card.points = points
+
+    def _inverse_points(self):
+        """Store the balance written on the card as a point movement in its history.
+
+        The field isn't shown in any view, but its inverse method is necessary to
+        enable loyalty card imports.
+        """
+        balances = self.env["loyalty.history"]._get_points_by_card(self)
+        points_per_card = {}
+        for card in self:
+            difference = card.points - balances[card]
+            if not float_is_zero(difference, precision_digits=2):
+                points_per_card[card] = difference
+        if points_per_card:
+            self._adjust_points_batch(points_per_card, self.env._("Manual Adjustment"))
+
     @api.depends("points", "point_name")
     def _compute_points_display(self):
         for card in self:
@@ -106,6 +135,23 @@ class LoyaltyCard(models.Model):
     # Meant to be overriden
     def _compute_use_count(self):
         self.use_count = 0
+
+    def _search_points(self, operator, value):
+        if operator not in (">", "="):
+            return NotImplemented
+        value = float(value)
+        history_lines_data = self.env["loyalty.history"]._get_points_data()
+        if operator == ">":
+            matching_ids = [
+                card.id for card, issued, used in history_lines_data if issued - used > value
+            ]
+        else:
+            matching_ids = [
+                card.id
+                for card, issued, used in history_lines_data
+                if float_compare(issued - used, value, precision_digits=2) == 0
+            ]
+        return Domain("id", "in", matching_ids)
 
     def _get_default_template(self):
         self.ensure_one()
@@ -224,17 +270,6 @@ class LoyaltyCard(models.Model):
         res._send_creation_communication()
         return res
 
-    def write(self, vals):
-        if not self.env.context.get("loyalty_no_mail", False) and "points" in vals:
-            points_before = {coupon: coupon.points for coupon in self}
-        res = super().write(vals)
-        if not self.env.context.get("loyalty_no_mail", False) and "points" in vals:
-            points_changes = {
-                coupon: {"old": points_before[coupon], "new": coupon.points} for coupon in self
-            }
-            self._send_points_reach_communication(points_changes)
-        return res
-
     def action_loyalty_update_balance(self):
         return {
             "name": self.env._("Update Balance"),
@@ -244,3 +279,31 @@ class LoyaltyCard(models.Model):
             "target": "new",
             "context": {"default_card_id": self.id},
         }
+
+    def _adjust_points(self, diff, description, order_model=False, order_id=False):
+        """Create the loyalty history line(s) needed to change this card's balance by difference.
+
+        :param float diff: amount to adjust the card's balance by.
+        :param str description: description stored on the created history line(s)
+        :param str order_model: model name of the record that triggered this adjustment, if any
+        :param int order_id: id of the record that triggered this adjustment, if any
+        """
+        self.ensure_one()
+        return self._adjust_points_batch({self: diff}, description, order_model, order_id)
+
+    def _adjust_points_batch(self, points_per_card, description, order_model=False, order_id=False):
+        """Create the loyalty history lines needed to change the balance of several cards. Used
+        when importing multiple cards at once.
+
+        :param dict points_per_card: amount to adjust the balance by, per card
+        :param str description: description stored on the created history lines
+        :param str order_model: model name of the record that triggered this adjustment, if any
+        :param int order_id: id of the record that triggered this adjustment, if any
+        """
+        values = {"description": description, "order_model": order_model, "order_id": order_id}
+        LoyaltyHistory = self.env["loyalty.history"]
+        return LoyaltyHistory.create([
+            line_values
+            for card, diff in points_per_card.items()
+            for line_values in LoyaltyHistory._get_history_lines_values(card, values, diff)
+        ])

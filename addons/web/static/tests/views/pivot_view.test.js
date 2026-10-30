@@ -3975,6 +3975,54 @@ test("pivot view with monetary with multiple currencies", async () => {
     expect(".o_pivot table tbody tr:last").toHaveText("EUR \n400.00 €");
 });
 
+test("pivot view with a monetary measure aggregated in the company currency", async () => {
+    Partner._fields.amount = fields.Monetary({
+        currency_field: "currency_id",
+        aggregator: "sum_currency",
+    });
+    Partner._fields.currency_id = fields.Many2one({ relation: "res.currency", default: 2 });
+    Partner._records[0].amount = 500;
+    Partner._records[1].amount = 300;
+    Partner._records[2].amount = 200;
+    Partner._records[3].amount = 400;
+    await mountView({
+        type: "pivot",
+        resModel: "partner",
+        arch: `
+			<pivot>
+				<field name="amount" type="measure"/>
+			</pivot>`,
+        groupBy: ["currency_id"],
+    });
+    expect(".o_pivot table tbody tr:first").toHaveText("Total \n$ 1,400.00");
+    expect(".o_pivot table tbody tr:last").toHaveText("EUR \n$ 1,400.00");
+});
+
+test("pivot view with a monetary measure that is not a sum", async () => {
+    Partner._fields.amount = fields.Monetary({
+        currency_field: "currency_id",
+        aggregator: "max",
+    });
+    Partner._fields.currency_id = fields.Many2one({ relation: "res.currency", default: 1 });
+    Partner._records[0].amount = 500;
+    Partner._records[1].amount = 300;
+    Partner._records[2].amount = 200;
+    Partner._records[3].amount = 400;
+    Partner._records[3].currency_id = 2;
+    await mountView({
+        type: "pivot",
+        resModel: "partner",
+        arch: `
+			<pivot>
+				<field name="amount" type="measure"/>
+			</pivot>`,
+        groupBy: ["currency_id"],
+    });
+    expect(".o_pivot table tbody tr:first").toHaveText("Total \n500.00");
+    expect(".o_pivot table tbody tr:eq(1)").toHaveText("USD \n$ 500.00");
+    expect(".o_pivot table tbody tr:last").toHaveText("EUR \n400.00 €");
+});
+
 test.tags("desktop");
 test("scroll position is restored when coming back to pivot view", async () => {
     Partner._views = {
@@ -4072,4 +4120,59 @@ test("scroll position is restored when coming back to pivot view (mobile)", asyn
     await animationFrame();
     expect(".o_content .o_pivot").toHaveCount(1);
     expect(".o_pivot_view").toHaveProperty("scrollTop", 200);
+});
+
+test("Measure from arch is not lost after update", async () => {
+    let readGroupCount = 0;
+    onRpc("formatted_read_grouping_sets", ({ kwargs }) => {
+        readGroupCount++;
+    });
+    await mountView({
+        type: "pivot",
+        resModel: "partner",
+        searchViewArch: `
+                <search>
+                    <filter name="some_filter" string="Some Filter" domain="[('foo', '>', 10)]"/>
+                </search>`,
+        arch: `
+			<pivot>
+				<field name="product_id" type="measure"/>
+			</pivot>`,
+        groupBy: ["product_id"],
+    });
+
+    expect(readGroupCount).toBe(1);
+    expect("td.o_pivot_cell_value:contains(2)").toHaveCount(1);
+
+    await contains(".o_pivot_buttons button.dropdown-toggle").click();
+    expect(".dropdown-menu .dropdown-item:contains(Product)").toHaveCount(1);
+
+    await contains(".dropdown-item:contains(Product)").click();
+    await contains(".dropdown-item:contains(Count)").click();
+    expect("td.o_pivot_cell_value:contains(4)").toHaveCount(1);
+    expect(readGroupCount).toBe(2);
+
+    await toggleSearchBarMenu();
+    await toggleMenuItem("Some Filter");
+    expect(readGroupCount).toBe(3);
+
+    await contains(".o_pivot_buttons button.dropdown-toggle").click();
+    expect(".dropdown-menu .dropdown-item:contains(Product)").toHaveCount(1);
+});
+
+test("measure cells support decoration-danger and decoration-success", async () => {
+    await mountView({
+        type: "pivot",
+        resModel: "partner",
+        arch: `
+            <pivot>
+                <field name="customer" type="row"/>
+                <field name="foo" type="measure" decoration-danger="foo &lt; 15" decoration-success="foo &gt; 15"/>
+            </pivot>`,
+    });
+
+    expect("tbody tr td.o_pivot_cell_value.text-success").toHaveCount(2);
+    expect("tbody tr td.o_pivot_cell_value.text-danger").toHaveCount(1);
+    expect('tbody tr:contains("First") td.o_pivot_cell_value').toHaveClass("text-danger");
+    expect('tbody tr:contains("Second") td.o_pivot_cell_value').toHaveClass("text-success");
 });

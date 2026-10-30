@@ -1,97 +1,80 @@
-import { ThemeSelector } from "./theme_selector";
-import { assets, AssetsLoadingError, getBundle } from "@web/core/assets";
+import { loadIframe, loadIframeBundles } from "@mail/convert_inline/iframe_utils";
 import {
+    asyncComputed,
     Component,
     markup,
     onMounted,
-    onWillUnmount,
-    status,
-    proxy,
     signal,
-    useApp,
-    useOnChange,
+    t,
+    usePlugin,
+    useProps,
+    useScope,
 } from "@odoo/owl";
-import { useService } from "@web/core/utils/hooks";
-import { renderToFragment } from "@web/core/utils/render";
-import { localization } from "@web/core/l10n/localization";
 import { isBrowserSafari } from "@web/core/browser/feature_detection";
-import { loadIframe, loadIframeBundles } from "@mail/convert_inline/iframe_utils";
-
-const CSSSheetsCache = new Map();
+import { localization } from "@web/core/l10n/localization";
+import { ORM } from "@web/core/orm_plugin";
+import { renderToFragment } from "@web/core/utils/render";
+import { ThemeSelector } from "./theme_selector";
+import { useRootCreator } from "@web/core/utils/hooks";
 
 export class ThemeSelectorIframe extends Component {
     static template = "mass_mailing.ThemeSelectorIframe";
-    static props = {
-        config: Object,
-    };
 
-    app = useApp();
+    props = useProps({
+        config: t.object({
+            filterTemplates: t.boolean().optional(),
+            mailingModelId: t.or([t.number(), t.literal(false)]),
+        }),
+    });
+
+    createRoot = useRootCreator();
+    scope = useScope();
+    orm = usePlugin(ORM);
+
+    isBrowserSafari = isBrowserSafari();
 
     iframeRef = signal.ref();
+    show = signal(false);
+    templates = asyncComputed(
+        () =>
+            this.fetchTemplateThemes(
+                this.props.config.filterTemplates,
+                this.props.config.mailingModelId
+            ),
+        {
+            initial: [],
+        }
+    );
 
     setup() {
-        this.themeService = useService("mass_mailing.themes");
-        this.orm = useService("orm");
-        this.state = proxy({
-            show: false,
-        });
-        this.themeSelectorProps = {
-            favoriteThemes: proxy({
-                promise: undefined,
-            }),
-        };
         onMounted(() => {
             this.setupIframe();
         });
-        onWillUnmount(() => {
-            if (this.themeSelectorRoot) {
-                this.themeSelectorRoot.destroy();
-            }
-        });
-        useOnChange(
-            () => [this.props.config.mailingModelId],
-            () => {
-                this.themeSelectorProps.favoriteThemes.promise = this.fetchFavoriteThemes(this.props);
-            },
-            { initialRun: false }
-        );
     }
 
-    get isBrowserSafari() {
-        return isBrowserSafari();
-    }
-
-    getFavoriteDomain(props) {
-        return props.config.filterTemplates
-            ? [["mailing_model_id", "=", props.config.mailingModelId]]
-            : [];
-    }
-
-    getThemeSelectorProps() {
-        Object.assign(this.themeSelectorProps, {
-            config: this.props.config,
-            styleSheetsPromise: this.getStyleSheets(),
-            themesPromise: this.themeService.load(),
-            iframeRef: this.iframeRef,
-        });
-        this.themeSelectorProps.favoriteThemes.promise = this.fetchFavoriteThemes(this.props);
-        return this.themeSelectorProps;
-    }
-
-    async fetchFavoriteThemes(props) {
-        const favoriteTemplates = await this.orm.call("mailing.mailing", "action_fetch_favorites", [
-            this.getFavoriteDomain(props),
+    /**
+     * @param {boolean | undefined} filterTemplates
+     * @param {number | false} mailingModelId
+     */
+    async fetchTemplateThemes(filterTemplates, mailingModelId) {
+        const domain = [];
+        if (filterTemplates) {
+            domain.push(["mailing_model_id", "=", mailingModelId]);
+        }
+        const templates = await this.orm.call("mailing.mailing", "action_fetch_templates", [
+            domain,
         ]);
-        return favoriteTemplates.map((favorite) => ({
-            bodyArch: markup(favorite.body_arch),
-            id: favorite.id,
-            modelId: favorite.mailing_model_id[0],
-            modelName: favorite.mailing_model_id[1],
-            name: `template_${favorite.id}`,
+        return templates.map((template) => ({
+            bodyArch: markup(template.body_arch),
+            id: template.id,
+            modelId: template.mailing_model_id[0],
+            modelName: template.mailing_model_id[1],
+            name: `template_${template.id}`,
             nowrap: true,
-            subject: favorite.subject,
-            userId: favorite.user_id[0],
-            userName: favorite.user_id[1],
+            subject: template.subject,
+            userId: template.user_id[0],
+            userName: template.user_id[1],
+            active: template.active,
         }));
     }
 
@@ -105,9 +88,13 @@ export class ThemeSelectorIframe extends Component {
             await loadIframe(this.iframeRef(), async (iframe) => {
                 iframe.contentDocument.head.appendChild(this.renderHeadContent());
                 iframe.contentDocument.body.style.setProperty("direction", localization.direction);
-                this.themeSelectorRoot = this.app.createRoot(ThemeSelector, {
-                    env: this.env,
-                    props: this.getThemeSelectorProps(),
+
+                this.themeSelectorRoot = this.createRoot(ThemeSelector, {
+                    props: {
+                        config: this.props.config,
+                        iframeRef: this.iframeRef,
+                        templates: this.templates,
+                    },
                 });
                 return Promise.all([
                     this.loadIframeAssets(),
@@ -117,81 +104,15 @@ export class ThemeSelectorIframe extends Component {
         } catch (error) {
             loadingError = error;
         }
-        if (status(this) === "destroyed") {
+        if (this.scope.isDestroyed()) {
             return;
         } else if (loadingError) {
             throw loadingError;
         }
-        this.state.show = true;
+        this.show.set(true);
     }
 
     loadIframeAssets() {
         return loadIframeBundles(this.iframeRef(), ["mass_mailing.assets_iframe_theme_selector"]);
-    }
-
-    /**
-     * Get common stylesheets used for every favorite mail template
-     *
-     * @returns {Promise<Array<CSSStyleSheet>>}
-     */
-    async getStyleSheets() {
-        const { cssLibs } = await getBundle("mass_mailing.assets_iframe_style");
-        const loadCSSPromises = [];
-        if (cssLibs) {
-            loadCSSPromises.push(...cssLibs.map((url) => this.loadCSSSheets(url)));
-        }
-        const cssTexts = await Promise.all(loadCSSPromises);
-        if (status(this) === "destroyed") {
-            return [];
-        }
-        const sheetPromises = [];
-        for (const cssText of cssTexts) {
-            const win = this.iframeRef().contentDocument.defaultView;
-            const sheet = new win.CSSStyleSheet();
-            sheetPromises.push(sheet.replace(cssText).then(() => sheet));
-        }
-        return Promise.all(sheetPromises);
-    }
-
-    /**
-     * Custom load which does not add the CSSStyleSheet in the current document
-     */
-    loadCSSSheets(url, retryCount = 0) {
-        if (CSSSheetsCache.has(url)) {
-            return CSSSheetsCache.get(url);
-        }
-        const promise = new Promise((resolve, reject) =>
-            fetch(url)
-                .then((response) => {
-                    if (!response.ok) {
-                        reject(
-                            new AssetsLoadingError(`The loading of ${url} failed`, {
-                                cause: response.status,
-                            })
-                        );
-                    }
-                    return response.text();
-                })
-                .then(resolve)
-                .catch(async (error) => {
-                    CSSSheetsCache.delete(url);
-                    if (retryCount < assets.retries.count) {
-                        const delay = assets.retries.delay + assets.retries.extraDelay * retryCount;
-                        await new Promise((res) => setTimeout(res, delay));
-                        this.loadCSSSheets(url, retryCount + 1)
-                            .then(resolve)
-                            .catch((reason) => {
-                                CSSSheetsCache.delete(url);
-                                reject(reason);
-                            });
-                    } else {
-                        reject(
-                            new AssetsLoadingError(`The loading of ${url} failed`, { cause: error })
-                        );
-                    }
-                })
-        );
-        CSSSheetsCache.set(url, promise);
-        return promise;
     }
 }

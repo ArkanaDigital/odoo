@@ -267,7 +267,13 @@ class StockMove(models.Model):
                 if not values.get('location_dest_id'):
                     values['location_dest_id'] = mo.location_dest_id.id
                 if not values.get('forecasted_location_id'):
-                    values['forecasted_location_id'] = mo.location_dest_id.id
+                    warehouse = mo.location_dest_id.warehouse_id
+                    if warehouse.sam_loc_id and mo.location_dest_id._child_of(warehouse.sam_loc_id):
+                        # in 3 steps, the finished product is pushed afterwards
+                        sam_rule = warehouse.pbm_route_id.rule_ids.filtered(lambda r: r.picking_type_id == warehouse.sam_type_id)[:1]
+                        values['forecasted_location_id'] = sam_rule.location_dest_id.id or mo.location_dest_id.id
+                    else:
+                        values['forecasted_location_id'] = mo.location_dest_id.id
         return super().create(vals_list)
 
     def write(self, vals):
@@ -446,6 +452,10 @@ class StockMove(models.Model):
                 mo_to_cancel.action_cancel()
         return res
 
+    def _action_reset_to_progress(self):
+        super()._action_reset_to_progress()
+        self.filtered(lambda m: m.raw_material_production_id).picked = True
+
     def _log_cancel_activity(self):
         super()._log_cancel_activity()
         if not self:
@@ -479,9 +489,12 @@ class StockMove(models.Model):
 
     def _prepare_procurement_origin(self):
         self.ensure_one()
-        if self.raw_material_production_id and self.raw_material_production_id.orderpoint_id:
+        if self.raw_material_production_id and self._should_use_production_origin():
             return self.origin
         return super()._prepare_procurement_origin()
+
+    def _should_use_production_origin(self):
+        return True
 
     def _prepare_phantom_move_values(self, bom_line, product_qty, quantity_done):
         return {

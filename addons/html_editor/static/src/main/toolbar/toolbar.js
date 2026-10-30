@@ -1,66 +1,52 @@
-import { validate } from "@web/owl2/utils";
-import { Component, proxy, signal } from "@odoo/owl";
+import { Component, onPatched, proxy, signal, t, useProps } from "@odoo/owl";
 import { omit, pick } from "@web/core/utils/objects";
 import { trapFocus } from "@html_editor/utils/dom_traversal";
 import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
 
+const componentButtonSchema = {
+    Component: t.component(),
+    description: t.string(),
+    id: t.string(),
+    isDisabled: t.boolean(),
+    props: t.object().optional(),
+};
+
+const genericButtonSchema = {
+    description: t.string(),
+    icon: t.string().optional(),
+    iconClass: t.string().optional(),
+    id: t.string(),
+    isActive: t.boolean(),
+    isDisabled: t.boolean(),
+    opensUi: t.boolean().optional(),
+    run: t.function(),
+    text: t.string().optional(),
+};
+
 export class Toolbar extends Component {
     static template = "html_editor.Toolbar";
-    static props = {
-        class: { type: String, optional: true },
-        getSelection: Function,
-        focusEditable: Function,
-        state: {
-            type: Object,
-            shape: {
-                namespace: { type: String, optional: true },
-                buttonGroups: {
-                    type: Array,
-                    element: {
-                        type: Object,
-                        shape: {
-                            id: String,
-                            buttons: {
-                                type: Array,
-                                element: {
-                                    type: Object,
-                                    validate: (button) => {
-                                        const base = {
-                                            id: String,
-                                            description: String,
-                                            isDisabled: Boolean,
-                                        };
-                                        if (button.Component) {
-                                            validate(button, {
-                                                ...base,
-                                                Component: Function,
-                                                props: { type: Object, optional: true },
-                                            });
-                                        } else {
-                                            validate(button, {
-                                                ...base,
-                                                run: Function,
-                                                icon: { type: String, optional: true },
-                                                iconClass: { type: String, optional: true },
-                                                text: { type: String, optional: true },
-                                                isActive: Boolean,
-                                            });
-                                        }
-                                        return true;
-                                    },
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-        },
-    };
+    props = useProps({
+        class: t.string().optional(),
+        getSelection: t.function(),
+        focusEditable: t.function(),
+        state: t.object({
+            namespace: t.string().optional(),
+            buttonGroups: t.array(
+                t.object({
+                    id: t.string(),
+                    buttons: t.array(
+                        t.or([t.object(componentButtonSchema), t.object(genericButtonSchema)])
+                    ),
+                })
+            ),
+        }),
+    });
 
     toolbarEl = signal.ref();
 
     setup() {
         this.state = proxy(this.props.state);
+        this.shouldFocusFirstButton = false;
 
         useHotkey("alt+f", () => this.focusFirstToolbarButton(), {
             bypassEditableProtection: true,
@@ -74,6 +60,13 @@ export class Toolbar extends Component {
                 !document.activeElement.closest(
                     ".o-we-toolbar[data-namespace], [data-prevent-closing-overlay]"
                 ),
+        });
+
+        onPatched(() => {
+            if (this.shouldFocusFirstButton) {
+                this.shouldFocusFirstButton = false;
+                this.focusFirstToolbarButton();
+            }
         });
     }
 
@@ -102,17 +95,18 @@ export class Toolbar extends Component {
     onButtonClick(button) {
         button.run();
         if (button.id === "expand_toolbar") {
-            this.focusFirstToolbarButton();
-        } else {
+            // Toolbar update is async, defer focus until after OWL re-renders the DOM.
+            this.shouldFocusFirstButton = true;
+        } else if (!button.opensUi) {
             this.props.focusEditable();
         }
     }
 }
 
 export const toolbarButtonProps = {
-    title: [String, Function],
-    getSelection: Function,
-    isDisabled: Boolean,
+    title: t.or([t.string(), t.function()]),
+    getSelection: t.function(),
+    isDisabled: t.boolean(),
 };
 
 /** @typedef {import("@html_editor/core/user_command_plugin").UserCommand} UserCommand */

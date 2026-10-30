@@ -1,15 +1,22 @@
-/** @odoo-module **/
-
-import { afterEach, beforeEach, describe, expect, test } from "@odoo/hoot";
-import { animationFrame, queryFirst, waitUntil } from "@odoo/hoot-dom";
+import {
+    afterEach,
+    animationFrame,
+    beforeEach,
+    describe,
+    expect,
+    queryFirst,
+    test,
+    waitUntil,
+} from "@odoo/hoot";
 import { Component, xml } from "@odoo/owl";
 import {
     getService,
     makeTestApp,
     mountWithCleanup,
+    onRpc,
     patchWithCleanup,
 } from "@web/../tests/web_test_helpers";
-import { browser } from "@web/core/browser/browser";
+import { location, browser } from "@web/core/browser/browser";
 import { Dialog } from "@web/core/dialog/dialog";
 import { Macro } from "@web/core/macro";
 import { registry } from "@web/core/registry";
@@ -136,6 +143,26 @@ test("Step Tour validity", async () => {
     ]);
 });
 
+test("testing a custom tour that only exists in the database", async () => {
+    onRpc("web_tour.tour", "get_tour_json_by_name", () => ({
+        name: "custom_tour",
+        steps: [{ trigger: ".button0", run: "click" }],
+    }));
+
+    class Root extends Component {
+        static components = {};
+        static template = xml/*html*/ `<button class="button0" t-on-click="this.onClick">Button 0</button>`;
+        onClick() {
+            expect.step("clicked");
+        }
+    }
+
+    await mountWithCleanup(Root);
+    await odoo.startTour("custom_tour", { mode: "auto", fromDB: true });
+    await waitForMacro();
+    expect.verifySteps(["clicked"]);
+});
+
 test("a tour with invalid step trigger", async () => {
     patchWithCleanup(browser.console, {
         groupCollapsed: (s) => expect.step(`log: ${s}`),
@@ -185,7 +212,6 @@ test("a failing tour logs the step that failed in run", async () => {
                 <button class="button2">Button 2</button>
             </t>
         `;
-        static props = ["*"];
     }
 
     await mountWithCleanup(Root);
@@ -260,7 +286,6 @@ test("a failing tour with disabled element", async () => {
                 <button class="button2">Button 2</button>
             </t>
         `;
-        static props = ["*"];
     }
 
     await mountWithCleanup(Root);
@@ -315,7 +340,6 @@ test("a failing tour logs the step that failed", async () => {
                 <button class="button7">Button 7</button>
             </t>
         `;
-        static props = ["*"];
     }
 
     await mountWithCleanup(Root);
@@ -396,7 +420,6 @@ test("check tour with inactive steps", async () => {
                 </div>
             </t>
         `;
-        static props = ["*"];
     }
 
     await mountWithCleanup(Root);
@@ -450,7 +473,6 @@ test("automatic tour with invisible element", async () => {
                 </div>
             </t>
         `;
-        static props = ["*"];
     }
 
     await mountWithCleanup(Root);
@@ -501,7 +523,6 @@ test("automatic tour with invisible element but use :not(:visible))", async () =
                 </div>
             </t>
         `;
-        static props = ["*"];
     }
 
     await mountWithCleanup(Root);
@@ -577,7 +598,6 @@ test("automatic tour with alternative trigger", async () => {
                 </div>
             </t>
         `;
-        static props = ["*"];
     }
     await mountWithCleanup(Root);
     await odoo.startTour("tour_des_flandres", { mode: "auto" });
@@ -593,7 +613,6 @@ test("check not possible to click below modal", async () => {
         dir: () => {},
     });
     class DummyDialog extends Component {
-        static props = ["*"];
         static components = { Dialog };
         static template = xml`
             <Dialog>
@@ -614,7 +633,6 @@ test("check not possible to click below modal", async () => {
                 </div>
             </t>
         `;
-        static props = ["*"];
         setup() {
             this.dialogService = useService("dialog");
         }
@@ -667,7 +685,6 @@ test("a tour where hoot trigger failed", async () => {
                 <button class="button2">Button 2</button>
             </t>
         `;
-        static props = ["*"];
     }
 
     await mountWithCleanup(Root);
@@ -704,7 +721,6 @@ test("Tour redirect to given url", async () => {
                 <button class="button2">Button 2</button>
             </t>
         `;
-        static props = ["*"];
     }
 
     await mountWithCleanup(Root);
@@ -722,8 +738,8 @@ test("Tour redirect to given url", async () => {
             },
         ],
     });
-    expect(browser.location.pathname).toBe("/");
+    expect(location.pathname).toBe("/");
     await odoo.startTour("tour_redirect", { mode: "auto", url: "/odoo" });
     await waitForMacro();
-    expect(browser.location.pathname).toBe("/odoo");
+    expect(location.pathname).toBe("/odoo");
 });

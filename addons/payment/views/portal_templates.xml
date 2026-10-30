@@ -125,6 +125,7 @@
                                 t-else=""
                                 name="o_payment_status"
                                 class="d-flex flex-column"
+                                t-att-data-transaction-reference="tx.reference"
                                 t-att-data-landing-route="tx.landing_route"
                                 t-att-data-notification-channel="notification_channel"
                             >
@@ -133,14 +134,7 @@
                                     <h1 class="h3-fs">
                                         Please wait...
                                     </h1>
-                                    <p>
-                                        <t t-if="tx.payment_method_id._is_postpaid()">
-                                            Your order is being processed.
-                                        </t>
-                                        <t t-else="">
-                                            Your payment is being processed.
-                                        </t>
-                                    </p>
+                                    <p>Your payment is being processed.</p>
                                 </div>
                                 <div class="o_payment_summary d-flex gap-3">
                                     <t t-call="payment.summary_item"
@@ -244,7 +238,7 @@
                                aria-label="Home"/>
                         </a>
                     </li>
-                    <li class="breadcrumb-item"><t t-out="page_title"/></li>
+                    <li class="breadcrumb-item active"><t t-out="page_title"/></li>
                 </ol>
             </div>
         </div>

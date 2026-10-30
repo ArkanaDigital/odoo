@@ -1,11 +1,13 @@
 from lxml import etree
 
 from odoo import Command
-from odoo.addons.account.tests.common import AccountTestInvoicingCommon
-from odoo.tests import tagged
+from odoo.tests import freeze_time, tagged
 from odoo.tools import misc
+from odoo.addons.l10n_gr_edi import utils
+from odoo.addons.account.tests.common import AccountTestInvoicingCommon
 
 
+@freeze_time('2024-01-01')
 @tagged('post_install_l10n', 'post_install', '-at_install')
 class TestMyDATAInvoice(AccountTestInvoicingCommon):
 
@@ -120,7 +122,7 @@ class TestMyDATAInvoice(AccountTestInvoicingCommon):
             xml_template = 'l10n_gr_edi.mydata_invoice'
             xml_vals = invoice._l10n_gr_edi_get_invoices_xml_vals()
 
-        xml_content = self.env['account.move']._l10n_gr_edi_generate_xml_content(xml_template, xml_vals)
+        xml_content = self.env['l10n_gr_edi.document']._l10n_gr_edi_generate_xml_content(xml_template, xml_vals)
         xml_etree = self.get_xml_tree_from_string(xml_content)
 
         expected_file_full_path = misc.file_path(f'{self.test_module}/tests/test_files/{expected_file_path}')
@@ -138,6 +140,10 @@ class TestMyDATAInvoice(AccountTestInvoicingCommon):
             'state': 'invoice_error' if invoice.is_sale_document(include_receipts=True) else 'bill_error',
             'message': expected_error_message,
         }])
+
+    def _skip_if_bridge_installed(self):
+        if self.env['ir.module.module']._get('l10n_gr_edi_e_invoo_bridge').state == 'installed':
+            self.skipTest("This test will fail if l10n_gr_edi_e_invoo_bridge is installed.")
 
     ####################################################################################################
     # Test: assert available classification value for dynamic selection fields
@@ -224,11 +230,16 @@ class TestMyDATAInvoice(AccountTestInvoicingCommon):
         bill = self._create_mydata_bill()
         self.assert_mydata_xml_tree(bill, expected_file_path='from_odoo/mydata_cls_expense.xml', send_classification=True)
 
+    def test_mydata_send_invoice_of_type_11_2(self):
+        invoice = self._create_mydata_invoice(inv_type='11.2', cls_category='category1_3', cls_type='E3_561_007')
+        self.assert_mydata_xml_tree(invoice, expected_file_path='from_odoo/mydata_invoice_11_2.xml')
+
     ####################################################################################################
     # Test: assert built-in constraints
     ####################################################################################################
 
     def test_l10n_gr_edi_try_send_invoices_no_credentials_and_vat(self):
+        self._skip_if_bridge_installed()
         self.company_data['company'].write({
             'l10n_gr_edi_aade_id': False,
             'l10n_gr_edi_aade_key': False,
@@ -238,6 +249,7 @@ class TestMyDATAInvoice(AccountTestInvoicingCommon):
         self.assert_mydata_error(invoice, "You need to set AADE ID and Key in the company settings.")
 
     def test_l10n_gr_edi_try_send_invoices_no_classification(self):
+        self._skip_if_bridge_installed()
         # No invoice type
         invoice = self._create_mydata_invoice()
         invoice.l10n_gr_edi_inv_type = False
@@ -256,13 +268,15 @@ class TestMyDATAInvoice(AccountTestInvoicingCommon):
 
     def test_l10n_gr_edi_try_send_invoices_allowed_no_cls_type(self):
         """Allow no cls_type on some combinations with available cls_type"""
+        self._skip_if_bridge_installed()
         allowed_inv_type_category = (('1.1', 'category1_95'), ('3.2', 'category1_95'), ('5.1', 'category1_95'))
         for inv_type, category in allowed_inv_type_category:
             invoice = self._create_mydata_invoice(inv_type=inv_type, cls_category=category, cls_type=False)
-            self.assertFalse(invoice._l10n_gr_edi_get_pre_error_string())
+            self.assertFalse(utils.get_pre_error_string(invoice._l10n_gr_edi_get_pre_error_dict()))
 
     def test_l10n_gr_edi_try_send_invoices_invalid_tax_amount(self):
         """ Invalid tax amount should raises error. """
+        self._skip_if_bridge_installed()
         invalid_tax = self.env['account.tax'].create([{
             'name': 'Bad 12%',
             'type_tax_use': 'sale',
@@ -275,12 +289,14 @@ class TestMyDATAInvoice(AccountTestInvoicingCommon):
 
     def test_l10n_gr_edi_try_send_invoices_invalid_tax_multi(self):
         """ Multiple tax should raises error. """
+        self._skip_if_bridge_installed()
         invoice = self._create_mydata_invoice(tax_ids=[Command.set((self.tax_24 + self.tax_0).ids)])
         invoice.l10n_gr_edi_try_send_invoices()
         self.assert_mydata_error(invoice, 'myDATA does not support multiple taxes on line 1.')
 
     def test_l10n_gr_edi_try_send_invoices_invalid_tax_nonexistent(self):
         """ No tax should raises error. """
+        self._skip_if_bridge_installed()
         invoice = self._create_mydata_invoice(post=False)
         invoice.invoice_line_ids.tax_ids = False
         invoice.action_post()
@@ -289,6 +305,7 @@ class TestMyDATAInvoice(AccountTestInvoicingCommon):
 
     def test_l10n_gr_edi_try_send_invoices_invalid_tax_exempt_no_category(self):
         """ Tax 0% and no tax exemption category should raises error. """
+        self._skip_if_bridge_installed()
         invoice = self._create_mydata_invoice(tax_ids=[Command.set(self.tax_0.ids)])
         invoice.with_context(skip_readonly_check=True).invoice_line_ids.l10n_gr_edi_tax_exemption_category = False
         invoice.l10n_gr_edi_try_send_invoices()

@@ -74,10 +74,10 @@ test("Seen message is saved on the server", async () => {
     await postLivechatMessage("Hello, I need help!");
     await subscribed;
     await contains(".o-mail-Message", { text: "Hello, I need help!" });
-    const initialSeenMessageId = Object.values(
-        getService("mail.store")["discuss.channel"].records
-    ).at(-1).self_member_id.seen_message_id?.id;
-    queryFirst(".o-mail-Composer-input").blur();
+    const initialSeenMessageId = [
+        ...getService("mail.store")["discuss.channel"].records.values(),
+    ].at(-1).self_member_id.seen_message_id?.id;
+    queryFirst(".o-mail-Composer-html").blur();
     await withUser(userId, () =>
         rpc("/mail/message/post", {
             post_data: {
@@ -85,13 +85,13 @@ test("Seen message is saved on the server", async () => {
                 message_type: "comment",
                 subtype_xmlid: "mail.mt_comment",
             },
-            thread_id: Object.values(getService("mail.store")["mail.thread"].records).at(-1).id,
+            thread_id: [...getService("mail.store")["mail.thread"].records.values()].at(-1).id,
             thread_model: "discuss.channel",
         })
     );
     await contains(".o-mail-Thread-newMessage");
     await contains(".o-mail-ChatWindow-counter", { text: "1" });
-    await focus(".o-mail-Composer-input");
+    await focus(".o-mail-Composer-html");
     await contains(".o-mail-ChatWindow-counter", { count: 0 });
     const guestId = pyEnv.cookie.get("dgid");
     const [member] = pyEnv["discuss.channel.member"].search_read([
@@ -99,12 +99,12 @@ test("Seen message is saved on the server", async () => {
         [
             "channel_id",
             "=",
-            Object.values(getService("mail.store")["mail.thread"].records).at(-1).id,
+            [...getService("mail.store")["mail.thread"].records.values()].at(-1).id,
         ],
     ]);
     expect(initialSeenMessageId).not.toBe(member.seen_message_id[0]);
     expect(
-        Object.values(getService("mail.store")["discuss.channel"].records).at(-1).self_member_id
+        [...getService("mail.store")["discuss.channel"].records.values()].at(-1).self_member_id
             .seen_message_id.id
     ).toBe(member.seen_message_id[0]);
 });

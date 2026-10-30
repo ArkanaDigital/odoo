@@ -3,7 +3,8 @@
 
 <t t-name="mail.MessagingMenuItem">
     <t t-set="itemProps" t-value="this.notificationItemProps"/>
-    <div class="o-mail-MessagingMenuItem" t-att-class="this.attClass" t-ref="this.root">
+    <div class="o-mail-MessagingMenuItem rounded-4" t-att-class="this.attClass" t-ref="this.root">
+        <MessagingMenuItemContextMenu t-if="this.rightClickMenu?.shouldRender" t-props="this.rightClickMenu.menuProps"/>
         <NotificationItem t-if="itemProps" t-props="itemProps">
             <t t-set-slot="name">
                 <div class="o-mail-MessagingMenuItem-name d-flex text-nowrap">
@@ -20,21 +21,19 @@
                 <div t-if="this.showActions" class="o-mail-MessagingMenu-actions h-100 w-100 z-1 position-absolute bottom-0 end-0 d-none">
                     <Dropdown
                         position="'right-start'"
-                        menuClass="'o-mail-MessagingMenu-dropdownMenu o-discuss-dropdownMenu border-secondary my-0 mx-1 px-1 ' + this.store.discussDropdownMenuClass(this)"
+                        menuClass="'o-mail-MessagingMenu-dropdownMenu o-discuss-dropdownMenu my-0 mx-1 ' + this.store.discussDropdownMenuClass(this.ancestors)"
                         state="this.actionsDropdownState"
                         manual="true"
                         noClasses="true"
                     >
                         <button
-                            class="btn btn-light rounded-circle d-flex h-100 w-100 align-items-center justify-content-center o-mail-DiscussApp-sidebarBgColor border"
+                            class="btn o-discuss-ellipsisButton h-100 w-100 o-mail-DiscussApp-sidebarBgColor"
                             t-att-class="this.actionsButtonClass"
                             t-att-title="this.actionsButtonTitle"
                             t-on-click.stop="() => this.actionsDropdownState.isOpen ? this.actionsDropdownState.close() : this.actionsDropdownState.open()"
-                        >
-                            <i role="img" class="oi oi-fw oi-lg" data-icon="more_horiz"/>
-                        </button>
+                        />
                         <t t-set-slot="content">
-                            <ActionList actions="this.actionsList" dropdown="true"/>
+                            <ActionList actions="this.actionsList" dropdown="true" panelContainer.bind="this.getPanelContainer"/>
                         </t>
                     </Dropdown>
                 </div>

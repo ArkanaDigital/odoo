@@ -58,12 +58,12 @@ test("change the background shape of elements", async () => {
             </div>
         </div>`);
     await contains(":iframe .selector").click();
-    await contains("div[data-label='Shape'] button.o-hb-btn").click();
+    await contains("div[data-label='Shape'] button.o_hb_btn").click();
     expect(
-        ".o_pager_container .o-hb-bg-shape-btn:nth-child(1) .btn.active[data-action-id='setBackgroundShape']"
+        ".o_pager_container .o_hb_bg_shape_btn:nth-child(1) .btn.active[data-action-id='setBackgroundShape']"
     ).toHaveCount();
     await contains(
-        ".o_pager_container .o-hb-bg-shape-btn:nth-child(2) .btn:not(.active)[data-action-id='setBackgroundShape']"
+        ".o_pager_container .o_hb_bg_shape_btn:nth-child(2) .btn:not(.active)[data-action-id='setBackgroundShape']"
     ).click();
     expect(":iframe .selector div#first").toHaveAttribute(
         "data-oe-shape-data",
@@ -147,7 +147,6 @@ test("Background position overlay layout", async () => {
     );
 
     const iframe = getEditor().editable.ownerDocument.defaultView.frameElement;
-    const body = queryOne(":iframe body");
     const section = queryOne(":iframe .container section");
 
     const testLayout = async (mobile) => {
@@ -163,22 +162,22 @@ test("Background position overlay layout", async () => {
         }
         await openBgPositionOverlay(section, waitSidebarUpdated);
 
-        // The overlay should cover exactly the iframe
+        // The overlay should cover the whole builder viewport.
         const iframeRect = iframe.getBoundingClientRect();
         const bgOverlayRect = queryOne(".o_we_image_position_overlay").getBoundingClientRect();
-        expect(bgOverlayRect.left).toBeCloseTo(iframeRect.left);
-        expect(bgOverlayRect.top).toBeCloseTo(iframeRect.top);
-        expect(bgOverlayRect.width).toBeCloseTo(body.clientWidth * iframeContainerScale);
-        expect(bgOverlayRect.height).toBeCloseTo(body.clientHeight * iframeContainerScale);
+        expect(bgOverlayRect.left).toBe(0);
+        expect(bgOverlayRect.top).toBe(0);
+        expect(bgOverlayRect.width).toBe(window.innerWidth);
+        expect(bgOverlayRect.height).toBe(window.innerHeight);
 
         // The content of the overlay should cover the editing element
         const editingElementRect = section.getBoundingClientRect();
         const overlayContentStyle = getComputedStyle(queryOne(".o_we_overlay_content"));
         expect(parseFloat(overlayContentStyle.left)).toBeCloseTo(
-            editingElementRect.left * iframeContainerScale
+            iframeRect.left + editingElementRect.left * iframeContainerScale
         );
         expect(parseFloat(overlayContentStyle.top)).toBeCloseTo(
-            editingElementRect.top * iframeContainerScale
+            iframeRect.top + editingElementRect.top * iframeContainerScale
         );
         expect(parseFloat(overlayContentStyle.width)).toBeCloseTo(
             editingElementRect.width * iframeContainerScale
@@ -422,9 +421,9 @@ test("changing shape's background color doesn't hide the shape itself", async ()
         }
     );
     await contains(":iframe section").click();
-    await contains("div[data-label='Shape'] button.o-hb-btn").click();
+    await contains("div[data-label='Shape'] button.o_hb_btn").click();
     await contains(
-        ".o_pager_container .o-hb-bg-shape-btn [data-action-value='html_builder/Connections/01'][data-action-id='setBackgroundShape']"
+        ".o_pager_container .o_hb_bg_shape_btn [data-action-value='html_builder/Connections/01'][data-action-id='setBackgroundShape']"
     ).click();
     await waitSidebarUpdated();
     const backgroundImageValue = getComputedStyle(queryOne(":iframe .o_we_shape")).backgroundImage;
@@ -487,7 +486,7 @@ test("change background size", async () => {
 
     await contains(heightInput).edit("");
     expect(heightInput).toHaveValue(NaN);
-    expect(section).toHaveStyle("background-size: 100px");
+    expect(section).toHaveStyle({ "background-size": /^100px/ });
 
     await contains(widthInput).edit("");
     expect(widthInput).toHaveValue(NaN, { message: "height input should stay empty" });
@@ -497,7 +496,7 @@ test("change background size", async () => {
     await contains(widthInput).edit("0");
     await animationFrame();
     expect(widthInput).toHaveValue(1, { message: "minimum value is 1" });
-    expect(section).toHaveStyle("background-size: 1px");
+    expect(section).toHaveStyle({ "background-size": /^1px/ });
 });
 
 test("background shape detection is compatible with previous ones (web_editor)", async () => {
@@ -565,9 +564,9 @@ test("can customize background shape groups", async () => {
 
     await setupWebsiteBuilder(`<section>AAAA</section>`);
     await contains(":iframe section").click();
-    await contains("div[data-label='Shape'] button.o-hb-btn").click();
+    await contains("div[data-label='Shape'] button.o_hb_btn").click();
     expect(".o_pager_container").toHaveText(/Custom/);
-    expect("button.o-hb-select-pager-tab[data-group-id='extra']").toHaveCount(1);
+    expect("button.o_hb_select_pager_tab[data-group-id='extra']").toHaveCount(1);
     expect("[data-action-value='html_builder/Connections/01']").toHaveCount(1);
     expect("[data-action-value='html_builder/Connections/02']").toHaveCount(1);
     await contains("[data-action-value='html_builder/Connections/01']").click();
@@ -732,7 +731,7 @@ test("Change the background position when multiple background layer is applied",
     await contains("[data-label='Position'] .dropdown-toggle").click();
     await contains("[data-action-value='repeat-pattern']").click();
     expect(section).toHaveClass("o_bg_img_opt_repeat");
-    expect(section).toHaveStyle("background-size: 100px, cover");
+    expect(section).toHaveStyle({"background-size": /^100px.+cover$/});
     expect("[data-action-value='repeat-pattern']").toHaveClass("active");
 });
 

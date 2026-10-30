@@ -1,8 +1,10 @@
 import { Gif } from "@mail/core/common/gif";
 import { LinkPreviewConfirmDelete } from "@mail/core/common/link_preview_confirm_delete";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 
-import { Component, proxy, signal, types, useOnChange, useProps } from "@odoo/owl";
+import { Component, proxy, signal, types, useOnChange, usePlugin, useProps } from "@odoo/owl";
 
+import { UIPlugin } from "@web/core/ui/ui_plugin";
 import { useService } from "@web/core/utils/hooks";
 
 export class LinkPreview extends Component {
@@ -14,12 +16,13 @@ export class LinkPreview extends Component {
 
     setup() {
         super.setup();
+        this.ancestors = useAncestors();
         this.store = useService("mail.store");
         this.props = useProps({
             messageLinkPreview: types.instanceOf(this.store["mail.message.link.preview"]),
         });
         this.dialogService = useService("dialog");
-        this.ui = useService("ui");
+        this.ui = usePlugin(UIPlugin);
         this.state = proxy({ startVideo: false, videoLoaded: false });
         useOnChange(
             () => [this.videoRef()],
@@ -50,6 +53,6 @@ export class LinkPreview extends Component {
         const aspectRatio = img.naturalWidth / img.naturalHeight;
         // Determine if image is squarish (aspect ratio between 2:3 and 3:2)
         this.linkPreview.hasSquarishCardImage = aspectRatio >= 0.67 && aspectRatio <= 1.5;
-        this.env.onImageLoaded?.();
+        this.ancestors.inThread?.onImageLoaded();
     }
 }

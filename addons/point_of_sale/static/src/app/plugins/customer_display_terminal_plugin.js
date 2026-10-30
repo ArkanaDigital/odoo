@@ -6,7 +6,6 @@ import { getOnNotified, getColorScheme } from "@point_of_sale/utils";
 import { logPosMessage } from "@point_of_sale/app/utils/pretty_console_log";
 
 export const CONSOLE_COLOR = "#F5B427";
-export const REGISTER_NOTIFICATION = "REGISTER_CUSTOMER_DISPLAY_DEVICE";
 
 /**
  * Terminal half of the customer display: derives the payload from the current
@@ -38,8 +37,8 @@ export class CustomerDisplayTerminalPlugin extends Plugin {
 
     /**
      * @param {Object} [context] - what this terminal talks with and for:
-     *   `bus`, `identifier`, `configId`, `accessToken`, `models`, `scale` and
-     *   `GeneratePrinterData`. Called again to hand over late dependencies.
+     *   `bus`, `identifier`, `configId`, `accessToken`, `models`, `scale`,
+     *   `GeneratePrinterData` and `getQrData`. Called again to hand over late dependencies.
      */
     init(context = {}) {
         Object.assign(this.context, context);
@@ -95,25 +94,20 @@ export class CustomerDisplayTerminalPlugin extends Plugin {
      * @returns {Object} Data payload for the customer display.
      */
     _buildDisplayPayload(order) {
-        const { models, GeneratePrinterData } = this.context;
+        const { models, GeneratePrinterData, getQrData } = this.context;
         const generator = new GeneratePrinterData({ models, order });
-        const _formatCurrency = (amount) => formatCurrency(amount, order.currency.id);
 
         const orderData = generator.generateReceiptData();
         const scale = this.context.scale;
 
-        const qrPaymentData = order.getSelectedPaymentline()?.getQrPopupProps(true);
-        if (qrPaymentData?.amount) {
-            qrPaymentData.amount = _formatCurrency(qrPaymentData.amount);
-        }
-
         return {
             ...orderData,
-            qrPaymentData,
+            qrData: getQrData?.() || null,
             displayScreenSaver: false,
+            paymentAmountInCurrency: order.paymentAmountInCurrency,
             amountSettlements: order.remainingDueAmount !== order.totalDue && {
                 label: order.remainingDueLabel,
-                amount: _formatCurrency(Math.abs(order.remainingDueAmount)),
+                amount: formatCurrency(Math.abs(order.remainingDueAmount), order.orderCurrency.id),
             },
             selectedLineUuid: order.uiState?.selected_orderline_uuid,
             displayTheme: getColorScheme(),

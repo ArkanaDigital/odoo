@@ -72,8 +72,9 @@ sent mails with personal token for the invitation of the survey.
             'web/static/lib/bootstrap/scss/_variables.scss',
             'web/static/lib/bootstrap/scss/_variables-dark.scss',
             'web/static/lib/bootstrap/scss/_maps.scss',
+            'web/static/src/core/utils/nocontent_image.css',
             'survey/static/src/scss/survey_templates_form.scss',
-            'survey/static/src/scss/survey_templates_results.scss',
+            'survey/static/src/scss/survey_templates_results.css',
             'survey/static/src/interactions/survey_breadcrumb_templates.xml',
             'survey/static/src/xml/survey_paginated_results_rows_template.xml',
             'survey/static/src/interactions/*',
@@ -87,18 +88,18 @@ sent mails with personal token for the invitation of the survey.
             'survey/static/src/xml/survey_session_text_answer_template.xml',
         ],
         'web.report_assets_common': [
-            'survey/static/src/scss/survey_reports.scss',
+            'survey/static/src/scss/survey_reports.css',
         ],
         'web.assets_backend': [
             'survey/static/src/question_page/*',
             'survey/static/src/views/**/*.js',
             'survey/static/src/views/**/*.xml',
-            'survey/static/src/scss/survey_survey_views.scss',
-            'survey/static/src/scss/survey_question_views.scss',
+            'survey/static/src/scss/survey_survey_views.css',
+            'survey/static/src/scss/survey_question_views.css',
             'survey/static/src/js/tours/survey_tour.js',
         ],
         "web.assets_web_dark": [
-            'survey/static/src/scss/*.dark.scss',
+            'survey/static/src/scss/*.dark.css',
         ],
         'web.assets_tests': [
             'survey/static/tests/tours/*.js',

@@ -1,5 +1,5 @@
 import {
-    clickOnEditAndWaitEditModeInTranslatedPage,
+    clickOnEditAndWaitEditMode,
     clickOnSave,
     insertSnippet,
     registerWebsitePreviewTour,
@@ -150,7 +150,7 @@ registerWebsitePreviewTour(
         },
         {
             content: "edit",
-            trigger: ".o-website-btn-custo-primary.dropdown-toggle:contains('edit')",
+            trigger: ".o_website_btn_custo_primary.dropdown-toggle:contains('edit')",
             run: "click",
         },
         {
@@ -175,7 +175,7 @@ registerWebsitePreviewTour(
         },
         {
             content: "Check that the generic 'Translation' option is always visible",
-            trigger: ".o_customize_tab .options-container [data-label='Translate to']",
+            trigger: ".o_customize_tab .o_hb_options_container [data-label='Translate to']",
         },
         {
             trigger: ":iframe .js_language_selector > button:contains(Parseltongue)",
@@ -213,12 +213,12 @@ registerWebsitePreviewTour(
         },
         {
             content: "translate placeholder",
-            trigger: `.options-container [data-action-id='translateAttribute'][data-action-param='placeholder'] input`,
+            trigger: `.o_hb_options_container [data-action-id='translateAttribute'][data-action-param='placeholder'] input`,
             run: "edit test Parseltongue placeholder",
         },
         {
             content: "translate default value",
-            trigger: `.options-container [data-action-id='translateAttribute'][data-action-param='value'] input`,
+            trigger: `.o_hb_options_container [data-action-id='translateAttribute'][data-action-param='value'] input`,
             run: "edit test Parseltongue default value",
         },
         {
@@ -268,18 +268,11 @@ registerWebsitePreviewTour(
                 ":iframe body:not(:has(#wrap p font:first:text(paragraphs <b>describing</b>)))",
         },
         {
-            content: "return to Parseltongue version",
-            trigger: ':iframe .js_language_selector a[data-url_code="pa_GB"]',
-            run: "click",
+            content: "check edit button is not in translate mode",
+            trigger:
+                "body .o_menu_systray .o_menu_systray_item.o_edit_website_container button:not(.o-dropdown)",
         },
-        {
-            content: "check: placeholder translation",
-            trigger: ':iframe input[placeholder="test Parseltongue placeholder"]',
-        },
-        {
-            trigger: ":iframe .js_language_selector > button:contains(Parseltongue)",
-        },
-        ...clickOnEditAndWaitEditModeInTranslatedPage(),
+        ...clickOnEditAndWaitEditMode(),
         {
             content: "select text",
             trigger: ":iframe #wrap p",

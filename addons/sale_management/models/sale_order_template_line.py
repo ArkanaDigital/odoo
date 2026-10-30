@@ -2,12 +2,13 @@
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError
-from odoo.fields import Command
+from odoo.fields import Command, Domain
 
 
 class SaleOrderTemplateLine(models.Model):
     _name = "sale.order.template.line"
     _description = "Quotation Template Line"
+    _inherit = ["product.catalog.line.mixin"]
     _order = "sale_order_template_id, sequence, id"
 
     _accountable_product_id_required = models.Constraint(
@@ -43,7 +44,7 @@ class SaleOrderTemplateLine(models.Model):
     product_id = fields.Many2one(
         comodel_name="product.product",
         check_company=True,
-        domain=lambda self: self._product_id_domain(),
+        domain=[("sale_ok", "=", True), ("type", "!=", "combo")],
     )
     product_template_id = fields.Many2one(
         string="Product Template",
@@ -51,8 +52,8 @@ class SaleOrderTemplateLine(models.Model):
         compute="_compute_product_template_id",
         readonly=False,
         search="_search_product_template_id",
-        # magic way to make sure the domain integrates the check_company _domain_product_id logics
-        # despite not being a check_company=True field
+        # magic way to make sure the domain integrates the product domain, including the
+        # check_company logic despite not being a check_company=True field
         domain=lambda self: self._fields["product_id"]._description_domain(self.env),
     )
 
@@ -77,7 +78,7 @@ class SaleOrderTemplateLine(models.Model):
         readonly=False,
         precompute=True,
         ondelete="restrict",
-        init_storage=lambda model: None,
+        init_storage=lambda model: None,  # noqa: ARG005
     )
     is_configurable_product = fields.Boolean(
         string="Is the product configurable?",
@@ -92,6 +93,7 @@ class SaleOrderTemplateLine(models.Model):
         precompute=True,
         translate=True,
     )
+    label = fields.Text(string="Label", compute="_compute_label", inverse="_inverse_label")
 
     allowed_uom_ids = fields.Many2many("uom.uom", compute="_compute_allowed_uom_ids")
     product_uom_id = fields.Many2one(
@@ -157,7 +159,12 @@ class SaleOrderTemplateLine(models.Model):
             line.product_template_id = line.product_id.product_tmpl_id
 
     def _search_product_template_id(self, operator, value):
-        return [("product_id.product_tmpl_id", operator, value)]
+        if operator in Domain.NEGATIVE_OPERATORS:
+            return NotImplemented
+        domain = Domain("product_id.product_tmpl_id", operator, value)
+        if operator == 'in' and False in value:  # relation may be falsy
+            domain |= Domain('product_id', '=', False)
+        return domain
 
     @api.depends("product_id")
     def _compute_name(self):
@@ -186,13 +193,11 @@ class SaleOrderTemplateLine(models.Model):
         )
         if not self.product_custom_attribute_value_ids and not no_variant_ptavs:
             return ""
-        lines = []
         custom_ptavs = (
             self.product_custom_attribute_value_ids.custom_product_template_attribute_value_id
         )
         multi_ptavs = no_variant_ptavs.filtered(lambda ptav: ptav.display_type == "multi").sorted()
-        for ptav in no_variant_ptavs - multi_ptavs - custom_ptavs:
-            lines.append(ptav.display_name)
+        lines = (no_variant_ptavs - multi_ptavs - custom_ptavs).mapped("display_name")
         for pta, ptavs in multi_ptavs.grouped("attribute_id").items():
             lines.append(
                 self.env._(
@@ -297,6 +302,28 @@ class SaleOrderTemplateLine(models.Model):
             else:
                 line.section_uom_id = False
 
+    @api.depends("product_id", "name")
+    def _compute_label(self):
+        for line in self:
+            if not line.product_id:
+                line.label = line.name
+                continue
+
+            if not line.name:
+                line.label = line.product_id.display_name
+            elif line.name.splitlines()[0] == line.product_id.display_name:
+                # If description already holds the product name, use it as label
+                line.label = line.name
+            else:
+                line.label = line.product_id.display_name + "\n" + line.name
+
+    def _inverse_label(self):
+        for line in self:
+            if line.product_id and line.label:
+                line.name = line.label.removeprefix(line.product_id.display_name).removeprefix("\n")
+            else:
+                line.name = line.label
+
     # === CRUD METHODS ===#
 
     @api.model_create_multi
@@ -320,11 +347,6 @@ class SaleOrderTemplateLine(models.Model):
 
     # === BUSINESS METHODS ===#
 
-    @api.model
-    def _product_id_domain(self):
-        """Return the domain of the products that can be added to the template."""
-        return [("sale_ok", "=", True), ("type", "!=", "combo")]
-
     def _prepare_order_line_values(self, fiscal_position, currency):
         """Prepare values to create a sale order line from a template line.
 
@@ -343,29 +365,14 @@ class SaleOrderTemplateLine(models.Model):
             "collapse_prices": self.collapse_prices,
             "display_type": self.display_type,
             "is_optional": self.is_optional,
-            "product_id": self.product_id.id,
             "product_uom_qty": self.product_uom_qty,
             "product_uom_id": self.product_uom_id.id,
             "sequence": self.sequence,
             "section_qty": self.section_qty,
             "section_uom_id": self.section_uom_id.id,
-            "product_no_variant_attribute_value_ids": [
-                Command.set(self.product_no_variant_attribute_value_ids.ids)
-            ],
-            "product_custom_attribute_value_ids": [
-                Command.create({
-                    "custom_product_template_attribute_value_id": (
-                        pacv.custom_product_template_attribute_value_id.id
-                    ),
-                    "custom_value": pacv.custom_value,
-                })
-                for pacv in self.product_custom_attribute_value_ids
-            ],
         }
         if self.name:
             vals["name"] = self.name
-            if self.product_id:
-                vals["name"] = f"{self.product_id.display_name}\n{self.name}"
 
         if not self.product_id:
             taxes = self.tax_ids._filter_taxes_by_company()
@@ -380,5 +387,43 @@ class SaleOrderTemplateLine(models.Model):
                     from_amount=self.price_unit, to_currency=currency
                 ),
             })
+        else:
+            vals.update({
+                "product_id": self.product_id.id,
+                "product_no_variant_attribute_value_ids": [
+                    Command.set(self.product_no_variant_attribute_value_ids.ids)
+                ],
+                "product_custom_attribute_value_ids": [
+                    Command.create({
+                        "custom_product_template_attribute_value_id": (
+                            pacv.custom_product_template_attribute_value_id.id
+                        ),
+                        "custom_value": pacv.custom_value,
+                    })
+                    for pacv in self.product_custom_attribute_value_ids
+                ],
+            })
 
         return vals
+
+    # === CATALOG ===#
+
+    def action_add_from_catalog(self):
+        sale_order_template = self.env["sale.order.template"].browse(
+            self.env.context.get("order_id")
+        )
+        return sale_order_template.with_context(
+            child_field="sale_order_template_line_ids"
+        ).action_add_from_catalog()
+
+    def _get_quantity_field(self) -> str:
+        return "product_uom_qty"
+
+    def _get_product_uom_field(self) -> str:
+        return "product_uom_id"
+
+    def _get_section_lines(self):
+        self.ensure_one()
+        return self.sale_order_template_id.sale_order_template_line_ids.filtered(
+            self._is_line_in_section
+        )

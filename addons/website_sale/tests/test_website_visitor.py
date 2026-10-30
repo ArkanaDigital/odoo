@@ -69,18 +69,18 @@ class WebsiteSaleVisitorTests(WebsiteSaleCommon):
             len(new_tracks), 3, "New tracks should be created after visiting other tracked products"
         )
 
-    def test_dynamic_filter_newest_products(self):
+    def test_dynamic_filter_newest_arrivals(self):
         """Test that a product is not displayed anymore after
         changing it company.
         """
-        new_company = self.env["res.company"].sudo().create({"name": "Test Company"})
+        new_company = self.env.ref('base.test_company')
 
         product = self.env["product.product"].create({
             "name": "Test Product",
             "website_published": True,
             "sale_ok": True,
         })
-        snippet_filter = self.env.ref("website_sale.dynamic_filter_newest_products").sudo().with_context(website_id=self.website.id)
+        snippet_filter = self.env.ref("website_sale.dynamic_filter_newest_arrivals").sudo().with_context(website_id=self.website.id)
 
         with self.mock_request():
             res = snippet_filter._prepare_values(limit=16, search_domain=[])
@@ -101,7 +101,7 @@ class WebsiteSaleVisitorTests(WebsiteSaleCommon):
         - displayed after visiting it
         - not displayed after changing it company.
         """
-        new_company = self.env["res.company"].sudo().create({"name": "Test Company"})
+        new_company = self.env.ref('base.test_company')
         public_user = self.env.ref("base.public_user")
 
         product = self.env["product.product"].create({

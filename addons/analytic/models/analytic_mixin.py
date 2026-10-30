@@ -5,7 +5,7 @@ from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 from odoo.fields import Domain
 from odoo.models import Query
-from odoo.tools import SQL, unique
+from odoo.tools import SQL, frozendict, unique
 from odoo.tools.float_utils import float_compare, float_round
 from odoo.tools.sql import table_exists
 
@@ -33,11 +33,10 @@ class AnalyticMixin(models.AbstractModel):
     def init(self):
         # Add a gin index for json search on the keys, on the models that actually have a table
         if table_exists(self.env.cr, self._table) and self._fields['analytic_distribution'].store:
-            query = fr"""
-                CREATE INDEX IF NOT EXISTS {self._table}_analytic_distribution_accounts_gin_index
-                                        ON {self._table} USING gin(regexp_split_to_array(jsonb_path_query_array(analytic_distribution, '$.keyvalue()."key"')::text, '\D+'));
-            """
-            self.env.cr.execute(query)
+            self.env.cr.execute(SQL(r"""
+                CREATE INDEX IF NOT EXISTS %s
+                ON %s USING gin(regexp_split_to_array(jsonb_path_query_array(analytic_distribution, '$.keyvalue()."key"')::text, '\D+'));
+            """, SQL.identifier(f'{self._table}_analytic_distribution_accounts_gin_index'), SQL.identifier(self._table)))
         super().init()
 
     def _query_analytic_accounts(self, table=False):
@@ -123,6 +122,16 @@ class AnalyticMixin(models.AbstractModel):
                 table.analytic_distribution,
             ))
 
+    @api.constrains('analytic_distribution')
+    def _check_analytic_distribution(self):
+        for record in self:
+            if any(
+                not part.isdigit()
+                for key in (record.analytic_distribution or {})
+                for part in key.split(',')
+            ):
+                raise ValidationError(_("Wrong analytic distribution format"))
+
     def _read_group_groupby(self, table, groupby_spec) -> SQL:
         """To group by `analytic_distribution`, we first need to separate the analytic_ids and associate them with the ids to be counted
         Do note that only '__count' can be passed in the `aggregates`"""
@@ -168,9 +177,47 @@ class AnalyticMixin(models.AbstractModel):
 
     def write(self, vals):
         """ Format the analytic_distribution float value, so equality on analytic_distribution can be done """
+        if 'analytic_distribution' in vals:
+            self._clean_stale_analytic_distributions()
+
         decimal_precision = self.env['decimal.precision'].precision_get('Percentage Analytic')
         vals = self._sanitize_values(vals, decimal_precision)
         return super().write(vals)
+
+    def _clean_stale_analytic_distributions(self):
+        """Persist the removal of deleted analytic accounts, in batch."""
+        if not self or self.env.context.get('skip_analytic_sync'):
+            return
+
+        distributions = {
+            record.id: record.analytic_distribution
+            for record in self if record.analytic_distribution
+        }
+        account_ids = {
+            int(account_id)
+            for distribution in distributions.values()
+            for key in distribution if key != '__update__'
+            for account_id in key.split(',') if account_id.isdigit()
+        }
+        existing_ids = set(self.env['account.analytic.account'].browse(list(account_ids)).exists().ids)
+
+        to_write = defaultdict(list)
+        for record_id, distribution in distributions.items():
+            cleaned = defaultdict(float)
+            for key, percentage in distribution.items():
+                if key == '__update__':
+                    cleaned[key] = percentage
+                    continue
+                valid_ids = [account_id for account_id in key.split(',') if account_id.isdigit() and int(account_id) in existing_ids]
+                if valid_ids:
+                    cleaned[','.join(valid_ids)] += percentage
+            if cleaned != distribution:
+                to_write[frozendict(cleaned)].append(record_id)
+
+        for cleaned, ids in to_write.items():
+            records = self.browse(ids).with_context(skip_analytic_sync=True)
+            records.analytic_distribution = cleaned
+            records.flush_recordset(['analytic_distribution'])
 
     @api.model_create_multi
     def create(self, vals_list):

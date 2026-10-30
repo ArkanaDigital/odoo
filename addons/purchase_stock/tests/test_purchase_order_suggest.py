@@ -667,6 +667,21 @@ class TestPurchaseOrderSuggest(PurchaseTestCommon, HttpCase):
             cookies={"cids": f"{self.company.id}"},
         )
 
+    def test_monthly_demand_vendor_return(self):
+        "Test Returning receipt must not increase the warehouse's demand."
+        product = self.product_1
+        po = self._create_purchase(product, quantity=10)
+        self._receive(po, quantity=15)
+        return_picking = po.picking_ids._create_return()
+        return_picking.move_ids.product_uom_qty = 5
+        return_picking.button_validate()
+        self.assertEqual(product.monthly_demand, 0)
+        self.assertEqual(product.with_context(warehouse_id=self.warehouse.id).monthly_demand, 0)
+        self._create_and_process_delivery_at_date([(product, 4)])
+        product.invalidate_recordset(['monthly_demand'])
+        self.assertEqual(product.monthly_demand, 4)
+        self.assertEqual(product.with_context(warehouse_id=self.warehouse.id).monthly_demand, 4)
+
     def test_monthly_demand_interwarehouse_two_step_delivery(self):
         """Ensure that monthly demand is correctly counted for waiting outgoing
         moves in inter-warehouse transfers using two-step delivery routes.
@@ -685,7 +700,36 @@ class TestPurchaseOrderSuggest(PurchaseTestCommon, HttpCase):
             'route_id': other_warehouse.resupply_route_ids.id,
         })
         orderpoint.action_replenish()
+        pick_move = self.env['stock.move'].search([('origin', '=', orderpoint.name), ('location_id', '=', warehouse.lot_stock_id.id)])
+        pick_move.write({
+            'quantity': 20,
+            'picked': 20,
+        })
+        pick_move.picking_id.button_validate()
 
         # Monthly demand should be 20.0 as only the outgoing move is counted with two-step delivery.
         self.assertEqual(product.with_context(warehouse_id=warehouse.id).monthly_demand, 20.0)
         self.assertEqual(product.monthly_demand, 20.0)
+
+    def test_purchase_order_suggestion_respects_vendor_uom(self):
+        '''
+        Ensure action_purchase_order_suggest uses the uom specified on the supplier info.
+        '''
+        today = fields.Datetime.now()
+        # Update supplier info.
+        self.product_1.seller_ids.uom_id = self.uom_pack_of_6
+        self.env['stock.quant']._update_available_quantity(self.product_1, self.stock_location, 18)
+        self._create_and_process_delivery_at_date(
+            [(self.product_1, 18)], today - relativedelta(days=3)
+        )
+        self.assertEqual(self.product_1.monthly_demand, 18)
+        po = self.env['purchase.order'].create({'partner_id': self.vendor.id})
+        self.actionAddAll(po, based_on='30_days', days=30, factor=100)
+        self.assertRecordValues(po.order_line, [
+            {
+                'product_id': self.product_1.id,
+                'product_qty': 3,
+                'product_uom_qty': 18,
+                'uom_id': self.uom_pack_of_6.id,
+            },
+        ])

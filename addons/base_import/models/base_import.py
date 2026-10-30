@@ -406,9 +406,6 @@ class Base_ImportImport(models.TransientModel):
                     return handler(options)
             except ImportError as exc:
                 requires = exc.name_from or exc.name
-                if file_extension == 'xlsx':
-                    # if xlrd 2.x then xlrd.xlsx is not available
-                    requires = 'openpyxl or xlrd >= 1.0.0 < 2.0'
             except (ImportValidationError, ValueError):
                 raise
             except Exception as exc:  # noqa: BLE001
@@ -1037,8 +1034,8 @@ class Base_ImportImport(models.TransientModel):
                     }
         """
         mapping_suggestions = {}
-        mapping_records = self.env['base_import.mapping'].search_read([('res_model', '=', self.res_model)], ['column_name', 'field_name'])
-        mapping_fields = {rec['column_name']: rec['field_name'] for rec in mapping_records}
+        mapping_records = self.env['base_import.mapping'].search_fetch([('res_model', '=', self.res_model)], ['column_name', 'field_name'])
+        mapping_fields = {rec.column_name: rec.field_name for rec in mapping_records}
         for index, header in enumerate(headers):
             match_field = self._get_mapping_suggestion(header, fields_tree, header_types[(index, header)], mapping_fields)
             mapping_suggestions[(index, header)] = match_field or None
@@ -1586,8 +1583,8 @@ class Base_ImportImport(models.TransientModel):
                 name_create_enabled_fields=name_create_enabled_fields,
                 import_set_empty_fields=options.get('import_set_empty_fields', []),
                 import_skip_records=options.get('import_skip_records', []),
-                _import_limit=import_limit)
-            import_result = model.load(import_fields, merged_data)
+            )
+            import_result = model.load(import_fields, merged_data, limit=import_limit)
             _logger.info('done importing data into model: %s', model._name)
 
             import_savepoint.close(rollback=dryrun)

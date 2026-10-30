@@ -1,8 +1,8 @@
-import { useSubEnv } from "@web/owl2/utils";
 import { Composer } from "@mail/core/common/composer";
 import { Thread } from "@mail/core/common/thread";
 import { ActionPanel } from "@mail/discuss/core/common/action_panel";
 import { Typing } from "@mail/discuss/typing/common/typing";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 
 import { Component, proxy, signal, types, useProps } from "@odoo/owl";
 
@@ -21,15 +21,18 @@ export class MeetingChat extends Component {
     setup() {
         this.props = useProps({ close: types.function([types.instanceOf(MouseEvent)]) });
         this.store = useService("mail.store");
-        this.ui = useService("ui");
         this.rtc = useService("discuss.rtc");
         this.state = proxy({ jumpPresent: 0 });
         this.panelContentRef = signal.ref();
         this.isMobileOS = isMobileOS();
-        useSubEnv({ inMeetingChat: true });
+        this.ancestors = useAncestors({ inMeetingChat: true });
     }
 
     get channel() {
         return this.store.rtc.channel;
+    }
+
+    get pinnedMessagesAction() {
+        return this.ancestors.threadActions?.get("pinned-messages");
     }
 }

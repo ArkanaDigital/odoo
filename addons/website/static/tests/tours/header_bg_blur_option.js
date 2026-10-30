@@ -22,7 +22,7 @@ function setHeaderBackgroundHex(hexColor) {
         },
         {
             content: "Switch to custom colors",
-            trigger: ".o-hb-colorpicker .custom-tab",
+            trigger: ".o_hb_colorpicker .custom-tab",
             run: "click",
         },
         {
@@ -44,11 +44,34 @@ function checkHeaderBlurValue(expectedValue) {
         async run({ waitUntil }) {
             await waitUntil(
                 () => {
-                    const blurValue = getComputedStyle(this.anchor).getPropertyValue("--o-bg-blur");
+                    const blurValue = getComputedStyle(this.anchor, "::before").getPropertyValue(
+                        "--o-bg-blur"
+                    );
                     return parseFloat(blurValue) === expectedValue;
                 },
                 {
                     message: `Expected --o-bg-blur to be ${expectedValue}.`,
+                }
+            );
+        },
+    };
+}
+
+function checkHeaderBackdropFilter({ content, trigger, pseudoElement }) {
+    return {
+        content,
+        trigger,
+        async run({ waitUntil }) {
+            await waitUntil(
+                () => {
+                    const elementStyle = pseudoElement
+                        ? getComputedStyle(this.anchor, pseudoElement)
+                        : getComputedStyle(this.anchor);
+                    const backdropFilter = elementStyle.getPropertyValue("backdrop-filter");
+                    return backdropFilter && backdropFilter !== "none";
+                },
+                {
+                    message: `Backdrop filter should've been applied.`,
                 }
             );
         },
@@ -90,7 +113,7 @@ registry.category("web_tour.tours").add("header_bg_blur_option", {
         },
         {
             content: "Click on the 'undo' button.",
-            trigger: ".o-snippets-top-actions button[data-icon='undo']",
+            trigger: ".o_hb_snippets_top_actions button[data-icon='undo']",
             run: "click",
         },
         // Check that the blue value restored to the previous one.
@@ -103,7 +126,7 @@ registry.category("web_tour.tours").add("header_bg_blur_option", {
         },
         {
             content: "Switch to gradient colors",
-            trigger: ".o-hb-colorpicker .gradient-tab",
+            trigger: ".o_hb_colorpicker .gradient-tab",
             run: "click",
         },
         {
@@ -126,42 +149,27 @@ registry.category("web_tour.tours").add("header_bg_blur_option", {
         },
         {
             content: "Activate mobile preview",
-            trigger: ".o-snippets-top-actions button[data-action='mobile']",
+            trigger: ".o_hb_snippets_top_actions button[data-action='mobile']",
             run: "click",
         },
         {
             content: "Check that the mobile preview is active",
-            trigger: ".o-snippets-top-actions button[data-action='mobile'].active",
+            trigger: ".o_hb_snippets_top_actions button[data-action='mobile'].active",
         },
-        {
+        checkHeaderBackdropFilter({
             content: `Check that the blur is present in the mobile preview`,
             trigger: ":iframe #wrapwrap > header nav.o_header_mobile",
-            async run({ waitUntil }) {
-                await waitUntil(
-                    () => !!getComputedStyle(this.anchor).getPropertyValue("backdrop-filter"),
-                    {
-                        message: `Backdrop filter should've been applied.`,
-                    }
-                );
-            },
-        },
+            pseudoElement: "::before",
+        }),
         {
             content: "Open the sidebar",
             trigger: ":iframe header button[data-bs-target='#top_menu_collapse_mobile']",
             run: "click",
         },
-        {
+        checkHeaderBackdropFilter({
             content: `Check that the blur is present on the sidebar`,
             trigger: ":iframe #wrapwrap > header.o_top_menu_collapse_shown .o_navbar_mobile",
-            async run({ waitUntil }) {
-                await waitUntil(
-                    () => !!getComputedStyle(this.anchor).getPropertyValue("backdrop-filter"),
-                    {
-                        message: `Backdrop filter should've been applied.`,
-                    }
-                );
-            },
-        },
+        }),
     ],
 });
 

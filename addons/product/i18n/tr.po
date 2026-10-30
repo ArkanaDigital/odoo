@@ -30,7 +30,7 @@
 # Halil, 2023
 # Tugay Hatıl <tugayh@projetgrup.com>, 2023
 # "Dylan Kiss (dyki)" <dyki@odoo.com>, 2025.
-# Weblate <noreply-mt-weblate@weblate.org>, 2025, 2026.
+# Weblate <noreply-mt-weblate@weblate.org>, 2025.
 # DeepL <noreply-mt-deepl@weblate.org>, 2025.
 # Odoo Turkish Import <dyki+tr@odoo.com>, 2025.
 # "Malaz Siddig Elsayed Abuidris (msea)" <msea@odoo.com>, 2025.
@@ -39,17 +39,41 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0+e\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-26 19:10+0000\n"
-"PO-Revision-Date: 2026-06-19 04:26+0000\n"
-"Last-Translator: Weblate <noreply-mt-weblate@weblate.org>\n"
-"Language-Team: Turkish <https://translate.odoo.com/projects/odoo-master/"
+"POT-Creation-Date: 2026-09-11 17:43+0000\n"
+"PO-Revision-Date: 2026-08-31 17:04+0000\n"
+"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"Language-Team: Turkish <https://translate.odoo.com/projects/odoo-s19-4/"
 "product/tr/>\n"
 "Language: tr\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: product
+#: model:ir.module.module,description:base.module_product
+msgid ""
+"\n"
+"This is the base module for managing products and pricelists in Odoo.\n"
+"========================================================================\n"
+"\n"
+"Products support variants, different pricing methods, vendors information,\n"
+"make to stock/order, different units of measure, packaging and properties.\n"
+"\n"
+"Pricelists support:\n"
+"-------------------\n"
+"    * Multiple-level of discount (by product, category, quantities)\n"
+"    * Compute price based on different criteria:\n"
+"        * Other pricelist\n"
+"        * Cost price\n"
+"        * List price\n"
+"        * Vendor price\n"
+"\n"
+"Pricelists preferences by product and/or partners.\n"
+"\n"
+"Print product labels with barcode.\n"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__product_variant_count
@@ -67,25 +91,11 @@ msgstr "# Ürünler"
 #. odoo-python
 #: code:addons/product/models/product_pricelist_item.py:0
 msgid ""
-"%(base)s with a %(discount)s %% %(discount_type)s and %(surcharge)s extra "
-"fee\n"
-"Example: %(amount)s * %(discount_charge)s + %(price_surcharge)s → "
-"%(total_amount)s"
+"%(item_name)s: end date (%(end_date)s) should be after start date (%"
+"(start_date)s)"
 msgstr ""
-"%(base)s %(discount)s %% %(discount_type)s ve %(surcharge)s ekstra ücret "
-"ile\n"
-"Örnek: %(amount)s * %(discount_charge)s + %(price_surcharge)s → "
-"%(total_amount)s"
-
-#. module: product
-#. odoo-python
-#: code:addons/product/models/product_pricelist_item.py:0
-msgid ""
-"%(item_name)s: end date (%(end_date)s) should be after start date "
-"(%(start_date)s)"
-msgstr ""
-"%(item_name)s: bitiş tarihi (%(end_date)s) başlangıç tarihinden "
-"(%(start_date)s) sonra olmalıdır"
+"%(item_name)s: bitiş tarihi (%(end_date)s) başlangıç tarihinden (%"
+"(start_date)s) sonra olmalıdır"
 
 #. module: product
 #. odoo-python
@@ -94,36 +104,14 @@ msgid "%(percentage)s %% %(discount_type)s on %(base)s %(extra)s"
 msgstr "%(percentage)s %% %(discount_type)s üzerinde %(base)s %(extra)s"
 
 #. module: product
-#. odoo-python
-#: code:addons/product/models/product_pricelist_item.py:0
-msgid "%(percentage)s %% discount on %(pricelist)s"
-msgstr "%(percentage)s %% indirim %(pricelist)s"
-
-#. module: product
-#. odoo-python
-#: code:addons/product/models/product_pricelist_item.py:0
-msgid "%(percentage)s %% discount on sales price"
-msgstr "%(percentage)s %% satış fiyatı üzerinden indirim"
-
-#. module: product
-#. odoo-python
-#: code:addons/product/models/product_category.py:0
-#: code:addons/product/models/product_pricelist.py:0
-#: code:addons/product/models/product_tag.py:0
-#: code:addons/product/models/product_template.py:0
-msgid "%s (copy)"
-msgstr "%s (kopya)"
-
-#. module: product
 #: model_terms:ir.ui.view,arch_db:product.report_label_contour_marks
 #: model_terms:ir.ui.view,arch_db:product.report_simple_label2x7
 #: model_terms:ir.ui.view,arch_db:product.report_simple_label4x12
 #: model_terms:ir.ui.view,arch_db:product.report_simple_label4x12_gs1
 #: model_terms:ir.ui.view,arch_db:product.report_simple_label4x7
 #: model_terms:ir.ui.view,arch_db:product.report_simple_label_dymo
-#, fuzzy
 msgid "&amp;nbsp;"
-msgstr "&amp;nbsp;"
+msgstr ""
 
 #. module: product
 #: model:ir.actions.report,print_report_name:product.report_product_template_label_2x7
@@ -147,9 +135,8 @@ msgstr "(örneğin: ürün açıklaması, e-kitap, yasal bildirim, ...)."
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.alternative_zpl_label
 #: model_terms:ir.ui.view,arch_db:product.normal_zpl_label
-#, fuzzy
 msgid ")^FS"
-msgstr ")^FS"
+msgstr ""
 
 #. module: product
 #. odoo-python
@@ -166,10 +153,8 @@ msgstr "- %(amount)s iade"
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_product.py:0
-msgid ""
-"- Barcode \"%(barcode)s\" already assigned to product(s): %(product_list)s"
+msgid "- Barcode \"%(barcode)s\" already assigned to %(product_list)s"
 msgstr ""
-"- Barkod \"%(barcode)s\" halihazırda ürün(ler)e atanmış: %(product_list)s"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_attribute__create_variant
@@ -269,11 +254,6 @@ msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "<b>Tip: want to round at 9.99?</b>"
-msgstr "<b>İpucu: 9,99'da yuvarlamak mı istiyorsunuz?</b>"
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
 msgid ""
 "<i class=\"oi mx-2 oe_edit_only\" data-icon=\"east\" aria-label=\"Arrow "
 "icon\" title=\"Arrow\"/>"
@@ -296,6 +276,11 @@ msgid "<span class=\"o_stat_text\"> Products</span>"
 msgstr "<span class=\"o_stat_text\"> Ürünler</span>"
 
 #. module: product
+#: model_terms:ir.ui.view,arch_db:product.product_pricelist_view
+msgid "<span class=\"o_stat_text\">Daily Rates</span>"
+msgstr ""
+
+#. module: product
 #: model_terms:ir.ui.view,arch_db:product.uom_uom_view_form
 msgid "<span class=\"o_stat_text\">Packaging Barcodes</span>"
 msgstr "<span class=\"o_stat_text\">Ambalaj Barkodları</span>"
@@ -307,11 +292,10 @@ msgstr "<span class=\"o_stat_text\">Ürünler</span>"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_only_form_view
-#, fuzzy
 msgid ""
 "<span class=\"text-muted\" invisible=\"product_variant_count &lt;= 1\">Based "
 "on variants</span>"
-msgstr "Varyantlara göre"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_kanban_view
@@ -320,26 +304,19 @@ msgid "<span class=\"text-muted\">On Hand</span>"
 msgstr ""
 
 #. module: product
+#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
+msgid "<span class=\"text-nowrap\">% on</span>"
+msgstr ""
+
+#. module: product
 #: model_terms:ir.ui.view,arch_db:product.report_pricelist_page
-#, fuzzy
 msgid "<span> - </span>"
-msgstr "<span> - </span>"
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "<span>%</span>"
-msgstr "<span>%</span>"
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "<span>on</span>"
-msgstr "<span>de</span>"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_form_view
-#, fuzzy
 msgid "<span>per</span>"
-msgstr "<span>başına</span>"
+msgstr ""
 
 #. module: product
 #: model:ir.model.constraint,message:product.constraint_product_uom_barcode_uniq
@@ -428,9 +405,13 @@ msgstr "Satılabilir bir kombo ürün yalnızca satılabilir ürünleri içerebi
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__is_storable
 #: model:ir.model.fields,help:product.field_product_template__is_storable
-#, fuzzy
 msgid "A storable product is a product for which you manage stock."
-msgstr "Depolanabilir bir ürün, stoklarını yönettiğiniz bir ürün türüdür."
+msgstr ""
+
+#. module: product
+#: model:ir.model,name:product.model_res_groups
+msgid "Access Groups"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_document__access_token
@@ -493,9 +474,8 @@ msgstr "Etkinlik İstisna Dekorasyonu"
 #: model:ir.model.fields,field_description:product.field_product_pricelist__activity_plans_ids
 #: model:ir.model.fields,field_description:product.field_product_product__activity_plans_ids
 #: model:ir.model.fields,field_description:product.field_product_template__activity_plans_ids
-#, fuzzy
 msgid "Activity Plans"
-msgstr "Aktivite Planları"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist__activity_state
@@ -514,16 +494,15 @@ msgstr "Aktivite Türü İmgesi"
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/order_line/order_line.xml:0
-#, fuzzy
+#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
 msgid "Add"
-msgstr "Ekle"
+msgstr ""
 
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
-#, fuzzy
 msgid "Add Products"
-msgstr "Ürün Ekle"
+msgstr ""
 
 #. module: product
 #. odoo-javascript
@@ -545,13 +524,10 @@ msgstr "Miktar ekleyin"
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
-#, fuzzy
 msgid ""
 "Add products using the \"Add Products\" button at the top right to\n"
 "                                include them in the report."
 msgstr ""
-"Sağ üstteki \"Ürün Ekle\" düğmesini kullanarak ürün eklemek için\n"
-"                                bunları rapora dahil edin."
 
 #. module: product
 #. odoo-python
@@ -584,12 +560,6 @@ msgstr "Adidas"
 #: model_terms:ir.ui.view,arch_db:product.product_document_search
 msgid "All"
 msgstr "Tümü"
-
-#. module: product
-#. odoo-python
-#: code:addons/product/models/product_pricelist_item.py:0
-msgid "All Categories"
-msgstr "Tüm Kategoriler"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_category_form_view
@@ -649,15 +619,13 @@ msgstr "Müşterilerin kendi değerlerini belirlemelerine izin verin"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__allowed_uom_ids
 #: model:ir.model.fields,field_description:product.field_product_uom__allowed_uom_ids
-#, fuzzy
 msgid "Allowed Uom"
-msgstr "İzin Verilen Uom"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_label_layout__zpl_template__alternative
-#, fuzzy
 msgid "Alternative (2.00\" x 1.00\")"
-msgstr "Alternatif (2.00\" x 1.00\")"
+msgstr ""
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_legs_aluminium
@@ -675,14 +643,19 @@ msgid "Applied On"
 msgstr "Uygulanan"
 
 #. module: product
-#: model:ir.model.fields,field_description:product.field_product_pricelist_item__applied_on
-msgid "Apply On"
-msgstr "Şuna Uygula"
+#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_calendar
+msgid "Applied on"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "Apply To"
-msgstr "Başvurmak İçin"
+msgid "Apply"
+msgstr ""
+
+#. module: product
+#: model:ir.model.fields,field_description:product.field_product_pricelist_item__applied_on
+msgid "Apply On"
+msgstr "Şuna Uygula"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_view
@@ -702,9 +675,8 @@ msgstr "Arşivlendi"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_supplierinfo_search_view
-#, fuzzy
 msgid "Archived Products"
-msgstr "Arşivlenmiş Ürünler"
+msgstr ""
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_ariel
@@ -805,7 +777,6 @@ msgstr "Nitelik & Varyantlar"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__free_qty
-#, fuzzy
 msgid ""
 "Available quantity (computed as Quantity On Hand - reserved quantity - "
 "quantity to remove)\n"
@@ -816,14 +787,6 @@ msgid ""
 "Otherwise, this includes goods stored in any Stock Location with 'internal' "
 "type."
 msgstr ""
-"Kullanılabilir miktar (Eldeki Miktar - ayrılmış miktar - çıkarılacak miktar "
-"olarak hesaplanır)\n"
-"Tek bir Stok Konumu olan bir bağlamda, bu konumda veya alt konumlarından "
-"herhangi birinde depolanan mallar buna dahildir.\n"
-"Tek bir Deponun bulunduğu bir bağlamda, bu Deponun Stok Konumunda veya alt "
-"konumlarından herhangi birinde depolanan malları içerir.\n"
-"Aksi takdirde, 'dahili' tipteki herhangi bir Stok Konumunda depolanan "
-"malları içerir."
 
 #. module: product
 #. odoo-javascript
@@ -849,13 +812,18 @@ msgstr "Barkod"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_res_config_settings__module_product_barcodelookup
 #: model_terms:ir.ui.view,arch_db:product.res_config_settings_view_form
-#, fuzzy
 msgid "Barcode Database"
-msgstr "Barkod Veritabanı"
+msgstr ""
+
+#. module: product
+#: model_terms:ir.ui.view,arch_db:product.res_config_settings_view_form
+msgid "Barcode Lookup"
+msgstr ""
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_product.py:0
+#: code:addons/product/models/product_template.py:0
 msgid ""
 "Barcode(s) already assigned:\n"
 "\n"
@@ -884,21 +852,18 @@ msgstr ""
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__base_unit_name
 #: model:ir.model.fields,field_description:product.field_product_template__base_unit_name
-#, fuzzy
 msgid "Base Unit Name"
-msgstr "Temel Birim Adı"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_res_config_settings__group_show_uom_price
-#, fuzzy
 msgid "Base Unit Price"
-msgstr "Temel Birim Fiyat"
+msgstr ""
 
 #. module: product
 #: model:ir.actions.act_window,name:product.base_unit_action
-#, fuzzy
 msgid "Base Units"
-msgstr "Temel Birimler"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_pricelist_item__base
@@ -917,11 +882,6 @@ msgstr ""
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__base
 msgid "Based on"
 msgstr "Buna göre"
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "Based price"
-msgstr "Taban fiyat"
 
 #. module: product
 #: model:res.groups,name:product.group_product_pricelist
@@ -991,6 +951,11 @@ msgid "Canon"
 msgstr "Canon"
 
 #. module: product
+#: model:ir.model.fields,field_description:product.field_product_product__catalog_is_in_order
+msgid "Catalog Is In Order"
+msgstr ""
+
+#. module: product
 #. odoo-python
 #: code:addons/product/models/product_catalog_mixin.py:0
 msgid "Catalog missing the child field to update."
@@ -1004,7 +969,6 @@ msgstr "Kategoriler"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__categ_id
-#: model:ir.model.fields.selection,name:product.selection__product_pricelist_item__display_applied_on__2_product_category
 #: model_terms:ir.ui.view,arch_db:product.product_category_form_view
 #: model_terms:ir.ui.view,arch_db:product.product_template_form_view
 msgid "Category"
@@ -1020,13 +984,13 @@ msgstr ""
 #: code:addons/product/models/product_product.py:0
 #: code:addons/product/models/product_template.py:0
 msgid ""
-"Changing the unit of measure for your product will apply a conversion 1 "
-"%(old_uom_name)s = 1 %(new_uom_name)s.\n"
+"Changing the unit of measure for your product will apply a conversion 1 %"
+"(old_uom_name)s = 1 %(new_uom_name)s.\n"
 "All existing records (Sales orders, Purchase orders, etc.) using this "
 "product will be updated by replacing the unit name."
 msgstr ""
-"Ürününüz için ölçü birimini değiştirdiğinizde 1 %(old_uom_name)s = 1 "
-"%(new_uom_name)s dönüşümü uygulanacaktır.\n"
+"Ürününüz için ölçü birimini değiştirdiğinizde 1 %(old_uom_name)s = 1 %"
+"(new_uom_name)s dönüşümü uygulanacaktır.\n"
 "Bu ürünü kullanan tüm mevcut kayıtlar (Satış Siparişi, Satın Alma Siparişi, "
 "vb.) birim adı değiştirilerek güncellenecektir."
 
@@ -1250,9 +1214,8 @@ msgstr "Yeni bir ürün oluştur"
 
 #. module: product
 #: model_terms:ir.actions.act_window,help:product.product_category_action_form
-#, fuzzy
 msgid "Create a new product category"
-msgstr "Yeni bir ürün kategorisi oluşturma"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.actions.act_window,help:product.product_variant_action
@@ -1273,9 +1236,8 @@ msgstr "Sipariş Üzerine Oluştur"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.res_config_settings_view_form
-#, fuzzy
 msgid "Create products by scanning using"
-msgstr "Kullanarak tarayarak ürünler oluşturun"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_attribute__create_uid
@@ -1348,7 +1310,6 @@ msgstr "Kur"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__qty_available
-#, fuzzy
 msgid ""
 "Current quantity of products.\n"
 "In a context with a single Stock Location, this includes goods stored at "
@@ -1360,15 +1321,6 @@ msgid ""
 "Otherwise, this includes goods stored in any Stock Location with 'internal' "
 "type."
 msgstr ""
-"Mevcut ürün miktarı.\n"
-"Tek bir Stok Lokasyonu bağlamında, bu lokasyonda veya ona bağlı alt "
-"lokasyonlarda depolanan ürünleri kapsar.\n"
-"Tek bir Depo bağlamında, bu deponun Stok Lokasyonu veya onun alt "
-"lokasyonlarında depolanan ürünleri kapsar.\n"
-"Bu Mağazanın Deposunun Stok Lokasyonunda veya ona bağlı alt lokasyonlarda "
-"depolanan ürünleri kapsar.\n"
-"Aksi takdirde, 'dahili' türdeki herhangi bir Stok Lokasyonunda depolanan "
-"ürünleri içerir."
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_custom
@@ -1380,9 +1332,8 @@ msgstr "Özel"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__base_unit_id
 #: model:ir.model.fields,field_description:product.field_product_template__base_unit_id
-#, fuzzy
 msgid "Custom Unit of Measure"
-msgstr "Özel Ölçü Birimi"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_attribute_custom_value__custom_value
@@ -1410,6 +1361,13 @@ msgid "Cyan"
 msgstr "Camgöbeği"
 
 #. module: product
+#. odoo-python
+#: code:addons/product/models/product_pricelist.py:0
+#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_calendar
+msgid "Daily Rates"
+msgstr ""
+
+#. module: product
 #: model:ir.model.fields,field_description:product.field_product_document__db_datas
 msgid "Database Data"
 msgstr "Veritabanı Verisi"
@@ -1417,16 +1375,14 @@ msgstr "Veritabanı Verisi"
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
-#, fuzzy
 msgid "Date"
-msgstr "Tarih"
+msgstr ""
 
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/order_line/order_line.xml:0
-#, fuzzy
 msgid "Decrease quantity"
-msgstr "Miktarı azaltın"
+msgstr ""
 
 #. module: product
 #. odoo-python
@@ -1454,10 +1410,8 @@ msgstr "Bütün stok hareketleri için kullanılan varsayılan ölçü birimi."
 #: model:ir.model.fields,help:product.field_product_base_unit__name
 #: model:ir.model.fields,help:product.field_product_product__base_unit_id
 #: model:ir.model.fields,help:product.field_product_template__base_unit_id
-#, fuzzy
 msgid "Define a custom unit to display in the price per unit of measure field."
 msgstr ""
-"Ölçü birimi başına fiyat alanında görüntülenecek özel bir birim tanımlayın."
 
 #. module: product
 #: model_terms:ir.actions.act_window,help:product.product_tag_action
@@ -1541,7 +1495,7 @@ msgid "Determine the display order"
 msgstr "Görünüm sırasını belirle"
 
 #. module: product
-#: model:ir.model.fields.selection,name:product.selection__product_pricelist_item__compute_price__percentage
+#: model:ir.model.fields.selection,name:product.selection__product_pricelist_item__compute_price__discount
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
 msgid "Discount"
 msgstr "İndirim"
@@ -1555,11 +1509,6 @@ msgstr "İndirim (%)"
 #: model:ir.model.fields,field_description:product.field_product_supplierinfo__price_discounted
 msgid "Discounted Price"
 msgstr "İndirimli Fiyat"
-
-#. module: product
-#: model:ir.model.fields,field_description:product.field_product_pricelist_item__display_applied_on
-msgid "Display Applied On"
-msgstr "Ekran Açık Uygulandı"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_ir_attachment__display_name
@@ -1595,6 +1544,7 @@ msgstr "Ekran Açık Uygulandı"
 #: model:ir.model.fields,field_description:product.field_res_config_settings__display_name
 #: model:ir.model.fields,field_description:product.field_res_country_group__display_name
 #: model:ir.model.fields,field_description:product.field_res_currency__display_name
+#: model:ir.model.fields,field_description:product.field_res_groups__display_name
 #: model:ir.model.fields,field_description:product.field_res_partner__display_name
 #: model:ir.model.fields,field_description:product.field_uom_uom__display_name
 #: model:ir.model.fields,field_description:product.field_update_product_attribute_value__display_name
@@ -1617,13 +1567,10 @@ msgstr ""
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__base_unit_name
 #: model:ir.model.fields,help:product.field_product_template__base_unit_name
-#, fuzzy
 msgid ""
 "Displays the custom unit for the products if defined or the selected unit of "
 "measure otherwise."
 msgstr ""
-"Tanımlanmışsa ürünler için özel birimi, aksi takdirde seçilen ölçü birimini "
-"görüntüler."
 
 #. module: product
 #. odoo-python
@@ -1747,15 +1694,19 @@ msgid "Error exporting file. Please try again."
 msgstr "Dosya dışa aktarılırken hata oluştu. Lütfen tekrar deneyin."
 
 #. module: product
+#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
+msgid "Example:"
+msgstr ""
+
+#. module: product
 #: model:ir.model.fields,field_description:product.field_product_template_attribute_value__excluded_value_ids
 msgid "Exclude For"
 msgstr ""
 
 #. module: product
 #: model:product.category,name:product.product_category_expenses
-#, fuzzy
 msgid "Expenses"
-msgstr "Masraflar"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_pricelist_item__name
@@ -1875,7 +1826,6 @@ msgstr ""
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__virtual_available
-#, fuzzy
 msgid ""
 "Forecast quantity (computed as Quantity On Hand - Outgoing + Incoming - "
 "Quantity to Remove)\n"
@@ -1886,39 +1836,22 @@ msgid ""
 "Otherwise, this includes goods stored in any Stock Location with 'internal' "
 "type."
 msgstr ""
-"Tahmin miktarı (Eldeki Miktar - Giden + Gelen - Çıkarılacak Miktar olarak "
-"hesaplanır)\n"
-"Tek bir Stok Konumu olan bir bağlamda, bu konumda veya alt konumlarından "
-"herhangi birinde depolanan mallar buna dahildir.\n"
-"Tek bir Deponun bulunduğu bir bağlamda, bu Deponun Stok Konumunda veya "
-"herhangi bir alt konumunda depolanan malları içerir.\n"
-"Aksi takdirde, 'dahili' tipe sahip herhangi bir Stok Konumunda depolanan "
-"malları içerir."
 
 #. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_product_tree_view
-#: model_terms:ir.ui.view,arch_db:product.product_template_tree_view
 #: model_terms:ir.ui.view,arch_db:product.product_view_list_qty
-#, fuzzy
 msgid "Forecasted"
-msgstr "Öngörülen"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__virtual_available
 #: model:ir.model.fields,field_description:product.field_product_template__virtual_available
-#, fuzzy
 msgid "Forecasted Quantity"
-msgstr "Öngörülen Miktar"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_label_layout__print_format
 msgid "Format"
 msgstr "Biçim"
-
-#. module: product
-#: model:ir.model.fields.selection,name:product.selection__product_pricelist_item__compute_price__formula
-msgid "Formula"
-msgstr "Formül"
 
 #. module: product
 #: model:product.template,name:product.consu_delivery_03_product_template
@@ -1932,9 +1865,8 @@ msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__free_qty
-#, fuzzy
 msgid "Free To Use Quantity "
-msgstr "Boş Stok "
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_attribute_value__is_custom
@@ -1944,9 +1876,8 @@ msgstr "Serbest metin"
 
 #. module: product
 #: model:product.category,name:product.product_category_furniture
-#, fuzzy
 msgid "Furniture"
-msgstr "Mobilya"
+msgstr ""
 
 #. module: product
 #: model:product.template,name:product.product_product_furniture_product_template
@@ -2051,6 +1982,11 @@ msgid "Height"
 msgstr "Yükseklik"
 
 #. module: product
+#: model:res.groups.privilege,description:product.res_groups_privilege_product
+msgid "Helps you manage your product catalog."
+msgstr ""
+
+#. module: product
 #: model:ir.model.fields,help:product.field_product_attribute_value__html_color
 #: model:ir.model.fields,help:product.field_product_template_attribute_value__html_color
 msgid ""
@@ -2067,14 +2003,23 @@ msgstr "Mükemmel destekli yüksek arkalıklı ofis koltuğu"
 
 #. module: product
 #: model:product.category,name:product.product_category_construction
-#, fuzzy
 msgid "Home Construction"
-msgstr "Ev İnşaatı"
+msgstr ""
 
 #. module: product
 #: model:product.template,name:product.expense_hotel_product_template
 msgid "Hotel Accommodation"
 msgstr "Otel Konaklama"
+
+#. module: product
+#: model:ir.model.fields,help:product.field_product_pricelist_item__compute_price
+msgid ""
+"How the price is derived from the base price.\n"
+"Discount: a percentage taken off it.\n"
+"Surcharge: a percentage added on top of it.\n"
+"Fixed Price: a set amount, ignoring the base price entirely.\n"
+"Activate the discount settings to show the discount to the customer."
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_ir_attachment__id
@@ -2110,6 +2055,7 @@ msgstr "Otel Konaklama"
 #: model:ir.model.fields,field_description:product.field_res_config_settings__id
 #: model:ir.model.fields,field_description:product.field_res_country_group__id
 #: model:ir.model.fields,field_description:product.field_res_currency__id
+#: model:ir.model.fields,field_description:product.field_res_groups__id
 #: model:ir.model.fields,field_description:product.field_res_partner__id
 #: model:ir.model.fields,field_description:product.field_uom_uom__id
 #: model:ir.model.fields,field_description:product.field_update_product_attribute_value__id
@@ -2231,16 +2177,14 @@ msgstr "Pasif"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__incoming_qty
 #: model:ir.model.fields,field_description:product.field_product_template__incoming_qty
-#, fuzzy
 msgid "Incoming"
-msgstr "Gelen"
+msgstr ""
 
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/order_line/order_line.xml:0
-#, fuzzy
 msgid "Increase quantity"
-msgstr "Miktarı artırın"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_document__index_content
@@ -2302,11 +2246,6 @@ msgid "Is Follower"
 msgstr "Takipçi mi"
 
 #. module: product
-#: model:ir.model.fields,field_description:product.field_product_product__is_in_selected_section_of_order
-msgid "Is In Selected Section Of Order"
-msgstr "Siparişin Seçilmiş Bölümünde"
-
-#. module: product
 #: model:ir.model.fields,field_description:product.field_res_partner__is_pricelist_manually_set
 #: model:ir.model.fields,field_description:product.field_res_users__is_pricelist_manually_set
 msgid "Is Pricelist Manually Set"
@@ -2347,9 +2286,8 @@ msgstr ""
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_label_layout__zpl_template__jewelry
-#, fuzzy
 msgid "Jewelry (2.20\" x 0.50\")"
-msgstr "Takı (2,20\" x 0,50\")"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__res_config_settings__product_weight_in_lbs__0
@@ -2501,6 +2439,11 @@ msgid "Lines"
 msgstr "Satırlar"
 
 #. module: product
+#: model_terms:ir.ui.view,arch_db:product.product_document_kanban
+msgid "Link"
+msgstr ""
+
+#. module: product
 #: model:ir.model,name:product.model_product_uom
 msgid "Link between products and their UoMs"
 msgstr "Ürünler ve UoM'leri arasındaki bağlantı"
@@ -2556,21 +2499,14 @@ msgid "Margins"
 msgstr "Kar Marjı"
 
 #. module: product
-#: model:ir.model.fields,field_description:product.field_product_pricelist_item__price_markup
-#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "Markup"
-msgstr "İşaretleme"
-
-#. module: product
 #: model:product.attribute.value,name:product.pav_color_maroon
 msgid "Maroon"
 msgstr "Bordo"
 
 #. module: product
 #: model:product.attribute,name:product.pa_material
-#, fuzzy
 msgid "Material"
-msgstr "Malzeme"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_pricelist__activity_type_icon
@@ -2627,11 +2563,6 @@ msgstr "Mime Türü"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "Min Qty"
-msgstr "Min Miktar"
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
 msgid "Min. Margin"
 msgstr "Min. Marj"
 
@@ -2649,6 +2580,11 @@ msgstr "Min. Miktar"
 #: model:product.template,description_sale:product.product_product_8_product_template
 msgid "Minimalist wooden desk for executive use"
 msgstr "Yönetici kullanımı için minimalist ahşap masa"
+
+#. module: product
+#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
+msgid "Minimum Quantity"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_update_product_attribute_value__mode
@@ -2786,16 +2722,14 @@ msgstr ""
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/kanban_renderer.xml:0
-#, fuzzy
 msgid "No products could be found."
-msgstr "Hiçbir ürün bulunamadı."
+msgstr ""
 
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
-#, fuzzy
 msgid "No products found in the report"
-msgstr "Raporda ürün bulunamadı"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.actions.act_window,help:product.product_supplierinfo_type_action
@@ -2820,9 +2754,8 @@ msgstr ""
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_label_layout__zpl_template__normal
-#, fuzzy
 msgid "Normal (2.25\" x 1.25\")"
-msgstr "Normal (2,25\" x 1,25\")"
+msgstr ""
 
 #. module: product
 #. odoo-python
@@ -2881,9 +2814,8 @@ msgstr "Teslimat hatası olan mesaj adedi"
 
 #. module: product
 #: model:product.category,name:product.product_category_office
-#, fuzzy
 msgid "Office"
-msgstr "Ofis"
+msgstr ""
 
 #. module: product
 #: model:product.template,name:product.product_delivery_01_product_template
@@ -2924,9 +2856,8 @@ msgstr "Zeytin"
 #: model_terms:ir.ui.view,arch_db:product.product_product_tree_view
 #: model_terms:ir.ui.view,arch_db:product.product_template_tree_view
 #: model_terms:ir.ui.view,arch_db:product.product_view_list_qty
-#, fuzzy
 msgid "On Hand"
-msgstr "Stokta"
+msgstr ""
 
 #. module: product
 #. odoo-python
@@ -2942,8 +2873,8 @@ msgstr ""
 #. odoo-python
 #: code:addons/product/models/product_template_attribute_line.py:0
 msgid ""
-"On the product %(product)s you cannot transform the attribute "
-"%(attribute_src)s into the attribute %(attribute_dest)s."
+"On the product %(product)s you cannot transform the attribute %"
+"(attribute_src)s into the attribute %(attribute_dest)s."
 msgstr ""
 "%(product)s ürününde%(attribute_src)s özelliğini%(attribute_dest)sözelliğine "
 "dönüştüremezsiniz."
@@ -2989,9 +2920,8 @@ msgstr "Diğer Fiyat Listesi"
 
 #. module: product
 #: model:product.category,name:product.product_category_outdoor_furniture
-#, fuzzy
 msgid "Outdoor"
-msgstr "Dış mekan"
+msgstr ""
 
 #. module: product
 #: model:product.template,name:product.product_template_dining_table
@@ -3001,9 +2931,8 @@ msgstr "Dış mekan yemek masası"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__outgoing_qty
 #: model:ir.model.fields,field_description:product.field_product_template__outgoing_qty
-#, fuzzy
 msgid "Outgoing"
-msgstr "Giden"
+msgstr ""
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_options_overhead_shelves
@@ -3012,9 +2941,8 @@ msgstr "Baş üstü rafları"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__uom_id
-#, fuzzy
 msgid "Packaging"
-msgstr "Paketleme"
+msgstr ""
 
 #. module: product
 #: model:ir.actions.act_window,name:product.product_uom_action_view_list
@@ -3061,9 +2989,8 @@ msgstr "Üst Yol"
 
 #. module: product
 #: model:product.attribute,name:product.pa_pattern
-#, fuzzy
 msgid "Pattern"
-msgstr "Desen"
+msgstr ""
 
 #. module: product
 #: model:product.template,name:product.product_product_9_product_template
@@ -3074,11 +3001,6 @@ msgstr "Pedallı çöp kovası"
 #: model:product.attribute.value,name:product.pav_brand_pepsi
 msgid "Pepsi"
 msgstr "Pepsi"
-
-#. module: product
-#: model:ir.model.fields,field_description:product.field_product_pricelist_item__percent_price
-msgid "Percentage Price"
-msgstr "Yüzde Fiyatı"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_philips
@@ -3094,6 +3016,11 @@ msgstr "Haplar"
 #: model:product.attribute.value,name:product.pav_color_pink
 msgid "Pink"
 msgstr "Pembe"
+
+#. module: product
+#: model:ir.model.fields,field_description:product.field_product_pricelist_item__is_plain_discount
+msgid "Plain Discount"
+msgstr ""
 
 #. module: product
 #. odoo-javascript
@@ -3155,6 +3082,7 @@ msgstr ""
 "yüksekliğine saniyeler içinde geçmesini izleyin."
 
 #. module: product
+#: model:ir.model.fields,field_description:product.field_product_pricelist_item__price
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_tree_view_from_product
 msgid "Price"
 msgstr "Fiyat"
@@ -3167,9 +3095,8 @@ msgstr "Fiyat İndirimi"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__base_unit_price
 #: model:ir.model.fields,field_description:product.field_product_template__base_unit_price
-#, fuzzy
 msgid "Price Per Unit"
-msgstr "Birim Başına Fiyat"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__price_round
@@ -3181,11 +3108,6 @@ msgstr "Fiyat Yuvarlama"
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_tree_view
 msgid "Price Rules"
 msgstr "Fiyat Kuralları"
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "Price Type"
-msgstr "Fiyat Türü"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__list_price
@@ -3210,7 +3132,6 @@ msgstr "Fiyat Listesi"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_pricelist_item__applied_on
-#: model:ir.model.fields,help:product.field_product_pricelist_item__display_applied_on
 msgid "Pricelist Item applicable on selected option"
 msgstr "Seçilen seçeneğe uygulanabilen Fiyat Listesi Öğeleri"
 
@@ -3297,7 +3218,6 @@ msgstr "Masa ve sandalyeli özel bölme"
 #: model:ir.model.fields,field_description:product.field_product_template__product_variant_id
 #: model:ir.model.fields,field_description:product.field_product_uom__product_id
 #: model:ir.model.fields.selection,name:product.selection__product_pricelist_item__applied_on__1_product
-#: model:ir.model.fields.selection,name:product.selection__product_pricelist_item__display_applied_on__1_product
 #: model_terms:ir.ui.view,arch_db:product.product_kanban_view
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_view_search
 #: model_terms:ir.ui.view,arch_db:product.product_search_form_view
@@ -3397,9 +3317,8 @@ msgstr "Ürün Etiketi (PDF)"
 
 #. module: product
 #: model:ir.actions.report,name:product.report_product_template_label_zpl
-#, fuzzy
 msgid "Product Label (ZPL)"
-msgstr "Ürün Etiketi (ZPL)"
+msgstr ""
 
 #. module: product
 #: model:ir.actions.report,name:product.report_product_template_label_2x7
@@ -3564,6 +3483,11 @@ msgid "Products"
 msgstr "Ürünler"
 
 #. module: product
+#: model:ir.module.module,shortdesc:base.module_product
+msgid "Products & Pricelists"
+msgstr ""
+
+#. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_view_search
 msgid "Products Price"
 msgstr "Ürünlerin Fiyatı"
@@ -3628,9 +3552,8 @@ msgstr "Mor"
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
-#, fuzzy
 msgid "Quantities"
-msgstr "Miktarlar"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.report_pricelist_page
@@ -3651,9 +3574,8 @@ msgstr "Miktar (%s UoM)"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__qty_available
 #: model:ir.model.fields,field_description:product.field_product_template__qty_available
-#, fuzzy
 msgid "Quantity On Hand"
-msgstr "Stok Miktarı"
+msgstr ""
 
 #. module: product
 #. odoo-javascript
@@ -3663,7 +3585,6 @@ msgstr "Zaten mevcut olan miktar (%s)."
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__incoming_qty
-#, fuzzy
 msgid ""
 "Quantity of planned incoming products.\n"
 "In a context with a single Stock Location, this includes goods arriving to "
@@ -3673,15 +3594,9 @@ msgid ""
 "Otherwise, this includes goods arriving to any Stock Location with "
 "'internal' type."
 msgstr ""
-"Gelmesi gereken ürünlerin miktarı\n"
-"Tek Stok Konumu içeriğinde, bu konuma gelen malları ve alt malları içerir.\n"
-"Tek Depolu içeriğinde, bu Depo Konumuna gelen malları ve alt malları "
-"içerir.\n"
-"Yoksa 'iç Tipli' mallar herhangi bir Stok Konumuna gelebilir."
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__outgoing_qty
-#, fuzzy
 msgid ""
 "Quantity of planned outgoing products.\n"
 "In a context with a single Stock Location, this includes goods leaving this "
@@ -3691,12 +3606,6 @@ msgid ""
 "Otherwise, this includes goods leaving any Stock Location with 'internal' "
 "type."
 msgstr ""
-"Gitmesii gereken ürünlerin miktarı\n"
-"Tek Stok Konumu içeriğinde, bu konumdan giden malları ve alt malları "
-"içerir.\n"
-"Tek Depolu içeriğinde, bu Depo Konumundan giden malları ve alt malları "
-"içerir.\n"
-"Yoksa 'iç Tipli' mallar herhangi bir Stok Konumuna gelebilir."
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_template__free_qty
@@ -3707,6 +3616,11 @@ msgstr ""
 #: model:ir.model.fields.selection,name:product.selection__product_attribute__display_type__radio
 msgid "Radio"
 msgstr "Radio"
+
+#. module: product
+#: model:ir.model.fields.selection,name:product.selection__product_attribute__display_type__range
+msgid "Range"
+msgstr ""
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_rayban
@@ -3738,9 +3652,8 @@ msgstr "Referans"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__base_unit_count
 #: model:ir.model.fields,field_description:product.field_product_template__base_unit_count
-#, fuzzy
 msgid "Reference Unit"
-msgstr "Referans Birimi"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.actions.act_window,help:product.product_supplierinfo_type_action
@@ -3765,13 +3678,6 @@ msgstr "İlişkili Varyantlar"
 #: model:ir.model.fields,field_description:product.field_product_document__ir_attachment_id
 msgid "Related attachment"
 msgstr "İlgili ekli dosya"
-
-#. module: product
-#. odoo-javascript
-#: code:addons/product/static/src/product_catalog/order_line/order_line.xml:0
-#, fuzzy
-msgid "Remove"
-msgstr "Kaldır"
 
 #. module: product
 #. odoo-javascript
@@ -3848,9 +3754,8 @@ msgstr "Kural İpucu"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_view
-#, fuzzy
 msgid "Rules"
-msgstr "Kurallar"
+msgstr ""
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_size_s
@@ -3949,9 +3854,8 @@ msgstr "Ayakkabı numarası"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_form_view
-#, fuzzy
 msgid "Short Description"
-msgstr "Kısa Açıklama"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_template_attribute_value__show_price_extra
@@ -3967,9 +3871,8 @@ msgstr "İsmi Göster"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__show_qty_update_button
 #: model:ir.model.fields,field_description:product.field_product_template__show_qty_update_button
-#, fuzzy
 msgid "Show Qty Update Button"
-msgstr "Miktar Güncelleme Düğmesini Göster"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__show_sales_price_page
@@ -4004,9 +3907,8 @@ msgstr "Boyut"
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_label_layout__zpl_template__small
-#, fuzzy
 msgid "Small (1.25\" x 1.00\")"
-msgstr "Küçük (1,25\" x 1,00\")"
+msgstr ""
 
 #. module: product
 #: model:product.template,description_sale:product.product_product_9_product_template
@@ -4067,9 +3969,8 @@ msgstr "Taban fiyat üzerinden min. oran miktarını belirtin."
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_normal_form_view
 #: model_terms:ir.ui.view,arch_db:product.product_template_only_form_view
-#, fuzzy
 msgid "Specify unit"
-msgstr "Birimi belirtin"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__date_start
@@ -4125,6 +4026,13 @@ msgstr "Saklanan Dosya adı"
 #: model:ir.model,name:product.model_product_supplierinfo
 msgid "Supplier Pricelist"
 msgstr "Tedarikçi Fiyat Listesi"
+
+#. module: product
+#: model:ir.model.fields,field_description:product.field_product_pricelist_item__price_markup
+#: model:ir.model.fields.selection,name:product.selection__product_pricelist_item__compute_price__markup
+#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
+msgid "Surcharge"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_tag_form_view
@@ -4199,8 +4107,8 @@ msgstr "'%s' referansı zaten mevcut."
 #. odoo-python
 #: code:addons/product/models/product_template_attribute_line.py:0
 msgid ""
-"The attribute %(attribute)s must have at least one value for the product "
-"%(product)s."
+"The attribute %(attribute)s must have at least one value for the product %"
+"(product)s."
 msgstr ""
 "%(attribute)s özelliği %(product)sürünü için en az bir değere sahip "
 "olmalıdır."
@@ -4242,8 +4150,8 @@ msgstr "Ürün Yapılandırıcıda kullanılan ekran türü."
 #: code:addons/product/models/product_product.py:0
 msgid ""
 "The exitings product has different attribute value. \"%(imported_values)s\" "
-"is not equivalent to \"%(existing_values)s\" for \"%(external_id)s\", "
-"\"%(id)s\""
+"is not equivalent to \"%(existing_values)s\" for \"%(external_id)s\", \"%"
+"(id)s\""
 msgstr ""
 
 #. module: product
@@ -4344,13 +4252,10 @@ msgstr ""
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_product.py:0
-#, fuzzy
 msgid ""
 "The value of Base Unit Count must be greater than 0. Use 0 to hide the price "
 "per unit on this product."
 msgstr ""
-"Temel Birim Sayısı değeri 0'dan büyük olmalıdır. Bu üründe birim başına "
-"fiyatı gizlemek için 0'ı kullanın."
 
 #. module: product
 #. odoo-python
@@ -4448,33 +4353,22 @@ msgid "Today Activities"
 msgstr "Bugünkü Aktiviteler"
 
 #. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_product_tree_view
-#: model_terms:ir.ui.view,arch_db:product.product_template_tree_view
 #: model_terms:ir.ui.view,arch_db:product.product_view_list_qty
-#, fuzzy
 msgid "Total Forecasted"
-msgstr "Toplam Öngörülen"
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_product_tree_view
-#: model_terms:ir.ui.view,arch_db:product.product_template_tree_view
-msgid "Total Free To Use"
 msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_product_tree_view
 #: model_terms:ir.ui.view,arch_db:product.product_template_tree_view
 #: model_terms:ir.ui.view,arch_db:product.product_view_list_qty
-#, fuzzy
 msgid "Total On Hand"
-msgstr "Eldeki Toplam"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__is_storable
 #: model:ir.model.fields,field_description:product.field_product_template__is_storable
-#, fuzzy
 msgid "Track Inventory"
-msgstr "Envanter Takibi"
+msgstr ""
 
 #. module: product
 #: model:product.template,name:product.consu_delivery_01_product_template
@@ -4568,7 +4462,6 @@ msgid "Unit Name"
 msgstr "Birim Adı"
 
 #. module: product
-#: model:ir.model.fields,field_description:product.field_product_pricelist_item__price
 #: model:ir.model.fields,field_description:product.field_product_supplierinfo__price
 #: model_terms:ir.ui.view,arch_db:product.product_supplierinfo_form_view
 #: model_terms:ir.ui.view,arch_db:product.product_template_form_view
@@ -4599,9 +4492,8 @@ msgstr "Ölçü Birimleri ve Ambalajlar"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_view_list_qty
-#, fuzzy
 msgid "Update Quantities"
-msgstr "Miktarları Güncelle"
+msgstr ""
 
 #. module: product
 #: model:ir.actions.act_window,name:product.product_variant_edit_qty_action
@@ -4632,9 +4524,8 @@ msgstr "Mevcut ürünlerdeki ekstra fiyatı güncelleyin"
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/product_document_kanban/upload_button/upload_button.xml:0
-#, fuzzy
 msgid "Upload"
-msgstr "Yükle"
+msgstr ""
 
 #. module: product
 #. odoo-python
@@ -4651,15 +4542,6 @@ msgstr "Ek Satış ve Çapraz Satış"
 #: model:ir.model.fields,field_description:product.field_product_document__url
 msgid "Url"
 msgstr "Url"
-
-#. module: product
-#: model:ir.model.fields,help:product.field_product_pricelist_item__compute_price
-msgid ""
-"Use the discount rules and activate the discount settings in order to show "
-"discount to customer."
-msgstr ""
-"Müşteriye indirim göstermek için indirim kurallarını kullanın ve indirim "
-"ayarlarını etkinleştirin."
 
 #. module: product
 #. odoo-python
@@ -4869,6 +4751,11 @@ msgid "Vendors"
 msgstr "Tedarikçiler"
 
 #. module: product
+#: model:res.groups.privilege,placeholder:product.res_groups_privilege_product
+msgid "View"
+msgstr ""
+
+#. module: product
 #: model:product.template,name:product.product_product_2_product_template
 msgid "Virtual Home Staging"
 msgstr "Sanal Ev Sahnesi"
@@ -4955,6 +4842,11 @@ msgid "What to expect ?"
 msgstr "Ne beklemeliyiz?"
 
 #. module: product
+#: model:ir.model.fields,help:product.field_product_pricelist_item__is_plain_discount
+msgid "Whether the rule lowers the price by exactly its discount percentage."
+msgstr ""
+
+#. module: product
 #: model:ir.model.fields,help:product.field_product_tag__visible_to_customers
 msgid "Whether the tag is displayed to customers."
 msgstr "Etiketin müşterilere gösterilip gösterilmeyeceği."
@@ -5028,17 +4920,6 @@ msgstr ""
 "listeleri arşivlenecektir."
 
 #. module: product
-#: model:ir.model.fields,help:product.field_product_pricelist_item__percent_price
-#: model:ir.model.fields,help:product.field_product_pricelist_item__price_discount
-msgid "You can apply a mark-up by setting a negative discount."
-msgstr "Negatif bir indirim ayarlayarak kar marjı uygulayabilirsiniz."
-
-#. module: product
-#: model:ir.model.fields,help:product.field_product_pricelist_item__price_markup
-msgid "You can apply a mark-up on the cost"
-msgstr "Maliyet üzerine bir zam uygulayabilirsiniz"
-
-#. module: product
 #: model_terms:ir.actions.act_window,help:product.product_pricelist_action2
 msgid ""
 "You can assign pricelists to your customers or select one when creating a "
@@ -5068,9 +4949,8 @@ msgstr ""
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/order_line/order_line.xml:0
-#, fuzzy
 msgid "You can't edit this product in the catalog."
-msgstr "Bu ürünü katalogda düzenleyemezsiniz."
+msgstr ""
 
 #. module: product
 #. odoo-python
@@ -5136,8 +5016,8 @@ msgstr ""
 #. odoo-python
 #: code:addons/product/models/product_template_attribute_value.py:0
 msgid ""
-"You cannot change the product of the value %(value)s set on product "
-"%(product)s."
+"You cannot change the product of the value %(value)s set on product %"
+"(product)s."
 msgstr ""
 "%(value)s ürününde ayarlanan %(product)sdeğerinin çarpımını "
 "değiştiremezsiniz."
@@ -5146,8 +5026,8 @@ msgstr ""
 #. odoo-python
 #: code:addons/product/models/product_template_attribute_value.py:0
 msgid ""
-"You cannot change the value of the value %(value)s set on product "
-"%(product)s."
+"You cannot change the value of the value %(value)s set on product %"
+"(product)s."
 msgstr ""
 "%(value)s ürününde ayarlanan %(product)sdeğerinin çarpımını "
 "değiştiremezsiniz."
@@ -5211,15 +5091,11 @@ msgstr ""
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/kanban_renderer.xml:0
-#, fuzzy
 msgid ""
 "You must define a product for everything you sell or purchase,\n"
 "                            whether it's a storable product, a consumable or "
 "a service."
 msgstr ""
-"Sattığınız veya satın aldığınız her şey için bir ürün tanımlamanız gerekir,\n"
-"                           depolanabilir bir ürün, bir sarf malzemesi veya "
-"bir hizmet olup olmadığı."
 
 #. module: product
 #: model_terms:ir.actions.act_window,help:product.product_template_action
@@ -5260,21 +5136,18 @@ msgstr "Pozitif bir miktar belirlemeniz gerekir."
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_label_layout__print_format__zpl
-#, fuzzy
 msgid "ZPL Labels"
-msgstr "ZPL Etiketleri"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_label_layout__zpl_preview
-#, fuzzy
 msgid "ZPL Preview"
-msgstr "ZPL Önizlemesi"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_label_layout__zpl_template
-#, fuzzy
 msgid "ZPL Template"
-msgstr "ZPL Şablonu"
+msgstr ""
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_zara
@@ -5283,98 +5156,80 @@ msgstr "Zara"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.small_zpl_label
-#, fuzzy
 msgid "^FO150,165 ^A0N,25^FH ^FD"
-msgstr "^FO150,165 ^A0N,25^FH ^FD"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.normal_zpl_label
-#, fuzzy
 msgid "^FO150,210 ^A0N,25^FH ^FD("
-msgstr "^FO150,210 ^A0N,25^FH ^FD("
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.alternative_zpl_label
-#, fuzzy
 msgid "^FO160,185 ^A0N,18^FH ^FD("
-msgstr "^FO160,185 ^A0N,18^FH ^FD("
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.alternative_zpl_label
-#, fuzzy
 msgid "^FO290,165 ^A0N,30^FH ^FD"
-msgstr "^FO290,165 ^A0N,30^FH ^FD"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.jewelry_zpl_label
-#, fuzzy
 msgid "^FO290,50 ^A0N,30^FH ^FD"
-msgstr "^FO290,50 ^A0N,30^FH ^FD"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.normal_zpl_label
-#, fuzzy
 msgid "^FO300,200 ^A0N,40^FH ^FD"
-msgstr "^FO300,200 ^A0N,40^FH ^FD"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.small_zpl_label
-#, fuzzy
 msgid "^FO35,50^BY1 ^BCN,80,Y,N,N ^FD"
-msgstr "^FO35,50^BY1 ^BCN,80,Y,N,N ^FD"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.alternative_zpl_label
-#, fuzzy
 msgid "^FO35,55^BY2 ^BCN,100,Y,N,N ^FD"
-msgstr "^FO35,55^BY2 ^BCN,100,Y,N,N ^FD"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.jewelry_zpl_label
-#, fuzzy
 msgid "^FO35,5^BY1 ^BCN,80,Y,N,N ^FD"
-msgstr "^FO35,5^BY1 ^BCN,80,Y,N,N ^FD"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.normal_zpl_label
-#, fuzzy
 msgid "^FO35,77^BY2 ^BCN,100,Y,N,N ^FD"
-msgstr "^FO35,77^BY2 ^BCN,100,Y,N,N ^FD"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.alternative_zpl_label
 #: model_terms:ir.ui.view,arch_db:product.jewelry_zpl_label
 #: model_terms:ir.ui.view,arch_db:product.normal_zpl_label
 #: model_terms:ir.ui.view,arch_db:product.small_zpl_label
-#, fuzzy
 msgid "^FS"
-msgstr "^FS"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.alternative_zpl_label
-#, fuzzy
 msgid ""
 "^FS\n"
 "^FT35,48^A0N,15^FD"
 msgstr ""
-"^FS\n"
-"^FT35,48^A0N,15^FD"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.normal_zpl_label
-#, fuzzy
 msgid ""
 "^FS\n"
 "^FT35,65^A0N,20^FD"
 msgstr ""
-"^FS\n"
-"^FT35,65^A0N,20^FD"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.jewelry_zpl_label
-#, fuzzy
 msgid "^FT210,30^A0N,25^FD"
-msgstr "^FT210,30^A0N,25^FD"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.small_zpl_label
@@ -5383,27 +5238,19 @@ msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.alternative_zpl_label
-#, fuzzy
 msgid "^FT35,30^A0N,20^FD"
-msgstr "^FT35,30^A0N,20^FD"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.normal_zpl_label
-#, fuzzy
 msgid "^FT35,40^A0N,25^FD"
-msgstr "^FT35,40^A0N,25^FD"
+msgstr ""
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_attribute.py:0
 msgid "attribute_id"
 msgstr "attribute_id"
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.res_config_settings_view_form
-#, fuzzy
-msgid "barcodelookup.com"
-msgstr "barcodelookup.com"
 
 #. module: product
 #. odoo-javascript
@@ -5460,12 +5307,6 @@ msgid "each variant"
 msgstr ""
 
 #. module: product
-#. odoo-python
-#: code:addons/product/models/product_pricelist_item.py:0
-msgid "markup"
-msgstr "işaretleme"
-
-#. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
 msgid "pdf"
@@ -5491,9 +5332,22 @@ msgid "product cost"
 msgstr "ürün maliyeti"
 
 #. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "round off to 10.00 and set an extra at -0.01"
-msgstr "10.00'a yuvarlayın ve -0.01'de fazladan bir değer ayarlayın"
+#. odoo-python
+#: code:addons/product/models/product_product.py:0
+msgid "product: %(name)s"
+msgstr ""
+
+#. module: product
+#. odoo-python
+#: code:addons/product/models/product_product.py:0
+msgid "product: %(product_name)s"
+msgstr ""
+
+#. module: product
+#. odoo-python
+#: code:addons/product/models/product_product.py:0
+msgid "product: %(product_name)s with variant: %(variant_name)s"
+msgstr ""
 
 #. module: product
 #. odoo-python
@@ -5501,6 +5355,12 @@ msgstr "10.00'a yuvarlayın ve -0.01'de fazladan bir değer ayarlayın"
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
 msgid "sales price"
 msgstr "satış fiyatı"
+
+#. module: product
+#. odoo-python
+#: code:addons/product/models/product_pricelist_item.py:0
+msgid "surcharge"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_supplierinfo_form_view
@@ -5512,3 +5372,80 @@ msgstr "den"
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
 msgid "xlsx"
 msgstr "xlsx"
+
+#~ msgid ""
+#~ "%(base)s with a %(discount)s %% %(discount_type)s and %(surcharge)s extra "
+#~ "fee\n"
+#~ "Example: %(amount)s * %(discount_charge)s + %(price_surcharge)s → %"
+#~ "(total_amount)s"
+#~ msgstr ""
+#~ "%(base)s %(discount)s %% %(discount_type)s ve %(surcharge)s ekstra ücret "
+#~ "ile\n"
+#~ "Örnek: %(amount)s * %(discount_charge)s + %(price_surcharge)s → %"
+#~ "(total_amount)s"
+
+#~ msgid "%(percentage)s %% discount on %(pricelist)s"
+#~ msgstr "%(percentage)s %% indirim %(pricelist)s"
+
+#~ msgid "%(percentage)s %% discount on sales price"
+#~ msgstr "%(percentage)s %% satış fiyatı üzerinden indirim"
+
+#~ msgid ""
+#~ "- Barcode \"%(barcode)s\" already assigned to product(s): %(product_list)s"
+#~ msgstr ""
+#~ "- Barkod \"%(barcode)s\" halihazırda ürün(ler)e atanmış: %(product_list)s"
+
+#~ msgid "<b>Tip: want to round at 9.99?</b>"
+#~ msgstr "<b>İpucu: 9,99'da yuvarlamak mı istiyorsunuz?</b>"
+
+#~ msgid "<span>%</span>"
+#~ msgstr "<span>%</span>"
+
+#~ msgid "<span>on</span>"
+#~ msgstr "<span>de</span>"
+
+#~ msgid "All Categories"
+#~ msgstr "Tüm Kategoriler"
+
+#~ msgid "Apply To"
+#~ msgstr "Başvurmak İçin"
+
+#~ msgid "Based price"
+#~ msgstr "Taban fiyat"
+
+#~ msgid "Display Applied On"
+#~ msgstr "Ekran Açık Uygulandı"
+
+#~ msgid "Formula"
+#~ msgstr "Formül"
+
+#~ msgid "Markup"
+#~ msgstr "İşaretleme"
+
+#~ msgid "Min Qty"
+#~ msgstr "Min Miktar"
+
+#~ msgid "Percentage Price"
+#~ msgstr "Yüzde Fiyatı"
+
+#~ msgid "Price Type"
+#~ msgstr "Fiyat Türü"
+
+#~ msgid ""
+#~ "Use the discount rules and activate the discount settings in order to "
+#~ "show discount to customer."
+#~ msgstr ""
+#~ "Müşteriye indirim göstermek için indirim kurallarını kullanın ve indirim "
+#~ "ayarlarını etkinleştirin."
+
+#~ msgid "You can apply a mark-up by setting a negative discount."
+#~ msgstr "Negatif bir indirim ayarlayarak kar marjı uygulayabilirsiniz."
+
+#~ msgid "You can apply a mark-up on the cost"
+#~ msgstr "Maliyet üzerine bir zam uygulayabilirsiniz"
+
+#~ msgid "markup"
+#~ msgstr "işaretleme"
+
+#~ msgid "round off to 10.00 and set an extra at -0.01"
+#~ msgstr "10.00'a yuvarlayın ve -0.01'de fazladan bir değer ayarlayın"

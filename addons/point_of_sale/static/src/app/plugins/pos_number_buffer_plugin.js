@@ -1,6 +1,6 @@
 import { usePlugin, Plugin, onWillDestroy, useScope, proxy, signal, EventBus } from "@odoo/owl";
 import { services } from "@web/core/services";
-import { barcodeService } from "@barcodes/barcode_service";
+import { BarcodePlugin } from "@barcodes/barcode_plugin";
 import { session } from "@web/session";
 import { parseFloat as oParseFloat } from "@web/views/fields/parsers";
 import { SoundEffectsPlugin } from "@mail/core/common/sound_effects_plugin";
@@ -53,7 +53,11 @@ const getDecimalPoint = () => localization.decimalPoint;
 export class PosNumberBufferPlugin extends Plugin {
     state = proxy({});
     isReset = signal(false);
-    sound = usePlugin(SoundEffectsPlugin);
+    // Whether a keystroke is queued, waiting for useWithBarcode's delay (or a manual
+    // capture()) before it reaches the buffer. A signal so components basing a render
+    // (e.g. disabling an action button) on it re-render as soon as it changes.
+    hasPendingInput = signal(false);
+    soundEffects = usePlugin(SoundEffectsPlugin);
     overlay = usePlugin(OverlayPlugin);
     bufferHolderStack = [];
 
@@ -98,6 +102,7 @@ export class PosNumberBufferPlugin extends Plugin {
             clearTimeout(this._timeout);
             this.handler(true);
             delete this.handler;
+            this.hasPendingInput.set(false);
         }
     }
     /**
@@ -157,7 +162,7 @@ export class PosNumberBufferPlugin extends Plugin {
         this.config = config;
         this.decimalPoint = config.decimalPoint || getDecimalPoint();
         this.maxTimeBetweenKeys = this.config.useWithBarcode
-            ? barcodeService.maxTimeBetweenKeysInMs
+            ? BarcodePlugin.maxTimeBetweenKeysInMs
             : 0;
     }
     _onKeyboardInput(event) {
@@ -193,8 +198,13 @@ export class PosNumberBufferPlugin extends Plugin {
             }
             clearTimeout(this._timeout);
             this.eventsBuffer.push(event);
-            this._timeout = setTimeout(handler, this.maxTimeBetweenKeys);
-            this.handler = handler;
+            const timedHandler = (...args) => {
+                this.hasPendingInput.set(false);
+                handler(...args);
+            };
+            this._timeout = setTimeout(timedHandler, this.maxTimeBetweenKeys);
+            this.handler = timedHandler;
+            this.hasPendingInput.set(true);
         };
     }
     _onInput(keyAccessor) {
@@ -318,7 +328,7 @@ export class PosNumberBufferPlugin extends Plugin {
             if (isFirstInput) {
                 this.state.buffer = "" + input;
             } else if (this.state.buffer.length > 12) {
-                this.sound.play("bell");
+                this.soundEffects.play("bell");
             } else {
                 this.state.buffer += input;
             }

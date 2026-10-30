@@ -127,7 +127,7 @@ class TestStandardPerformance(UtilPerf):
     def test_10_perf_sql_img_controller(self):
         self.authenticate('demo', 'demo')
         # not published user, get the not found image placeholder
-        self.assertEqual(self.env.ref('base.user_admin').sudo().website_published, False)
+        self.env.ref('base.user_admin').sudo().website_published = False
         user_id = self.ref('base.user_admin')
         url = f'/web/image/res.users/{user_id}/image_256'
         self.assertEqual(self._get_url_hot_query(url), 5)
@@ -170,6 +170,15 @@ class TestWebsitePerformanceCommon(UtilPerf):
     def setUp(self):
         super().setUp()
         self.page, self.menu = self._create_page_with_menu('/sql_page')
+        # use a footer without social media
+        self.env['website.assets'].make_scss_customization(
+            '/website/static/src/scss/options/user_values.scss',
+            {"'footer-template'": 'call_to_action'},
+        )
+        for key in ['website.template_footer_call_to_action']:
+            self.env.ref(key).active = True
+        for key in ['website.footer_custom', 'website.footer_copyright_content_width_fluid', 'website.footer_copyright_content_width_small']:
+            self.env.ref(key).active = False
 
     def _create_page_with_menu(self, url):
         name = url[1:]

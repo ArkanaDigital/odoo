@@ -88,6 +88,7 @@ export class TicketScreen extends Component {
         this.doPrint = useTrackedAsync((_selectedSyncedOrder) => this.print(_selectedSyncedOrder));
         this.numberBuffer.use({
             triggerAtInput: (event) => this._onUpdateSelectedOrderline(event),
+            useWithBarcode: true,
         });
 
         this.state = proxy({
@@ -245,6 +246,8 @@ export class TicketScreen extends Component {
         await this._updateSyncedOrders();
     }
     onClickOrder(clickedOrder) {
+        // Pending keystrokes belong to the line they were typed for.
+        this.numberBuffer.capture();
         this.setSelectedOrder(clickedOrder);
         this.numberBuffer.reset();
         if ((!clickedOrder || clickedOrder.finalized) && !this.getSelectedOrderlineId()) {
@@ -273,10 +276,7 @@ export class TicketScreen extends Component {
         });
     }
     async onClickReprintAll(order) {
-        const printingChanges = order.lastPrints;
-        if (printingChanges.length) {
-            await this.pos.ticketPrinter.printOrderChanges({ order, opts: printingChanges });
-        }
+        await this.pos.ticketPrinter.reprintOrderChanges({ order });
     }
     async onNextPage() {
         if (this.state.page < this.getNbrPages()) {
@@ -295,6 +295,9 @@ export class TicketScreen extends Component {
         this.setSelectedOrder(order);
     }
     onClickOrderline(orderline) {
+        if (!this.pos.accessRight.canClickOrderLine) {
+            return;
+        }
         const order = this.getSelectedOrder();
         if (this.isOrderSynced) {
             // A refund line (one that already refunds another line) must not
@@ -319,15 +322,9 @@ export class TicketScreen extends Component {
                 });
                 return;
             }
+            this.numberBuffer.capture();
             this.state.selectedOrderlineIds[order.id] = orderline.id;
             this.numberBuffer.reset();
-        }
-    }
-    onClickRefundOrderUid(orderUuid) {
-        // Open the refund order.
-        const refundOrder = this.pos.models["pos.order"].find((order) => order.uuid == orderUuid);
-        if (refundOrder) {
-            this.setOrder(refundOrder);
         }
     }
     _setToRefundDetail(toRefundDetail, buffer) {
@@ -405,6 +402,11 @@ export class TicketScreen extends Component {
     async addAdditionalRefundInfo(order, destinationOrder) {
         // used by L10N, e.g: add a refund reason using a specific L10N field
         return Promise.resolve();
+    }
+    async onClickRefund() {
+        // Flush pending keystrokes so the refund uses the quantities shown on screen.
+        this.numberBuffer.capture();
+        await this.onDoRefund();
     }
     async onDoRefund() {
         const order = this.getSelectedOrder();
@@ -524,9 +526,9 @@ export class TicketScreen extends Component {
             (order.getScreenData().name === "" || this.state.filter === "SYNCED")
         );
     }
-    // Used to override inside `pos_hr`
+
     get showSubPads() {
-        return this.isOrderSynced;
+        return this.isOrderSynced && this.pos.accessRight.canShowPads;
     }
 
     // Used to override inside `l10n_cl_edi_pos`
@@ -619,7 +621,7 @@ export class TicketScreen extends Component {
         return this.pos.getDate(order.date_order);
     }
     getTotal(order) {
-        return this.env.utils.formatCurrency(order.priceIncl);
+        return this.pos.formatCurrency(order.priceIncl);
     }
     getPartner(order) {
         return order.getPartnerName();
@@ -719,6 +721,12 @@ export class TicketScreen extends Component {
             return false;
         }
         if (this._doesOrderHaveSoleItem(order)) {
+            return true;
+        }
+        // A just-typed quantity may still be waiting on useWithBarcode's delay: don't grey
+        // out the action while it is, or a quick click right after typing would land on a
+        // disabled button instead of reaching onClickRefund's own capture().
+        if (this.numberBuffer.hasPendingInput()) {
             return true;
         }
         const total = Object.values(order.uiState.lineToRefund).reduce((acc, val) => {
@@ -1046,7 +1054,7 @@ export class TicketScreen extends Component {
     async settleTips() {
         const promises = [];
         for (const order of this.getFilteredOrderList()) {
-            const amount = this.env.utils.parseValidFloat(order.uiState.TipScreen.inputTipAmount);
+            const amount = this.pos.parseValidFloat(order.uiState.TipScreen.inputTipAmount);
 
             if (!order.isSynced) {
                 logPosMessage(

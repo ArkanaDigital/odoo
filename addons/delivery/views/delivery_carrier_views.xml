@@ -19,6 +19,25 @@
         </field>
     </record>
 
+    <record id="view_delivery_carrier_so_list" model="ir.ui.view">
+        <field name="name">delivery.carrier.so.list</field>
+        <field name="model">delivery.carrier</field>
+        <field name="arch" type="xml">
+            <list string="Delivery Method">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="delivery_cost" column_invisible="not context.get('carrier_prices_dumped', False)"/>
+                <field name="delivery_type"/>
+                <field name="company_id" groups="base.group_multi_company" optional="hide"/>
+                <field name="country_ids" widget="many2many_tags" optional="hide"/>
+                <field name="max_weight" optional="show"/>
+                <field name="max_volume" optional="hide"/>
+                <field name="must_have_tag_ids" widget="many2many_tags" optional="hide"/>
+                <field name="excluded_tag_ids" widget="many2many_tags" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
     <record id="view_delivery_carrier_search" model="ir.ui.view">
         <field name="name">delivery.carrier.search</field>
         <field name="model">delivery.carrier</field>
@@ -43,7 +62,7 @@
                 <sheet>
                     <div class="oe_button_box" name="button_box">
                         <button name="toggle_prod_environment"
-                                invisible="not prod_environment or delivery_type == 'fixed' or delivery_type == 'base_on_rule'"
+                                invisible="not prod_environment or not support_test_environment"
                                 class="oe_stat_button"
                                 type="object" icon="play_arrow">
                             <div class="o_stat_info o_field_widget">
@@ -53,7 +72,7 @@
                         </button>
                         <!-- transfer referenced here due to view inheritance issue in current master (post-saas-16) -->
                         <button name="toggle_prod_environment"
-                                invisible="prod_environment or delivery_type == 'fixed' or delivery_type == 'base_on_rule'"
+                                invisible="prod_environment or not support_test_environment"
                                 class="oe_stat_button"
                                 type="object" icon="stop">
                             <div class="o_stat_info o_field_widget">
@@ -225,6 +244,6 @@
         name="Deliveries"
         action="action_delivery_carrier_form"
         parent="sale.menu_sale_config"
-        sequence="15"/>
+        sequence="25"/>
 
 </odoo>

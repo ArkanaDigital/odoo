@@ -18,6 +18,21 @@ test("should change the containing block with the font", async () => {
     expect(getContent(el)).toBe("<blockquote>ab[cde]fg</blockquote>");
 });
 
+test("should show the current font type as active when opening the dropdown", async () => {
+    await setupEditor("<p>ab[cde]fg</p>");
+    await contains(".btn[name='font_type']").click();
+    await waitFor(".o_font_type_selector_menu");
+    expect(".o_font_type_selector_menu .o-dropdown-item.active").toHaveAttribute("name", "p");
+    await contains(".o_font_type_selector_menu .o-dropdown-item[name=blockquote]").click();
+
+    await contains(".btn[name='font_type']").click();
+    await waitFor(".o_font_type_selector_menu");
+    expect(".o_font_type_selector_menu .o-dropdown-item.active").toHaveAttribute(
+        "name",
+        "blockquote"
+    );
+});
+
 test("should have font tool only if the block is content editable", async () => {
     for (const [contenteditable, count] of [
         [false, 0],
@@ -29,6 +44,27 @@ test("should have font tool only if the block is content editable", async () => 
         await expandToolbar();
         expect(".btn[name='font_type']").toHaveCount(count);
     }
+});
+
+test("should not have font tool if it would need to re-tag a block which is in a non-editable element", async () => {
+    for (const [contenteditable, count] of [
+        [false, 0],
+        [true, 1],
+    ]) {
+        await setupEditor(
+            `<div contenteditable="${contenteditable}"><p contenteditable="true">ab[cde]fg</p></div>`
+        );
+        await expandToolbar();
+        expect(".btn[name='font_type']").toHaveCount(count);
+    }
+});
+
+test("should allow creation of a block in a div which is in a non-editable element", async () => {
+    await setupEditor(
+        `<div contenteditable="false"><div contenteditable="true">ab[cde]fg</div></div>`
+    );
+    await expandToolbar();
+    expect(".btn[name='font_type']").toHaveCount(1);
 });
 
 test("Should show the default font display name", async () => {

@@ -1,5 +1,5 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
-from odoo import api, models
+from odoo import api, models, tools
 
 
 class AccountMoveSend(models.AbstractModel):
@@ -7,11 +7,11 @@ class AccountMoveSend(models.AbstractModel):
 
     @api.model
     def _l10n_es_is_edi_sii_applicable(self, move):
-        return move.l10n_es_edi_is_required and move.l10n_es_edi_sii_state != 'sent'
+        return move.l10n_es_edi_is_required and move.l10n_es_edi_sii_state not in ('sent', 'accepted_with_errors')
 
     @api.model
     def _l10n_es_is_edi_sii_resend_applicable(self, move):
-        return move.l10n_es_edi_is_required and move.l10n_es_edi_sii_state == 'sent'
+        return move.l10n_es_edi_is_required and move.l10n_es_edi_sii_state in ('sent', 'accepted_with_errors')
 
     def _get_all_extra_edis(self) -> dict:
         # EXTENDS 'account'
@@ -50,5 +50,5 @@ class AccountMoveSend(models.AbstractModel):
                 if invoice.l10n_es_edi_sii_error:
                     invoices_data[invoice]['error'] = {
                         'error_title': self.env._("Error while sending the invoice to SII"),
-                        'errors': [invoice.l10n_es_edi_sii_error],
+                        'errors': [tools.html2plaintext(invoice.l10n_es_edi_sii_error)],
                     }

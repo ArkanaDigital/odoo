@@ -1,15 +1,15 @@
-import { onWillStart, proxy, signal } from "@odoo/owl";
+import { proxy, signal } from "@odoo/owl";
 import { formatCurrency } from "@web/core/currency";
 import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
 import { useBus, useService } from "@web/core/utils/hooks";
 import { useNestedSortable } from "@web/core/utils/nested_sortable";
 import { useSubEnv } from "@web/owl2/utils";
-import { SearchPanel } from "@web/search/search_panel/search_panel";
+import { ProductCatalogSearchPanel } from "@product/product_catalog/product_catalog_search_panel";
 import { SectionRow } from "../section_row/section_row";
 
-export class AccountProductCatalogSearchPanel extends SearchPanel {
+export class AccountProductCatalogSearchPanel extends ProductCatalogSearchPanel {
     static template = "account.ProductCatalogSearchPanel";
-    static components = { ...SearchPanel.components, SectionRow };
+    static components = { ...ProductCatalogSearchPanel.components, SectionRow };
 
     sectionTreeRef = signal.ref();
 
@@ -21,10 +21,12 @@ export class AccountProductCatalogSearchPanel extends SearchPanel {
             return;
         }
 
+        this.showPrices = !!this.env.model.config.context.show_prices;
         this.orderModel = this.env.model.config.context.product_catalog_order_model;
         this.childField = this.env.model.config.context.child_field;
         this.orderId = this.env.model.config.context.order_id;
         this.currencyId = this.env.model.config.context.product_catalog_currency_id;
+        this.canCreateSections = true;
 
         this.orm = useService("orm");
 
@@ -36,7 +38,9 @@ export class AccountProductCatalogSearchPanel extends SearchPanel {
         });
 
         useSubEnv({
+            canCreateSections: () => this.canCreateSections,
             formatAmount: this.formatAmount.bind(this),
+            showSectionAmounts: this.showPrices,
             setSelectedSection: this.setSelectedSection.bind(this),
             toggleSection: this.toggleSection.bind(this),
             toggleSectionFilter: this.toggleSectionFilter.bind(this),
@@ -52,22 +56,11 @@ export class AccountProductCatalogSearchPanel extends SearchPanel {
             this.updateSectionSubtotal(detail.sectionId, detail.subtotalDelta);
         });
 
-        onWillStart(async () => {
-            const { order_details, sections } = await this.orm.call(
-                this.orderModel,
-                "get_catalog_section_data",
-                [this.orderId],
-                { child_field: this.childField }
-            );
-
-            this.orderName = order_details.name;
-            this.state.totalUntaxedAmount = order_details.amount_untaxed;
-
-            this._setSectionsState(sections);
-            if (this.state.sections.length) {
-                this.setSelectedSection(this.state.sections[0].id);
-            }
-        });
+        this.orderName = this.env.searchModel.catalogOrderDetails.name;
+        if (this.showPrices) {
+            this.state.totalUntaxedAmount = this.env.searchModel.catalogOrderDetails.amount_untaxed;
+        }
+        this._setSectionsState(this.env.searchModel.catalogSections);
 
         useNestedSortable({
             ref: this.sectionTreeRef,
@@ -89,7 +82,7 @@ export class AccountProductCatalogSearchPanel extends SearchPanel {
                 return Boolean(node.parent_id) === Boolean(targetParentId);
             },
 
-            preventDrag: () => this.editingSection,
+            preventDrag: () => this.editingSection || !this.canCreateSections,
 
             onDrop: (params) => this.resequenceSections(params),
         });
@@ -109,7 +102,7 @@ export class AccountProductCatalogSearchPanel extends SearchPanel {
     }
 
     get editingSection() {
-        return this.editingSectionId !== undefined;
+        return this.state.editingSectionId !== undefined;
     }
 
     formatAmount(amount) {
@@ -132,8 +125,9 @@ export class AccountProductCatalogSearchPanel extends SearchPanel {
     }
 
     enableSectionInput(parentId = null) {
-        if (this.editingSection) {
-            // forbid editing another line when one is still being edited
+        if (this.editingSection || !this.canCreateSections) {
+            // forbid creating sections when not allowed, or editing another
+            // line when one is still being edited
             return;
         }
 
@@ -163,7 +157,7 @@ export class AccountProductCatalogSearchPanel extends SearchPanel {
     }
 
     onSectionInputKeydown(ev, sectionId) {
-        if (this.env.isSmall) {
+        if (this.uiService.isSmall) {
             return;
         }
 
@@ -177,7 +171,7 @@ export class AccountProductCatalogSearchPanel extends SearchPanel {
 
     leaveEditionMode(sectionId) {
         if (!sectionId) {
-            const newSection = this._findSectionById(sectionId);
+            const newSection = this._findEditingSection();
             if (newSection.parent_id) {
                 const parentSection = this._findSectionById(newSection.parent_id);
                 parentSection.children = parentSection.children.filter(
@@ -255,7 +249,8 @@ export class AccountProductCatalogSearchPanel extends SearchPanel {
             return;
         }
 
-        const section = this._findSectionById(sectionId);
+        const section =
+            sectionId === false ? this._findEditingSection() : this._findSectionById(sectionId);
         if (!section) {
             return;
         }
@@ -358,6 +353,10 @@ export class AccountProductCatalogSearchPanel extends SearchPanel {
     }
 
     updateSectionSubtotal(sectionId, subtotalDelta) {
+        if (!this.showPrices) {
+            // no section amounts displayed, nothing to update
+            return;
+        }
         this.state.totalUntaxedAmount += subtotalDelta;
 
         const section = this._findSectionById(sectionId);
@@ -394,6 +393,12 @@ export class AccountProductCatalogSearchPanel extends SearchPanel {
             }
         }
 
+        const selectedSection = sectionsById.get(this.selectedSectionId);
+        if (selectedSection?.parent_id) {
+            // Expand the parent so the initially selected subsection is visible.
+            sectionsById.get(selectedSection.parent_id).isOpen = true;
+        }
+
         this.state.sections = rootSections;
     }
 
@@ -404,6 +409,22 @@ export class AccountProductCatalogSearchPanel extends SearchPanel {
             }
 
             const child = sec.children.find((c) => c.id === id);
+            if (child) {
+                return child;
+            }
+        }
+        return null;
+    }
+
+    // "No Section" also has `id: false`, so a plain id lookup can't
+    // distinguish it from the unsaved section currently being created.
+    _findEditingSection() {
+        for (const sec of this.state.sections) {
+            if (sec.id === false && sec.editing) {
+                return sec;
+            }
+
+            const child = sec.children.find((c) => c.id === false && c.editing);
             if (child) {
                 return child;
             }

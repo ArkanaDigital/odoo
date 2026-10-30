@@ -6,15 +6,14 @@
 # Martin Trigaux, 2018
 # Boško Stojaković <bluesoft83@gmail.com>, 2018
 # Bojan Vrućinić <bojan.vrucinic@gmail.com>, 2018
-# Weblate <noreply-mt-weblate@weblate.org>, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server saas~11.5\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-03 17:41+0000\n"
-"PO-Revision-Date: 2026-06-20 00:32+0000\n"
-"Last-Translator: Weblate <noreply-mt-weblate@weblate.org>\n"
-"Language-Team: Bosnian <https://translate.odoo.com/projects/odoo-master/"
+"POT-Creation-Date: 2026-09-11 17:44+0000\n"
+"PO-Revision-Date: 2026-08-31 13:43+0000\n"
+"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"Language-Team: Bosnian <https://translate.odoo.com/projects/odoo-s19-4/"
 "payment_stripe/bs/>\n"
 "Language: bs\n"
 "MIME-Version: 1.0\n"
@@ -22,11 +21,16 @@ msgstr ""
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: payment_stripe
 #: model:payment.method,name:payment_stripe.payment_method_ach_direct_debit
 msgid "ACH Direct Debit"
+msgstr ""
+
+#. module: payment_stripe
+#: model:payment.method,name:payment_stripe.payment_method_acss_direct_debit
+msgid "ACSS direct debit"
 msgstr ""
 
 #. module: payment_stripe
@@ -57,6 +61,11 @@ msgstr ""
 #. module: payment_stripe
 #: model:payment.method,name:payment_stripe.payment_method_amex
 msgid "American Express"
+msgstr ""
+
+#. module: payment_stripe
+#: model:ir.module.module,summary:base.module_payment_stripe
+msgid "An Irish-American payment provider covering the US and many others."
 msgstr ""
 
 #. module: payment_stripe
@@ -112,9 +121,8 @@ msgstr ""
 
 #. module: payment_stripe
 #: model:ir.model.fields,field_description:payment_stripe.field_payment_provider__code
-#, fuzzy
 msgid "Code"
-msgstr "Šifra"
+msgstr ""
 
 #. module: payment_stripe
 #: model_terms:ir.ui.view,arch_db:payment_stripe.payment_provider_form
@@ -124,9 +132,8 @@ msgstr ""
 #. module: payment_stripe
 #. odoo-javascript
 #: code:addons/payment_stripe/static/src/interactions/express_checkout.js:0
-#, fuzzy
 msgid "Delivery"
-msgstr "Isporuka"
+msgstr ""
 
 #. module: payment_stripe
 #: model:payment.method,name:payment_stripe.payment_method_diners
@@ -142,9 +149,8 @@ msgstr ""
 #: model:ir.model.fields,field_description:payment_stripe.field_payment_provider__display_name
 #: model:ir.model.fields,field_description:payment_stripe.field_payment_token__display_name
 #: model:ir.model.fields,field_description:payment_stripe.field_payment_transaction__display_name
-#, fuzzy
 msgid "Display Name"
-msgstr "Prikazani naziv"
+msgstr ""
 
 #. module: payment_stripe
 #: model:payment.method,name:payment_stripe.payment_method_eps
@@ -196,9 +202,8 @@ msgstr ""
 #: model:ir.model.fields,field_description:payment_stripe.field_payment_provider__id
 #: model:ir.model.fields,field_description:payment_stripe.field_payment_token__id
 #: model:ir.model.fields,field_description:payment_stripe.field_payment_transaction__id
-#, fuzzy
 msgid "ID"
-msgstr "ID"
+msgstr ""
 
 #. module: payment_stripe
 #: model:ir.model.fields,help:payment_stripe.field_payment_provider__stripe_webhook_secret
@@ -256,15 +261,18 @@ msgstr ""
 
 #. module: payment_stripe
 #: model:ir.model,name:payment_stripe.model_payment_provider
-#, fuzzy
 msgid "Payment Provider"
-msgstr "Pružatelj usluge naplate"
+msgstr ""
+
+#. module: payment_stripe
+#: model:ir.module.module,shortdesc:base.module_payment_stripe
+msgid "Payment Provider: Stripe"
+msgstr ""
 
 #. module: payment_stripe
 #: model:ir.actions.act_window,name:payment_stripe.action_payment_provider_onboarding
-#, fuzzy
 msgid "Payment Providers"
-msgstr "Pružatelji usluge naplate"
+msgstr ""
 
 #. module: payment_stripe
 #: model:ir.model,name:payment_stripe.model_payment_token
@@ -342,20 +350,16 @@ msgstr ""
 
 #. module: payment_stripe
 #: model:ir.model.fields.selection,name:payment_stripe.selection__payment_provider__code__stripe
-#, fuzzy
 msgid "Stripe"
-msgstr "Stripe"
+msgstr ""
 
 #. module: payment_stripe
 #. odoo-python
 #: code:addons/payment_stripe/models/payment_provider.py:0
-#, fuzzy
 msgid ""
 "Stripe Connect is not available in your country, please use another payment "
 "provider."
 msgstr ""
-"Stripe Connect nije dostupan u vašoj zemlji, molimo koristite drugog "
-"pružatelja usluga plaćanja."
 
 #. module: payment_stripe
 #: model:ir.model.fields,field_description:payment_stripe.field_payment_token__stripe_mandate

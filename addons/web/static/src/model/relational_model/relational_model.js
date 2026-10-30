@@ -72,8 +72,10 @@ import { OfflinePlugin } from "@web/core/offline/offline_plugin";
  *  countLimit?: number;
  *  groupsLimit?: number;
  *  defaultOrderBy?: string[];
+ *  defaultGroupBy?: string[];
  *  maxGroupByDepth?: number;
  *  multiEdit?: boolean;
+ *  allowTranslate?: boolean;
  *  groupByInfo?: Record<string, unknown>;
  *  activeIdsLimit?: number;
  *  useSendBeaconToSaveUrgently?: boolean;
@@ -159,9 +161,11 @@ export class RelationalModel extends Model {
         this.initialGroupsLimit = params.groupsLimit;
         this.initialCountLimit = params.countLimit || this.constructor.DEFAULT_COUNT_LIMIT;
         this.defaultOrderBy = params.defaultOrderBy;
+        this.defaultGroupBy = params.defaultGroupBy;
         this.maxGroupByDepth = params.maxGroupByDepth;
         this.groupByInfo = params.groupByInfo || {};
         this.multiEdit = params.multiEdit;
+        this.allowTranslate = params.allowTranslate ?? true;
         this.activeIdsLimit = params.activeIdsLimit || Number.MAX_SAFE_INTEGER;
         this.specialDataCaches = markRaw(params.state?.specialDataCaches || {});
         this.useSendBeaconToSaveUrgently = params.useSendBeaconToSaveUrgently || false;
@@ -437,7 +441,7 @@ export class RelationalModel extends Model {
         config.context = "context" in params ? params.context : config.context;
         config.context = { ...config.context };
         if (currentConfig.isMonoRecord) {
-            config.resId = "resId" in params ? params.resId : config.resId;
+            config.resId = ("resId" in params ? params.resId : config.resId) || false;
             config.resIds = "resIds" in params ? params.resIds : config.resIds;
             if (!config.resIds) {
                 config.resIds = config.resId ? [config.resId] : [];
@@ -685,21 +689,29 @@ export class RelationalModel extends Model {
                     config.groups[group.value] &&
                     !groups.some((g) => JSON.stringify(g.value) === JSON.stringify(group.value))
                 ) {
-                    const aggregates = Object.assign({}, group.aggregates);
-                    for (const key in aggregates) {
-                        // the `array_agg_distinct` aggregator's value is an array
-                        aggregates[key] = Array.isArray(aggregates[key]) ? [] : 0;
+                    const groupByFieldName = config.groupBy[0];
+                    const isDefaultGroupBy =
+                        this.defaultGroupBy && this.defaultGroupBy.includes(groupByFieldName);
+                    const hasGroupExpand =
+                        config.fields[groupByFieldName.split(":")[0]].group_expand;
+
+                    if (isDefaultGroupBy || hasGroupExpand) {
+                        const aggregates = Object.assign({}, group.aggregates);
+                        for (const key in aggregates) {
+                            // the `array_agg_distinct` aggregator's value is an array
+                            aggregates[key] = Array.isArray(aggregates[key]) ? [] : 0;
+                        }
+                        groups.splice(
+                            index,
+                            0,
+                            Object.assign({}, group, {
+                                count: 0,
+                                length: 0,
+                                records: [],
+                                aggregates,
+                            })
+                        );
                     }
-                    groups.splice(
-                        index,
-                        0,
-                        Object.assign({}, group, {
-                            count: 0,
-                            length: 0,
-                            records: [],
-                            aggregates,
-                        })
-                    );
                 }
             });
         }
@@ -768,6 +780,22 @@ export class RelationalModel extends Model {
         return orm.webSearchRead(config.resModel, config.domain, kwargs);
     }
 
+    _displayOnchangeWarning(warning) {
+        Promise.resolve(this.hooks.onWillDisplayOnchangeWarning(warning)).then(() => {
+            const { type, title, message, className, sticky } = warning;
+            if (type === "dialog") {
+                this.dialog.add(WarningDialog, { title, message });
+            } else {
+                this.notification.add(message, {
+                    className,
+                    sticky,
+                    title,
+                    type: "warning",
+                });
+            }
+        });
+    }
+
     /**
      * Marks the current config as available offline.
      *
@@ -826,19 +854,7 @@ export class RelationalModel extends Model {
             throw e;
         }
         if (response.warning) {
-            Promise.resolve(this.hooks.onWillDisplayOnchangeWarning(response.warning)).then(() => {
-                const { type, title, message, className, sticky } = response.warning;
-                if (type === "dialog") {
-                    this.dialog.add(WarningDialog, { title, message });
-                } else {
-                    this.notification.add(message, {
-                        className,
-                        sticky,
-                        title,
-                        type: "warning",
-                    });
-                }
-            });
+            this._displayOnchangeWarning(response.warning);
         }
         return response.value;
     }

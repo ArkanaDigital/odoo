@@ -10,7 +10,7 @@
 This module gives you a quick view of your contacts directory, accessible from your home page.
 You can track your vendors, customers and other contacts.
 """,
-    'depends': ['base', 'mail', 'web_hierarchy'],
+    'depends': ['base_address_extended', 'mail', 'web_hierarchy'],
     'data': [
         'views/contact_views.xml',
     ],
@@ -22,7 +22,7 @@ You can track your vendors, customers and other contacts.
     'license': 'LGPL-3',
     'assets': {
         'web.assets_backend': [
-            'contacts/static/src/views/contacts_hierarchy/contacts_hierarchy_card.scss',
+            'contacts/static/src/views/contacts_hierarchy/contacts_hierarchy_card.css',
         ],
         'web.assets_tests': [
             'contacts/static/tests/tours/**/*',

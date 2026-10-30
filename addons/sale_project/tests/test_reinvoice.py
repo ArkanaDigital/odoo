@@ -1,6 +1,5 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 from dateutil.relativedelta import relativedelta
-from freezegun import freeze_time
 from odoo.addons.sale.tests.common import TestSaleCommon
 from odoo.tests import Form, tagged
 from odoo.fields import Command
@@ -121,42 +120,6 @@ class TestReInvoice(TestSaleCommon):
 
         self.assertEqual((sale_order_line5.price_unit, sale_order_line5.qty_delivered, sale_order_line5.product_uom_qty, sale_order_line5.qty_invoiced), (self.company_data['product_order_cost'].standard_price, 2, 2, 0), 'Sale line 5 is wrong after confirming 2e vendor invoice')
         self.assertEqual((sale_order_line6.price_unit, sale_order_line6.qty_delivered, sale_order_line6.product_uom_qty, sale_order_line6.qty_invoiced), (self.company_data['product_delivery_cost'].standard_price, 2, 2, 0), 'Sale line 6 is wrong after confirming 2e vendor invoice')
-
-    @freeze_time('2020-01-15')
-    def test_sales_team_invoiced(self):
-        """ Test invoiced field from  sales team ony take into account the amount the sales channel has invoiced this month """
-
-        invoices = self.env['account.move'].create([
-            {
-                'move_type': 'out_invoice',
-                'partner_id': self.partner_a.id,
-                'invoice_date': '2020-01-10',
-                'invoice_line_ids': [(0, 0, {'product_id': self.product_a.id, 'price_unit': 1000.0})],
-            },
-            {
-                'move_type': 'out_refund',
-                'partner_id': self.partner_a.id,
-                'invoice_date': '2020-01-10',
-                'invoice_line_ids': [(0, 0, {'product_id': self.product_a.id, 'price_unit': 500.0})],
-            },
-            {
-                'move_type': 'in_invoice',
-                'partner_id': self.partner_a.id,
-                'invoice_date': '2020-01-01',
-                'date': '2020-01-01',
-                'invoice_line_ids': [(0, 0, {'product_id': self.product_a.id, 'price_unit': 800.0})],
-            },
-        ])
-        invoices.action_post()
-
-        for invoice in invoices:
-            self.env['account.payment.register']\
-                .with_context(active_model='account.move', active_ids=invoice.ids)\
-                .create({})\
-                ._create_payments()
-
-        invoices.flush_model()
-        self.assertRecordValues(invoices.team_id, [{'invoiced': 500.0}])
 
     def test_sales_price(self):
         """ Test invoicing vendor bill at sales price for products based on delivered and ordered quantities. Check no existing SO line is incremented, but when invoicing a
@@ -450,3 +413,76 @@ class TestReInvoice(TestSaleCommon):
 
         aml = self.env['account.move.line'].search([('move_id', 'in', so.invoice_ids.ids)])[0]
         self.assertRecordValues(aml, [{'analytic_distribution': {str(analytic_account_default.id): 100}}])
+
+    def test_reinvoice_multiple_projects_same_analytic_account(self):
+        """ Test that when multiple projects share the same analytic account,
+            reinvoicing matches the correct sale order linked to one of the projects.
+        """
+        # Create Project Z sharing the same analytic account as self.project.
+        project_z = self.env['project.project'].create({
+            'name': 'Z Project',
+            f'{self.analytic_plan._column_name()}': self.analytic_account.id,
+        })
+        project_z.account_id = False
+
+        self.assertTrue(self.analytic_account == project_z[self.analytic_plan._column_name()] == self.project[self.analytic_plan._column_name()], "Analytic Account On project_z/self.project is not set to 'test AA'")
+
+        self.sale_order.action_confirm()
+        self.assertEqual(self.sale_order.project_id, self.project, "Self.project is not set as self.sale_order.project_id")
+
+        # Create vendor bill using the shared analytic account
+        product = self.company_data['product_order_cost']
+        inv = self.env['account.move'].with_context(default_move_type='in_invoice').create({
+            'partner_id': self.partner_a.id,
+            'invoice_date': self.sale_order.date_order,
+            'invoice_line_ids': [
+                Command.create({
+                    'name': product.name,
+                    'product_id': product.id,
+                    'quantity': 1,
+                    'price_unit': product.standard_price,
+                    'analytic_distribution': {self.analytic_account.id: 100},
+                }),
+            ],
+        })
+        inv.action_post()
+
+        sol = self.sale_order.order_line.filtered(lambda l: l.product_id == product)
+        self.assertTrue(sol, "Move line should be mapped to SO reinvoicing line even when multiple projects share an analytic account.")
+
+    def test_reinvoice_multiple_analytic_accounts_on_move_line(self):
+        """ Test that when a move line has multiple analytic accounts,
+            valid project matches are not overwritten by subsequent accounts in the loop.
+        """
+        analytic_account_2 = self.env['account.analytic.account'].create({
+            'name': 'Test AA 2',
+            'company_id': self.partner_a.company_id.id,
+            'plan_id': self.analytic_plan.id,
+        })
+        self.assertEqual(self.analytic_account, self.project[self.analytic_plan._column_name()], "Analytic Account on self.project is not set correctly")
+
+        self.sale_order.action_confirm()
+        self.assertEqual(self.sale_order.project_id, self.project, "Self.project is not set as self.sale_order.project_id")
+
+        # Vendor bill line distributed between self.analytic_account and analytic_account_2
+        product = self.company_data['product_order_cost']
+        inv = self.env['account.move'].with_context(default_move_type='in_invoice').create({
+            'partner_id': self.partner_a.id,
+            'invoice_date': self.sale_order.date_order,
+            'invoice_line_ids': [
+                Command.create({
+                    'name': product.name,
+                    'product_id': product.id,
+                    'quantity': 1,
+                    'price_unit': product.standard_price,
+                    'analytic_distribution': {
+                        self.analytic_account.id: 50,
+                        analytic_account_2.id: 50,
+                    },
+                }),
+            ],
+        })
+        inv.action_post()
+
+        sol = self.sale_order.order_line.filtered(lambda l: l.product_id == product)
+        self.assertTrue(sol, "Move line distributed across multiple analytic accounts should be mapped to the matching SO.")

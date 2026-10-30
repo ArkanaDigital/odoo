@@ -91,6 +91,56 @@ class TestPoSSaleStock(TestPosStockHttpCommon, TestPoSSale):
         self.assertEqual(sale_order.picking_ids[1].move_ids.product_qty, 300)
         self.assertEqual(sale_order.picking_ids[1].move_ids.quantity, 300)  # 1 delivered => 300 * 2 = 600
 
+    def _create_delivered_sale_order(self, ordered_qty, delivered_qty):
+        product = self.env['product.product'].create({
+            'name': 'Delivered Product',
+            'available_in_pos': True,
+            'is_storable': True,
+        })
+        self.env['stock.quant']._update_available_quantity(
+            product, self.main_pos_config.picking_type_id.default_location_src_id, ordered_qty
+        )
+        sale_order = self.env['sale.order'].sudo().create({
+            'partner_id': self.partner.id,
+            'order_line': [
+                Command.create({'product_id': product.id, 'product_uom_qty': ordered_qty})
+            ],
+        })
+        sale_order.action_confirm()
+        picking = sale_order.picking_ids
+        picking.move_ids._set_quantity_done(delivered_qty)
+        action = picking.button_validate()
+        if isinstance(action, dict):  # Backorder confirmation, on a partial delivery.
+            Form.from_action(self.env, action).save().process()
+        self.assertEqual(sale_order.order_line.qty_delivered, delivered_qty)
+        return sale_order
+
+    def test_settle_partially_delivered_order_only_ships_the_remainder(self):
+        """Settling in the PoS collects the whole balance but only ships what is left to deliver."""
+        sale_order = self._create_delivered_sale_order(5, 2)
+
+        self.main_pos_config.open_ui()
+        pos_order = self._settle_in_pos(sale_order)
+
+        self.assertEqual(pos_order.lines.qty, 5, msg="The whole balance is collected")
+        self.assertEqual(pos_order.picking_ids.move_ids.quantity, 3)
+        self.assertEqual(
+            sale_order.order_line.qty_delivered,
+            5,
+            msg="The 2 quantities shipped by the warehouse must not be delivered again",
+        )
+
+    def test_settle_fully_delivered_order_ships_nothing(self):
+        """A fully delivered order can still be paid in the PoS, without shipping anything."""
+        sale_order = self._create_delivered_sale_order(5, 5)
+
+        self.main_pos_config.open_ui()
+        pos_order = self._settle_in_pos(sale_order)
+
+        self.assertEqual(pos_order.lines.qty, 5, msg="The whole balance is collected")
+        self.assertFalse(pos_order.picking_ids, msg="Nothing is left to deliver")
+        self.assertEqual(sale_order.order_line.qty_delivered, 5)
+
     def test_settle_order_with_different_product(self):
         """This test create an order and settle it in the PoS. But only one of the product is delivered.
             And we need to make sure the quantity are correctly updated on the sale order.
@@ -338,11 +388,9 @@ class TestPoSSaleStock(TestPosStockHttpCommon, TestPoSSale):
         warehouse = self.env['stock.warehouse'].search([('company_id', '=', self.env.company.id)], limit=1)
         warehouse.delivery_steps = 'pick_pack_ship'
         warehouse.reception_steps = 'three_steps'
-        self.env.ref('stock.route_warehouse0_mto').active = True
-        route_buy = self.env.ref('purchase_stock.route_warehouse0_buy')
-        route_mto = self.env.ref('stock.route_warehouse0_mto')
+        route_mto = warehouse.mto_pull_id.route_id
+        route_mto.active = True
         route_mto.rule_ids.procure_method = 'mts_else_mto'
-        (route_buy + route_mto).product_selectable = True
         self.partner_test = self.env['res.partner'].create({
             'name': 'Partner Test A',
             'street': '77 Santa Barbara Rd',
@@ -364,7 +412,7 @@ class TestPoSSaleStock(TestPosStockHttpCommon, TestPoSSale):
                 'min_qty': 1.0,
                 'price': 1.0,
             })],
-            'route_ids': [(6, 0, [route_buy.id, route_mto.id])],
+            'route_ids': [Command.set([route_mto.id])],
         })
 
         sale_order = self.env['sale.order'].sudo().create({
@@ -410,7 +458,7 @@ class TestPoSSaleStock(TestPosStockHttpCommon, TestPoSSale):
     def test_settle_order_ship_later_effect_on_so(self):
         """This test create an order, settle it in the PoS and ship it later.
             We need to make sure that the quantity delivered on the original sale is updated correctly,
-            And that the picking associated to the original sale order is cancelled.
+            And that no picking is created for the original sale order, as the PoS picking delivers it.
         """
 
         product_a = self.env['product.product'].create({
@@ -488,8 +536,7 @@ class TestPoSSaleStock(TestPosStockHttpCommon, TestPoSSale):
             },
         }], partner=partner_test, shipping_date=fields.Date.today())
 
-        self.assertEqual(len(sale_order_single.picking_ids), 1)
-        self.assertEqual(sale_order_single.picking_ids.state, "cancel")
+        self.assertFalse(sale_order_single.picking_ids)
         self.assertEqual(len(sale_order_single.pos_order_line_ids.order_id.picking_ids), 1)
         self.assertEqual(sale_order_single.pos_order_line_ids.order_id.picking_ids.state, "assigned")
 
@@ -506,8 +553,7 @@ class TestPoSSaleStock(TestPosStockHttpCommon, TestPoSSale):
         self.assertEqual(sale_order_multi.order_line[0].qty_delivered, 0)
         self.assertEqual(sale_order_multi.order_line[1].qty_delivered, 0)
 
-        self.assertEqual(len(sale_order_multi.picking_ids), 1)
-        self.assertEqual(sale_order_multi.picking_ids.state, "cancel")
+        self.assertFalse(sale_order_multi.picking_ids)
         self.assertEqual(len(sale_order_multi.pos_order_line_ids.order_id.picking_ids), 1)
         self.assertEqual(sale_order_multi.pos_order_line_ids.order_id.picking_ids.state, "assigned")
 
@@ -671,9 +717,9 @@ class TestPoSSaleStock(TestPosStockHttpCommon, TestPoSSale):
             },
         }], partner=self.partner_a, to_invoice=True, is_refund=True, shipping_date='2023-01-01')
         pos_order_refund_record = self.env['pos.order'].browse(pos_order_refund_id)
-        self.assertEqual(sale_order.order_line.qty_delivered, 5)
-        for picking in pos_order_refund_record.picking_ids:
-            picking.button_validate()
+        # For both the normal refund and ship later + refund cases, we will create a picking with a negative quantity and validate it immediately.
+        self.assertEqual(len(pos_order_refund_record.picking_ids), 1)
+        self.assertEqual(pos_order_refund_record.picking_ids.state, 'done')
         self.assertEqual(sale_order.order_line.qty_delivered, 2)
 
     def test_amount_unpaid_with_downpayment_and_credit_note(self):
@@ -698,8 +744,8 @@ class TestPoSSaleStock(TestPosStockHttpCommon, TestPoSSale):
         }
 
         payment = self.env['sale.advance.payment.inv'].with_context(context).create({
-            'advance_payment_method': 'fixed',
-            'fixed_amount': 300,
+            'advance_payment_method': 'downpayment',
+            'amount': 300,
         })
         res = payment.create_invoices()
         invoice = self.env['account.move'].browse(res['res_id'])
@@ -808,3 +854,189 @@ class TestPoSSaleStock(TestPosStockHttpCommon, TestPoSSale):
             picking.button_validate()
         self.assertEqual(sale_order.order_line.qty_delivered, 0)
         self.assertEqual(sale_order.order_line.qty_invoiced, 0)
+
+    def test_settle_quotation_reordering_rule(self):
+        """ Settling a quotation in the PoS should not make the reordering rule
+        replenish the demand twice (once for the PoS picking, once for the SO delivery).
+        """
+        warehouse = self.main_pos_config.warehouse_id
+        reserve_location = self.env['stock.location'].create({
+            'name': 'Reserve',
+            'location_id': warehouse.view_location_id.id,
+        })
+        replenish_route = self.env['stock.route'].create({
+            'name': 'Replenish from Reserve',
+            'product_selectable': True,
+            'rule_ids': [Command.create({
+                'name': 'Reserve -> Stock',
+                'action': 'pull',
+                'picking_type_id': warehouse.int_type_id.id,
+                'location_src_id': reserve_location.id,
+                'location_dest_id': warehouse.lot_stock_id.id,
+                'procure_method': 'make_to_stock',
+            })],
+        })
+        product = self.env['product.product'].create({
+            'name': 'Product with reordering rule',
+            'is_storable': True,
+            'available_in_pos': True,
+            'lst_price': 10.0,
+        })
+        self.env['stock.quant']._update_available_quantity(product, warehouse.lot_stock_id, 10.0)
+        # Keep the settled quantity below the min: otherwise the replenishment is linked to the SO
+        # reference and gets cancelled along with the SO delivery, which would hide the extra demand.
+        self.env['stock.warehouse.orderpoint'].create({
+            'product_id': product.id,
+            'location_id': warehouse.lot_stock_id.id,
+            'route_id': replenish_route.id,
+            'product_min_qty': 7.0,
+            'product_max_qty': 10.0,
+            'trigger': 'auto',
+        })
+
+        sale_order = self.env['sale.order'].create({
+            'partner_id': self.partner_a.id,
+            'order_line': [Command.create({
+                'product_id': product.id,
+                'product_uom_qty': 4.0,
+                'price_unit': 10.0,
+            })],
+        })
+
+        self._settle_in_pos(sale_order)
+        self.assertEqual(sale_order.state, 'sale')
+        self.assertEqual(sale_order.order_line.qty_delivered, 4.0)
+        # The reordering rules are triggered by the PoS pickings when closing the session
+        self.main_pos_config.current_session_id.close_session_from_ui()
+
+        replenishment_moves = self.env['stock.move'].search([
+            ('product_id', '=', product.id),
+            ('location_id', '=', reserve_location.id),
+            ('state', '!=', 'cancel'),
+        ])
+        # The PoS order brought the stock from 10 to 6: 4 units are needed to reach the max of the reordering rule
+        self.assertEqual(sum(replenishment_moves.mapped('product_uom_qty')), 4.0)
+
+    def test_downpayment_goods_product_no_stock_move(self):
+        """ A down payment paid in the PoS is not a delivery: even when the down payment
+        product is a goods product, no stock move should be created for its sale order line.
+        """
+        self.main_pos_config.down_payment_product_id = self.env['product.product'].create({
+            'name': 'Down Payment Goods',
+            'type': 'consu',
+            'available_in_pos': True,
+            'taxes_id': False,
+        })
+        sale_order = self.env['sale.order'].create({
+            'partner_id': self.partner_a.id,
+            'order_line': [Command.create({
+                'product_id': self.product_a.id,
+                'product_uom_qty': 1.0,
+                'price_unit': 100.0,
+                'tax_ids': False,
+            })],
+        })
+        sale_order.action_confirm()
+
+        self._sync_paid_pos_downpayment(sale_order, [{'price_unit': 20.0}], percentage=20)
+
+        downpayment_line = sale_order.order_line.filtered('is_downpayment')
+        self.assertTrue(downpayment_line.pos_order_line_ids)
+        self.assertFalse(downpayment_line.move_ids)
+
+    def test_variant_popup_qty_free(self):
+        """
+        Tests that the variant popup will correctly display the qty_free instead
+        of the qty_remaining, like the other popups.
+        """
+        warehouse_2 = self.env['stock.warehouse'].create({
+            'name': 'Warehouse 2',
+            'code': 'WH2',
+            'company_id': self.env.company.id,
+        })
+        color = self.env['product.attribute'].create({
+            'name': 'Color',
+            'create_variant': 'always',
+        })
+        black, white = self.env['product.attribute.value'].create([
+            {'name': 'Black', 'attribute_id': color.id},
+            {'name': 'White', 'attribute_id': color.id}
+        ])
+        product_template = self.env['product.template'].create({
+            'name': 'Color Product',
+            'available_in_pos': True,
+            'is_storable': True,
+            'tracking': 'lot',
+            'attribute_line_ids': [Command.create({
+                'attribute_id': color.id,
+                'value_ids': [Command.set([black.id, white.id])]
+            })]
+        })
+
+        black_product = product_template.product_variant_ids.filtered(
+            lambda p: black in p.product_template_attribute_value_ids.product_attribute_value_id
+        )
+        lot_black = self.env['stock.lot'].create({
+            'name': 'LOT1',
+            'product_id': black_product.id,
+            'company_id': self.env.company.id,
+        })
+        self.env['stock.quant'].with_context(inventory_mode=True).create({
+            'product_id': black_product.id,
+            'inventory_quantity': 50,
+            'location_id': warehouse_2.lot_stock_id.id,
+            'lot_id': lot_black.id,
+        }).action_apply_inventory()
+
+        sale_order = self.env['sale.order'].create({
+            'partner_id': self.partner_a.id,
+            'warehouse_id': warehouse_2.id,
+            'order_line': [Command.create({
+                'product_id': black_product.id,
+                'product_uom_qty': 50,
+                'price_unit': 15.0,
+            })]
+        })
+        sale_order.action_confirm()
+        self.main_pos_config.with_user(self.pos_user).open_ui()
+        self.start_pos_tour('test_variant_popup_qty_free', login="pos_user")
+
+    def test_settle_mto_sale_order_with_manufacture_bom(self):
+        "Test that MTO+Manufacture product Sale order is correctly settled in POS"
+        if not self.env['ir.module.module'].search([('name', '=', 'mrp'), ('state', '=', 'installed')]):
+            self.skipTest('mrp module is required for this test')
+
+        self.env.user.group_ids |= self.env.ref('mrp.group_mrp_user')
+        warehouse = self.main_pos_config.warehouse_id
+        mto_route = warehouse.mto_pull_id.route_id
+        manufacture_route = warehouse.manufacture_pull_id.route_id
+        manufacture_route.product_selectable = True
+        mto_route.write({'active': True, 'product_selectable': True})
+        finished = self.env['product.product'].create({
+            'name': 'MTO Finished Product',
+            'available_in_pos': True,
+            'is_storable': True,
+            'lst_price': 100.0,
+            'route_ids': [Command.set([mto_route.id, manufacture_route.id])],
+        })
+        self.env['mrp.bom'].create({  # noqa: OLS03001
+            'product_tmpl_id': finished.product_tmpl_id.id,
+            'product_qty': 1.0,
+            'type': 'normal',
+            'bom_line_ids': [
+                Command.create({'product_id': self.product.id, 'product_qty': 1.0}),
+            ],
+        })
+        sale_order = self.env['sale.order'].create({
+            'partner_id': self.partner_a.id,
+            'warehouse_id': warehouse.id,
+            'order_line': [Command.create({
+                'product_id': finished.id,
+                'product_uom_qty': 2,
+                'price_unit': finished.lst_price,
+            })],
+        })
+        sale_order.action_confirm()
+        self.main_pos_config.open_ui()
+        pos_order = self._settle_in_pos(sale_order)
+        self.assertEqual(pos_order.state, 'paid')

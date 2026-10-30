@@ -417,20 +417,19 @@ class TestArManual(common.TestArCommon):
         self.assertAlmostEqual(l10n_ar_values['price_subtotal'], 124716.0)
         self.assertAlmostEqual(l10n_ar_values['price_net'], 5196.5)
 
-    def test_l10n_ar_vat_with_non_numeric_value(self):
+    def test_l10n_ar_identification_with_non_numeric_value(self):
+        """ A non-numeric DNI or CUIL is rejected by its format validation, while a
+        passport accepts alphanumeric values (mirrors the pre-JSON identification test). """
         partner = self.env["res.partner"].create({"name": "AR Company", "country_id": self.env.ref("base.ar").id})
 
-        with self.assertRaisesRegex(ValidationError, 'Only numbers allowed for "DNI"'):
-            partner.l10n_latam_identification_type_id = self.env.ref("l10n_ar.it_dni")
-            partner.vat = "test"
+        with self.assertRaisesRegex(ValidationError, 'DNI'):
+            partner.additional_identifiers = {'AR_DNI': 'test'}
 
-        with self.assertRaisesRegex(ValidationError, 'Only numbers allowed for "CUIL"'):
-            partner.l10n_latam_identification_type_id = self.env.ref("l10n_ar.it_CUIL")
-            partner.vat = "1234567890a"
+        with self.assertRaisesRegex(ValidationError, 'CUIL'):
+            partner.additional_identifiers = {'AR_CUIL': '1234567890a'}
 
-        partner.l10n_latam_identification_type_id = self.env.ref("l10n_latam_base.it_pass")
-        partner.vat = "A12345678"
-        self.assertEqual(partner.vat, "A12345678")
+        partner.additional_identifiers = {'PASSPORT': 'A12345678'}
+        self.assertEqual(partner.additional_identifiers.get('PASSPORT'), 'A12345678')
 
     def test_l10n_ar_get_invoice_totals_for_report_refund_with_same_code(self):
         """Test _l10n_ar_get_invoice_totals_for_report for refund invoices with ARCA codes that can be used for both invoice and refund"""
@@ -499,6 +498,28 @@ class TestArManual(common.TestArCommon):
         debit_note_wizard.create_debit()
         self.assertTrue(invoice.reversal_move_ids.debit_note_ids)
 
+    def test_l10n_ar_get_invoice_totals_for_report_refund_with_same_code_vat_included(self):
+        """Same as above but with document type 188 (letter B): VAT is not detailed on the report and is folded
+        into the base amount. The sign must be applied only once so the totals stay negative on this path too."""
+        doc_188_lp_b = self.env.ref('l10n_ar.dc_liq_cd_sp_b')
+
+        credit_note = self._create_invoice_ar(
+            ref='test_credit_note_refund: Credit note with document type 188 for refund test',
+            move_type='out_refund',
+            partner_id=self.res_partner_adhoc,
+            company_id=self.company_ri,
+            invoice_date="2021-03-20",
+            l10n_latam_document_type_id=doc_188_lp_b,
+        )
+
+        self.assertTrue(credit_note._l10n_ar_is_refund_invoice())
+        self.assertTrue(credit_note._l10n_ar_include_vat())
+
+        tax_totals = credit_note._l10n_ar_get_invoice_totals_for_report()
+        self.assertEqual(tax_totals['base_amount_currency'], -121.0)
+        self.assertEqual(tax_totals['tax_amount_currency'], 0.0)
+        self.assertEqual(tax_totals['total_amount_currency'], -121.0)
+
     def test_pre_printed_invoice_warning(self):
         """Test that a warning is included when at an Invoice using a 'Pre-printed Invoice' Journal."""
         invoice = self._create_invoice_ar()  # Created with 'Pre-printed Invoice' Journal
@@ -543,3 +564,18 @@ class TestArManual(common.TestArCommon):
             invoice.l10n_latam_document_type_id, self.document_type['invoice_b'],
             'Document type should default to Invoice B when no export journal is available',
         )
+
+    def test_get_vat_aliquot_cancelled_out_by_down_payment(self):
+        """ An aliquot whose base and tax cancel out (final invoice deducting a 100% down
+        payment) must not be reported: both amounts sent to ARCA would be 0.00 """
+        invoice = self._create_invoice_ar(
+            invoice_line_ids=[
+                self._prepare_invoice_line(product_id=self.product_iva_21, price_unit=1565963.28, tax_ids=self.tax_21),
+                self._prepare_invoice_line(product_id=self.product_iva_21, price_unit=2540664.0, tax_ids=self.tax_21),
+                # down payment deduction: cancels the lines above, but summing the rounded
+                # amounts leaves a floating point residual (~4.66e-10) that is not exactly zero
+                self._prepare_invoice_line(product_id=self.product_iva_21, price_unit=4106627.28, quantity=-1, tax_ids=self.tax_21),
+            ],
+        )
+        self.assertEqual(invoice.amount_total, 0.0)
+        self.assertEqual(invoice._get_vat(), [])

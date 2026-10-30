@@ -23,7 +23,7 @@ export class PaymentPage extends Component {
         });
 
         onMounted(() => {
-            if (this.selfOrder.models["pos.payment.method"].length === 1) {
+            if (this.canAutoSelectFirstMethod()) {
                 this.selectMethod(this.selfOrder.models["pos.payment.method"].getFirst().id);
             }
         });
@@ -31,6 +31,10 @@ export class PaymentPage extends Component {
         onWillUnmount(() => {
             this.selfOrder.paymentError = false;
         });
+    }
+
+    canAutoSelectFirstMethod() {
+        return this.selfOrder.models["pos.payment.method"].length === 1;
     }
 
     async back() {

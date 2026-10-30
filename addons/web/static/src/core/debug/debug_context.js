@@ -1,4 +1,12 @@
-import { config, onWillDestroy, Plugin, providePlugins, usePlugin, useScope } from "@odoo/owl";
+import {
+    onWillDestroy,
+    Plugin,
+    providePlugins,
+    t,
+    useConfig,
+    usePlugin,
+    useScope,
+} from "@odoo/owl";
 import { DebugModePlugin } from "@web/core/debug_mode_plugin";
 import { registry } from "@web/core/registry";
 import { services } from "@web/core/services";
@@ -20,7 +28,7 @@ const getAccessRights = async () => {
 };
 
 class DebugContextPlugin extends Plugin {
-    categories = config("categories") ?? new Map();
+    categories = useConfig("categories", t.object().optional(new Map()));
     scope = useScope();
 
     activateCategory(category, context) {
@@ -36,7 +44,7 @@ class DebugContextPlugin extends Plugin {
         };
     }
 
-    async getItems(env) {
+    async getItems() {
         const accessRights = await getAccessRights();
         return [...this.categories.entries()]
             .flatMap(([category, contexts]) =>
@@ -45,7 +53,7 @@ class DebugContextPlugin extends Plugin {
                     .getAll()
                     .map((factory) =>
                         this.scope.run(() =>
-                            factory(Object.assign({ env, accessRights }, ...contexts))
+                            factory(Object.assign({ accessRights }, ...contexts))
                         )
                     )
             )

@@ -55,12 +55,12 @@ def _select_nextval(cr, seq_name):
 
 
 def _update_nogap(self, number_increment):
-    self.flush_recordset(['number_next'])
     number_next = self.number_next
-    self.env.cr.execute("SELECT number_next FROM %s WHERE id=%%s FOR UPDATE NOWAIT" % self._table, [self.id])
-    self.env.cr.execute("UPDATE %s SET number_next=number_next+%%s WHERE id=%%s " % self._table, (number_increment, self.id))
     self.invalidate_recordset(['number_next'])
+    self.env.cr.execute(SQL("SELECT number_next FROM %s WHERE id=%s FOR UPDATE NOWAIT", self._table_sql, self.id))
+    self.env.cr.execute(SQL("UPDATE %s SET number_next = number_next + %s WHERE id = %s", self._table_sql, number_increment, self.id))
     return number_next
+
 
 def _predict_nextval(self, seq_id):
     """Predict next value for PostgreSQL sequence without consuming it"""
@@ -178,9 +178,9 @@ class IrSequence(models.Model):
                 _create_sequence(self.env.cr, "ir_sequence_%03d" % seq.id, seq.number_increment or 1, seq.number_next or 1)
         return seqs
 
-    def unlink(self):
+    @api.ondelete(at_uninstall=True)
+    def _unlink_drop_sequences(self):
         _drop_sequences(self.env.cr, ["ir_sequence_%03d" % x.id for x in self])
-        return super().unlink()
 
     def write(self, vals):
         new_implementation = vals.get('implementation')
@@ -323,7 +323,9 @@ class IrSequenceDate_Range(models.Model):
         '''Return number from ir_sequence row when no_gap implementation,
         and number from postgres sequence when standard implementation.'''
         for seq in self:
-            if seq.sequence_id.implementation != 'standard':
+            if not seq.id:
+                seq.number_next_actual = 0
+            elif seq.sequence_id.implementation != 'standard':
                 seq.number_next_actual = seq.number_next
             else:
                 seq_id = "%03d_%03d" % (seq.sequence_id.id, seq.id)
@@ -371,9 +373,9 @@ class IrSequenceDate_Range(models.Model):
                 _create_sequence(self.env.cr, "ir_sequence_%03d_%03d" % (main_seq.id, seq.id), main_seq.number_increment, seq.number_next_actual or 1)
         return seqs
 
-    def unlink(self):
+    @api.ondelete(at_uninstall=True)
+    def _unlink_drop_sequences(self):
         _drop_sequences(self.env.cr, ["ir_sequence_%03d_%03d" % (x.sequence_id.id, x.id) for x in self])
-        return super().unlink()
 
     def write(self, vals):
         if vals.get('number_next'):

@@ -2,7 +2,7 @@
 
 import { session } from "@web/session";
 import { cookie } from "@web/core/browser/cookie";
-import { deserializeDateTime } from "@web/core/l10n/dates";
+import { deserializeDateTime, deserializeDate } from "@web/core/l10n/dates";
 import { Time } from "@web/core/l10n/time";
 import { _t } from "@web/core/l10n/translation";
 
@@ -21,43 +21,6 @@ export function uuidv4() {
     });
 }
 
-export function constructAttributeString(line) {
-    let attributeString = "";
-
-    if (line.attribute_value_ids && line.attribute_value_ids.length > 0) {
-        for (const value of line.attribute_value_ids) {
-            if (value.is_custom) {
-                const customValue = line.custom_attribute_value_ids.find(
-                    (cus) =>
-                        cus.custom_product_template_attribute_value_id?.id == parseInt(value.id)
-                );
-                if (customValue) {
-                    attributeString += `${value.attribute_id.name}: ${value.name}: ${customValue.custom_value}, `;
-                }
-            } else {
-                attributeString += `${value.name}, `;
-            }
-        }
-
-        attributeString = attributeString.slice(0, -2);
-    } else if (
-        attributeString === "" &&
-        line?.product_id?.product_template_variant_value_ids?.length > 0
-    ) {
-        attributeString = line.product_id.product_template_variant_value_ids
-            ?.map((attr) => attr.name)
-            .join(", ");
-    }
-
-    return attributeString;
-}
-
-export function constructFullProductName(line) {
-    const attributeString = constructAttributeString(line);
-    return attributeString
-        ? `${line?.product_id?.name} (${attributeString})`
-        : `${line?.product_id?.name}`;
-}
 /**
  * Returns a random 5 digits alphanumeric code
  * @returns {string}
@@ -93,27 +56,6 @@ export function getMin(entries, options) {
 export function getOnNotified(bus, channel) {
     bus.addChannel(channel);
     return (notif, callback) => bus.subscribe(`${channel}-${notif}`, callback);
-}
-
-/**
- * Loading image is converted to a Promise to allow await when
- * loading an image. It resolves to the loaded image if successful,
- * else, resolves to false.
- *
- * [Source](https://stackoverflow.com/questions/45788934/how-to-turn-this-callback-into-a-promise-using-async-await)
- */
-export function loadImage(url, options = {}) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.addEventListener("load", () => resolve(img));
-        img.addEventListener("error", () => {
-            if (options.onError) {
-                options.onError();
-            }
-            reject(new Error(`Failed to load image at ${url}`));
-        });
-        img.src = url;
-    });
 }
 
 /**
@@ -294,7 +236,7 @@ export function imageDataUri(base64Source) {
 }
 
 export function getDisplayDateInfo(sqlDate) {
-    const dateTime = deserializeDateTime(sqlDate);
+    const dateTime = deserializeDate(sqlDate);
     if (!dateTime.isValid) {
         return {
             dayLabel: "",

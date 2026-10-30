@@ -25,7 +25,10 @@ class HrLeaveAllocationGenerateMultiWizard(models.TransientModel):
         return domain
 
     def _domain_work_entry_type_id(self):
-        domain = [('requires_allocation', '=', True)]
+        domain = [
+            ('requires_allocation', '=', True),
+            ('time_off_selectable', '=', True),
+        ]
         if self.env.user.has_group('hr_holidays.group_hr_holidays_user'):
             return domain
         return Domain.AND([domain, [('employee_requests', '=', True)]])
@@ -98,14 +101,16 @@ class HrLeaveAllocationGenerateMultiWizard(models.TransientModel):
             allocations = self.env['hr.leave.allocation'].with_context(
                 mail_notify_force_send=False,
                 mail_activity_automation_skip=True,
+                allocation_skip_auto_approve=True,
             ).create(vals_list)
             accrual_allocations = allocations.filtered('accrual_plan_id')
             if not self.duration:
                 for date_to, allocation in accrual_allocations.grouped('date_to').items():
                     date_to = min(date_to, date.today()) if date_to else False
-                    update_vals = allocation._get_initialize_accrual_plan_values(self.date_from)
+                    update_vals = allocation._get_init_accrual_plan_values()
+                    update_vals['date_from'] = self.date_from
                     allocation.update(update_vals)
-                    allocation._process_accrual_plans(date_to)
+                    allocation._update_accrual(date_to)
             allocations.filtered(lambda c: c.validation_type not in ('no_validation', 'hr')).action_approve()
             if self.env.user.has_group('hr_holidays.group_hr_holidays_user'):
                 allocations.filtered(lambda c: c.validation_type == 'hr').action_approve()

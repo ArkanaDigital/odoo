@@ -12,6 +12,7 @@ from lxml.builder import E
 from psycopg2 import IntegrityError
 from psycopg2.extras import Json
 
+from odoo import fields
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests import common, tagged
 from odoo.addons.base.tests.common import TransactionCaseWithUserDemo
@@ -2259,6 +2260,30 @@ class TestViews(ViewCase):
 
                 self.assertXMLEqual(view[field], original_value)
 
+    def test_xml_editor_creates_view_with_model_id(self):
+        """Check that a new view is validated against the model picked in the form."""
+        view = self.View.create({
+            'name': 'new_model_id_view',
+            'type': 'list',
+            'model_id': self.env['ir.model']._get_id('res.partner.category'),
+            'arch_base': '<list><field name="name"/></list>',
+        })
+        self.assertEqual(view.model, 'res.partner.category')
+
+    def test_xml_editor_changes_model_id_and_arch(self):
+        """Check that changing a view's model and architecture at once uses the new model."""
+        view = self.View.create({
+            'name': 'edited_model_id_view',
+            'type': 'list',
+            'model': 'res.partner.category',
+            'arch_base': '<list><field name="name"/></list>',
+        })
+        view.write({
+            'model_id': self.env['ir.model']._get_id('res.users'),
+            'arch_base': '<list><field name="login"/></list>',
+        })
+        self.assertEqual(view.model, 'res.users')
+
     def test_context_in_view(self):
         arch = """
             <form string="View">
@@ -2668,6 +2693,73 @@ class TestViews(ViewCase):
             '''Invalid domain of <filter name="draft">: “['name', '=', 'dummy']”''',
         )
 
+    def test_date_in_filter(self):
+        arch = """
+            <search string="Search">
+                <field name="name"/>
+                <filter string="Dummy" name="dummy" %s/>
+            </search>
+        """
+        self.assertValid(arch % 'date="create_date" end_date="write_date"')
+        self.assertInvalid(
+            arch % 'end_date="write_date"',
+            'Attribute "end_date" requires a "date" attribute',
+        )
+        self.assertInvalid(
+            arch % 'date="invalid_field"',
+            'Field "invalid_field" does not exist in model "ir.ui.view"',
+        )
+        self.assertInvalid(
+            arch % 'date="name"',
+            'Field "name" in attribute "date" must be a date or datetime field',
+        )
+        self.assertInvalid(
+            arch % 'date="create_date" end_date="invalid_field"',
+            'Field "invalid_field" does not exist in model "ir.ui.view"',
+        )
+        self.assertInvalid(
+            arch % 'date="create_date" end_date="name"',
+            'Field "name" in attribute "end_date" must be a date or datetime field',
+        )
+        # a filter cannot be applied on a field that cannot be searched
+        self.assertInvalid(
+            arch % 'date="create_date" end_date="rate_date"',
+            'Unsearchable field "rate_date" in attribute "end_date"',
+            model='res.currency',
+        )
+
+    def test_date_in_filter_groups_behavior(self):
+        self.patch(self.env.registry['res.partner']._fields['write_date'], 'groups', 'base.group_system')
+        view = self.View.create({
+            'name': 'foo',
+            'model': 'res.partner',
+            'arch': """
+                <search>
+                    <field name="name"/>
+                    <filter name="creation" string="Creation" date="create_date"/>
+                    <filter name="modification" string="Modification" date="write_date"/>
+                    <filter name="period" string="Period" date="create_date" end_date="write_date"/>
+                </search>
+            """,
+        })
+        user_demo = self.user_demo
+        # Make sure demo doesn't have the base.group_system
+        self.assertFalse(user_demo.has_group('base.group_system'))
+        arch = self.env['res.partner'].with_user(user_demo).get_view(view_id=view.id)['arch']
+        tree = etree.fromstring(arch)
+        self.assertTrue(tree.xpath('//filter[@name="creation"]'))
+        self.assertFalse(tree.xpath('//filter[@name="modification"]'))
+        self.assertFalse(tree.xpath('//filter[@name="period"]'))
+
+        user_admin = self.env.ref('base.user_admin')
+        # Make sure admin has the base.group_system
+        self.assertTrue(user_admin.has_group('base.group_system'))
+        arch = self.env['res.partner'].with_user(user_admin).get_view(view_id=view.id)['arch']
+        tree = etree.fromstring(arch)
+        self.assertTrue(tree.xpath('//filter[@name="creation"]'))
+        self.assertTrue(tree.xpath('//filter[@name="modification"]'))
+        self.assertTrue(tree.xpath('//filter[@name="period"]'))
+
     def test_searchpanel(self):
         arch = """
             <search>
@@ -2779,6 +2871,37 @@ class TestViews(ViewCase):
         self.assertTrue(tree.xpath('//field[@name="company_id"]'))
         self.assertTrue(tree.xpath('//div[@id="foo"]'))
         self.assertTrue(tree.xpath('//div[@id="bar"]'))
+
+    def test_pivot_decoration_validation(self):
+        self.assertValid("""
+            <pivot string="View">
+                <field name="priority" type="measure" decoration-danger="priority &lt; 0" decoration-success="priority &gt;= 16"/>
+            </pivot>
+        """)
+        self.assertInvalid(
+            """
+            <pivot string="View">
+                <field name="priority" type="measure" decoration-danger="name == 'foo'"/>
+            </pivot>
+            """,
+            """Decoration decoration-danger=“name == 'foo'” on field “priority” can only reference the field itself, found: name""",
+        )
+        self.assertInvalid(
+            """
+            <pivot string="View">
+                <field name="priority" type="measure" decoration-danger="priority &lt; 0 and unknown_name"/>
+            </pivot>
+            """,
+            """Decoration decoration-danger=“priority < 0 and unknown_name” on field “priority” can only reference the field itself, found: unknown_name""",
+        )
+        self.assertInvalid(
+            """
+            <pivot string="View">
+                <field name="priority" type="row" decoration-danger="priority &lt; 0"/>
+            </pivot>
+            """,
+            """Decoration decoration-danger=“priority < 0” on field “priority” is only supported on measures (type=“measure”)""",
+        )
 
     def test_attrs_groups_validation(self):
         def validate(arch, valid=False, parent=False, field='name', model='ir.ui.view'):
@@ -4835,8 +4958,6 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
     def test_uncommented_invisible_field(self):
         # NEVER add new name in this list ! The new addons must add comment for all always invisible field.
         only_log_modules = (
-            'account',
-            'account_accountant',
             'account_asset',
             'account_asset_fleet',
             'account_auto_transfer',
@@ -4844,7 +4965,6 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
             'account_avatax_geolocalize',
             'account_base_import',
             'account_budget',
-            'account_check_printing',
             'account_consolidation',
             'account_debit_note',
             'account_disallowed_expenses',
@@ -4852,31 +4972,15 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
             'account_edi_proxy_client',
             'account_external_tax',
             'account_fleet',
-            'account_followup',
             'account_intrastat',
-            'account_invoice_extract',
-            'account_online_synchronization',
-            'account_payment',
             'account_peppol',
             'account_qr_code_emv',
-            'account_reports',
             'account_saft_import',
             'account_sepa',
-            'account_sepa_direct_debit',
-            'account_winbooks_import',
-            'analytic',
             'appointment',
             'approvals',
             'approvals_purchase_stock',
-            'auth_totp',
-            'barcodes_gs1_nomenclature',
-            'base_address_extended',
             'base_automation',
-            'base_geolocalize',
-            'base_import_module',
-            'base_install_request',
-            'base_setup',
-            'calendar',
             'crm',
             'crm_helpdesk',
             'crm_iap_enrich',
@@ -4894,7 +4998,6 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
             'delivery_ups',
             'delivery_ups_rest',
             'delivery_usps',
-            'digest',
             'documents',
             'documents_account',
             'documents_approvals',
@@ -4918,39 +5021,27 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
             'helpdesk_stock',
             'helpdesk_stock_account',
             'helpdesk_timesheet',
-            'hr',
             'hr_appraisal',
             'hr_appraisal_survey',
-            'hr_attendance',
             'hr_contract',
             'hr_contract_salary',
             'hr_expense',
             'hr_expense_extract',
             'hr_fleet',
             'hr_gamification',
-            'hr_holidays',
-            'hr_holidays_attendance',
             'hr_maintenance',
             'hr_payroll',
             'hr_payroll_account',
             'hr_payroll_expense',
-            'hr_recruitment',
-            'hr_recruitment_extract',
             'hr_recruitment_sign',
-            'hr_recruitment_skills',
             'hr_recruitment_survey',
-            'hr_referral',
             'hr_sign',
-            'hr_skills',
-            'hr_skills_slides',
+            'hr_slides',
             'hr_timesheet',
-            'hr_work_entry',
             'im_livechat',
-            'knowledge',
             'l10n_ae_hr_payroll',
             'l10n_ar',
             'l10n_ar_edi',
-            'l10n_ar_withholding',
             'l10n_au_hr_payroll',
             'l10n_au_hr_payroll_account',
             'l10n_be_codabox',
@@ -5003,7 +5094,6 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
             'l10n_it_edi_sale',
             'l10n_it_stock_ddt',
             'l10n_it_xml_export',
-            'l10n_jo_edi',
             'l10n_jo_hr_payroll',
             'l10n_ke_edi_oscu',
             'l10n_ke_edi_oscu_mrp',
@@ -5048,8 +5138,6 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
             'l10n_us_hr_payroll',
             'l10n_uy_edi',
             'loyalty',
-            'lunch',
-            'mail',
             'mail_group',
             'maintenance',
             'marketing_automation',
@@ -5059,9 +5147,6 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
             'mass_mailing_slides',
             'mass_mailing_sms',
             'membership',
-            'mrp',
-            'mrp_account',
-            'mrp_account_enterprise',
             'mrp_landed_costs',
             'mrp_maintenance',
             'mrp_mps',
@@ -5069,22 +5154,11 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
             'mrp_product_expiry',
             'mrp_subcontracting',
             'mrp_subcontracting_dropshipping',
-            'mrp_workorder',
-            'onboarding',
-            'partner_autocomplete',
-            'payment',
             'payment_adyen',
             'payment_custom',
-            'planning',
-            'point_of_sale',
-            'portal',
-            'pos_hr',
             'pos_iot',
-            'pos_online_payment',
             'pos_restaurant',
             'pos_restaurant_appointment',
-            'privacy_lookup',
-            'product',
             'product_email_template',
             'product_expiry',
             'product_margin',
@@ -5093,29 +5167,16 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
             'project_timesheet_forecast',
             'project_timesheet_holidays',
             'project_todo',
-            'purchase',
             'purchase_product_matrix',
             'purchase_requisition',
-            'purchase_stock',
-            'quality',
-            'quality_control',
             'quality_control_iot',
-            'quality_control_picking_batch',
-            'quality_mrp',
-            'quality_mrp_workorder',
             'rating',
             'repair',
-            'resource',
             'room',
-            'sale',
             'sale_amazon',
             'sale_crm',
             'sale_expense',
             'sale_loyalty',
-            'sale_management',
-            'sale_margin',
-            'sale_pdf_quote_builder',
-            'sale_planning',
             'sale_product_matrix',
             'sale_project',
             'sale_renting',
@@ -5124,9 +5185,7 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
             'sale_subscription',
             'sale_timesheet',
             'sale_timesheet_enterprise',
-            'sales_team',
             'sign',
-            'sms',
             'snailmail',
             'social',
             'social_crm',
@@ -5136,25 +5195,15 @@ class TestInvisibleField(TransactionCaseWithUserDemo):
             'social_push_notifications',
             'social_twitter',
             'social_youtube',
-            'spreadsheet_dashboard_edition',
             'spreadsheet_dashboard_sale_subscription',
-            'stock',
-            'stock_account',
-            'stock_barcode',
-            'stock_barcode_mrp',
-            'stock_barcode_picking_batch',
             'stock_barcode_product_expiry',
             'stock_delivery',
-            'stock_enterprise',
             'stock_intrastat',
             'stock_landed_costs',
-            'stock_picking_batch',
             'survey',
             'test_tests',
             'timesheet_grid',
-            'utm',
             'voip',
-            'web',
             'web_studio',
         )
 
@@ -6064,3 +6113,23 @@ class ViewModifiers(ViewCase):
                 'inherit_id': parent_view.id,
                 'arch': inherit_arch,
             })
+
+
+class TestPropertiesFieldViewValidation(ViewCase):
+
+    def test_properties_field_without_definition_record(self):
+        """A ``properties`` field whose ``definition_record`` is not set
+        (e.g. the module declaring ``definition=`` is absent, as happens
+        during upgrade with custom module fields) must not crash view validation."""
+
+        model_name = 'ir.ui.view.custom'
+        model_class = self.env.registry[model_name]
+        dummy_field = fields.Properties(string="Dummy Properties", name='x_dummy_properties')
+        dummy_field.model_name = model_name
+
+        self.patch(model_class, '_fields', dict(model_class._fields, x_dummy_properties=dummy_field))
+
+        self.assertValid(
+            '<form><field name="x_dummy_properties"/></form>',
+            model=model_name,
+        )

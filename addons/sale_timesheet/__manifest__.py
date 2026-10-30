@@ -30,6 +30,7 @@ have real delivered quantities in sales orders.
         'report/project_report_view.xml',
         'wizard/sale_make_invoice_advance_views.xml',
         'security/ir.access.csv',
+        'data/mail_template_data.xml',
     ],
     'demo': [
         'data/sale_service_demo.xml',
@@ -38,7 +39,7 @@ have real delivered quantities in sales orders.
     'uninstall_hook': 'uninstall_hook',
     'assets': {
         'web.assets_frontend': [
-            'sale_timesheet/static/src/scss/sale_timesheet_portal.scss',
+            'sale_timesheet/static/src/scss/sale_timesheet_portal.css',
         ],
         'web.assets_backend': [
             'sale_timesheet/static/src/components/**/*',

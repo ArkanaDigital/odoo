@@ -13,11 +13,9 @@ Plan contable chileno e impuestos de acuerdo a disposiciones vigentes.
     'category': 'Accounting/Localizations/Account Charts',
     'depends': [
         'contacts',
-        'l10n_latam_base',
         'l10n_latam_invoice_document',
         'uom',
         'account',
-        'portal_address_extended',
     ],
     'auto_install': ['account'],
     'data': [
@@ -31,7 +29,6 @@ Plan contable chileno e impuestos de acuerdo a disposiciones vigentes.
         'data/l10n_cl_chart_data.xml',
         'data/account_tax_report_data.xml',
         'data/account_tax_tags_data.xml',
-        'data/l10n_latam_identification_type_data.xml',
         'data/l10n_latam.document.type.csv',
         'data/product_data.xml',
         'data/uom_data.xml',

@@ -163,6 +163,26 @@ class BaseFollowersTest(MailCommon):
         self.assertEqual(document.message_partner_ids, self.partner_portal, 'No active test: customer not visible')
         self.assertEqual(document.message_follower_ids.partner_id, self.partner_portal | customer)
 
+    def test_followers_public_user_self_added(self):
+        """ The public user cannot subscribe themselves to followers """
+        public_user = self.env.ref('base.public_user')
+        public_partner = public_user.partner_id
+        test_record = self.test_record.with_user(public_user).sudo()
+
+        self.assertNotIn(public_partner, test_record.message_partner_ids)
+        test_record.message_subscribe(partner_ids=public_partner.ids)
+        self.assertNotIn(public_partner, test_record.message_partner_ids)
+
+    def test_followers_public_user_added_by_other_user(self):
+        """ The public user cannot be subscribed by other users """
+        public_user = self.env.ref('base.public_user')
+        public_partner = public_user.partner_id
+        test_record = self.test_record
+
+        self.assertNotEqual(test_record.env.user, public_user)
+        test_record.message_subscribe(partner_ids=public_partner.ids)
+        self.assertNotIn(public_partner, test_record.message_partner_ids)
+
     @users('employee')
     @mute_logger('odoo.models.unlink')
     def test_followers_inverse_message_partner(self):
@@ -673,6 +693,7 @@ class RecipientsNotificationTest(MailCommon):
                     self.assertEqual(partner_data['groups'], set())
                     self.assertEqual(partner_data['notif'], 'email')
                     self.assertFalse(partner_data['uid'])
+                self.assertEqual(partner_data['uids'], partner.user_ids.sorted(lambda u: (u.share, u.id)).ids)
                 if record:
                     self.assertEqual(partner_data['is_follower'], partner in record.message_partner_ids)
                 else:
@@ -1008,7 +1029,7 @@ class UnfollowLinkTest(MailCommon, HttpCase):
         )
         # The user doesn't follow the record
         self.authenticate(self.env.user.login, self.env.user.login)
-        data = self.make_jsonrpc_request("/mail/store", {"fetch_params": [["/mail/messaging_menu/mail.message/load_more", {"tab_id": "notification", "filter_id": "notification_unread", "limit": 20}]]})
+        data = self.make_jsonrpc_request("/mail/store", {"fetch_params": [["/mail/messaging_menu/mail.message/load_more", {"tab_id": "notification", "filter_ids": ["notification_unread"], "limit": 20}]]})
         self.assertFalse(data["mail.thread"][0]["selfFollower"])
         self.assertFalse(data.get("mail.followers"), "Should not have void followers data")
         self.assertFalse(test_record.with_user(self.user_employee).message_is_follower)
@@ -1018,7 +1039,7 @@ class UnfollowLinkTest(MailCommon, HttpCase):
         follower = test_record.message_follower_ids.filtered(
             lambda follower: follower.partner_id == self.env.user.partner_id
         )
-        data = self.make_jsonrpc_request("/mail/store", {"fetch_params": [["/mail/messaging_menu/mail.message/load_more", {"tab_id": "notification", "filter_id": "notification_unread", "limit": 20}]]})
+        data = self.make_jsonrpc_request("/mail/store", {"fetch_params": [["/mail/messaging_menu/mail.message/load_more", {"tab_id": "notification", "filter_ids": ["notification_unread"], "limit": 20}]]})
         self.assertEqual(data["mail.followers"], [
             {
                 "id": follower.id,

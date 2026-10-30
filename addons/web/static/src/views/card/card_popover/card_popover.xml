@@ -7,7 +7,7 @@
             <t t-call="{{ this.templates[this.constructor.HEADER_ATTRIBUTE] }}"
                 t-call-context="this.renderingContext"/>
         </div>
-        <div class="o_popover_body o_cw_body flex-grow-1 flex-shrink-1 overflow-y-auto p-3">
+        <div class="o_popover_body o_calendar_body flex-grow-1 flex-shrink-1 overflow-y-auto p-3">
             <t t-call="web.CardRenderer"/>
         </div>
         <div class="o_popover_footer flex-shrink-0 d-flex gap-1 p-3 border-top">
@@ -23,7 +23,7 @@
         <div t-att-class="this.props.rootClass">
             <div class="o_card_popover_close p-1 cursor-pointer d-flex justify-content-center position-absolute top-0 end-0"
                 t-on-click.stop="this.props.close">
-                <i class="oi" data-icon="close_small"></i>
+                <i class="oi" data-icon="close"></i>
             </div>
             <CardPopoverCard t-props="this.cardProps">
                 <t t-set-slot="defaultFooter">

@@ -93,7 +93,7 @@ beforeEach(() => {
             subtask_count: 0,
             child_ids: [],
             state: "01_in_progress",
-            user_ids: [7],
+            user_ids: [7, 8],
         },
         {
             id: 8,
@@ -178,6 +178,11 @@ test("project.task (kanban): check subtask list", async () => {
         message:
             "Each of the list's rows should display the subtask's name, thus we are looking for 3 in total",
     });
+    expect(
+        ".subtask_list_row:has(.subtask_name_col:contains('Task 7 (Project 1)')) .subtask_user_widget_col img.o_m2m_avatar"
+    ).toHaveCount(2, {
+        message: "All inherited assignees should be displayed on the subtask kanban row",
+    });
 
     await click(".subtask_list_button");
     await animationFrame();
@@ -206,7 +211,7 @@ test("project.task (kanban): check closed subtask count update", async () => {
     const inProgressStatesSelector = `
         .subtask_list
         .o_field_widget.o_field_project_task_state_selection.subtask_state_widget_col
-        .o_status:not(.o_status_green,.o_status_bubble)
+        [title="In Progress"] .o_status:not(.o_status_green,.o_status_bubble)
     `;
     expect(inProgressStatesSelector).toHaveCount(1, {
         message: "The state of the subtask should be in progress",

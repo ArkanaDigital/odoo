@@ -1,4 +1,4 @@
-import { waitUntilSubscribe } from "@bus/../tests/bus_test_helpers";
+import { waitForChannels, waitUntilSubscribe } from "@bus/../tests/bus_test_helpers";
 
 import {
     defineLivechatModels,
@@ -6,10 +6,10 @@ import {
     postLivechatMessage,
 } from "@im_livechat/../tests/livechat_test_helpers";
 import { expirableStorage } from "@im_livechat/core/common/expirable_storage";
+import { GUEST_TOKEN_STORAGE_KEY } from "@im_livechat/embed/common/store_service_patch";
 import {
     click,
     contains,
-    insertText,
     listenStoreFetch,
     onRpcBefore,
     setupChatHub,
@@ -20,8 +20,12 @@ import {
     userContext,
     waitStoreFetch,
 } from "@mail/../tests/mail_test_helpers";
+import {
+    containsTextInComposer,
+    insertTextInComposer,
+} from "@mail/../tests/mail_test_helpers_composer";
 import { describe, expect, test } from "@odoo/hoot";
-import { Command, onRpc, serverState } from "@web/../tests/web_test_helpers";
+import { Command, destroyApp, onRpc, serverState } from "@web/../tests/web_test_helpers";
 
 describe.current.tags("desktop");
 defineLivechatModels();
@@ -103,7 +107,7 @@ test("Only necessary requests are made when creating a new chat", async () => {
             persisted: false,
         })}`,
     ]);
-    await insertText(".o-mail-Composer-input", "Hello!");
+    await insertTextInComposer(".o-mail-Composer", "Hello!");
     await expect.waitForSteps([]);
     const subscribed = waitUntilSubscribe();
     await triggerHotkey("Enter");
@@ -118,7 +122,7 @@ test("Only necessary requests are made when creating a new chat", async () => {
         })}`,
         `/mail/message/post - ${JSON.stringify({
             post_data: {
-                body: "Hello!",
+                body: "<div>Hello!</div>",
                 email_add_signature: true,
                 message_type: "comment",
                 subtype_xmlid: "mail.mt_comment",
@@ -171,23 +175,86 @@ test("Only create one channel when posting multiple messages", async () => {
     await start({ authenticateAs: false, waitUntilSubscribe: false });
     await click(".o-livechat-LivechatButton");
     await expect.waitForSteps(["/im_livechat/get_session"]);
-    await insertText(".o-mail-Composer-input", "1");
+    await insertTextInComposer(".o-mail-Composer", "1");
     await click(".o-sendMessageActive");
-    await contains(".o-mail-Composer-input", { value: "" });
-    await insertText(".o-mail-Composer-input", "2");
+    await containsTextInComposer(".o-mail-Composer", "");
+    await insertTextInComposer(".o-mail-Composer", "2");
     await click(".o-sendMessageActive");
-    await contains(".o-mail-Composer-input", { value: "" });
-    await insertText(".o-mail-Composer-input", "3");
+    await containsTextInComposer(".o-mail-Composer", "");
+    await insertTextInComposer(".o-mail-Composer", "3");
     await click(".o-sendMessageActive");
-    await contains(".o-mail-Composer-input", { value: "" });
+    await containsTextInComposer(".o-mail-Composer", "");
     await expect.waitForSteps([]);
     const subscribed = waitUntilSubscribe();
     getSessionResolvers.resolve();
     await subscribed;
     await expect.waitForSteps([
         "/im_livechat/get_session",
-        "/mail/message/post - 1",
-        "/mail/message/post - 2",
-        "/mail/message/post - 3",
+        "/mail/message/post - <div>1</div>",
+        "/mail/message/post - <div>2</div>",
+        "/mail/message/post - <div>3</div>",
+    ]);
+});
+
+test("guest token channel is subscribed at start and unsubscribed at destroy", async () => {
+    await startServer();
+    await loadDefaultEmbedConfig();
+    expirableStorage.setItem(GUEST_TOKEN_STORAGE_KEY, "abc");
+    await start({ authenticateAs: false, waitUntilSubscribe: false });
+    await waitForChannels(["mail.guest_abc"]);
+    destroyApp();
+    await waitForChannels(["mail.guest_abc"], { operation: "delete" });
+});
+
+test("Only create one channel when posting multiple lines on chat bot multi-line step", async () => {
+    const pyEnv = await startServer();
+    const livechatChannelId = await loadDefaultEmbedConfig();
+    const scriptId = pyEnv["chatbot.script"].create({
+        operator_partner_id: serverState.odoobotId,
+        title: "Bot",
+    });
+    pyEnv["chatbot.script.step"].create([
+        {
+            chatbot_script_id: scriptId,
+            message: "Tell us what you need.",
+            sequence: 1,
+            step_type: "free_input_multi",
+        },
+        {
+            chatbot_script_id: scriptId,
+            message: "Thanks for the details!",
+            sequence: 2,
+            step_type: "text",
+        },
+    ]);
+    pyEnv["im_livechat.channel.rule"].create({
+        channel_id: livechatChannelId,
+        chatbot_script_id: scriptId,
+    });
+    onRpc("/im_livechat/get_session", async (req) => {
+        const { params } = await req.json();
+        if (params.persisted) {
+            expect.step("persist");
+        }
+    });
+    onRpc("/mail/message/post", async (req) => {
+        const { params } = await req.json();
+        expect.step(`/mail/message/post - ${params.post_data.body}`);
+    });
+    await start({ authenticateAs: false, waitUntilSubscribe: false });
+    await click(".o-livechat-LivechatButton");
+    await contains(".o-mail-Message", { text: "Tell us what you need." });
+    // Lines are posted before the multi-line step is completed.
+    for (const line of ["Line 1", "Line 2", "Line 3"]) {
+        await insertTextInComposer(".o-mail-Composer", line);
+        await click(".o-sendMessageActive");
+        await contains(".o-mail-Message", { text: line });
+        await containsTextInComposer(".o-mail-Composer", "");
+    }
+    await expect.waitForSteps([
+        "persist",
+        "/mail/message/post - <div>Line 1</div>",
+        "/mail/message/post - <div>Line 2</div>",
+        "/mail/message/post - <div>Line 3</div>",
     ]);
 });

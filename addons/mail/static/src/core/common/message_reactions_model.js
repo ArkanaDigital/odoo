@@ -1,4 +1,5 @@
 import { AND, fields, Record } from "@mail/model/export";
+
 import { rpc } from "@web/core/network/rpc";
 
 export class MessageReactions extends Record {
@@ -11,11 +12,7 @@ export class MessageReactions extends Record {
     guests = fields.Many("mail.guest");
     message = fields.One("mail.message");
     partners = fields.Many("res.partner");
-    personas = fields.Attr([], {
-        compute() {
-            return [...this.partners, ...this.guests];
-        },
-    });
+    personas = this.computedShallowEqual(() => [...this.partners, ...this.guests]);
     /** @type {number} */
     sequence;
 

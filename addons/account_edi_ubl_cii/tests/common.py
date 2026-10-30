@@ -5,8 +5,10 @@ import uuid
 from odoo import Command, fields
 from odoo.addons.account.tests.common import AccountTestInvoicingCommon
 from odoo.tools import config, file_open
+from odoo.tests import tagged
 
 
+@tagged('TestUblCiiCommon')
 class TestUblCiiCommon(AccountTestInvoicingCommon):
 
     _test_user_groups = None  # FIXME list needed groups
@@ -18,12 +20,15 @@ class TestUblCiiCommon(AccountTestInvoicingCommon):
         cls.partner_lu_dig = cls._create_partner_lu_dig()
         cls.partner_nl = cls._create_partner_nl()
         cls.partner_au = cls._create_partner_au()
+        cls.partner_fr = cls._create_partner_fr()
 
     @classmethod
     def _create_company(cls, **create_values):
         # EXTENDS 'account'
         create_values.setdefault('currency_id', cls.env.ref('base.EUR').id)
+        create_values.setdefault('terms_type', 'plain')
         company = super()._create_company(**create_values)
+        company.currency_id = create_values['currency_id']  # the coa may have reset it to USD
         company.tax_calculation_rounding_method = 'round_globally'
         return company
 
@@ -94,6 +99,22 @@ class TestUblCiiCommon(AccountTestInvoicingCommon):
         })
 
     @classmethod
+    def _create_partner_fr(cls, **kwargs):
+        return cls.env['res.partner'].create({
+            **cls._create_partner_default_values(),
+            'name': 'partner_fr',
+            'street': "Rue Jean Jaurès, 42",
+            'zip': "75000",
+            'city': "Paris",
+            'vat': 'FR05677404089',
+            'bank_ids': [Command.create({'account_number': 'FR15001559627230', 'allow_out_payment': True})],
+            'country_id': cls.env.ref('base.fr').id,
+            'routing_scheme': '9957',
+            'routing_endpoint': 'FR05677404089',
+            **kwargs,
+        })
+
+    @classmethod
     def _create_mixed_early_payment_term(cls, **kwargs):
         return cls.env['account.payment.term'].create({
             'name': "2/7 Net 30",
@@ -102,6 +123,19 @@ class TestUblCiiCommon(AccountTestInvoicingCommon):
             'discount_percentage': 2,
             'discount_days': 7,
             'early_pay_discount_computation': 'mixed',
+            'line_ids': [Command.create({'value': 'percent', 'value_amount': 100.0, 'nb_days': 30})],
+            **kwargs,
+        })
+
+    @classmethod
+    def _create_early_payment_term(cls, **kwargs):
+        return cls.env['account.payment.term'].create({
+            'name': "2/7 Net 30",
+            'note': "Payment terms: 30 Days, 2% Early Payment Discount under 7 days",
+            'early_discount': True,
+            'discount_percentage': 2,
+            'discount_days': 7,
+            'early_pay_discount_computation': 'included',
             'line_ids': [Command.create({'value': 'percent', 'value_amount': 100.0, 'nb_days': 30})],
             **kwargs,
         })
@@ -245,7 +279,6 @@ class TestUblCiiBECommon(TestUblCiiCommon):
     @classmethod
     def _create_company(cls, **create_values):
         company = super()._create_company(**create_values)
-
         company.partner_id.write({
             'street': "Chaussée de Namur 40",
             'zip': "1367",
@@ -270,7 +303,6 @@ class TestUblCiiFRCommon(TestUblCiiCommon):
     @classmethod
     def _create_company(cls, **create_values):
         company = super()._create_company(**create_values)
-
         company.partner_id.write({
             'street': "Rue Grand Port 1",
             'zip': "35400",
@@ -278,6 +310,8 @@ class TestUblCiiFRCommon(TestUblCiiCommon):
             'vat': 'FR23334175221',
             'additional_identifiers': {'FR_SIRET': '40678483500521'},
             'country_id': cls.env.ref('base.fr').id,
+            'routing_scheme': '9957',
+            'routing_endpoint': 'FR23334175221',
         })
         return company
 
@@ -319,8 +353,10 @@ class TestUblBis3Common(TestUblCiiCommon):
             'account_number': account_number,
             'partner_id': partner.id,
             'company_id': self.env.company.id,
+            'allow_out_payment': True,
         })
-        mandate = self.env['sdd.mandate'].create({  # noqa: OLS03001
+        mandate = self.env['account.direct.debit.mandate'].create({  # noqa: OLS03001
+            'mandate_type': 'sepa',
             'name': f'mandate_{partner.name}_{account_number[-4:]}',
             'partner_id': partner.id,
             'partner_bank_id': partner_bank.id,
@@ -338,3 +374,21 @@ class TestUblBis3Common(TestUblCiiCommon):
     def subfolders(cls):
         _subfolder_format, subfolder_document, subfolder_country = super().subfolders()
         return 'bis3', subfolder_document, subfolder_country
+
+
+class TestCiiFacturXCommon(TestUblCiiCommon):
+
+    @classmethod
+    def _create_partner_default_values(cls):
+        values = super()._create_partner_default_values()
+        values['invoice_edi_format'] = 'facturx'
+        return values
+
+    # -------------------------------------------------------------------------
+    # EXPORT HELPERS
+    # -------------------------------------------------------------------------
+
+    @classmethod
+    def subfolders(cls):
+        _subfolder_format, subfolder_document, subfolder_country = super().subfolders()
+        return 'facturx', subfolder_document, subfolder_country

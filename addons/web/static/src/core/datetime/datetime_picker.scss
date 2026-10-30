@@ -1,6 +1,7 @@
 .o_bottom_sheet_body > .o_datetime_picker {
+    --DateTimePicker-padding: 0;
+
     width: 100%;
-    padding: 0!important;
 }
 
 .o_datetime_picker {
@@ -8,24 +9,26 @@
     --DateTimePicker__Template-columns: 4;
     --DateTimePicker__Day-template-rows: 6;
 
-    width: $o-datetime-picker-width;
+    /* Spacing knob for containers that inline the picker instead of floating it. */
+    padding: var(--DateTimePicker-padding, var(--o-bs-spacer-2));
+    width: var(--o-datetime-picker-width);
 
     &.o_datetime_picker_reduced {
-        width: $o-datetime-picker-reduced-width;
+        width: var(--o-datetime-picker-reduced-width);
     }
 
-    // Day
+    /* Day */
     .o_selected {
-        color: $o-component-active-color;
-        background: $o-component-active-bg;
+        color: var(--DateTimePicker__day-selected-color, var(--o-component-active-color));
+        background: var(--DateTimePicker__day-selected-bg, var(--o-component-active-bg));
     }
 
     .o_select_start,
     .o_select_end {
-        --selected-day-color: #{mix(lighten($o-component-active-border, 10%), $o-component-active-bg, 15%)};
+        --selected-day-color: var(--DateTimePicker__day-range-bg, #{mix(lighten($o-component-active-border, 10%), $o-component-active-bg, 15%)});
         --percent: calc(100% / sqrt(2));
         background:
-            #{$o-component-active-bg}
+            var(--DateTimePicker__day-selected-bg, var(--o-component-active-bg))
             radial-gradient(
                 circle,
                 var(--selected-day-color) 0% var(--percent),
@@ -46,11 +49,11 @@
 
     .o_today > div {
         aspect-ratio: 1;
-        background-color: $o-calendar-today-background-color;
-        color: $o-calendar-today-color;
+        background-color: var(--o-calendar-today-background-color);
+        color: var(--o-calendar-today-color);
     }
 
-    // Grids
+    /* Grids */
 
     .o_date_picker {
         grid-template-rows: repeat(var(--DateTimePicker__Day-template-rows), 1fr);
@@ -62,12 +65,12 @@
         grid-template-columns: repeat(var(--DateTimePicker__Template-columns), 1fr);
     }
 
-    // Utilities
+    /* Utilities */
 
     .o_date_item_picker .o_datetime_button {
         &.o_selected:not(.o_select_start, .o_select_end) {
-            background: $o-component-active-bg;
-            color: $o-component-active-color;
+            background: var(--DateTimePicker__day-selected-bg, var(--o-component-active-bg));
+            color: var(--DateTimePicker__day-selected-color, var(--o-component-active-color));
         }
     }
 
@@ -81,15 +84,16 @@
         position: relative;
 
         &:hover, &:focus {
-            --DateTimePicker__date-cell-border-color-hover: #{$o-component-active-border};
+            --DateTimePicker__date-cell-border-color-hover: var(--DateTimePicker__date-cell-border-color-active, var(--o-component-active-border));
         }
 
         &:not([disabled])::before {
-            @include o-position-absolute(0,0,0,0);
+            position: absolute;
+            inset: 0;
 
             content: '';
             aspect-ratio: 1;
-            border: $border-width solid var(--DateTimePicker__date-cell-border-color-hover);
+            border: var(--o-bs-border-width) solid var(--DateTimePicker__date-cell-border-color-hover);
             border-radius: $border-radius-pill;
             pointer-events: none;
         }

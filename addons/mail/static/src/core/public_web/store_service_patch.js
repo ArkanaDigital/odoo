@@ -1,4 +1,4 @@
-import { Store, storeService } from "@mail/core/common/store_service";
+import { Store, StorePlugin } from "@mail/core/common/store_plugin";
 import { fields } from "@mail/model/export";
 import { router } from "@web/core/browser/router";
 import { patch } from "@web/core/utils/patch";
@@ -7,15 +7,12 @@ patch(Store.prototype, {
     setup() {
         super.setup(...arguments);
         this.discuss = fields.One("DiscussApp");
-        this.messagingMenu = fields.One("MessagingMenu", { compute: () => ({}) });
-        this.showPushPermissionRequest = fields.Attr(false, {
-            compute() {
-                return (
-                    this.env.services["mail.notification.permission"]?.permission === "prompt" &&
-                    !this.isNotificationPermissionDismissed
-                );
-            },
-        });
+        this.messagingMenu = this.computed(() => this.MessagingMenu.insert({}));
+        this.showPushPermissionRequest = this.computed(
+            () =>
+                this.env.services["mail.notification.permission"]?.permission === "prompt" &&
+                !this.isNotificationPermissionDismissed
+        );
     },
     onStarted() {
         super.onStarted(...arguments);
@@ -23,14 +20,13 @@ patch(Store.prototype, {
     },
 });
 
-patch(storeService, {
-    start(env, services) {
-        const store = super.start(...arguments);
+patch(StorePlugin.prototype, {
+    setup() {
+        super.setup(...arguments);
         const discussActionIds = ["mail.action_discuss", "discuss"];
-        if (store.action_discuss_id) {
-            discussActionIds.push(store.action_discuss_id);
+        if (this.store.action_discuss_id) {
+            discussActionIds.push(this.store.action_discuss_id);
         }
-        store.discuss.isActive ||= discussActionIds.includes(router.current.action);
-        return store;
+        this.store.discuss.isActive ||= discussActionIds.includes(router.current.action);
     },
 });

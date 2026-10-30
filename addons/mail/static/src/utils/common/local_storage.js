@@ -1,4 +1,3 @@
-import { browser } from "@web/core/browser/browser";
 import { session } from "@web/session";
 
 const LOCAL_STORAGE_SUBVERSION = 1;
@@ -42,16 +41,16 @@ export class LocalStorageEntry {
         if (this.rawGet() !== null && this.get() === value) {
             return;
         }
-        browser.localStorage.setItem(this.key, toRawValue(value));
+        window.localStorage.setItem(this.key, toRawValue(value));
     }
     rawGet() {
-        return browser.localStorage.getItem(this.key);
+        return window.localStorage.getItem(this.key);
     }
     remove() {
         if (this.rawGet() === null) {
             return;
         }
-        browser.localStorage.removeItem(this.key);
+        window.localStorage.removeItem(this.key);
     }
 }
 
@@ -69,4 +68,48 @@ export function parseRawValue(rawValue) {
     } catch {
         return undefined;
     }
+}
+
+/** @type {Map<string, Set<(ev: StorageEvent) => void>>} */
+const callbacksByKey = new Map();
+
+function onStorage(ev) {
+    if (ev.key === null) {
+        for (const callbacks of [...callbacksByKey.values()]) {
+            for (const callback of callbacks) {
+                callback(ev);
+            }
+        }
+        return;
+    }
+    for (const callback of callbacksByKey.get(ev.key) ?? []) {
+        callback(ev);
+    }
+}
+
+/**
+ * A cleared storage reports a null key, so it notifies every subscription.
+ *
+ * @param {string} key
+ * @param {(ev: StorageEvent) => void} callback
+ * @returns {() => void} stops the subscription
+ */
+export function subscribeToStorage(key, callback) {
+    if (callbacksByKey.size === 0) {
+        window.addEventListener("storage", onStorage);
+    }
+    if (!callbacksByKey.has(key)) {
+        callbacksByKey.set(key, new Set());
+    }
+    callbacksByKey.get(key).add(callback);
+    return () => {
+        const callbacks = callbacksByKey.get(key);
+        callbacks.delete(callback);
+        if (callbacks.size === 0) {
+            callbacksByKey.delete(key);
+        }
+        if (callbacksByKey.size === 0) {
+            window.removeEventListener("storage", onStorage);
+        }
+    };
 }

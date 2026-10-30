@@ -1,11 +1,15 @@
 import { _t } from "@web/core/l10n/translation";
 import { download } from "@web/core/network/download";
 import { registry } from "@web/core/registry";
-import { Action, ACTION_TAGS, useAction, UseActions } from "@mail/core/common/action";
+import {
+    Action,
+    ACTION_TAGS,
+    IS_ACTION_DEFINITION_SYM,
+    useAction,
+    UseActions,
+} from "@mail/core/common/action";
 import { useEmojiPicker } from "@web/core/emoji_picker/emoji_picker";
-import { QuickReactionMenu } from "@mail/core/common/quick_reaction_menu";
 import { MessageReactionMenu } from "@mail/core/common/message_reaction_menu";
-import { isMobileOS } from "@web/core/browser/feature_detection";
 import { rpc } from "@web/core/network/rpc";
 
 const { DateTime } = luxon;
@@ -29,17 +33,10 @@ export const messageActionsRegistry = registry.category("mail.message/actions");
  * @param {MessageActionDefinition} definition
  */
 export function registerMessageAction(id, definition) {
-    messageActionsRegistry.add(id, definition);
+    messageActionsRegistry.add(id, Object.assign(definition, { [IS_ACTION_DEFINITION_SYM]: true }));
 }
 
 registerMessageAction("reaction", {
-    component: QuickReactionMenu,
-    componentProps: ({ action, message, owner }) => ({
-        action,
-        message,
-        messageActive: owner.isActive?.(),
-    }),
-    componentCondition: ({ reactionAnchorRef }) => !isMobileOS() && !reactionAnchorRef,
     condition: ({ message }) => message.canAddReaction,
     icon: "add_reaction",
     name: _t("Add a Reaction"),
@@ -64,8 +61,8 @@ registerMessageAction("reaction", {
     sequence: 10,
 });
 registerMessageAction("reply-to", {
-    condition: ({ channel, message, owner }) => {
-        if (owner.env.inMessagingMenu) {
+    condition: ({ ancestors, channel, message }) => {
+        if (ancestors.inMessagingMenu) {
             return false;
         }
         if (message.canReplyTo) {
@@ -75,7 +72,7 @@ registerMessageAction("reply-to", {
     },
     icon: "reply",
     name: _t("Reply"),
-    onSelected: ({ message, owner, thread }) => {
+    onSelected: ({ ancestors, message, thread }) => {
         const composer = thread.composer;
         if (message.eq(composer.replyToMessage)) {
             composer.replyToMessage = undefined;
@@ -85,10 +82,10 @@ registerMessageAction("reply-to", {
             composer.replyToMessage = message;
             return;
         }
-        if (!message.isSelfAuthored && message.model !== "discuss.channel" && message.author) {
+        if (!message.isSelfAuthored && !message.thread?.channel && message.author) {
             composer.insertReplyFromNote(message);
         }
-        owner.env.inChatter?.toggleComposer("note", { force: true });
+        ancestors.inChatter?.toggleComposer("note", { force: true });
         composer.restoredFromFullComposer = false;
         if (!composer.isFocused) {
             composer.autofocus++;
@@ -108,7 +105,7 @@ registerMessageAction("remove-bookmark", {
     condition: ({ message }) => message.canToggleBookmark && message.is_bookmarked,
     icon: "bookmark",
     name: _t("Remove from Bookmarks"),
-    onSelected: ({ message, owner }) => message.removeBookmark(owner.env),
+    onSelected: ({ ancestors, message }) => message.removeBookmark(ancestors),
     sequence: 80,
 });
 registerMessageAction("mark-as-read", {
@@ -135,14 +132,15 @@ registerMessageAction("reactions", {
     sequence: 60,
 });
 registerMessageAction("unfollow", {
-    condition: ({ message, owner }) => owner.env.inMessagingMenu && message.thread?.selfFollower,
+    condition: ({ ancestors, message }) =>
+        ancestors.inMessagingMenu && message.thread?.selfFollower,
     icon: "person_remove",
     name: _t("Unfollow"),
     onSelected: ({ message }) => message.unfollow(),
     sequence: 110,
 });
 registerMessageAction("edit", {
-    condition: ({ owner, message }) => !owner.env.inMessagingMenu && message.editable,
+    condition: ({ ancestors, message }) => !ancestors.inMessagingMenu && message.editable,
     icon: "edit",
     name: _t("Edit"),
     onSelected: ({ message, owner }) => {
@@ -155,7 +153,8 @@ registerMessageAction("delete", {
     condition: ({ message }) => message.deletable,
     icon: "delete",
     name: _t("Delete"),
-    onSelected: ({ message, owner, rootRef }) => message.showDeleteConfirm(owner, rootRef),
+    onSelected: ({ ancestors, message, owner, rootRef }) =>
+        message.showDeleteConfirm(owner, rootRef, ancestors),
     sequence: 120,
     tags: ACTION_TAGS.DANGER,
 });

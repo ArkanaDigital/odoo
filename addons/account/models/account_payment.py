@@ -57,10 +57,23 @@ class AccountPayment(models.Model):
         comodel_name='res.partner.bank',
         compute='_compute_available_partner_bank_ids',
     )
+    available_return_partner_bank_ids = fields.Many2many(
+        comodel_name='res.partner.bank',
+        compute='_compute_available_partner_bank_ids',
+    )
     partner_bank_id = fields.Many2one('res.partner.bank', string="Recipient Bank Account",
         readonly=False, store=True, tracking=True,
         compute='_compute_partner_bank_id',
         domain="[('id', 'in', available_partner_bank_ids)]",
+        check_company=True,
+        ondelete='restrict',
+    )
+    return_partner_bank_id = fields.Many2one(
+        comodel_name='res.partner.bank',
+        string="Returns Bank Account",
+        compute='_compute_return_partner_bank_id',
+        readonly=False, store=True,
+        domain="[('id', 'in', available_return_partner_bank_ids)]",
         check_company=True,
         ondelete='restrict',
     )
@@ -154,6 +167,7 @@ class AccountPayment(models.Model):
         store=True, readonly=False,
         compute='_compute_destination_account_id',
         domain="[('account_type', 'in', ('asset_receivable', 'liability_payable'))]",
+        index='btree_not_null',
         check_company=True)
 
     # == Stat buttons ==
@@ -184,12 +198,12 @@ class AccountPayment(models.Model):
         compute="_compute_stat_buttons_from_reconciliation")
     reconciled_statement_line_ids = fields.Many2many(
         comodel_name='account.bank.statement.line',
-        string="Reconciled Statement Lines",
+        string="Reconciled Bank Transactions",
         compute='_compute_stat_buttons_from_reconciliation',
-        help="Statements lines matched to this payment",
+        help="Bank transactions matched to this payment",
     )
     reconciled_statement_lines_count = fields.Integer(
-        string="# Reconciled Statement Lines",
+        string="# Reconciled Bank Transactions",
         compute="_compute_stat_buttons_from_reconciliation",
     )
 
@@ -215,6 +229,7 @@ class AccountPayment(models.Model):
         currency_field='company_currency_id', compute='_compute_amount_company_currency_signed', store=True)
     # used to get and display duplicate move warning if partner, amount and date match existing payments
     duplicate_payment_ids = fields.Many2many(comodel_name='account.payment', compute='_compute_duplicate_payment_ids')
+    alerts = fields.Json(compute='_compute_alerts')
     attachment_ids = fields.One2many('ir.attachment', 'res_id', string='Attachments')
 
     _check_amount_not_negative = models.Constraint(
@@ -241,26 +256,21 @@ class AccountPayment(models.Model):
         '''
         self.ensure_one()
 
-        # liquidity_lines, counterpart_lines, writeoff_lines
-        lines = [self.env['account.move.line'] for _dummy in range(3)]
-        valid_account_types = self._get_valid_payment_account_types()
-        for line in self.move_id.line_ids:
-            if line.account_id in self._get_valid_liquidity_accounts():
-                lines[0] += line  # liquidity_lines
-            elif line.account_id.account_type in valid_account_types or line.account_id == line.company_id.transfer_account_id:
-                lines[1] += line  # counterpart_lines
-            else:
-                lines[2] += line  # writeoff_lines
+        valid_account_types = set(self._get_valid_payment_account_types())
+        valid_liquidity_accounts = set(self._get_valid_liquidity_accounts())
+        liquidity, counterpart, writeoff = self.move_id.line_ids.partitioned(
+            lambda line: line.account_id in valid_liquidity_accounts,
+            lambda line: line.account_id.account_type in valid_account_types or line.account_id == line.company_id.transfer_account_id,
+        )
 
         # In some case, there is no liquidity or counterpart line (after changing an outstanding account on the journal for example)
         # In that case, and if there is one writeoff line, we take this line and set it as liquidity/counterpart line
-        if len(lines[2]) == 1:
-            for i in (0, 1):
-                if not lines[i]:
-                    lines[i] = lines[2]
-                    lines[2] -= lines[2]
-
-        return lines
+        if len(writeoff) == 1:
+            if not liquidity:
+                liquidity, writeoff = writeoff, liquidity
+            elif not counterpart:
+                counterpart, writeoff = writeoff, counterpart
+        return liquidity, counterpart, writeoff
 
     def _get_valid_liquidity_accounts(self):
         self.ensure_one()
@@ -479,6 +489,7 @@ class AccountPayment(models.Model):
 
     @api.depends('reconciled_invoice_ids.payment_state', 'reconciled_bill_ids.payment_state', 'move_id.line_ids.amount_residual')
     def _compute_state(self):
+        paid_payments_to_recompute = self.env['account.payment']
         for payment in self:
             if not payment.state:
                 payment.state = 'draft'
@@ -498,6 +509,8 @@ class AccountPayment(models.Model):
                 and (all_invoices_paid or all_bills_paid)
             ):
                 payment.state = 'reconciled'
+                paid_payments_to_recompute |= payment
+        self.env.add_to_compute(self._fields['is_matched'], paid_payments_to_recompute)
 
     @api.depends('move_id.line_ids.amount_residual', 'move_id.line_ids.amount_residual_currency', 'move_id.line_ids.account_id', 'state')
     def _compute_reconciliation_status(self):
@@ -586,11 +599,16 @@ class AccountPayment(models.Model):
     @api.depends('partner_id', 'company_id', 'payment_type')
     def _compute_available_partner_bank_ids(self):
         for pay in self:
+            company_banks = pay.journal_id.bank_account_id
+            partner_banks = pay.commercial_partner_id.bank_ids.filtered(lambda x:
+                x.company_id.id in (False, pay.company_id.id)
+            )._origin
             if pay.payment_type == 'inbound':
-                pay.available_partner_bank_ids = pay.journal_id.bank_account_id
+                pay.available_partner_bank_ids = company_banks
+                pay.available_return_partner_bank_ids = partner_banks
             else:
-                pay.available_partner_bank_ids = pay.commercial_partner_id.bank_ids\
-                        .filtered(lambda x: x.company_id.id in (False, pay.company_id.id))._origin
+                pay.available_partner_bank_ids = partner_banks
+                pay.available_return_partner_bank_ids = company_banks
 
     @api.depends('available_partner_bank_ids', 'journal_id')
     def _compute_partner_bank_id(self):
@@ -598,6 +616,12 @@ class AccountPayment(models.Model):
         for pay in self:
             if pay.partner_bank_id not in pay.available_partner_bank_ids:
                 pay.partner_bank_id = pay.available_partner_bank_ids[:1]._origin
+
+    @api.depends('available_return_partner_bank_ids', 'journal_id')
+    def _compute_return_partner_bank_id(self):
+        for pay in self:
+            if pay.return_partner_bank_id not in pay.available_return_partner_bank_ids:
+                pay.return_partner_bank_id = pay.available_return_partner_bank_ids[:1]._origin
 
     @api.depends('available_payment_method_line_ids')
     def _compute_payment_method_line_id(self):
@@ -710,7 +734,7 @@ class AccountPayment(models.Model):
 
             pay.qr_code = None
 
-    @api.depends('move_id.line_ids.matched_debit_ids', 'move_id.line_ids.matched_credit_ids')
+    @api.depends('move_id.line_ids.matched_debit_ids', 'move_id.line_ids.matched_credit_ids', 'invoice_ids')
     def _compute_stat_buttons_from_reconciliation(self):
         ''' Retrieve the invoices reconciled to the payments through the reconciliation (account.partial.reconcile). '''
         stored_payments = self.filtered('id')
@@ -821,6 +845,11 @@ class AccountPayment(models.Model):
         for payment in self:
             # Uses payment._origin.id to handle records in edition/existing records and 0 for new records
             payment.duplicate_payment_ids = payment_to_duplicate_move.get(payment._origin.id, self.env['account.payment'])
+
+    @api.depends('company_id')
+    def _compute_alerts(self):
+        # TO OVERRIDE
+        self.alerts = {}
 
     def _search_reconciled_invoice_ids(self, operator, value):
         if operator not in ('in', '='):

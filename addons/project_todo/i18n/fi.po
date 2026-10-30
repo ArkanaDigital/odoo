@@ -3,14 +3,14 @@
 # * project_todo
 #
 # "Tiffany Chang (tic)" <tic@odoo.com>, 2025.
-# Saara Hakanen <sahak@odoo.com>, 2025.
+# Saara Hakanen <sahak@odoo.com>, 2025, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server saas~18.4\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-03 17:36+0000\n"
-"PO-Revision-Date: 2026-06-20 08:32+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-09-04 17:44+0000\n"
+"PO-Revision-Date: 2026-09-09 14:12+0000\n"
+"Last-Translator: Saara Hakanen <sahak@odoo.com>\n"
 "Language-Team: Finnish <https://translate.odoo.com/projects/odoo-master/"
 "project_todo/fi/>\n"
 "Language: fi\n"
@@ -18,7 +18,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: project_todo
 #: model_terms:ir.ui.view,arch_db:project_todo.todo_user_onboarding
@@ -28,6 +28,21 @@ msgid ""
 msgstr ""
 "&amp;#128075; <br/>\n"
 "    Tervetuloa Tehtävälista-sovellukseen!"
+
+#. module: project_todo
+#: model_terms:digest.tip,tip_description:project_todo.digest_tip_project_todo_0
+msgid "<b>Alt + Shift + T</b> (Windows/Linux)"
+msgstr ""
+
+#. module: project_todo
+#: model_terms:digest.tip,tip_description:project_todo.digest_tip_project_todo_0
+msgid "<b>Ctrl + Shift + T</b> (macOS)"
+msgstr ""
+
+#. module: project_todo
+#: model_terms:digest.tip,tip_description:project_todo.digest_tip_project_todo_0
+msgid "<b>Tip: Create to-dos from anywhere</b>"
+msgstr ""
 
 #. module: project_todo
 #: model_terms:ir.ui.view,arch_db:project_todo.todo_user_onboarding
@@ -120,14 +135,14 @@ msgid ""
 msgstr ""
 "<span style=\"font-size: 14px;\">\n"
 "            Valitse teksti\n"
-"           <font style=\"background-color: #017E84; color: white\">"
-"korostaaksesi</font>,\n"
+"           <font style=\"background-color: #017E84; color: "
+"white\">korostaaksesi</font>,\n"
 "           <span style=\"text-decoration-line: line-through;\">yliviivausta</"
 "span>\n"
 "            tai\n"
 "           <span style=\"font-weight: bolder;\">lisää tyyli</span>\n"
-"           <span style=\"font-style: italic; text-decoration-line: "
-"underline;\">siihen</span>\n"
+"           <span style=\"font-style: italic; text-decoration-line: underline;"
+"\">siihen</span>\n"
 "        </span>"
 
 #. module: project_todo
@@ -138,6 +153,11 @@ msgid ""
 "        </span>\n"
 "        <br/>"
 msgstr ""
+"<span style=\"font-size: 14px;\">\n"
+"            Käytä näitä avainsanoja otsikossa virtaviivaistaaksesi "
+"tehtävälistasi:\n"
+"       </span>\n"
+"       <br/>"
 
 #. module: project_todo
 #: model_terms:ir.ui.view,arch_db:project_todo.todo_user_onboarding
@@ -166,8 +186,8 @@ msgstr ""
 "tehtävälistasi ja sinulle määrätyt tehtävät, siirtymällä Projekti-"
 "sovellukseen ja valitsemalla\n"
 "       <span>\n"
-"           <font style=\"font-weight: bolder;\" class=\"text-o-color-2\">"
-"Omat tehtävät</font>.\n"
+"           <font style=\"font-weight: bolder;\" class=\"text-o-"
+"color-2\">Omat tehtävät</font>.\n"
 "       </span>\n"
 "    </span>\n"
 "    <br/>\n"
@@ -198,8 +218,8 @@ msgstr ""
 "        Tehtävälistat ovat oletuksena nähtävissä vain sinulle. Voit jakaa ne "
 "muiden käyttäjien kanssa lisäämällä heidät\n"
 "       <span>\n"
-"           <font style=\"font-weight: bolder;\" class=\"text-o-color-2\">"
-"vastuuhenkilöiksi</font>.\n"
+"           <font style=\"font-weight: bolder;\" class=\"text-o-"
+"color-2\">vastuuhenkilöiksi</font>.\n"
 "       </span>\n"
 "    </span>\n"
 "    <br/>"
@@ -238,11 +258,11 @@ msgid ""
 "    <br/>"
 msgstr ""
 "<span style=\"font-size: 14px;\">\n"
-"        Jos haluat kohdistaa tehtävälistasi tiettyyn projektiin, avaa ⚙️ -"
-"valikko ja klikkaa\n"
+"        Jos haluat kohdistaa tehtävälistasi tiettyyn projektiin, avaa ⚙️ "
+"-valikko ja klikkaa\n"
 "       <span>\n"
-"           <font style=\"font-weight: bolder;\" class=\"text-o-color-2\">"
-"Muunna tehtäväksi</font>.\n"
+"           <font style=\"font-weight: bolder;\" class=\"text-o-"
+"color-2\">Muunna tehtäväksi</font>.\n"
 "       </span>\n"
 "        Tämä toiminto muuntaa sen näkyväksi myös muille käyttäjille.\n"
 "    </span>\n"
@@ -407,7 +427,6 @@ msgstr "Lisää yksityiskohtia tehtävääsi..."
 
 #. module: project_todo
 #: model_terms:ir.ui.view,arch_db:project_todo.project_task_view_todo_form
-#: model_terms:ir.ui.view,arch_db:project_todo.project_task_view_todo_search
 msgid "Archived"
 msgstr "Arkistoitu"
 
@@ -424,7 +443,6 @@ msgstr "Vastuuhenkilö"
 
 #. module: project_todo
 #: model_terms:ir.ui.view,arch_db:project_todo.project_task_view_todo_form
-#: model_terms:ir.ui.view,arch_db:project_todo.project_task_view_todo_search
 msgid "Assignees"
 msgstr "Vastuuhenkilöt"
 
@@ -432,11 +450,6 @@ msgstr "Vastuuhenkilöt"
 #: model_terms:ir.ui.view,arch_db:project_todo.project_task_view_todo_search
 msgid "By assigned tags"
 msgstr "Määritettyjen tunnisteiden mukaan"
-
-#. module: project_todo
-#: model_terms:ir.ui.view,arch_db:project_todo.project_task_view_todo_search
-msgid "By personal stages"
-msgstr "Henkilökohtaisten vaiheiden mukaan"
 
 #. module: project_todo
 #: model_terms:ir.ui.view,arch_db:project_todo.project_task_view_todo_conversion_form
@@ -516,7 +529,7 @@ msgstr "Eräpäivä"
 #. module: project_todo
 #: model_terms:ir.ui.view,arch_db:project_todo.todo_user_onboarding
 msgid "Enhance Your To-Dos with Shortcuts &amp;#9889;"
-msgstr ""
+msgstr "Paranna tehtävälistojasi pikakuvakkeilla &amp;#9889;"
 
 #. module: project_todo
 #: model_terms:ir.ui.view,arch_db:project_todo.project_task_view_todo_search
@@ -592,6 +605,11 @@ msgid "Organize your to-dos however you want"
 msgstr "Järjestä tehtävälistasi miten haluat"
 
 #. module: project_todo
+#: model:ir.module.module,summary:base.module_project_todo
+msgid "Organize your work with memos and to-do lists"
+msgstr ""
+
+#. module: project_todo
 #: model_terms:ir.ui.view,arch_db:project_todo.project_task_view_todo_calendar
 msgid "Personal Stage"
 msgstr "Henkilökohtainen vaiheistus"
@@ -634,7 +652,6 @@ msgstr ""
 "Näytä kaikki tietueet, joiden seuraavan toimenpiteen päivä on menneisyydessä"
 
 #. module: project_todo
-#: model_terms:ir.ui.view,arch_db:project_todo.project_task_view_todo_search
 #: model_terms:ir.ui.view,arch_db:project_todo.project_task_view_todo_tree
 msgid "Stage"
 msgstr "Vaihe"
@@ -650,8 +667,6 @@ msgid "Tags"
 msgstr "Tunnisteet"
 
 #. module: project_todo
-#. odoo-python
-#: code:addons/project_todo/models/res_users.py:0
 #: model:ir.model,name:project_todo.model_project_task
 msgid "Task"
 msgstr "Tehtävä"
@@ -659,7 +674,7 @@ msgstr "Tehtävä"
 #. module: project_todo
 #: model_terms:ir.ui.view,arch_db:project_todo.project_task_view_todo_form
 msgid "Task Title..."
-msgstr ""
+msgstr "Tehtävän otsikko..."
 
 #. module: project_todo
 #. odoo-javascript
@@ -667,13 +682,21 @@ msgstr ""
 msgid ""
 "The To-do description lacks any past content that could be restored at the "
 "moment."
-msgstr "Tehtäväkuvauksessa ei ole palautettavissa olevaa aiempaa sisältöä."
+msgstr ""
+"Tehtävälistan kuvauksessa ei ole aikaisempaa sisältöä, jota voisi tällä "
+"hetkellä palauttaa."
+
+#. module: project_todo
+#: model:digest.tip,name:project_todo.digest_tip_project_todo_0
+msgid "Tip: Create to-dos from anywhere"
+msgstr ""
 
 #. module: project_todo
 #. odoo-javascript
 #. odoo-python
 #: code:addons/project_todo/models/res_users.py:0
 #: code:addons/project_todo/static/src/webclient/share_target/todo_share_target_item.js:0
+#: model:ir.module.module,shortdesc:base.module_project_todo
 msgid "To-Do"
 msgstr "Tehtävälista"
 
@@ -727,7 +750,7 @@ msgstr "Kirjoita tähän..."
 #. odoo-python
 #: code:addons/project_todo/models/project_task.py:0
 msgid "Untitled to-do"
-msgstr "Nimetön tehtävälista"
+msgstr "Nimeämätön tehtävälista"
 
 #. module: project_todo
 #: model:ir.model.fields,help:project_todo.field_project_task__display_name
@@ -744,6 +767,17 @@ msgid ""
 "        Make sure to use the right format and order e.g. Improve the "
 "configuration screen 5h #feature #v16 @Mitchell !"
 msgstr ""
+"Käytä näitä avansanoja otsikossa määrittääksesi uusia tehtäviä:\n"
+"\n"
+"                     30h Varaa 30 tuntia tehtävään\n"
+"                     #tunnisteet Aseta tunnisteita tehtävälle\n"
+"                     @käytttäjä Määritä tehtävä käyttäjälle\n"
+"                     ! Aseta tehtävälle keskisuuri prioriteetti\n"
+"                     !! Aseta tehtävälle korkea prioriteetti\n"
+"                     !!! Aseta tehtävä kiireelliseksi\n"
+"\n"
+"                    Varmista, että käytät oikeaa muotoa ja järjestystä, "
+"esim. Paranna ruudun konfiguraatiota 5h #ominaisuus #v16 @Mitchell !"
 
 #. module: project_todo
 #: model_terms:ir.ui.view,arch_db:project_todo.project_task_view_todo_quick_create_form
@@ -794,6 +828,13 @@ msgstr "Versiohistoria"
 #: code:addons/project_todo/models/res_users.py:0
 msgid "Welcome %s!"
 msgstr "Tervetuloa %s!"
+
+#. module: project_todo
+#: model_terms:digest.tip,tip_description:project_todo.digest_tip_project_todo_0
+msgid ""
+"Wherever you are, use the magic keyboard shortcut to set yourself a "
+"reminder: 💡<br>"
+msgstr ""
 
 #. module: project_todo
 #: model_terms:ir.ui.view,arch_db:project_todo.todo_user_onboarding

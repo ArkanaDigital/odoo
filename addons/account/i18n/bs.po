@@ -13,10 +13,10 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 12.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-17 17:36+0000\n"
-"PO-Revision-Date: 2026-06-21 06:44+0000\n"
+"POT-Creation-Date: 2026-09-11 17:41+0000\n"
+"PO-Revision-Date: 2026-08-31 15:45+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Bosnian <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Bosnian <https://translate.odoo.com/projects/odoo-s19-4/"
 "account/bs/>\n"
 "Language: bs\n"
 "MIME-Version: 1.0\n"
@@ -24,7 +24,7 @@ msgstr ""
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: account
 #: model:ir.model.fields,help:account.field_account_journal__type
@@ -71,6 +71,22 @@ msgstr ""
 "npr. 180 / (1 - 10%) = 200 (cijena nije uključena)\n"
 "npr. 200 * (1 - 10%)  = 180 (cijena je uključena)\n"
 "       "
+
+#. module: account
+#: model:ir.module.module,description:base.module_account
+msgid ""
+"\n"
+"Invoicing & Payments\n"
+"====================\n"
+"The specific and easy-to-use Invoicing system in Odoo allows you to keep "
+"track of your accounting, even when you are not an accountant. It provides "
+"an easy way to follow up on your vendors and customers.\n"
+"\n"
+"You could use this simplified accounting in case you work with an (external) "
+"account to keep your books, and you still want to keep track of payments. "
+"This module also offers you an easy method of registering payments, without "
+"having to encode complete abstracts of account.\n"
+msgstr ""
 
 #. module: account
 #. odoo-python
@@ -128,6 +144,12 @@ msgstr "# Računa dobavljača"
 #, fuzzy
 msgid "#Created by: %s"
 msgstr "#Kreirao: %s"
+
+#. module: account
+#. odoo-python
+#: code:addons/account/wizard/accrued_orders.py:0
+msgid "%(accrual_type)s entry as of %(date)s"
+msgstr ""
 
 #. module: account
 #. odoo-python
@@ -234,46 +256,6 @@ msgstr "%(name)s%(ref)s po %(currency_amount)s"
 
 #. module: account
 #. odoo-python
-#: code:addons/account/wizard/accrued_orders.py:0
-#, fuzzy
-msgid ""
-"%(order)s - %(order_line)s; %(qty_invoiced)s invoiced, %(qty_delivered)s "
-"delivered at %(unit_price)s"
-msgstr ""
-"%(order)s - %(order_line)s; %(qty_invoiced)s fakturisan, %(qty_delivered)s "
-"isporučen na %(unit_price)s"
-
-#. module: account
-#. odoo-python
-#: code:addons/account/wizard/accrued_orders.py:0
-#, fuzzy
-msgid ""
-"%(order)s - %(order_line)s; %(quantity_billed)s Billed, %"
-"(quantity_received)s Received at %(unit_price)s each"
-msgstr ""
-"%(order)s - %(order_line)s; %(quantity_billed)s Naplaćeno, %"
-"(quantity_received)s Primljeno po %(unit_price)s svaki"
-
-#. module: account
-#. odoo-python
-#: code:addons/account/wizard/accrued_orders.py:0
-#, fuzzy
-msgid ""
-"%(order)s - %(order_line)s; %(quantity_invoiced)s Invoiced, %"
-"(quantity_delivered)s Delivered at %(unit_price)s each"
-msgstr ""
-"%(order)s - %(order_line)s; %(quantity_invoiced)s Fakturisano, %"
-"(quantity_delivered)s Isporučeno %(unit_price)s svaki"
-
-#. module: account
-#. odoo-python
-#: code:addons/account/wizard/accrued_orders.py:0
-#, fuzzy
-msgid "%(order)s - %(order_line)s; price difference for %(product)s"
-msgstr "%(order)s - %(order_line)s; razlika u cijeni za %(product)s"
-
-#. module: account
-#. odoo-python
 #: code:addons/account/models/account_move.py:0
 #, fuzzy
 msgid "%(partner_name)s has reached its credit limit of: %(credit_limit)s"
@@ -305,16 +287,6 @@ msgstr "%<span class=\"px-3\"/>("
 #, fuzzy
 msgid "%d moves"
 msgstr "%d stavka knjiženja"
-
-#. module: account
-#. odoo-python
-#: code:addons/account/models/account_account.py:0
-#: code:addons/account/models/account_journal.py:0
-#: code:addons/account/models/account_payment_term.py:0
-#: code:addons/account/models/account_reconcile_model.py:0
-#: code:addons/account/models/account_tax.py:0
-msgid "%s (copy)"
-msgstr "%s (kopija)"
 
 #. module: account
 #. odoo-python
@@ -359,17 +331,18 @@ msgid "'%(filename)s' (type=%(type)s)"
 msgstr "'%(filename)s' (vrsta=%(type)s)"
 
 #. module: account
+#. odoo-python
+#: code:addons/account/models/account_report.py:0
+msgid ""
+"'active' field of account.report shouldn't be directly written to in data "
+"files. Use active_fallback. (Detected while loading %(file_path)s)"
+msgstr ""
+
+#. module: account
 #: model:ir.actions.server,name:account.action_move_block_payment
 #, fuzzy
 msgid "(Un)Block Payment"
 msgstr "(Od)Blokiraj plaćanje"
-
-#. module: account
-#. odoo-python
-#: code:addons/account/models/account_report.py:0
-#, fuzzy
-msgid "(copy)"
-msgstr "(kopija)"
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.view_account_lock_exception_form
@@ -383,13 +356,6 @@ msgstr "(od"
 #, fuzzy
 msgid "(object._get_report_base_filename())"
 msgstr "(object._get_report_base_filename())"
-
-#. module: account
-#. odoo-javascript
-#: code:addons/account/static/src/components/product_catalog/search/search_panel.xml:0
-#, fuzzy
-msgid "+ Add Section"
-msgstr "+ Dodaj odjeljak"
 
 #. module: account
 #. odoo-python
@@ -807,13 +773,19 @@ msgid ""
 "    <p style=\"margin: 0px; padding: 0px; font-size: 13px;\">\n"
 "        Dear <t t-out=\"object.partner_id.name or ''\">Azure Interior</t><br/"
 "><br/>\n"
-"        Thank you for your payment.\n"
-"        Here is your payment receipt <span style=\"font-weight:bold;\" t-"
-"out=\"(object.name or '').replace('/','-') or ''\">BNK1-2021-05-0002</span> "
-"amounting\n"
-"        to <span style=\"font-weight:bold;\" t-"
-"out=\"format_amount(object.amount, object.currency_id) or ''\">$ 10.00</"
-"span> from <t t-out=\"object.company_id.name or ''\">YourCompany</t>.\n"
+"        <t t-if=\"object.partner_type == 'customer' and object.payment_type "
+"== 'outbound'\">We have processed your refund of</t>\n"
+"        <t t-elif=\"object.partner_type == 'supplier' and "
+"object.payment_type == 'outbound'\">We have processed your payment of</t>\n"
+"        <t t-elif=\"object.partner_type == 'supplier' and "
+"object.payment_type == 'inbound'\">Thank you for your refund of</t>\n"
+"        <t t-else=\"\">Thank you for your payment of</t> <span style=\"font-"
+"weight:bold;\" t-out=\"format_amount(object.amount, object.currency_id) or "
+"''\">$ 10.00</span>.\n"
+"        Please find the <t t-out=\"object.payment_receipt_title.lower()"
+"\">payment receipt</t> <span t-if=\"object.name\" style=\"font-weight:bold;"
+"\" t-out=\"object.name.replace('/','-')\">BNK1-2021-05-0002</span> from <t t-"
+"out=\"object.company_id.name or ''\">YourCompany</t>.\n"
 "        <br/><br/>\n"
 "        Do not hesitate to contact us if you have any questions.\n"
 "        <br/><br/>\n"
@@ -834,136 +806,96 @@ msgid "<em>Draft Invoice</em>"
 msgstr "<em>Nacrt računa</em>"
 
 #. module: account
-#: model_terms:ir.ui.view,arch_db:account.account_move_line_view_kanban
-#, fuzzy
+#: model_terms:ir.ui.view,arch_db:account.view_account_journal_form
 msgid ""
-"<i class=\"fa fa-clock-o\" aria-label=\"Date\" role=\"img\" title=\"Date\"/>"
+"<i class=\"o_button_icon oi me-2\" data-icon=\"east\"/> Configure Alias "
+"Domain"
 msgstr ""
-"<i class=\"fa fa-clock-o\" aria-label=\"Date\" role=\"img\" title=\"Datum\"/>"
 
 #. module: account
-#: model_terms:ir.ui.view,arch_db:account.portal_invoice_page
-#, fuzzy
-msgid "<i class=\"fa fa-download\"/> Download"
-msgstr "<i class=\"fa fa-download\"/> Preuzimanje"
+#: model_terms:ir.ui.view,arch_db:account.address_form_additional_identifiers
+msgid "<i class=\"oi me-1\" data-icon=\"add\"/>Add identifier"
+msgstr ""
 
 #. module: account
-#: model_terms:ir.ui.view,arch_db:account.portal_my_invoices
-#, fuzzy
-msgid ""
-"<i class=\"fa fa-fw fa-check\" aria-label=\"Paid\" title=\"Paid\" "
-"role=\"img\"/>\n"
-"                                    <span class=\"d-none d-md-inline\"> "
-"Paid</span>"
+#: model_terms:ir.ui.view,arch_db:account.account_terms_conditions_setting_banner
+msgid "<i class=\"oi me-1\" data-icon=\"east\"/>Back to settings"
 msgstr ""
-"<i class=\"fa fa-fw fa-check\" aria-label=\"Paid\" title=\"Plaćeno\" "
-"role=\"img\"/>\n"
-"                                    <span class=\"d-none d-md-inline\"> "
-"Plaćeno</span>"
-
-#. module: account
-#: model_terms:ir.ui.view,arch_db:account.portal_my_invoices
-#, fuzzy
-msgid ""
-"<i class=\"fa fa-fw fa-check\" aria-label=\"Reversed\" title=\"Reversed\" "
-"role=\"img\"/>\n"
-"                                    <span class=\"d-none d-md-inline\"> "
-"Reversed</span>"
-msgstr ""
-"<i class=\"fa fa-fw fa-check\" aria-label=\"Obrnuto\" title=\"Obrnuto\" "
-"role=\"img\"/>\n"
-"\n"
-"<span class=\"d-none d-md-inline\"> Obrnuto</span>"
-
-#. module: account
-#: model_terms:ir.ui.view,arch_db:account.portal_my_invoices
-#, fuzzy
-msgid ""
-"<i class=\"fa fa-fw fa-check\" aria-label=\"processing_payment\" "
-"title=\"Processing Payment\" role=\"img\"/>\n"
-"                                    <span class=\"d-none d-md-inline\"> "
-"Processing Payment</span>"
-msgstr ""
-"<i class=\"fa fa-fw fa-check\" aria-label=\"processing_payment\" "
-"title=\"Obrada plaćanja\" role=\"img\"/>\n"
-"\n"
-"<span class=\"d-none d-md-inline\"> Obrada plaćanja</span>"
-
-#. module: account
-#: model_terms:ir.ui.view,arch_db:account.portal_my_invoices
-#, fuzzy
-msgid ""
-"<i class=\"fa fa-fw fa-clock-o\" aria-label=\"Opened\" title=\"Opened\" "
-"role=\"img\"/>\n"
-"                                    <span class=\"d-none d-md-inline\"> "
-"Waiting for Payment</span>"
-msgstr ""
-"<i class=\"fa fa-fw fa-clock-o\" aria-label=\"Opened\" title=\"Otvoreno\" "
-"role=\"img\"/>\n"
-"                                    <span class=\"d-none d-md-inline\"> Čeka "
-"plaćanje</span>"
-
-#. module: account
-#: model_terms:ir.ui.view,arch_db:account.autopost_bills_wizard
-#, fuzzy
-msgid ""
-"<i class=\"fa fa-lightbulb-o\" role=\"img\"/>\n"
-"                        Don't worry, you can always change this setting "
-"later on the vendor's form.\n"
-"                        You also have the option to disable the feature for "
-"all vendors in the accounting settings."
-msgstr ""
-"<i class=\"fa fa-lightbulb-o\" role=\"img\"/>\n"
-"\n"
-"Ne brinite, ovu postavku uvijek možete kasnije promijeniti na obrascu "
-"dobavljača.\n"
-"\n"
-"Također imate mogućnost onemogućiti značajku za sve dobavljače u postavkama "
-"računovodstva."
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.view_move_form
-#, fuzzy
 msgid ""
-"<i class=\"fa fa-trash text-danger\"/>\n"
+"<i class=\"oi oi-filled text-danger\" data-icon=\"delete\"/>\n"
 "                            <span class=\"text-danger\" "
 "invisible=\"duplicated_ref_ids.length == 1\">Delete all duplicates</span>\n"
 "                            <span class=\"text-danger\" "
 "invisible=\"duplicated_ref_ids.length &gt; 1\">Delete duplicate</span>"
 msgstr ""
-"<i class=\"fa fa-trash text-danger\"/>\n"
-"\n"
-"<span class=\"text-danger\" invisible=\"duplicated_ref_ids.length == "
-"1\">Izbriši sve duplikate</span>\n"
-"\n"
-"<span class=\"text-danger\" invisible=\"duplicated_ref_ids.length &gt; "
-"1\">Izbriši duplikat</span>"
 
 #. module: account
-#: model_terms:ir.ui.view,arch_db:account.account_terms_conditions_setting_banner
-#, fuzzy
-msgid "<i class=\"oi oi-arrow-right me-1\"/>Back to settings"
-msgstr "<i class=\"oi oi-arrow-right me-1\"/>Nazad na postavke"
+#: model_terms:ir.ui.view,arch_db:account.portal_my_invoices
+msgid ""
+"<i class=\"oi oi-fw\" data-icon=\"check\" aria-label=\"Paid\" title=\"Paid\" "
+"role=\"img\"/>\n"
+"                                    <span class=\"d-none d-md-inline\"> "
+"Paid</span>"
+msgstr ""
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.portal_my_invoices
+msgid ""
+"<i class=\"oi oi-fw\" data-icon=\"check\" aria-label=\"Reversed\" "
+"title=\"Reversed\" role=\"img\"/>\n"
+"                                    <span class=\"d-none d-md-inline\"> "
+"Reversed</span>"
+msgstr ""
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.portal_my_invoices
+msgid ""
+"<i class=\"oi oi-fw\" data-icon=\"check\" aria-label=\"processing_payment\" "
+"title=\"Processing Payment\" role=\"img\"/>\n"
+"                                    <span class=\"d-none d-md-inline\"> "
+"Processing Payment</span>"
+msgstr ""
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.portal_invoice_page
+msgid "<i class=\"oi oi-fw\" data-icon=\"download\"/> Download"
+msgstr ""
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.portal_my_invoices
+msgid ""
+"<i class=\"oi oi-fw\" data-icon=\"schedule\" aria-label=\"Opened\" "
+"title=\"Opened\" role=\"img\"/>\n"
+"                                    <span class=\"d-none d-md-inline\"> "
+"Waiting for Payment</span>"
+msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
-#, fuzzy
 msgid ""
-"<i class=\"oi oi-arrow-right\"/>\n"
+"<i class=\"oi\" data-icon=\"east\"/>\n"
 "                                                Preview"
 msgstr ""
-"<i class=\"oi oi-arrow-right\"/>\n"
-"\n"
-"Pregled"
 
 #. module: account
-#: model_terms:ir.ui.view,arch_db:account.view_account_journal_form
-#, fuzzy
+#: model_terms:ir.ui.view,arch_db:account.autopost_bills_wizard
 msgid ""
-"<i class=\"oi oi-fw o_button_icon oi-arrow-right\"/> Configure Alias Domain"
+"<i class=\"oi\" data-icon=\"lightbulb\" role=\"img\"/>\n"
+"                        Don't worry, you can always change this setting "
+"later on the vendor's form.\n"
+"                        You also have the option to disable the feature for "
+"all vendors in the accounting settings."
 msgstr ""
-"<i class=\"oi oi-fw o_button_icon oi-arrow-right\"/> Konfiguriraj alias "
-"domenu"
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.account_move_line_view_kanban
+msgid ""
+"<i class=\"oi\" data-icon=\"schedule\" aria-label=\"Date\" role=\"img\" "
+"title=\"Date\"/>"
+msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.portal_my_details
@@ -991,21 +923,14 @@ msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.portal_my_invoices
-#, fuzzy
 msgid ""
 "<span class=\"badge rounded-pill text-bg-warning\">\n"
-"                                    <i class=\"fa fa-fw fa-remove\" aria-"
-"label=\"Cancelled\" title=\"Cancelled\" role=\"img\"/>\n"
+"                                    <i class=\"oi oi-fw\" data-"
+"icon=\"close\" aria-label=\"Cancelled\" title=\"Cancelled\" role=\"img\"/>\n"
 "                                    <span class=\"d-none d-md-inline\"> "
 "Cancelled</span>\n"
 "                                </span>"
 msgstr ""
-"<span class=\"badge rounded-pill text-bg-warning\">\n"
-"                                    <i class=\"fa fa-fw fa-remove\" aria-"
-"label=\"Cancelled\" title=\"Otkazano\" role=\"img\"/>\n"
-"                                    <span class=\"d-none d-md-inline\"> "
-"Otkazano</span>\n"
-"                                </span>"
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.setup_financial_year_opening_form
@@ -1063,7 +988,9 @@ msgid ""
 "<span class=\"o_stat_text\" invisible=\"move_type != 'out_refund'\">Invoice</"
 "span>\n"
 "                                <span class=\"o_stat_text\" "
-"invisible=\"move_type != 'in_refund'\">Vendor Bill</span>"
+"invisible=\"move_type != 'in_refund'\">Vendor Bill</span>\n"
+"                                <span class=\"o_stat_text\" "
+"invisible=\"move_type != 'entry'\">Journal Entry</span>"
 msgstr ""
 
 #. module: account
@@ -1132,18 +1059,13 @@ msgid "<span class=\"o_stat_text\">Invoiced</span>"
 msgstr "<span class=\"o_stat_text\">Fakturisano</span>"
 
 #. module: account
-#: model_terms:ir.ui.view,arch_db:account.view_account_journal_form
-#, fuzzy
-msgid "<span class=\"o_stat_text\">Journal Entries</span>"
-msgstr "<span class=\"o_stat_text\">Stavke dnevnika</span>"
-
-#. module: account
 #: model_terms:ir.ui.view,arch_db:account.view_account_payment_form
 #, fuzzy
 msgid "<span class=\"o_stat_text\">Journal Entry</span>"
 msgstr "<span class=\"o_stat_text\">Stavka dnevnika</span>"
 
 #. module: account
+#: model_terms:ir.ui.view,arch_db:account.view_account_journal_form
 #: model_terms:ir.ui.view,arch_db:account.view_move_form
 msgid "<span class=\"o_stat_text\">Journal Items</span>"
 msgstr ""
@@ -1299,12 +1221,6 @@ msgid "<span role=\"separator\">View</span>"
 msgstr "<span role=\"separator\">Pogled</span>"
 
 #. module: account
-#: model_terms:ir.ui.view,arch_db:account.account_journal_dashboard_kanban_view
-#, fuzzy
-msgid "<span title=\"Latest Statement\">Last Statement</span>"
-msgstr "<span title=\"Latest Statement\">Najnoviji izvod</span>"
-
-#. module: account
 #: model_terms:ir.ui.view,arch_db:account.account_move_line_view_kanban
 #, fuzzy
 msgid "<span> (CR)</span>"
@@ -1321,6 +1237,13 @@ msgstr "<span> (DR)</span>"
 #, fuzzy
 msgid "<span> Bill</span>"
 msgstr "<span> Račun </span>"
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.view_account_accrued_orders_wizard
+msgid ""
+"<span> already exists for this period. Posting this entry will replace it.</"
+"span>"
+msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.report_invoice_document
@@ -1342,19 +1265,6 @@ msgid "<span>$ <span class=\"oe_currency_value\">19,250.00</span></span>"
 msgstr "<span>$ <span class=\"oe_currency_value\">19,250.00</span></span>"
 
 #. module: account
-#: model_terms:ir.ui.view,arch_db:account.report_invoice_document
-#, fuzzy
-msgid "<span>1.00</span>"
-msgstr "<span>1.00</span>"
-
-#. module: account
-#: model_terms:ir.ui.view,arch_db:account.view_account_payment_register_form
-#: model_terms:ir.ui.view,arch_db:account.view_move_form
-#, fuzzy
-msgid "<span>1</span>"
-msgstr "<span>1</span>"
-
-#. module: account
 #: model_terms:ir.ui.view,arch_db:account.bill_preview
 #, fuzzy
 msgid "<span>5.00</span>"
@@ -1365,13 +1275,6 @@ msgstr "<span>5.00</span>"
 #, fuzzy
 msgid "<span><b>Good job!</b> You went through all steps of this tour.</span>"
 msgstr "<span><b>Bravo!</b> Prošli ste sve korake ovog putovanja.</span>"
-
-#. module: account
-#: model_terms:ir.ui.view,arch_db:account.view_account_payment_register_form
-#: model_terms:ir.ui.view,arch_db:account.view_move_form
-#, fuzzy
-msgid "<span>=</span>"
-msgstr "<span>=</span>"
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.report_payment_receipt_document
@@ -1386,6 +1289,11 @@ msgstr "<span>Iznos u valuti</span>"
 #, fuzzy
 msgid "<span>Amount</span>"
 msgstr "<span>Iznos</span>"
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.view_account_accrued_orders_wizard
+msgid "<span>An accrual entry of </span>"
+msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.account_journal_dashboard_kanban_view
@@ -2516,6 +2424,14 @@ msgstr ""
 
 #. module: account
 #. odoo-python
+#: code:addons/account/models/partner.py:0
+msgid ""
+"A partner cannot have both an individual identifier (%(individual)s) and a "
+"company identifier (%(company)s)."
+msgstr ""
+
+#. module: account
+#. odoo-python
 #: code:addons/account/models/account_payment.py:0
 #, fuzzy
 msgid ""
@@ -2543,6 +2459,22 @@ msgstr "Naslov sekcije"
 msgid "A single exception must change exactly one lock date field."
 msgstr ""
 "Jedan izuzetak mora promijeniti tačno jedno polje datuma zaključavanja."
+
+#. module: account
+#. odoo-python
+#: code:addons/account/models/account_bank_statement.py:0
+msgid ""
+"A statement (%(statement_name)s) belonging to a hashed journal (%"
+"(journal_code)s) cannot be draft."
+msgstr ""
+
+#. module: account
+#. odoo-python
+#: code:addons/account/models/account_bank_statement.py:0
+msgid ""
+"A statement (%(statement_name)s) belonging to a hashed journal (%"
+"(journal_code)s) cannot having an ending balance that is negative."
+msgstr ""
 
 #. module: account
 #. odoo-python
@@ -2795,6 +2727,11 @@ msgid "Account Move Count"
 msgstr "Broj stavki knjiženja"
 
 #. module: account
+#: model:ir.model.fields,field_description:account.field_account_tax__account_move_line_ids
+msgid "Account Move Line"
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,field_description:account.field_account_account__name
 #: model:ir.model.fields,field_description:account.field_account_move_line__account_name
 #: model_terms:ir.ui.view,arch_db:account.view_account_form
@@ -2844,6 +2781,11 @@ msgstr "Potražni konto"
 #: model:ir.model.fields,field_description:account.field_res_partner__property_account_receivable_active
 #: model:ir.model.fields,field_description:account.field_res_users__property_account_receivable_active
 msgid "Account Receivable Active"
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_account_tax__account_reconcile_model_line_ids
+msgid "Account Reconcile Model Line"
 msgstr ""
 
 #. module: account
@@ -3053,6 +2995,11 @@ msgid "Account with Entries"
 msgstr "Konto sa stavkama"
 
 #. module: account
+#: model:ir.actions.server,name:account.ir_cron_post_stock_valuation_ir_actions_server
+msgid "Account: Inventory Valuation Closing"
+msgstr ""
+
+#. module: account
 #: model:ir.actions.server,name:account.ir_cron_auto_post_draft_entry_ir_actions_server
 #, fuzzy
 msgid ""
@@ -3205,6 +3152,11 @@ msgid "Accrual Moves"
 msgstr "Obračunski pokreti"
 
 #. module: account
+#: model:ir.model.fields,field_description:account.field_account_accrued_orders_wizard__accrual_type
+msgid "Accrual Type"
+msgstr ""
+
+#. module: account
 #. odoo-python
 #: code:addons/account/wizard/accrued_orders.py:0
 #, fuzzy
@@ -3216,17 +3168,28 @@ msgstr ""
 "njegov obrnuti unos: %(reverse_entry)s."
 
 #. module: account
+#. odoo-javascript
 #. odoo-python
-#: code:addons/account/wizard/accrued_orders.py:0
-#, fuzzy
-msgid "Accrued %(entry_type)s entry as of %(date)s"
-msgstr "Akumulirani unos %(entry_type)s od %(date)s"
+#: code:addons/account/report/account_stock_valuation_report.py:0
+#: code:addons/account/static/src/components/stock_valuation/stock_valuation_report.xml:0
+msgid "Accruals"
+msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.account_automatic_entry_wizard_form
 #, fuzzy
 msgid "Accrued Account"
 msgstr "Konto razgraničenja"
+
+#. module: account
+#: model:account.account,name:account.21_accrued_expenses
+msgid "Accrued Expenses"
+msgstr ""
+
+#. module: account
+#: model:account.account,name:account.21_accrued_income
+msgid "Accrued Income"
+msgstr ""
 
 #. module: account
 #: model:ir.model,name:account.model_account_accrued_orders_wizard
@@ -3329,6 +3292,7 @@ msgstr "Aktivirajte za izradu prodajnog računa"
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_account__active
 #: model:ir.model.fields,field_description:account.field_account_account_tag__active
+#: model:ir.model.fields,field_description:account.field_account_cash_rounding__active
 #: model:ir.model.fields,field_description:account.field_account_fiscal_position__active
 #: model:ir.model.fields,field_description:account.field_account_incoterms__active
 #: model:ir.model.fields,field_description:account.field_account_journal__active
@@ -3340,9 +3304,20 @@ msgstr "Aktivirajte za izradu prodajnog računa"
 #: model:ir.model.fields,field_description:account.field_account_tax__active
 #: model:ir.model.fields,field_description:account.field_res_partner_bank__active
 #: model:ir.model.fields.selection,name:account.selection__account_lock_exception__state__active
+#: model_terms:ir.ui.view,arch_db:account.rounding_search_view
 #: model_terms:ir.ui.view,arch_db:account.view_account_tax_search
 msgid "Active"
 msgstr "Aktivan"
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_account_report__active_fallback
+msgid "Active Fallback"
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_account_report__active_selection
+msgid "Active Selection"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_account__activity_ids
@@ -3436,10 +3411,23 @@ msgid "Add QR-code link on PDF"
 msgstr "Dodajte QR-kod link u PDF"
 
 #. module: account
+#. odoo-javascript
+#: code:addons/account/static/src/components/product_catalog/search/search_panel/search_panel.xml:0
+msgid "Add Section"
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields.selection,name:account.selection__res_company__terms_type__plain
 #, fuzzy
 msgid "Add a Note"
 msgstr "Dodaj napomenu"
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
+msgid ""
+"Add a QR-code to your invoices so that your customers can pay instantly with "
+"their banking application."
+msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
@@ -3505,6 +3493,8 @@ msgid "Add a rounding line"
 msgstr "Dodaj stavku zaokruživanja"
 
 #. module: account
+#. odoo-javascript
+#: code:addons/account/static/src/components/product_catalog/search/search_panel/search_panel.xml:0
 #: model_terms:ir.ui.view,arch_db:account.view_move_form
 #, fuzzy
 msgid "Add a section"
@@ -3512,6 +3502,7 @@ msgstr "Dodaj sekciju"
 
 #. module: account
 #. odoo-javascript
+#: code:addons/account/static/src/components/product_catalog/search/section_row/section_row.xml:0
 #: code:addons/account/static/src/components/section_and_note_fields_backend/section_and_note_fields_backend.xml:0
 #, fuzzy
 msgid "Add a subsection"
@@ -3526,6 +3517,12 @@ msgstr "Dodaj internu zabilješku ..."
 #: model_terms:ir.ui.view,arch_db:account.account_move_send_wizard_form
 msgid "Add contacts to notify..."
 msgstr "Dodaj kontakte kojima ide obavijest..."
+
+#. module: account
+#. odoo-javascript
+#: code:addons/account/static/src/interactions/portal_additional_identifiers.js:0
+msgid "Add identifier"
+msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
@@ -3678,6 +3675,7 @@ msgstr "Zračne karte"
 #: model:ir.model.fields,field_description:account.field_account_move__alerts
 #: model:ir.model.fields,field_description:account.field_account_move_send_batch_wizard__alerts
 #: model:ir.model.fields,field_description:account.field_account_move_send_wizard__alerts
+#: model:ir.model.fields,field_description:account.field_account_payment__alerts
 #, fuzzy
 msgid "Alerts"
 msgstr "Upozorenja"
@@ -4099,6 +4097,17 @@ msgstr ""
 "moraju biti usklađeni."
 
 #. module: account
+#. odoo-python
+#: code:addons/account/controllers/portal.py:0
+msgid "An individual identifier cannot be combined with a VAT number."
+msgstr ""
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.account_journal_dashboard_kanban_view
+msgid "Analysis"
+msgstr ""
+
+#. module: account
 #: model_terms:ir.ui.view,arch_db:account.view_account_reconcile_model_form
 #: model_terms:ir.ui.view,arch_db:account.view_move_form
 #: model_terms:ir.ui.view,arch_db:account.view_move_line_form
@@ -4325,6 +4334,11 @@ msgid "Apply only if partner has a Tax ID."
 msgstr ""
 
 #. module: account
+#: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
+msgid "Apply rounding to the total amount of a sales invoice."
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,help:account.field_account_fiscal_position__auto_apply
 msgid ""
 "Apply tax & account mappings on invoices automatically if the matching "
@@ -4353,6 +4367,7 @@ msgstr "Arhiviraj"
 #: model_terms:ir.ui.view,arch_db:account.account_incoterms_view_search
 #: model_terms:ir.ui.view,arch_db:account.account_tag_view_form
 #: model_terms:ir.ui.view,arch_db:account.account_tag_view_search
+#: model_terms:ir.ui.view,arch_db:account.rounding_form_view
 #: model_terms:ir.ui.view,arch_db:account.view_account_journal_form
 #: model_terms:ir.ui.view,arch_db:account.view_account_journal_search
 #: model_terms:ir.ui.view,arch_db:account.view_account_position_filter
@@ -4376,6 +4391,12 @@ msgstr "Jeste li sigurni da želite izbrisati ove zapise?"
 #, fuzzy
 msgid "Are you sure? This will perform the following operations:\n"
 msgstr "Jeste li sigurni? To će pokrenuti sljedeće operacije:\n"
+
+#. module: account
+#. odoo-javascript
+#: code:addons/account/static/src/components/stock_valuation/filters/filter_date.xml:0
+msgid "As of"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields.selection,name:account.selection__res_partner__autopost_bills__ask
@@ -4409,6 +4430,22 @@ msgid "At Date"
 msgstr "Na datum"
 
 #. module: account
+#: model:ir.model.fields,help:account.field_account_account__account_stock_variation_id
+#: model:ir.model.fields,help:account.field_product_category__account_stock_variation_id
+msgid ""
+"At closing, register the inventory variation of the period into a specific "
+"account"
+msgstr ""
+
+#. module: account
+#. odoo-python
+#: code:addons/account/models/account_bank_statement.py:0
+msgid ""
+"At least one transaction in the statement is prior the last posted statement "
+"line (%s)"
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields.selection,name:account.selection__account_report_expression__date_scope__to_beginning_of_fiscalyear
 #, fuzzy
 msgid "At the beginning of the fiscal year"
@@ -4419,6 +4456,12 @@ msgstr "Na početku fiskalne godine"
 #, fuzzy
 msgid "At the beginning of the period"
 msgstr "Na početku perioda"
+
+#. module: account
+#. odoo-javascript
+#: code:addons/account/static/src/components/stock_valuation/filters/filter_date.xml:0
+msgid "At the date of"
+msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.account_move_send_wizard_form
@@ -4689,6 +4732,18 @@ msgid "Available Pdf Report"
 msgstr "Dostupno PDF izvješće"
 
 #. module: account
+#: model:ir.model.fields,field_description:account.field_account_payment__available_return_partner_bank_ids
+msgid "Available Return Partner Bank"
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields.selection,name:account.selection__product_category__property_cost_method__average
+#: model:ir.model.fields.selection,name:account.selection__product_template__cost_method__average
+#: model:ir.model.fields.selection,name:account.selection__res_company__cost_method__average
+msgid "Average Cost (AVCO)"
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,field_description:account.field_account_invoice_report__price_average
 msgid "Average Price"
 msgstr "Prosječna Cijena"
@@ -4784,6 +4839,7 @@ msgstr "Postotak stanja ne može biti 0"
 #: model:ir.model.fields,field_description:account.field_res_users__bank_account_count
 #: model:ir.model.fields.selection,name:account.selection__account_journal__type__bank
 #: model:res.groups.privilege,name:account.res_group_privilege_accounting_bank
+#: model_terms:ir.ui.view,arch_db:account.account_bank_statement_line_view_search_cashflow
 #: model_terms:ir.ui.view,arch_db:account.view_account_move_filter
 #: model_terms:ir.ui.view,arch_db:account.view_account_move_line_filter
 msgid "Bank"
@@ -5035,6 +5091,13 @@ msgid "Bank setup manual config"
 msgstr "Ručna konfiguracija banke"
 
 #. module: account
+#. odoo-python
+#: code:addons/account/models/account_move.py:0
+msgid ""
+"Bank statements must be linked to a journal of type Bank, Cash or Credit."
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,help:account.field_account_journal__suspense_account_id
 #, fuzzy
 msgid ""
@@ -5229,6 +5292,17 @@ msgstr "Referenca računa"
 
 #. module: account
 #. odoo-python
+#: code:addons/account/report/account_stock_valuation_report.py:0
+msgid "Billed Not Received"
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields.selection,name:account.selection__account_accrued_orders_wizard__accrual_type__billed_not_received
+msgid "Billed not received"
+msgstr ""
+
+#. module: account
+#. odoo-python
 #: code:addons/account/controllers/portal.py:0
 #: code:addons/account/models/account_journal_dashboard.py:0
 #: model:ir.actions.act_window,name:account.action_move_in_invoice
@@ -5271,6 +5345,12 @@ msgid "Bills to Pay"
 msgstr "Računi za plaćanje"
 
 #. module: account
+#. odoo-python
+#: code:addons/account/report/account_stock_valuation_report.py:0
+msgid "Bills to Receive"
+msgstr ""
+
+#. module: account
 #: model_terms:ir.ui.view,arch_db:account.account_journal_dashboard_kanban_view
 #, fuzzy
 msgid "Bills to Validate"
@@ -5283,8 +5363,8 @@ msgid "Bills to pay"
 msgstr "Računi za plaćanje"
 
 #. module: account
-#: model:account.account,name:account.21_to_receive_pay
 #: model:account.account,name:account.22_account_account_us_to_receive_pay
+#: model:ir.model.fields.selection,name:account.selection__account_accrued_orders_wizard__accrual_type__bill_to_receive
 #, fuzzy
 msgid "Bills to receive"
 msgstr "Računi za zaprimanje"
@@ -5409,6 +5489,31 @@ msgid "C"
 msgstr "C"
 
 #. module: account
+#: model:account.tax,name:account.22_account_tax_us_demo_ca_alameda
+msgid "CA Alameda County 4.25%"
+msgstr ""
+
+#. module: account
+#: model:account.tax,name:account.22_account_tax_us_demo_ca_state
+msgid "CA State 6%"
+msgstr ""
+
+#. module: account
+#: model:account.tax,name:account.22_account_tax_us_demo_ca_exempt
+msgid "CA State 6% Exempt"
+msgstr ""
+
+#. module: account
+#: model:account.tax,name:account.22_account_tax_us_demo_ca_nontaxable
+msgid "CA State 6% Non-Taxable"
+msgstr ""
+
+#. module: account
+#: model:account.tax,name:account.22_account_tax_us_demo_ca_reduced
+msgid "CA State 6% reduced to 4%"
+msgstr ""
+
+#. module: account
 #. odoo-python
 #: code:addons/account/models/chart_template.py:0
 #, fuzzy
@@ -5435,12 +5540,6 @@ msgid "CLABE"
 msgstr ""
 
 #. module: account
-#. odoo-python
-#: code:addons/account/tools/bank_account_number.py:0
-msgid "CLABE should be a string of 18 digits."
-msgstr ""
-
-#. module: account
 #: model:account.incoterms,name:account.incoterm_CFR
 #, fuzzy
 msgid "COST AND FREIGHT"
@@ -5451,6 +5550,11 @@ msgstr "CFR - cijena sa vozarinom"
 #, fuzzy
 msgid "COST, INSURANCE AND FREIGHT"
 msgstr "CIP - vozarina i osiguranje plaćeni do"
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.view_account_journal_form
+msgid "CSV, XLS and XLSX files cannot be imported automatically."
+msgstr ""
 
 #. module: account
 #. odoo-python
@@ -5464,6 +5568,11 @@ msgstr "CUST"
 #, fuzzy
 msgid "Can Be Proposed"
 msgstr "Može se predložiti"
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_base_document_layout__can_configure_later
+msgid "Can Configure Later"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_move_send_wizard__can_edit_body
@@ -5639,6 +5748,7 @@ msgstr "Prenijeti na"
 #: code:addons/account/models/account_journal.py:0
 #: model:account.account,name:account.21_cash_journal_default_account_306
 #: model:ir.model.fields.selection,name:account.selection__account_journal__type__cash
+#: model_terms:ir.ui.view,arch_db:account.account_bank_statement_line_view_search_cashflow
 #: model_terms:ir.ui.view,arch_db:account.view_account_move_filter
 #: model_terms:ir.ui.view,arch_db:account.view_account_move_line_filter
 msgid "Cash"
@@ -5784,10 +5894,18 @@ msgid "Cash Furn. Shop"
 msgstr "Trgovina s namještajem u gotovini"
 
 #. module: account
-#: model:ir.actions.act_window,name:account.action_view_bank_statement_tree
-#: model_terms:ir.ui.view,arch_db:account.account_journal_dashboard_kanban_view
-msgid "Cash Registers"
-msgstr "Kase"
+#. odoo-python
+#: code:addons/account/models/account_journal_dashboard.py:0
+#: model_terms:ir.ui.view,arch_db:account.account_bank_statement_line_view_search_cashflow
+msgid "Cash In"
+msgstr ""
+
+#. module: account
+#. odoo-python
+#: code:addons/account/models/account_journal_dashboard.py:0
+#: model_terms:ir.ui.view,arch_db:account.account_bank_statement_line_view_search_cashflow
+msgid "Cash Out"
+msgstr ""
 
 #. module: account
 #: model:account.account,name:account.21_cash_journal_default_account_304
@@ -5796,10 +5914,10 @@ msgid "Cash Restaurant"
 msgstr "Restoran koji zaprima gotovinu"
 
 #. module: account
-#: model:ir.model.fields,field_description:account.field_res_config_settings__group_cash_rounding
-#, fuzzy
-msgid "Cash Rounding"
-msgstr "Zaokruživanje gotovine"
+#: model:ir.model.fields,field_description:account.field_res_company__cash_rounding_loss_account_id
+#: model:ir.model.fields,field_description:account.field_res_config_settings__cash_rounding_loss_account_id
+msgid "Cash Rounding Loss Account"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_bank_statement_line__invoice_cash_rounding_id
@@ -5809,12 +5927,10 @@ msgid "Cash Rounding Method"
 msgstr "Metoda zaokruživanja gotovine"
 
 #. module: account
-#: model:ir.actions.act_window,name:account.rounding_list_action
-#: model:ir.ui.menu,name:account.menu_action_rounding_form_view
-#: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
-#, fuzzy
-msgid "Cash Roundings"
-msgstr "Zaokruživanje gotovine"
+#: model:ir.model.fields,field_description:account.field_res_company__cash_rounding_profit_account_id
+#: model:ir.model.fields,field_description:account.field_res_config_settings__cash_rounding_profit_account_id
+msgid "Cash Rounding Profit Account"
+msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.report_statement
@@ -5836,10 +5952,24 @@ msgid "Cash: Balance"
 msgstr "Gotovina: Saldo"
 
 #. module: account
+#: model:ir.actions.act_window,name:account.action_account_cashflow_analysis
+#: model:ir.ui.menu,name:account.menu_action_account_cashflow_analysis
+#: model_terms:ir.ui.view,arch_db:account.account_bank_statement_line_view_graph_cashflow
+#: model_terms:ir.ui.view,arch_db:account.account_bank_statement_line_view_pivot_cashflow
+#: model_terms:ir.ui.view,arch_db:account.account_bank_statement_line_view_search_cashflow
+msgid "Cashflow Analysis"
+msgstr ""
+
+#. module: account
 #: model_terms:ir.ui.view,arch_db:account.view_move_form
 #, fuzzy
 msgid "Catalog"
 msgstr "Katalog"
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_product_product__catalog_is_in_selected_section
+msgid "Catalog Is In Selected Section"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_analytic_line__category
@@ -6020,6 +6150,12 @@ msgid "Click"
 msgstr "Klik"
 
 #. module: account
+#. odoo-javascript
+#: code:addons/account/static/src/components/account_pick_currency_rate/account_pick_currency_rate.xml:0
+msgid "Click to swap currencies"
+msgstr ""
+
+#. module: account
 #: model_terms:ir.ui.view,arch_db:account.account_terms_conditions_setting_banner
 msgid "Close"
 msgstr "Zatvori"
@@ -6029,6 +6165,18 @@ msgstr "Zatvori"
 #, fuzzy
 msgid "Closing"
 msgstr "Zatvaranje"
+
+#. module: account
+#. odoo-python
+#: code:addons/account/models/company.py:0
+msgid "Closing: Stock Variation Global for company [%(company)s]"
+msgstr ""
+
+#. module: account
+#. odoo-python
+#: code:addons/account/models/company.py:0
+msgid "Closing: Stock Variation Over Period"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_account__code
@@ -6063,6 +6211,11 @@ msgstr ""
 #, fuzzy
 msgid "Code Store"
 msgstr "Code Store"
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_account_move_line__cogs_origin_id
+msgid "Cogs Origin"
+msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
@@ -6201,6 +6354,7 @@ msgstr "Firme koje se vežu sa partnerom"
 #: model:ir.model.fields,field_description:account.field_account_tax__company_id
 #: model:ir.model.fields,field_description:account.field_account_tax_group__company_id
 #: model:ir.model.fields,field_description:account.field_account_tax_repartition_line__company_id
+#: model_terms:ir.ui.view,arch_db:account.account_bank_statement_line_view_search_cashflow
 #: model_terms:ir.ui.view,arch_db:account.res_company_form_view_onboarding
 #: model_terms:ir.ui.view,arch_db:account.view_account_invoice_filter
 #: model_terms:ir.ui.view,arch_db:account.view_account_invoice_report_search
@@ -6331,6 +6485,11 @@ msgid "Computers"
 msgstr "Računari"
 
 #. module: account
+#: model_terms:ir.ui.view,arch_db:account.rounding_form_view
+msgid "Conditions"
+msgstr ""
+
+#. module: account
 #: model:ir.model,name:account.model_res_config_settings
 #, fuzzy
 msgid "Config Settings"
@@ -6349,9 +6508,16 @@ msgid "Configuration review"
 msgstr "Pregled postavki"
 
 #. module: account
+#. odoo-python
+#: code:addons/account/models/account_move.py:0
 #: model:onboarding.onboarding.step,button_text:account.onboarding_onboarding_step_fiscal_year
 msgid "Configure"
 msgstr "Konfiguriši"
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.view_base_document_layout
+msgid "Configure Later"
+msgstr ""
 
 #. module: account
 #. odoo-python
@@ -6474,6 +6640,12 @@ msgid "Contents"
 msgstr "Sadržaji"
 
 #. module: account
+#. odoo-javascript
+#: code:addons/account/static/src/js/tours/account.js:0
+msgid "Continue with the default document layout."
+msgstr ""
+
+#. module: account
 #: model:ir.ui.menu,name:account.account_audit_control_menu
 #, fuzzy
 msgid "Control"
@@ -6506,6 +6678,13 @@ msgstr "Super, izgleda da nemaš nikakav iznos za podmirenje."
 #, fuzzy
 msgid "Corrupted data on journal entry with id %(id)s (%(name)s)."
 msgstr "Oštećeni podaci na unosu dnevnika s ID-om %(id)s (%(name)s)."
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_product_product__cost_method
+#: model:ir.model.fields,field_description:account.field_product_template__cost_method
+#: model:ir.model.fields,field_description:account.field_res_company__cost_method
+msgid "Cost Method"
+msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.product_template_form_view
@@ -6542,6 +6721,11 @@ msgstr "Cijena kancelarijskog namještaja, opreme i poslovne opreme"
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.view_account_search
 msgid "Cost of revenue"
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_product_category__property_cost_method
+msgid "Costing Method"
 msgstr ""
 
 #. module: account
@@ -6616,6 +6800,13 @@ msgstr ""
 #, fuzzy
 msgid "Counterpart Items"
 msgstr "Counterpart Items"
+
+#. module: account
+#: model:ir.model.fields,help:account.field_account_account__account_stock_expense_id
+msgid ""
+"Counterpart used at closing for accounting adjustments to inventory "
+"valuation."
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,help:account.field_res_company__multi_vat_foreign_country_ids
@@ -6836,6 +7027,12 @@ msgid "Create a vendor credit note"
 msgstr "Kreiraj odobrenje dobavljača"
 
 #. module: account
+#. odoo-javascript
+#: code:addons/account/static/src/components/tax_totals/tax_totals.js:0
+msgid "Create and edit"
+msgstr ""
+
+#. module: account
 #: model_terms:ir.actions.act_window,help:account.action_account_journal_group_list
 #, fuzzy
 msgid ""
@@ -6893,8 +7090,8 @@ msgstr "Kreirajte novi nalog"
 
 #. module: account
 #: model_terms:ir.actions.act_window,help:account.rounding_list_action
-msgid "Create the first cash rounding"
-msgstr "Kreirajte prvo zaokruživanje gotovine"
+msgid "Create the first rounding method"
+msgstr ""
 
 #. module: account
 #. odoo-javascript
@@ -7022,6 +7219,7 @@ msgstr "Kreirano"
 #: code:addons/account/wizard/account_automatic_entry_wizard.py:0
 #: code:addons/account/wizard/accrued_orders.py:0
 #: model:ir.model.fields,field_description:account.field_account_move_line__credit
+#: model_terms:ir.ui.view,arch_db:account.account_bank_statement_line_view_search_cashflow
 #: model_terms:ir.ui.view,arch_db:account.view_account_move_filter
 #: model_terms:ir.ui.view,arch_db:account.view_account_move_line_filter
 msgid "Credit"
@@ -7212,6 +7410,7 @@ msgstr "Valute"
 #: model:ir.model,name:account.model_res_currency
 #: model:ir.model.fields,field_description:account.field_account_automatic_entry_wizard__company_currency_id
 #: model:ir.model.fields,field_description:account.field_account_bank_statement__currency_id
+#: model:ir.model.fields,field_description:account.field_account_cash_rounding__currency_ids
 #: model:ir.model.fields,field_description:account.field_account_invoice_report__currency_id
 #: model:ir.model.fields,field_description:account.field_account_journal__currency_id
 #: model:ir.model.fields,field_description:account.field_account_move__currency_id
@@ -7223,6 +7422,7 @@ msgstr "Valute"
 #: model:ir.model.fields,field_description:account.field_res_config_settings__currency_id
 #: model:ir.model.fields,field_description:account.field_res_partner__currency_id
 #: model:ir.model.fields,field_description:account.field_res_users__currency_id
+#: model_terms:ir.ui.view,arch_db:account.account_bank_statement_line_view_search_cashflow
 #: model_terms:ir.ui.view,arch_db:account.view_account_form
 #: model_terms:ir.ui.view,arch_db:account.view_account_move_line_payment_filter
 #: model_terms:ir.ui.view,arch_db:account.view_account_payment_search
@@ -7537,8 +7737,14 @@ msgid "DELIVERED DUTY PAID"
 msgstr "ISPORUKA OCARINJENA"
 
 #. module: account
+#: model:ir.model.fields.selection,name:account.selection__res_company__inventory_period__daily
+msgid "Daily"
+msgstr ""
+
+#. module: account
 #: model:ir.actions.act_window,name:account.open_account_journal_dashboard_kanban
 #: model:ir.ui.menu,name:account.menu_board_journal_1
+#: model_terms:ir.ui.view,arch_db:account.view_account_journal_form
 msgid "Dashboard"
 msgstr "Kontrolna ploča"
 
@@ -7575,6 +7781,7 @@ msgstr "Provjera konzistentnosti podataka"
 #: model:ir.model.fields,field_description:account.field_account_report_external_value__date
 #: model:ir.model.fields.selection,name:account.selection__account_report_column__figure_type__date
 #: model:ir.model.fields.selection,name:account.selection__account_report_expression__figure_type__date
+#: model_terms:ir.ui.view,arch_db:account.account_bank_statement_line_view_search_cashflow
 #: model_terms:ir.ui.view,arch_db:account.view_account_invoice_report_search
 #: model_terms:ir.ui.view,arch_db:account.view_account_move_filter
 #: model_terms:ir.ui.view,arch_db:account.view_account_move_line_filter
@@ -7936,12 +8143,6 @@ msgid "Define a default in the settings"
 msgstr "Definirajte zadanu vrijednost u postavkama"
 
 #. module: account
-#: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
-#, fuzzy
-msgid "Define the smallest coinage of the currency used to pay by cash"
-msgstr "Definiraj najmanju kovanicu kojom možete platiti u gotovini"
-
-#. module: account
 #: model:onboarding.onboarding.step,description:account.onboarding_onboarding_step_fiscal_year
 #, fuzzy
 msgid "Define your fiscal years & tax returns periodicity."
@@ -7958,6 +8159,11 @@ msgstr "Definira kako će se registrirati bankovni izvodi"
 #, fuzzy
 msgid "Defines if the field account prefix should be displayed"
 msgstr "Definiše da li treba prikazati prefiks konta u polju"
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.ir_actions_report_form_inherit_account
+msgid "Defines if the report is used in the invoice wizard"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,help:account.field_account_bank_statement_line__invoice_cash_rounding_id
@@ -7988,6 +8194,7 @@ msgstr "Tip kašnjenja"
 
 #. module: account
 #. odoo-javascript
+#: code:addons/account/static/src/components/product_catalog/search/section_row/section_row.xml:0
 #: code:addons/account/static/src/components/section_and_note_fields_backend/section_and_note_fields_backend.xml:0
 #, fuzzy
 msgid "Delete"
@@ -8086,8 +8293,10 @@ msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_account__description
+#: model:ir.model.fields,field_description:account.field_account_move_line__name
 #: model:ir.model.fields,field_description:account.field_account_tax__description
 #: model_terms:ir.ui.view,arch_db:account.view_account_form
+#: model_terms:ir.ui.view,arch_db:account.view_message_tree_audit_log
 #: model_terms:ir.ui.view,arch_db:account.view_message_tree_audit_log_search
 #: model_terms:ir.ui.view,arch_db:account.view_move_form
 msgid "Description"
@@ -8182,6 +8391,11 @@ msgstr "Invalidsko osiguranje"
 #, fuzzy
 msgid "Disable Merge Button"
 msgstr "Onemogući dugme za spajanje"
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_account_journal__disable_dashboard_graph
+msgid "Disable chart to speed up dashboard"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields.selection,name:account.selection__account_report__filter_account_type__disabled
@@ -8424,6 +8638,7 @@ msgstr "Display Mapping Tab"
 #: model:ir.model.fields,field_description:account.field_account_root__display_name
 #: model:ir.model.fields,field_description:account.field_account_secure_entries_wizard__display_name
 #: model:ir.model.fields,field_description:account.field_account_setup_bank_manual_config__display_name
+#: model:ir.model.fields,field_description:account.field_account_stock_valuation_report__display_name
 #: model:ir.model.fields,field_description:account.field_account_tax__display_name
 #: model:ir.model.fields,field_description:account.field_account_tax_group__display_name
 #: model:ir.model.fields,field_description:account.field_account_tax_repartition_line__display_name
@@ -8436,6 +8651,7 @@ msgstr "Display Mapping Tab"
 #: model:ir.model.fields,field_description:account.field_ir_http__display_name
 #: model:ir.model.fields,field_description:account.field_ir_module_module__display_name
 #: model:ir.model.fields,field_description:account.field_kpi_provider__display_name
+#: model:ir.model.fields,field_description:account.field_mail_compose_message__display_name
 #: model:ir.model.fields,field_description:account.field_mail_message__display_name
 #: model:ir.model.fields,field_description:account.field_mail_template__display_name
 #: model:ir.model.fields,field_description:account.field_onboarding_onboarding_step__display_name
@@ -8676,6 +8892,8 @@ msgstr ""
 "Predujmovi knjiženi na ovaj konto bit će uzeti u obzir pri Zatvaranju poreza."
 
 #. module: account
+#. odoo-python
+#: code:addons/account/wizard/account_move_send_batch_wizard.py:0
 #: model:ir.model.fields.selection,name:account.selection__account_invoice_report__state__draft
 #: model:ir.model.fields.selection,name:account.selection__account_move__state__draft
 #: model:ir.model.fields.selection,name:account.selection__account_move__status_in_payment__draft
@@ -8815,8 +9033,6 @@ msgid "Drop to import your invoices."
 msgstr "Ispustite da uvezete svoje fakture."
 
 #. module: account
-#. odoo-python
-#: code:addons/account/models/account_journal_dashboard.py:0
 #: model:ir.model.fields,field_description:account.field_account_payment_term_line__value_amount
 msgid "Due"
 msgstr "Krajnji rok"
@@ -8855,6 +9071,7 @@ msgstr "Članovi i pretplate"
 
 #. module: account
 #. odoo-javascript
+#: code:addons/account/static/src/components/product_catalog/search/section_row/section_row.xml:0
 #: code:addons/account/static/src/components/section_and_note_fields_backend/section_and_note_fields_backend.xml:0
 msgid "Duplicate"
 msgstr "Dupliciraj"
@@ -8867,6 +9084,11 @@ msgstr "Dupliciraj"
 #, fuzzy
 msgid "Duplicate Bank Partner"
 msgstr "Dvostruki partner banke"
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_account_accrued_orders_wizard__duplicate_entry_id
+msgid "Duplicate Entry"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_payment__duplicate_payment_ids
@@ -9088,6 +9310,11 @@ msgid "Email bills"
 msgstr "E-mail račune"
 
 #. module: account
+#: model:ir.model,name:account.model_mail_compose_message
+msgid "Email composition wizard"
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,help:account.field_account_journal__alias_domain
 #, fuzzy
 msgid "Email domain e.g. 'example.com' in 'odoo@example.com'"
@@ -9215,7 +9442,14 @@ msgstr "Završni saldo"
 
 #. module: account
 #. odoo-javascript
-#: code:addons/account/static/src/components/product_catalog/search/search_panel.xml:0
+#. odoo-python
+#: code:addons/account/report/account_stock_valuation_report.py:0
+#: code:addons/account/static/src/components/stock_valuation/stock_valuation_report.xml:0
+msgid "Ending Stock"
+msgstr ""
+
+#. module: account
+#. odoo-javascript
 #: code:addons/account/static/src/components/product_label_section_and_note_field/product_label_section_and_note_field.xml:0
 #, fuzzy
 msgid "Enter a description"
@@ -9397,6 +9631,12 @@ msgid "Even magicians can't post nothing!"
 msgstr "Čak ni mađioničari ne mogu ništa proknjižiti!"
 
 #. module: account
+#. odoo-python
+#: code:addons/account/models/company.py:0
+msgid "Everything is correctly closed"
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,field_description:account.field_account_payment_term__example_amount
 #, fuzzy
 msgid "Example Amount"
@@ -9471,11 +9711,6 @@ msgid "Exchange Rate"
 msgstr ""
 
 #. module: account
-#: model:ir.model.fields,field_description:account.field_account_payment_register__exchange_rate_currency_code
-msgid "Exchange Rate Currency Code"
-msgstr ""
-
-#. module: account
 #: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
 #, fuzzy
 msgid "Exchange difference entries:"
@@ -9484,15 +9719,13 @@ msgstr "Knjiži tečajne razlike u:"
 #. module: account
 #: model:ir.model.fields,help:account.field_account_bank_statement_line__no_followup
 #: model:ir.model.fields,help:account.field_account_move__no_followup
-#, fuzzy
-msgid "Exclude this journal entry from follow-up reports."
-msgstr "Izuzmite ovaj unos u dnevnik iz naknadnih izvještaja."
+msgid "Exclude this journal entry from Reminder reports."
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,help:account.field_account_move_line__no_followup
-#, fuzzy
-msgid "Exclude this journal item from follow-up reports."
-msgstr "Isključite ovu stavku časopisa iz naknadnih izvještaja."
+msgid "Exclude this journal item from Reminder reports."
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_bank_statement_line__expected_currency_rate
@@ -9508,15 +9741,14 @@ msgstr "Očekuje kontni plan"
 
 #. module: account
 #. odoo-javascript
-#. odoo-python
 #: code:addons/account/static/src/components/account_type_selection/account_type_selection.js:0
-#: code:addons/account/wizard/accrued_orders.py:0
 #: model:ir.model.fields.selection,name:account.selection__account_account__internal_group__expense
 #: model:ir.model.fields.selection,name:account.selection__account_automatic_entry_wizard__account_type__expense
 msgid "Expense"
 msgstr "Trošak"
 
 #. module: account
+#: model:ir.model.fields,field_description:account.field_account_account__account_stock_expense_id
 #: model:ir.model.fields,field_description:account.field_product_category__property_account_expense_categ_id
 #: model:ir.model.fields,field_description:account.field_product_product__property_account_expense_id
 #: model:ir.model.fields,field_description:account.field_product_template__property_account_expense_id
@@ -9526,6 +9758,7 @@ msgid "Expense Account"
 msgstr "Konto za rashode"
 
 #. module: account
+#: model:ir.model.fields,field_description:account.field_account_account__account_stock_expense_active
 #: model:ir.model.fields,field_description:account.field_product_product__property_account_expense_active
 #: model:ir.model.fields,field_description:account.field_product_template__property_account_expense_active
 #: model:ir.model.fields,field_description:account.field_res_config_settings__expense_account_active
@@ -9540,6 +9773,8 @@ msgid "Expense Accrual Account"
 msgstr "Konto razgraničenja rashoda"
 
 #. module: account
+#. odoo-python
+#: code:addons/account/models/account_journal_dashboard.py:0
 #: model:account.account,name:account.21_expense
 #: model:ir.model.fields.selection,name:account.selection__account_account__account_type__expense
 #: model_terms:ir.ui.view,arch_db:account.view_account_search
@@ -9674,6 +9909,7 @@ msgstr ""
 #. module: account
 #. odoo-python
 #: code:addons/account/models/account_tax.py:0
+#: model:ir.model.fields.selection,name:account.selection__account_report__active_selection__false
 #, fuzzy
 msgid "False"
 msgstr "Netačno"
@@ -9734,7 +9970,7 @@ msgstr "Ispunite detalje o proizvodu ili pogledajte prijedlog."
 
 #. module: account
 #. odoo-javascript
-#: code:addons/account/static/src/components/product_catalog/search/search_panel.xml:0
+#: code:addons/account/static/src/components/product_catalog/search/section_row/section_row.xml:0
 #, fuzzy
 msgid "Filter"
 msgstr "Filter"
@@ -9831,6 +10067,11 @@ msgid "Fiscal Country Code"
 msgstr "Fiskalni kod države"
 
 #. module: account
+#: model:ir.model.fields,field_description:account.field_account_tax__company_country_code
+msgid "Fiscal Country Code of the Company"
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,field_description:account.field_account_payment_term__fiscal_country_codes
 #: model:ir.model.fields,field_description:account.field_product_product__fiscal_country_codes
 #: model:ir.model.fields,field_description:account.field_product_template__fiscal_country_codes
@@ -9879,6 +10120,7 @@ msgstr "Fiskalni periodi"
 #: model:ir.model.fields,field_description:account.field_account_fiscal_position_account__position_id
 #: model:ir.model.fields,field_description:account.field_account_invoice_report__fiscal_position_id
 #: model:ir.model.fields,field_description:account.field_account_move__fiscal_position_id
+#: model:ir.model.fields,field_description:account.field_account_move_line__fiscal_position_id
 #: model:ir.model.fields,field_description:account.field_account_tax__fiscal_position_ids
 #: model:ir.model.fields,field_description:account.field_res_company__fiscal_position_ids
 #: model:ir.model.fields,field_description:account.field_res_partner__property_account_position_id
@@ -9905,6 +10147,7 @@ msgstr "Kraj fiskalne godine"
 #. module: account
 #: model:ir.model.fields,help:account.field_account_bank_statement_line__fiscal_position_id
 #: model:ir.model.fields,help:account.field_account_move__fiscal_position_id
+#: model:ir.model.fields,help:account.field_account_move_line__fiscal_position_id
 #, fuzzy
 msgid ""
 "Fiscal positions are used to adapt taxes and accounts for particular "
@@ -10010,18 +10253,6 @@ msgid "Followers (Partners)"
 msgstr "Pratioci (Partneri)"
 
 #. module: account
-#: model:ir.model.fields,help:account.field_account_account__activity_type_icon
-#: model:ir.model.fields,help:account.field_account_bank_statement_line__activity_type_icon
-#: model:ir.model.fields,help:account.field_account_journal__activity_type_icon
-#: model:ir.model.fields,help:account.field_account_move__activity_type_icon
-#: model:ir.model.fields,help:account.field_account_payment__activity_type_icon
-#: model:ir.model.fields,help:account.field_account_setup_bank_manual_config__activity_type_icon
-#: model:ir.model.fields,help:account.field_res_partner_bank__activity_type_icon
-#, fuzzy
-msgid "Font awesome icon e.g. fa-tasks"
-msgstr "Font awesome ikona npr. fa-tasks"
-
-#. module: account
 #: model:account.account,description:account.22_account_account_us_food
 #, fuzzy
 msgid ""
@@ -10036,6 +10267,11 @@ msgstr ""
 #, fuzzy
 msgid "Food: Catering & Delivery"
 msgstr "Hrana: catering & dostava"
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.view_account_form
+msgid "For Perpetual Continental Only"
+msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.email_template_mail_gateway_failed
@@ -10400,6 +10636,12 @@ msgid "Generate"
 msgstr "Generiraj"
 
 #. module: account
+#. odoo-javascript
+#: code:addons/account/static/src/components/stock_valuation/buttons_bar/buttons_bar.xml:0
+msgid "Generate Entries"
+msgstr ""
+
+#. module: account
 #. odoo-python
 #: code:addons/account/models/account_journal.py:0
 #, fuzzy
@@ -10479,17 +10721,9 @@ msgstr "Roba"
 
 #. module: account
 #. odoo-python
-#: code:addons/account/wizard/accrued_orders.py:0
-#, fuzzy
-msgid "Goods Delivered not Invoiced (perpetual valuation)"
-msgstr "Isporučena roba nije fakturisana (stalna procena)"
-
-#. module: account
-#. odoo-python
-#: code:addons/account/wizard/accrued_orders.py:0
-#, fuzzy
-msgid "Goods Invoiced not Delivered (perpetual valuation)"
-msgstr "Roba fakturisana nije isporučena (trajna procena)"
+#: code:addons/account/models/account_journal_dashboard.py:0
+msgid "Gross Margin"
+msgstr ""
 
 #. module: account
 #: model:account.account,name:account.22_account_account_us_ground_transportation
@@ -10830,12 +11064,6 @@ msgid "IBAN"
 msgstr ""
 
 #. module: account
-#: model_terms:ir.ui.view,arch_db:account.report_invoice_document
-#, fuzzy
-msgid "ICE:"
-msgstr "ICE:"
-
-#. module: account
 #: model:ir.model.fields,field_description:account.field_account_account__id
 #: model:ir.model.fields,field_description:account.field_account_account_tag__id
 #: model:ir.model.fields,field_description:account.field_account_accrued_orders_wizard__id
@@ -10886,6 +11114,7 @@ msgstr "ICE:"
 #: model:ir.model.fields,field_description:account.field_account_root__id
 #: model:ir.model.fields,field_description:account.field_account_secure_entries_wizard__id
 #: model:ir.model.fields,field_description:account.field_account_setup_bank_manual_config__id
+#: model:ir.model.fields,field_description:account.field_account_stock_valuation_report__id
 #: model:ir.model.fields,field_description:account.field_account_tax__id
 #: model:ir.model.fields,field_description:account.field_account_tax_group__id
 #: model:ir.model.fields,field_description:account.field_account_tax_repartition_line__id
@@ -10898,6 +11127,7 @@ msgstr "ICE:"
 #: model:ir.model.fields,field_description:account.field_ir_http__id
 #: model:ir.model.fields,field_description:account.field_ir_module_module__id
 #: model:ir.model.fields,field_description:account.field_kpi_provider__id
+#: model:ir.model.fields,field_description:account.field_mail_compose_message__id
 #: model:ir.model.fields,field_description:account.field_mail_message__id
 #: model:ir.model.fields,field_description:account.field_mail_template__id
 #: model:ir.model.fields,field_description:account.field_onboarding_onboarding_step__id
@@ -11147,6 +11377,15 @@ msgstr ""
 "uklanjanja."
 
 #. module: account
+#: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
+msgid ""
+"If this checkbox is ticked, the default fiscal position that applies "
+"will                                            depend upon the output of "
+"the verification by the European VIES Service."
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields,help:account.field_account_bank_statement__is_journal_hash
 #: model:ir.model.fields,help:account.field_account_bank_statement_line__restrict_mode_hash_table
 #: model:ir.model.fields,help:account.field_account_journal__restrict_mode_hash_table
 #: model:ir.model.fields,help:account.field_account_move__restrict_mode_hash_table
@@ -11350,6 +11589,7 @@ msgid ""
 msgstr ""
 
 #. module: account
+#: model_terms:ir.ui.view,arch_db:account.rounding_search_view
 #: model_terms:ir.ui.view,arch_db:account.view_account_tax_search
 msgid "Inactive"
 msgstr "Neaktivan"
@@ -11446,6 +11686,12 @@ msgstr "Dolazna plaćanja"
 
 #. module: account
 #. odoo-python
+#: code:addons/account/models/account_bank_statement.py:0
+msgid "Incorrect ending balance, expected %s"
+msgstr ""
+
+#. module: account
+#. odoo-python
 #: code:addons/account/wizard/setup_wizards.py:0
 #, fuzzy
 msgid ""
@@ -11525,8 +11771,22 @@ msgid "Information"
 msgstr "Informacije"
 
 #. module: account
+#. odoo-javascript
+#. odoo-python
+#: code:addons/account/report/account_stock_valuation_report.py:0
+#: code:addons/account/static/src/components/stock_valuation/stock_valuation_report.xml:0
+msgid "Initial Balance"
+msgstr ""
+
+#. module: account
 #: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
 msgid "Initial Setup"
+msgstr ""
+
+#. module: account
+#. odoo-python
+#: code:addons/account/models/account_bank_statement.py:0
+msgid "Initial balance (%s) does not match previous statement"
 msgstr ""
 
 #. module: account
@@ -11738,6 +11998,11 @@ msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.account_journal_dashboard_kanban_view
+msgid "Invalid Statement"
+msgstr ""
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.account_journal_dashboard_kanban_view
 #, fuzzy
 msgid "Invalid Statement(s)"
 msgstr "Nevažeća izvod(e)"
@@ -11765,10 +12030,31 @@ msgid "Invalid token"
 msgstr "Nevažeći token"
 
 #. module: account
+#: model:ir.model.fields,field_description:account.field_account_bank_statement_line__inventory_closing
+#: model:ir.model.fields,field_description:account.field_account_move__inventory_closing
+msgid "Inventory Closing"
+msgstr ""
+
+#. module: account
+#. odoo-javascript
+#: code:addons/account/static/src/components/stock_valuation/stock_valuation_report.xml:0
+msgid "Inventory Loss"
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_res_company__inventory_period
+msgid "Inventory Period"
+msgstr ""
+
+#. module: account
+#. odoo-python
+#: code:addons/account/models/chart_template.py:0
 #: model:account.account,name:account.21_stock_valuation
 #: model:account.account,name:account.22_account_account_us_inventory_valuation
 #: model:account.journal,name:account.21_inventory_valuation
 #: model:account.journal,name:account.22_inventory_valuation
+#: model:ir.actions.client,name:account.action_report_stock_valuation
+#: model:ir.model.fields,field_description:account.field_product_category__property_valuation
 msgid "Inventory Valuation"
 msgstr "Vrednovanje inventure"
 
@@ -11794,6 +12080,7 @@ msgstr "Investicije i izvanredne aktivnosti"
 #. odoo-javascript
 #. odoo-python
 #: code:addons/account/models/account_move.py:0
+#: code:addons/account/static/src/components/account_batch_sending_summary/account_batch_sending_summary.xml:0
 #: code:addons/account/static/src/components/receipt_selector/receipt_selector.js:0
 #: model:ir.model.fields.selection,name:account.selection__account_analytic_applicability__business_domain__invoice
 #: model:ir.model.fields.selection,name:account.selection__account_payment__reconciled_invoices_type__invoice
@@ -11956,6 +12243,11 @@ msgid "Invoice Payments Widget"
 msgstr "Widget za plaćanje faktura"
 
 #. module: account
+#: model_terms:ir.ui.view,arch_db:account.ir_actions_report_form_inherit_account
+msgid "Invoice Report"
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,field_description:account.field_account_invoice_report__state
 msgid "Invoice Status"
 msgstr "Status fakture"
@@ -12097,6 +12389,17 @@ msgstr "Fakturisano"
 
 #. module: account
 #. odoo-python
+#: code:addons/account/report/account_stock_valuation_report.py:0
+msgid "Invoiced Not Delivered"
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields.selection,name:account.selection__account_accrued_orders_wizard__accrual_type__invoiced_not_delivered
+msgid "Invoiced not delivered"
+msgstr ""
+
+#. module: account
+#. odoo-python
 #: code:addons/account/controllers/portal.py:0
 #: code:addons/account/models/account_move.py:0
 #: model:ir.actions.act_window,name:account.action_move_out_invoice
@@ -12116,6 +12419,11 @@ msgstr "Fakturisano"
 #: model_terms:ir.ui.view,arch_db:account.view_move_form
 msgid "Invoices"
 msgstr "Fakture"
+
+#. module: account
+#: model:ir.module.module,summary:base.module_account
+msgid "Invoices & Payments"
+msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.portal_my_home_menu_invoice
@@ -12187,6 +12495,17 @@ msgid "Invoices to Validate"
 msgstr "Računi za potvrđivanje"
 
 #. module: account
+#. odoo-python
+#: code:addons/account/report/account_stock_valuation_report.py:0
+msgid "Invoices to be Issued"
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields.selection,name:account.selection__account_accrued_orders_wizard__accrual_type__invoice_to_be_issued
+msgid "Invoices to be issued"
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,help:account.field_account_payment__reconciled_bill_ids
 #: model:ir.model.fields,help:account.field_account_payment__reconciled_invoice_ids
 #, fuzzy
@@ -12207,6 +12526,7 @@ msgid "Invoices/Bills/Mandates"
 msgstr "Fakture/Računi/Mandati"
 
 #. module: account
+#: model:ir.module.module,shortdesc:base.module_account
 #: model:ir.ui.menu,name:account.account_invoicing_menu
 #: model:ir.ui.menu,name:account.menu_finance
 #: model:res.groups,name:account.group_account_invoice
@@ -12358,13 +12678,6 @@ msgid "Is Register Payment On Draft"
 msgstr "Je registracija plaćanja na promjeni"
 
 #. module: account
-#: model:ir.model.fields,field_description:account.field_account_bank_statement_line__is_sale_installed
-#: model:ir.model.fields,field_description:account.field_account_move__is_sale_installed
-#, fuzzy
-msgid "Is Sale Installed"
-msgstr "Prodja instalirana"
-
-#. module: account
 #: model:ir.model.fields,field_description:account.field_account_move_line__is_same_currency
 #, fuzzy
 msgid "Is Same Currency"
@@ -12381,6 +12694,11 @@ msgstr "Is Selected"
 #, fuzzy
 msgid "Is Sent"
 msgstr "Is Sent"
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_account_bank_statement__is_statement_posted
+msgid "Is Statement Posted"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_bank_statement_line__is_storno
@@ -12420,6 +12738,14 @@ msgstr "Je manji ili jednak"
 #, fuzzy
 msgid "Is the move being sent asynchronously"
 msgstr "Da li se potez šalje asinhrono"
+
+#. module: account
+#. odoo-python
+#: code:addons/account/models/company.py:0
+msgid ""
+"It exists closing entries after the selected date. Cancel them before "
+"generate an entry prior to them"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,help:account.field_account_bank_statement_line__is_move_sent
@@ -12469,6 +12795,7 @@ msgstr "Januar"
 #: model:ir.model.fields,field_description:account.field_account_payment_method_line__journal_id
 #: model:ir.model.fields,field_description:account.field_account_payment_register__journal_id
 #: model:ir.model.fields,field_description:account.field_account_setup_bank_manual_config__linked_journal_id
+#: model_terms:ir.ui.view,arch_db:account.account_bank_statement_line_view_search_cashflow
 #: model_terms:ir.ui.view,arch_db:account.report_hash_integrity
 #: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
 #: model_terms:ir.ui.view,arch_db:account.view_account_invoice_filter
@@ -12598,6 +12925,7 @@ msgstr "Naslov dnevničkog zapisa"
 #. module: account
 #. odoo-python
 #: code:addons/account/models/account_move.py:0
+#: code:addons/account/models/company.py:0
 #: model:ir.actions.act_window,name:account.action_account_moves_all
 #: model:ir.actions.act_window,name:account.action_account_moves_all_a
 #: model:ir.actions.act_window,name:account.action_account_moves_all_grouped_matching
@@ -12786,7 +13114,7 @@ msgstr "Ukupna vrijednost prihoda Kpi računa"
 #: code:addons/account/wizard/account_automatic_entry_wizard.py:0
 #: code:addons/account/wizard/accrued_orders.py:0
 #: model:ir.model.fields,field_description:account.field_account_bank_statement_line__payment_ref
-#: model:ir.model.fields,field_description:account.field_account_move_line__name
+#: model:ir.model.fields,field_description:account.field_account_move_line__label
 #: model:ir.model.fields,field_description:account.field_account_reconcile_model__match_label
 #: model:ir.model.fields,field_description:account.field_account_reconcile_model_line__label
 #: model:ir.model.fields,field_description:account.field_account_report_expression__label
@@ -12812,6 +13140,12 @@ msgid "Label on PoS Receipts"
 msgstr "Oznaka na PoS priznanicama"
 
 #. module: account
+#: model:ir.model.fields,field_description:account.field_account_bank_statement_line__sanitize_payment_reference
+#: model:ir.model.fields,field_description:account.field_account_move__sanitize_payment_reference
+msgid "Label sanitize"
+msgstr ""
+
+#. module: account
 #: model:account.account,name:account.22_account_account_us_land
 #, fuzzy
 msgid "Land (not built)"
@@ -12822,6 +13156,11 @@ msgstr "Zemljište (nije izgrađeno)"
 #, fuzzy
 msgid "Language"
 msgstr "Jezik"
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.account_bank_statement_line_view_search_cashflow
+msgid "Last 12 Months"
+msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.report_hash_integrity
@@ -13255,12 +13594,6 @@ msgid "Logo"
 msgstr "Logo"
 
 #. module: account
-#: model:ir.ui.menu,name:account.account_logs_menu
-#, fuzzy
-msgid "Logs"
-msgstr "Praćenja"
-
-#. module: account
 #: model:onboarding.onboarding.step,done_text:account.onboarding_onboarding_step_base_document_layout
 #: model:onboarding.onboarding.step,done_text:account.onboarding_onboarding_step_company_data
 #, fuzzy
@@ -13277,6 +13610,7 @@ msgstr "Gubitak"
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_cash_rounding__loss_account_id
 #: model:ir.model.fields,field_description:account.field_account_journal__loss_account_id
+#: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
 msgid "Loss Account"
 msgstr "Konto gubitka"
 
@@ -13369,6 +13703,7 @@ msgstr "Upravljanje"
 
 #. module: account
 #: model:ir.model.fields.selection,name:account.selection__account_reconcile_model__trigger__manual
+#: model:ir.model.fields.selection,name:account.selection__res_company__inventory_period__manual
 #: model:ir.model.fields.selection,name:account.selection__res_partner__invoice_sending_method__manual
 #: model_terms:ir.ui.view,arch_db:account.view_account_move_filter
 msgid "Manual"
@@ -13625,6 +13960,17 @@ msgstr ""
 "naziv potpunog usklađivanja ako postoji."
 
 #. module: account
+#: model:ir.model.fields,help:account.field_account_account__activity_type_icon
+#: model:ir.model.fields,help:account.field_account_bank_statement_line__activity_type_icon
+#: model:ir.model.fields,help:account.field_account_journal__activity_type_icon
+#: model:ir.model.fields,help:account.field_account_move__activity_type_icon
+#: model:ir.model.fields,help:account.field_account_payment__activity_type_icon
+#: model:ir.model.fields,help:account.field_account_setup_bank_manual_config__activity_type_icon
+#: model:ir.model.fields,help:account.field_res_partner_bank__activity_type_icon
+msgid "Material Symbols icon e.g. checklist"
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,field_description:account.field_account_partial_reconcile__max_date
 #, fuzzy
 msgid "Max Date of Matched Lines"
@@ -13734,6 +14080,7 @@ msgid "Messages Search"
 msgstr "Pretraga poruka"
 
 #. module: account
+#: model:ir.model.fields,field_description:account.field_account_cash_rounding__rounding_method
 #: model:ir.model.fields,field_description:account.field_account_payment__payment_method_id
 msgid "Method"
 msgstr "Metoda"
@@ -13859,6 +14206,7 @@ msgstr "Pratite marže proizvoda iz faktura"
 
 #. module: account
 #: model:ir.model.fields.selection,name:account.selection__account_move__auto_post__monthly
+#: model:ir.model.fields.selection,name:account.selection__res_company__inventory_period__monthly
 msgid "Monthly"
 msgstr "Mjesečno"
 
@@ -14005,6 +14353,7 @@ msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_bank_statement_line__name_placeholder
+#: model:ir.model.fields,field_description:account.field_account_cash_rounding__name_placeholder
 #: model:ir.model.fields,field_description:account.field_account_journal__name_placeholder
 #: model:ir.model.fields,field_description:account.field_account_move__name_placeholder
 #, fuzzy
@@ -14119,6 +14468,12 @@ msgid "New Move"
 msgstr "New Move"
 
 #. module: account
+#. odoo-javascript
+#: code:addons/account/static/src/components/tax_totals/tax_totals.js:0
+msgid "New Rounding Method"
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,field_description:account.field_account_resequence_wizard__new_values
 #, fuzzy
 msgid "New Values"
@@ -14199,6 +14554,8 @@ msgstr "Sljedeći datum plaćanja"
 
 #. module: account
 #: model:ir.model.fields.selection,name:account.selection__account_move__auto_post__no
+#: model:res.groups.privilege,placeholder:account.res_group_privilege_accounting_bank
+#: model:res.groups.privilege,placeholder:account.res_groups_privilege_accounting
 msgid "No"
 msgstr "Ne"
 
@@ -14215,12 +14572,10 @@ msgid "No Bank Transaction"
 msgstr "Nema bankovne transakcije"
 
 #. module: account
-#: model:ir.model.fields,field_description:account.field_account_bank_statement_line__no_followup
-#: model:ir.model.fields,field_description:account.field_account_move__no_followup
-#: model:ir.model.fields,field_description:account.field_account_move_line__no_followup
-#, fuzzy
-msgid "No Follow-Up"
-msgstr "Nema praćenja"
+#. odoo-python
+#: code:addons/account/wizard/account_move_send_batch_wizard.py:0
+msgid "No Partner"
+msgstr ""
 
 #. module: account
 #. odoo-python
@@ -14228,6 +14583,13 @@ msgstr "Nema praćenja"
 #, fuzzy
 msgid "No Payment Method"
 msgstr "Nema načina plaćanja"
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_account_bank_statement_line__no_followup
+#: model:ir.model.fields,field_description:account.field_account_move__no_followup
+#: model:ir.model.fields,field_description:account.field_account_move_line__no_followup
+msgid "No Reminder"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields.selection,name:account.selection__account_move__review_state__no_review
@@ -14307,6 +14669,12 @@ msgstr "Nema unosa u dnevniku plaćanja"
 #, fuzzy
 msgid "No possible action found with the selected lines."
 msgstr "Nije pronađena moguća radnja s odabranim linijama."
+
+#. module: account
+#. odoo-python
+#: code:addons/account/models/account_move.py:0
+msgid "No rounding applied"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_tax__non_deductible_amount
@@ -14392,13 +14760,6 @@ msgstr "Normalan platioc"
 #, fuzzy
 msgid "Not Contains"
 msgstr "Ne sadrži"
-
-#. module: account
-#. odoo-python
-#: code:addons/account/models/account_journal_dashboard.py:0
-#, fuzzy
-msgid "Not Due"
-msgstr "Nije dospjelo"
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_secure_entries_wizard__not_hashable_unlocked_move_ids
@@ -14777,12 +15138,6 @@ msgid "One or more lines require a 100% analytic distribution."
 msgstr "Jedna ili više stavaka traže analitičku distribuciju od 100%."
 
 #. module: account
-#: model:ir.ui.menu,name:account.root_payment_menu
-#, fuzzy
-msgid "Online Payments"
-msgstr "Online plaćanja"
-
-#. module: account
 #: model:ir.model.fields,field_description:account.field_account_report__only_tax_exigible
 #, fuzzy
 msgid "Only Tax Exigible Lines"
@@ -14836,6 +15191,14 @@ msgstr "Samo proknjiženi/poništeni unosi u dnevnik mogu se vratiti na nacrt."
 
 #. module: account
 #. odoo-python
+#: code:addons/account/models/product.py:0
+msgid ""
+"Only the value 'periodic' and 'real_time' are accepted to search on "
+"valuation field."
+msgstr ""
+
+#. module: account
+#. odoo-python
 #: code:addons/account/models/account_move_line.py:0
 #, fuzzy
 msgid "Only vendor bills allow for deductibility of product/services."
@@ -14879,12 +15242,8 @@ msgid "Open"
 msgstr "Otvori"
 
 #. module: account
-#: model:ir.model.fields,field_description:account.field_account_move_line__open_on
-#: model_terms:ir.ui.view,arch_db:account.view_account_move_line_filter
-msgid "Open On"
-msgstr ""
-
-#. module: account
+#. odoo-python
+#: code:addons/account/models/account_move.py:0
 #: model:ir.model.fields,field_description:account.field_account_account__opening_balance
 #, fuzzy
 msgid "Opening Balance"
@@ -14938,6 +15297,7 @@ msgstr "Kretanje otvaranja proknjiženo"
 
 #. module: account
 #. odoo-python
+#: code:addons/account/models/account_move.py:0
 #: code:addons/account/models/company.py:0
 msgid "Opening balance"
 msgstr "Početno stanje"
@@ -15197,6 +15557,11 @@ msgid "Overdue Amount"
 msgstr "Iznos kašnjenja"
 
 #. module: account
+#: model_terms:ir.ui.view,arch_db:account.res_partner_view_search
+msgid "Overdue Invoices"
+msgstr ""
+
+#. module: account
 #. odoo-python
 #: code:addons/account/controllers/portal.py:0
 #, fuzzy
@@ -15411,6 +15776,11 @@ msgid "Partner"
 msgstr "Partner"
 
 #. module: account
+#: model:ir.model.fields,field_description:account.field_account_cash_rounding__partner_category_ids
+msgid "Partner Category"
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,field_description:account.field_res_partner__contract_ids
 #: model:ir.model.fields,field_description:account.field_res_users__contract_ids
 #, fuzzy
@@ -15488,13 +15858,6 @@ msgid "Partners Missing a bank account"
 msgstr "Partneri Nedostaje bankovni račun"
 
 #. module: account
-#. odoo-python
-#: code:addons/account/models/partner.py:0
-#, fuzzy
-msgid "Partners that are used in hashed entries cannot be merged."
-msgstr "Partneri koji se koriste u heširanim unosima ne mogu se spojiti."
-
-#. module: account
 #: model_terms:ir.ui.view,arch_db:account.view_partner_bank_form_inherit_account
 #, fuzzy
 msgid "Partners with same bank"
@@ -15522,6 +15885,8 @@ msgstr ""
 "Plaćajte svoje račune jednim klikom koristeći Euro SEPA uslugu / ISO20022"
 
 #. module: account
+#. odoo-python
+#: code:addons/account/models/account_journal_dashboard.py:0
 #: model:ir.model.fields.selection,name:account.selection__account_account__account_type__liability_payable
 #: model:ir.model.fields.selection,name:account.selection__account_report__filter_account_type__payable
 #: model_terms:ir.ui.view,arch_db:account.view_account_move_line_filter
@@ -15619,6 +15984,7 @@ msgstr "Stavke plaćanja"
 
 #. module: account
 #: model:ir.model,name:account.model_account_payment_method
+#: model:ir.model.fields,field_description:account.field_account_cash_rounding__payment_method_line_ids
 #: model:ir.model.fields,field_description:account.field_account_payment__payment_method_line_id
 #: model:ir.model.fields,field_description:account.field_account_payment_method_line__payment_method_id
 #: model:ir.model.fields,field_description:account.field_account_payment_register__payment_method_line_id
@@ -15653,8 +16019,15 @@ msgid "Payment Methods"
 msgstr "Metoda plaćanja"
 
 #. module: account
+#: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
+msgid "Payment QR Codes"
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,field_description:account.field_account_bank_statement_line__qr_code_method
 #: model:ir.model.fields,field_description:account.field_account_move__qr_code_method
+#: model:ir.model.fields,field_description:account.field_res_partner__qr_code_method
+#: model:ir.model.fields,field_description:account.field_res_users__qr_code_method
 #, fuzzy
 msgid "Payment QR-code"
 msgstr "QR kod za plaćanje"
@@ -15954,6 +16327,13 @@ msgid "Period Comparison"
 msgstr "Usporedba perioda"
 
 #. module: account
+#: model:ir.model.fields.selection,name:account.selection__product_category__property_valuation__periodic
+#: model:ir.model.fields.selection,name:account.selection__product_template__valuation__periodic
+#: model:ir.model.fields.selection,name:account.selection__res_company__inventory_valuation__periodic
+msgid "Periodic (at closing)"
+msgstr ""
+
+#. module: account
 #: model:account.account,description:account.22_account_account_us_expense_buildings
 msgid "Periodic depreciation expense for building assets."
 msgstr ""
@@ -15986,6 +16366,23 @@ msgstr ""
 #. module: account
 #: model:account.account,description:account.22_account_account_us_expense_vehicles
 msgid "Periodic depreciation expense for vehicle assets."
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields,help:account.field_product_category__property_valuation
+msgid ""
+"Periodic: The accounting entries are suggested manually in the inventory "
+"valuation report.\n"
+"        Perpetual: An accounting entry is automatically created to value the "
+"inventory when a product is billed or invoiced.\n"
+"        "
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields.selection,name:account.selection__product_category__property_valuation__real_time
+#: model:ir.model.fields.selection,name:account.selection__product_template__valuation__real_time
+#: model:ir.model.fields.selection,name:account.selection__res_company__inventory_valuation__real_time
+msgid "Perpetual (at invoicing)"
 msgstr ""
 
 #. module: account
@@ -16075,6 +16472,19 @@ msgid "Please set a strictly positive rounding value."
 msgstr "Molimo postavite striktno pozitivnu vrijednost."
 
 #. module: account
+#. odoo-python
+#: code:addons/account/models/company.py:0
+msgid "Please set the Journal for Inventory Valuation in the settings."
+msgstr ""
+
+#. module: account
+#. odoo-python
+#: code:addons/account/models/company.py:0
+msgid ""
+"Please set the Valuation Account for Inventory Valuation in the settings."
+msgstr ""
+
+#. module: account
 #: model_terms:ir.ui.view,arch_db:account.bill_preview
 #, fuzzy
 msgid "Please use the following communication for your payment:"
@@ -16161,6 +16571,11 @@ msgstr "Proknjižene stavke dnevnika"
 #, fuzzy
 msgid "Preceding Subtotal"
 msgstr "Prethodni međuzbroj"
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_account_cash_rounding__rounding
+msgid "Precision"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_bank_statement_line__preferred_payment_method_line_id
@@ -16277,20 +16692,20 @@ msgstr "Preview Moves"
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.view_move_form
-#, fuzzy
-msgid "Preview invoice"
-msgstr "Pregled fakture"
-
-#. module: account
-#: model_terms:ir.ui.view,arch_db:account.view_move_form
 msgid "Price"
 msgstr "Cijena"
 
 #. module: account
+#: model:ir.model.fields,field_description:account.field_product_category__property_price_difference_account_id
 #: model:ir.model.fields,field_description:account.field_res_company__price_difference_account_id
 #, fuzzy
 msgid "Price Difference Account"
 msgstr "Konto razlike u cijeni"
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_product_category__property_price_difference_account_active
+msgid "Price Difference Account Active"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_tax__price_include
@@ -16348,6 +16763,7 @@ msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_bank_statement__problem_description
+#: model:ir.model.fields,field_description:account.field_account_bank_statement_line__statement_problem_description
 #, fuzzy
 msgid "Problem Description"
 msgstr "Opis problema"
@@ -16430,6 +16846,8 @@ msgstr ""
 "flajeri, priručnici."
 
 #. module: account
+#. odoo-javascript
+#: code:addons/account/static/src/components/stock_valuation/stock_valuation_report.js:0
 #: model:ir.actions.act_window,name:account.product_product_action_purchasable
 #: model:ir.actions.act_window,name:account.product_product_action_sellable
 #: model:ir.model.fields.selection,name:account.selection__account_account_tag__applicability__products
@@ -16439,7 +16857,6 @@ msgid "Products"
 msgstr "Proizvodi"
 
 #. module: account
-#: model:account.account,name:account.21_to_receive_rec
 #: model:account.account,name:account.22_account_account_us_to_receive_rec
 #, fuzzy
 msgid "Products to receive"
@@ -16479,6 +16896,7 @@ msgstr "Dobit i Gubitak"
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_cash_rounding__profit_account_id
 #: model:ir.model.fields,field_description:account.field_account_journal__profit_account_id
+#: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
 msgid "Profit Account"
 msgstr "Konto dobiti"
 
@@ -16782,6 +17200,8 @@ msgid "Receipts"
 msgstr "Prijemi"
 
 #. module: account
+#. odoo-python
+#: code:addons/account/models/account_journal_dashboard.py:0
 #: model:ir.model.fields.selection,name:account.selection__account_account__account_type__asset_receivable
 #: model:ir.model.fields.selection,name:account.selection__account_report__filter_account_type__receivable
 #: model_terms:ir.ui.view,arch_db:account.view_account_move_line_filter
@@ -16980,6 +17400,12 @@ msgstr "Refundacija"
 
 #. module: account
 #. odoo-python
+#: code:addons/account/models/account_payment.py:0
+msgid "Refund Confirmation"
+msgstr ""
+
+#. module: account
+#. odoo-python
 #: code:addons/account/models/account_move.py:0
 #, fuzzy
 msgid "Refund Created"
@@ -17097,6 +17523,25 @@ msgstr "Prepravite redoslijed unosa u dnevnik."
 
 #. module: account
 #. odoo-python
+#: code:addons/account/models/account_payment.py:0
+msgid "Remittance Advice"
+msgstr ""
+
+#. module: account
+#. odoo-javascript
+#: code:addons/account/static/src/interactions/portal_additional_identifiers.js:0
+#: model_terms:ir.ui.view,arch_db:account.address_form_additional_identifiers
+msgid "Remove"
+msgstr ""
+
+#. module: account
+#. odoo-javascript
+#: code:addons/account/static/src/components/tax_totals/tax_totals.xml:0
+msgid "Remove Rounding Method"
+msgstr ""
+
+#. module: account
+#. odoo-python
 #: code:addons/account/models/account_move.py:0
 #, fuzzy
 msgid "Remove empty lines"
@@ -17108,6 +17553,12 @@ msgstr "Uklonite prazne redove"
 #, fuzzy
 msgid "Removed"
 msgstr "Uklonjeno"
+
+#. module: account
+#. odoo-javascript
+#: code:addons/account/static/src/components/product_catalog/search/section_row/section_row.xml:0
+msgid "Rename"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_move_send_wizard__render_model
@@ -17210,12 +17661,6 @@ msgid "Reporting"
 msgstr "Izvještavanje"
 
 #. module: account
-#: model:ir.model.fields,help:account.field_account_cash_rounding__rounding
-#, fuzzy
-msgid "Represent the non-zero value smallest coinage (for example, 0.05)."
-msgstr "Predstavlja najmanji kovani novac različit od nule (na primjer, 0,05)."
-
-#. module: account
 #: model_terms:ir.ui.view,arch_db:account.view_account_payment_form
 #: model_terms:ir.ui.view,arch_db:account.view_move_form
 #, fuzzy
@@ -17278,13 +17723,6 @@ msgid "Residual Amount in Currency"
 msgstr "Preostali iznos u valuti"
 
 #. module: account
-#. odoo-python
-#: code:addons/account/models/account_journal_dashboard.py:0
-#, fuzzy
-msgid "Residual amount"
-msgstr "Dospjeli iznos"
-
-#. module: account
 #: model_terms:ir.ui.view,arch_db:account.view_move_line_payment_tree
 #: model_terms:ir.ui.view,arch_db:account.view_move_line_tree
 #, fuzzy
@@ -17334,8 +17772,13 @@ msgid "Retirement plans costs (401K match)"
 msgstr "Troškovi penzionih planova (401K podudaranja)"
 
 #. module: account
+#: model:ir.model.fields,field_description:account.field_account_payment__return_partner_bank_id
+msgid "Returns Bank Account"
+msgstr ""
+
+#. module: account
 #. odoo-python
-#: code:addons/account/wizard/accrued_orders.py:0
+#: code:addons/account/models/account_journal_dashboard.py:0
 #: model:ir.model.fields,field_description:account.field_digest_digest__kpi_account_total_revenue
 #: model:ir.model.fields.selection,name:account.selection__account_analytic_line__analytic_profitability__revenue
 #: model:ir.model.fields.selection,name:account.selection__account_automatic_entry_wizard__account_type__income
@@ -17361,6 +17804,11 @@ msgstr "Konto prihoda/rashoda"
 #, fuzzy
 msgid "Reversal Date"
 msgstr "Datum povrata"
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.view_move_form
+msgid "Reversal Entries"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_bank_statement_line__reversal_move_ids
@@ -17488,6 +17936,7 @@ msgstr "Pregledajte unose"
 
 #. module: account
 #. odoo-python
+#: code:addons/account/models/account_bank_statement.py:0
 #: code:addons/account/wizard/account_secure_entries_wizard.py:0
 #, fuzzy
 msgid "Review Statements"
@@ -17565,6 +18014,7 @@ msgstr "Okrugli po porezu"
 #: code:addons/account/static/src/components/tax_totals/tax_totals.xml:0
 #: model:ir.model.fields.selection,name:account.selection__account_move_line__display_type__rounding
 #: model_terms:ir.ui.view,arch_db:account.document_tax_totals_template
+#: model_terms:ir.ui.view,arch_db:account.rounding_form_view
 #, fuzzy
 msgid "Rounding"
 msgstr "Zaokruživanje"
@@ -17582,21 +18032,18 @@ msgid "Rounding List"
 msgstr "Zaokružujuća lista"
 
 #. module: account
-#: model:ir.model.fields,field_description:account.field_account_cash_rounding__rounding_method
 #: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
 msgid "Rounding Method"
 msgstr "Način zaokruživanja"
 
 #. module: account
-#: model:ir.model.fields,field_description:account.field_account_cash_rounding__rounding
-msgid "Rounding Precision"
-msgstr "Preciznost zaokruživanja"
-
-#. module: account
-#: model:ir.model.fields,field_description:account.field_account_cash_rounding__strategy
-#, fuzzy
-msgid "Rounding Strategy"
-msgstr "Strategija zaokruživanja"
+#. odoo-javascript
+#: code:addons/account/static/src/components/tax_totals/tax_totals.js:0
+#: model:ir.actions.act_window,name:account.rounding_list_action
+#: model:ir.ui.menu,name:account.menu_action_rounding_form_view
+#: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
+msgid "Rounding Methods"
+msgstr ""
 
 #. module: account
 #: model:ir.model,name:account.model_account_reconcile_model_line
@@ -17895,6 +18342,12 @@ msgstr "Pretražite ime ili PIB..."
 
 #. module: account
 #. odoo-javascript
+#: code:addons/account/static/src/components/tax_totals/tax_totals.js:0
+msgid "Search more..."
+msgstr ""
+
+#. module: account
+#. odoo-javascript
 #: code:addons/account/static/src/components/m2o_cell_with_extra_fields/m2o_cell_with_extra_fields.js:0
 #: code:addons/account/static/src/components/many2x_tax_tags/many2x_tax_tags.js:0
 #, fuzzy
@@ -17916,7 +18369,7 @@ msgstr "Section Of"
 
 #. module: account
 #. odoo-javascript
-#: code:addons/account/static/src/components/product_catalog/search/search_panel.xml:0
+#: code:addons/account/static/src/components/product_catalog/search/search_panel/search_panel.xml:0
 #: model:ir.model.fields,field_description:account.field_account_report__section_report_ids
 #, fuzzy
 msgid "Sections"
@@ -17938,6 +18391,7 @@ msgid "Secure Journal Entries"
 msgstr "Zaključaj stavke dnevnika"
 
 #. module: account
+#: model:ir.model.fields,field_description:account.field_account_bank_statement__is_journal_hash
 #: model:ir.model.fields,field_description:account.field_account_bank_statement_line__restrict_mode_hash_table
 #: model:ir.model.fields,field_description:account.field_account_journal__restrict_mode_hash_table
 #: model:ir.model.fields,field_description:account.field_account_move__restrict_mode_hash_table
@@ -17987,6 +18441,13 @@ msgstr ""
 #, fuzzy
 msgid "See items"
 msgstr "Pogledajte stavke"
+
+#. module: account
+#. odoo-javascript
+#: code:addons/account/static/src/components/tax_totals/tax_totals.js:0
+#: code:addons/account/static/src/components/tax_totals/tax_totals.xml:0
+msgid "Select Rounding Method"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,help:account.field_account_analytic_distribution_model__product_categ_id
@@ -18141,9 +18602,8 @@ msgstr "Pošaljite račun na"
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
-#, fuzzy
-msgid "Send invoices and payment follow-ups by post"
-msgstr "Šaljite fakture i obavijesti o plaćanjima poštom"
+msgid "Send invoices and payment reminders by post"
+msgstr ""
 
 #. module: account
 #: model:ir.actions.server,name:account.ir_cron_account_move_send_ir_actions_server
@@ -18304,6 +18764,7 @@ msgstr "Septembar"
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_bank_statement_line__sequence
+#: model:ir.model.fields,field_description:account.field_account_cash_rounding__sequence
 #: model:ir.model.fields,field_description:account.field_account_fiscal_position__sequence
 #: model:ir.model.fields,field_description:account.field_account_journal__sequence
 #: model:ir.model.fields,field_description:account.field_account_journal_group__sequence
@@ -18489,6 +18950,12 @@ msgstr "Postavite bankovni račun"
 #, fuzzy
 msgid "Setup Credit Card Account"
 msgstr "Postavite račun kreditne kartice"
+
+#. module: account
+#. odoo-python
+#: code:addons/account/models/account_journal_dashboard.py:0
+msgid "Setup Your Invoice Layout"
+msgstr ""
 
 #. module: account
 #: model:ir.actions.server,name:account.model_account_move_action_share
@@ -18796,6 +19263,13 @@ msgstr ""
 "cijelu narudžbu, bez obzira na proizvode u različitim linijama."
 
 #. module: account
+#: model:ir.model.fields,help:account.field_account_cash_rounding__strategy
+msgid ""
+"Specify how the rounding difference is applied: add a rounding line or "
+"adjust the highest tax amount."
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,help:account.field_account_bank_statement_line__auto_post
 #: model:ir.model.fields,help:account.field_account_move__auto_post
 #, fuzzy
@@ -18807,14 +19281,21 @@ msgstr ""
 "periodične fakture."
 
 #. module: account
-#: model:ir.model.fields,help:account.field_account_cash_rounding__strategy
-#, fuzzy
-msgid ""
-"Specify which way will be used to round the invoice amount to the rounding "
-"precision"
+#: model:ir.model.fields.selection,name:account.selection__product_category__property_cost_method__standard
+#: model:ir.model.fields.selection,name:account.selection__product_template__cost_method__standard
+#: model:ir.model.fields.selection,name:account.selection__res_company__cost_method__standard
+msgid "Standard Price"
 msgstr ""
-"Odredite koji način će se koristiti za zaokruživanje iznosa fakture na "
-"preciznost zaokruživanja"
+
+#. module: account
+#: model:ir.model.fields,help:account.field_product_category__property_cost_method
+msgid ""
+"Standard Price: The products are valued at their standard cost defined on "
+"the product.\n"
+"        Average Cost (AVCO): The products are valued at weighted average "
+"cost.\n"
+"        "
+msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.view_move_form
@@ -18894,6 +19375,7 @@ msgid "Statement lines"
 msgstr "Stavke izvoda"
 
 #. module: account
+#: model:ir.actions.act_window,name:account.action_view_bank_statement_tree
 #: model:ir.model.fields,field_description:account.field_account_bank_statement_line__statement_line_ids
 #: model:ir.model.fields,field_description:account.field_account_move__statement_line_ids
 #: model_terms:ir.ui.view,arch_db:account.account_journal_dashboard_kanban_view
@@ -18975,6 +19457,59 @@ msgid "Step completed!"
 msgstr "Korak završen!"
 
 #. module: account
+#: model_terms:ir.ui.view,arch_db:account.view_category_property_form
+msgid "Stock Account"
+msgstr ""
+
+#. module: account
+#. odoo-python
+#: code:addons/account/models/company.py:0
+msgid "Stock Closing"
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_product_category__property_stock_journal
+#: model:ir.model.fields,field_description:account.field_res_company__account_stock_journal_id
+msgid "Stock Journal"
+msgstr ""
+
+#. module: account
+#: model:ir.model,name:account.model_account_stock_valuation_report
+msgid "Stock Valuation"
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_product_category__property_stock_valuation_account_id
+#: model:ir.model.fields,field_description:account.field_res_company__account_stock_valuation_id
+msgid "Stock Valuation Account"
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_product_category__property_stock_valuation_account_active
+msgid "Stock Valuation Account Active"
+msgstr ""
+
+#. module: account
+#. odoo-javascript
+#. odoo-python
+#: code:addons/account/report/account_stock_valuation_report.py:0
+#: code:addons/account/static/src/components/stock_valuation/stock_valuation_report.xml:0
+#: model_terms:ir.ui.view,arch_db:account.view_category_property_form
+#, fuzzy
+msgid "Stock Variation"
+msgstr "Stock Variation"
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_product_category__account_stock_variation_id
+msgid "Stock Variation Account"
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_product_category__account_stock_variation_active
+msgid "Stock Variation Account Active"
+msgstr ""
+
+#. module: account
 #: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
 #, fuzzy
 msgid "Storno Accounting"
@@ -18986,6 +19521,11 @@ msgstr "Storno računovodstvo"
 #, fuzzy
 msgid "Storno accounting"
 msgstr "Storno računovodstvo"
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_account_cash_rounding__strategy
+msgid "Strategy"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_setup_bank_manual_config__street
@@ -19111,6 +19651,16 @@ msgid "Switch into invoice/credit note"
 msgstr "Prebaci u fakturu/knjižno odobrenje"
 
 #. module: account
+#: model:account.tax,name:account.22_account_tax_us_demo_tx_state
+msgid "TX State 6.25%"
+msgstr ""
+
+#. module: account
+#: model:account.tax,name:account.22_account_tax_us_demo_tx_exempt
+msgid "TX State 6.25% Exempt"
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,field_description:account.field_account_account_tag__name
 msgid "Tag Name"
 msgstr "Ime oznake"
@@ -19227,6 +19777,11 @@ msgstr "Porez 4,2%"
 #, fuzzy
 msgid "Tax 4.225%"
 msgstr "Porez 4,225%"
+
+#. module: account
+#: model:account.tax.group,name:account.22_account_tax_group_us_demo_4_25
+msgid "Tax 4.25%"
+msgstr ""
 
 #. module: account
 #: model:account.tax.group,name:account.22_account_tax_group_us_4_5
@@ -19477,7 +20032,6 @@ msgstr "Porezne grupe"
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_base_document_layout__vat
-#: model_terms:ir.ui.view,arch_db:account.report_invoice_document
 msgid "Tax ID"
 msgstr "Porez"
 
@@ -20070,23 +20624,6 @@ msgid "The Hard Lock Date cannot be removed."
 msgstr "Datum tvrdog zaključavanja se ne može ukloniti."
 
 #. module: account
-#. odoo-python
-#: code:addons/account/tools/bank_account_number.py:0
-msgid ""
-"The IBAN does not seem to be correct. You should have entered something like "
-"this %s\n"
-"Where B = National bank code, S = Branch code, C = Account No, k = Check "
-"digit"
-msgstr ""
-
-#. module: account
-#. odoo-python
-#: code:addons/account/tools/bank_account_number.py:0
-#, fuzzy
-msgid "The IBAN is invalid, it should begin with the country code"
-msgstr "IBAN nije valida, trebao bi da počinje sa šifrom države"
-
-#. module: account
 #: model:ir.model.fields,help:account.field_account_bank_statement_line__country_code
 #: model:ir.model.fields,help:account.field_account_fiscal_position__fiscal_country_codes
 #: model:ir.model.fields,help:account.field_account_journal__country_code
@@ -20096,6 +20633,7 @@ msgstr "IBAN nije valida, trebao bi da počinje sa šifrom države"
 #: model:ir.model.fields,help:account.field_account_payment_register__country_code
 #: model:ir.model.fields,help:account.field_account_secure_entries_wizard__country_code
 #: model:ir.model.fields,help:account.field_account_setup_bank_manual_config__country_code
+#: model:ir.model.fields,help:account.field_account_tax__company_country_code
 #: model:ir.model.fields,help:account.field_account_tax__country_code
 #: model:ir.model.fields,help:account.field_account_tax_group__country_code
 #: model:ir.model.fields,help:account.field_base_document_layout__country_code
@@ -20141,7 +20679,8 @@ msgstr "Konto %(name)s (%(code)s) je arhiviran."
 #. odoo-python
 #: code:addons/account/models/account_account.py:0
 msgid ""
-"The account code can only contain alphanumeric characters, dots, and dashes."
+"The account code can only contain alphanumeric characters, dots, and dashes. "
+"(account code: %s)"
 msgstr ""
 
 #. module: account
@@ -20284,6 +20823,14 @@ msgstr ""
 "usaglašavanja njegovih linija."
 
 #. module: account
+#. odoo-python
+#: code:addons/account/models/account_move.py:0
+msgid ""
+"The cash rounding method \"%(name)s\" has no Profit/Loss Accounts set, so no "
+"rounding line can be added."
+msgstr ""
+
+#. module: account
 #: model_terms:ir.ui.view,arch_db:account.account_default_terms_and_conditions
 #, fuzzy
 msgid ""
@@ -20341,6 +20888,11 @@ msgstr ""
 #, fuzzy
 msgid "The company this distribution line belongs to."
 msgstr "Tvrtka kojoj pripada ova distribucija."
+
+#. module: account
+#: model:ir.model.fields,help:account.field_account_cash_rounding__rounding_method
+msgid "The computation rule used to round values (e.g., UP, DOWN, or HALF-UP)."
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,help:account.field_account_tax_group__country_id
@@ -20658,6 +21210,14 @@ msgstr "Faktura već sadrži redove."
 
 #. module: account
 #. odoo-python
+#: code:addons/account/models/account_journal.py:0
+msgid ""
+"The journal (%(journal_code)s) has some hashed statements so the type cannot "
+"be changed"
+msgstr ""
+
+#. module: account
+#. odoo-python
 #: code:addons/account/models/account_bank_statement_line.py:0
 #, fuzzy
 msgid ""
@@ -20701,6 +21261,14 @@ msgstr "Nije naveden dnevnik u koji se učitava faktura. "
 #, fuzzy
 msgid "The journal item is not linked to the correct financial account"
 msgstr "Stavka dnevnika nije povezana s ispravnim finansijskim kontom"
+
+#. module: account
+#. odoo-python
+#: code:addons/account/models/account_bank_statement.py:0
+msgid ""
+"The journal of this statement (%(statement_name)) is hashed, the statement "
+"cannot be reset to draft"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,help:account.field_account_financial_year_op__fiscalyear_last_day
@@ -20925,13 +21493,6 @@ msgstr "Ostatak iznosa na stavki knjiženja iskazan u valuti tvrtke."
 
 #. module: account
 #. odoo-python
-#: code:addons/account/models/account_bank_statement.py:0
-#, fuzzy
-msgid "The running balance (%s) doesn't match the specified ending balance."
-msgstr "Stanje (%s) ne odgovara završnom saldu."
-
-#. module: account
-#. odoo-python
 #: code:addons/account/models/account_move_send.py:0
 #, fuzzy
 msgid ""
@@ -21116,15 +21677,9 @@ msgstr ""
 "odabrali neke od obje vrste."
 
 #. module: account
-#. odoo-python
-#: code:addons/account/models/account_bank_statement.py:0
-#, fuzzy
-msgid ""
-"The starting balance doesn't match the ending balance of the previous "
-"statement, or an earlier statement is missing."
+#: model:ir.model.fields,help:account.field_account_cash_rounding__rounding
+msgid "The smallest value used to round the total amount (e.g., 0.05 or 100)."
 msgstr ""
-"Početni saldo se ne poklapa sa završnim stanjem prethodnog izvoda ili "
-"nedostaje raniji izvod."
 
 #. module: account
 #: model:ir.model.fields,help:account.field_account_move_line__statement_line_id
@@ -21145,14 +21700,6 @@ msgstr "Porezni ID vaše kompanije u regiji mapiran ovom fiskalnom pozicijom."
 #, fuzzy
 msgid "The tax group must have the same country_id as the tax using it."
 msgstr "Porezna grupa mora imati isti country_id kao porez koji je koristi."
-
-#. module: account
-#: model:ir.model.fields,help:account.field_account_cash_rounding__rounding_method
-#, fuzzy
-msgid "The tie-breaking rule used for float rounding operations"
-msgstr ""
-"Pravilo izjednačenja koje se koristi za operacije zaokruživanja s plutajućim "
-"brojem"
 
 #. module: account
 #. odoo-python
@@ -21254,12 +21801,6 @@ msgstr ""
 
 #. module: account
 #. odoo-python
-#: code:addons/account/tools/bank_account_number.py:0
-msgid "There is no IBAN code."
-msgstr ""
-
-#. module: account
-#. odoo-python
 #: code:addons/account/models/company.py:0
 #, fuzzy
 msgid ""
@@ -21340,18 +21881,6 @@ msgid "Thirty one dollar and Five cents"
 msgstr "Trideset jedan dolar i pet centi"
 
 #. module: account
-#. odoo-python
-#: code:addons/account/tools/bank_account_number.py:0
-msgid "This CLABE does not pass the checksum check, please verify it."
-msgstr ""
-
-#. module: account
-#. odoo-python
-#: code:addons/account/tools/bank_account_number.py:0
-msgid "This IBAN does not pass the validation check, please verify it."
-msgstr ""
-
-#. module: account
 #: model:ir.model.fields.selection,name:account.selection__account_report__default_opening_date_filter__this_month
 msgid "This Month"
 msgstr "Ovaj mjesec"
@@ -21367,12 +21896,6 @@ msgstr "Ovaj kvartal"
 #, fuzzy
 msgid "This Return Period"
 msgstr "Ovaj period povrata"
-
-#. module: account
-#. odoo-python
-#: code:addons/account/models/account_journal_dashboard.py:0
-msgid "This Week"
-msgstr "Ove sedmice"
 
 #. module: account
 #: model:ir.model.fields.selection,name:account.selection__account_report__default_opening_date_filter__this_year
@@ -21469,6 +21992,12 @@ msgstr "Ovo se može koristiti samo na stavkama dnevnika"
 #. module: account
 #. odoo-python
 #: code:addons/account/models/account_move.py:0
+msgid "This document has no tax amount to adjust."
+msgstr ""
+
+#. module: account
+#. odoo-python
+#: code:addons/account/models/account_move.py:0
 #, fuzzy
 msgid ""
 "This document is protected by a hash. Therefore, you cannot edit the "
@@ -21540,15 +22069,13 @@ msgstr ""
 #. module: account
 #. odoo-python
 #: code:addons/account/models/account_move.py:0
-#, fuzzy
 msgid "This entry has been reversed from %s"
-msgstr "Ovaj unos je poništen od %s"
+msgstr ""
 
 #. module: account
 #. odoo-python
 #: code:addons/account/models/account_move.py:0
-msgid ""
-"This entry has been reviewed, You need the bookkeeper role to change it."
+msgid "This entry has been reviewed by accountants, only them can edit it now."
 msgstr ""
 
 #. module: account
@@ -21896,7 +22423,11 @@ msgstr "Današnje aktivnosti"
 
 #. module: account
 #. odoo-javascript
+#. odoo-python
+#: code:addons/account/models/account_journal_dashboard.py:0
+#: code:addons/account/static/src/components/product_catalog/search/search_panel/search_panel.xml:0
 #: code:addons/account/static/src/components/tax_totals/tax_totals.xml:0
+#: model:ir.model.fields,field_description:account.field_account_accrued_orders_wizard__duplicate_price_total
 #: model:ir.model.fields,field_description:account.field_account_bank_statement_line__amount_total
 #: model:ir.model.fields,field_description:account.field_account_invoice_report__price_total
 #: model:ir.model.fields,field_description:account.field_account_move__amount_total
@@ -21946,6 +22477,12 @@ msgid "Total Debit"
 msgstr "Ukupan dug"
 
 #. module: account
+#. odoo-python
+#: code:addons/account/report/account_stock_valuation_report.py:0
+msgid "Total Inventory Valuation"
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,field_description:account.field_res_partner__total_invoiced
 #: model:ir.model.fields,field_description:account.field_res_users__total_invoiced
 msgid "Total Invoiced"
@@ -21984,6 +22521,16 @@ msgstr ""
 #, fuzzy
 msgid "Total Residual in Currency"
 msgstr "Ukupni ostatak u valuti"
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_res_config_settings__group_cash_rounding
+msgid "Total Rounding"
+msgstr ""
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
+msgid "Total Rounding Accounts:"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_bank_statement_line__amount_total_signed
@@ -22167,12 +22714,6 @@ msgid "Transfer to %s"
 msgstr "Prenesi novčana sredstva na %s"
 
 #. module: account
-#: model:ir.model.fields,field_description:account.field_account_move_line__translated_product_name
-#, fuzzy
-msgid "Translated Product Name"
-msgstr "Prevedeni naziv proizvoda"
-
-#. module: account
 #: model:account.account,name:account.22_us_group_661
 #, fuzzy
 msgid "Travel Expenses"
@@ -22207,6 +22748,7 @@ msgstr ""
 #. module: account
 #. odoo-python
 #: code:addons/account/models/account_tax.py:0
+#: model:ir.model.fields.selection,name:account.selection__account_report__active_selection__true
 #, fuzzy
 msgid "True"
 msgstr "Tačno"
@@ -22359,12 +22901,6 @@ msgid "Unit Price:"
 msgstr "Jedinična cijena:"
 
 #. module: account
-#: model_terms:ir.ui.view,arch_db:account.report_invoice_document
-#, fuzzy
-msgid "Units"
-msgstr "Jedinice"
-
-#. module: account
 #: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
 #, fuzzy
 msgid "Units & Packagings"
@@ -22432,6 +22968,11 @@ msgstr "Neusklađena linija bankovnog izvoda"
 #: model:ir.model.fields,field_description:account.field_account_report__filter_unreconciled
 msgid "Unreconciled Entries"
 msgstr "Ne zatvoreni zapisi"
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_account_move_line__open_on
+msgid "Unreconciled On"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_payment_register__unreconciled_paid_amount
@@ -22785,6 +23326,11 @@ msgstr ""
 "računovodstva"
 
 #. module: account
+#: model:ir.model.fields,field_description:account.field_res_config_settings__module_l10n_eu_account_vies
+msgid "VAT number validation with VIES"
+msgstr ""
+
+#. module: account
 #: model_terms:ir.ui.view,arch_db:account.view_account_lock_exception_form
 #, fuzzy
 msgid "Valid for"
@@ -22826,6 +23372,13 @@ msgstr "Ovjeri."
 #: model:mail.message.subtype,name:account.mt_invoice_validated
 msgid "Validated"
 msgstr "Odobreno"
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_product_product__valuation
+#: model:ir.model.fields,field_description:account.field_product_template__valuation
+#: model:ir.model.fields,field_description:account.field_res_company__inventory_valuation
+msgid "Valuation"
+msgstr ""
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_payment_term_line__value
@@ -22886,6 +23439,16 @@ msgstr "Vrijednosti koje su kreirale nacrt unosa na gotovinskoj osnovi"
 #: model:ir.model.fields,field_description:account.field_account_report__variant_report_ids
 msgid "Variants"
 msgstr "Varijante"
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_account_account__account_stock_variation_id
+msgid "Variation Account"
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_account_account__account_stock_variation_active
+msgid "Variation Account Active"
+msgstr ""
 
 #. module: account
 #: model:account.account,description:account.22_account_account_us_office_supplies
@@ -23035,6 +23598,21 @@ msgstr ""
 " dokumenta u Odoo-u."
 
 #. module: account
+#: model:ir.model.fields,field_description:account.field_res_config_settings__vat_check_vies
+msgid "Verify VAT Numbers"
+msgstr ""
+
+#. module: account
+#: model:ir.model.fields,field_description:account.field_res_company__vat_check_vies
+msgid "Verify VAT Numbers with VIES"
+msgstr ""
+
+#. module: account
+#: model_terms:ir.ui.view,arch_db:account.res_config_settings_view_form
+msgid "Verify VAT numbers using the European VIES service"
+msgstr ""
+
+#. module: account
 #. odoo-javascript
 #: code:addons/account/static/src/js/tours/account.js:0
 #, fuzzy
@@ -23056,6 +23634,7 @@ msgid "View Partner(s)"
 msgstr "Prikaži partnera(e)"
 
 #. module: account
+#: model_terms:ir.ui.view,arch_db:account.rounding_form_view
 #: model_terms:ir.ui.view,arch_db:account.view_payment_term_form
 #, fuzzy
 msgid "Visible to all"
@@ -23070,13 +23649,6 @@ msgid ""
 msgstr ""
 "Želite da učinite svoj život još lakšim i automatizirate provjeru valjanosti "
 "računa kod ovog dobavljača?"
-
-#. module: account
-#. odoo-python
-#: code:addons/account/models/account_move.py:0
-#, fuzzy
-msgid "Warning for Cash Rounding Method: %s"
-msgstr "Upozorenje za metodu zaokruživanja gotovine: %s"
 
 #. module: account
 #: model:ir.model.fields,field_description:account.field_account_secure_entries_wizard__warnings
@@ -23133,6 +23705,13 @@ msgstr ""
 "referencirani kroz ovo polje"
 
 #. module: account
+#: model:ir.model.fields,help:account.field_product_category__property_stock_valuation_account_id
+msgid ""
+"When automated inventory valuation is enabled on a product, this account "
+"will hold the current value of the products."
+msgstr ""
+
+#. module: account
 #: model:ir.model.fields,help:account.field_account_report_line__print_on_new_page
 #, fuzzy
 msgid ""
@@ -23157,6 +23736,13 @@ msgstr ""
 "vrijednost ovog izraza."
 
 #. module: account
+#: model:ir.model.fields,help:account.field_product_category__property_stock_journal
+msgid ""
+"When doing automated inventory valuation, this is the Accounting Journal in "
+"which entries will be automatically posted when stock moves are processed."
+msgstr ""
+
+#. module: account
 #. odoo-python
 #: code:addons/account/models/account_report.py:0
 #, fuzzy
@@ -23179,6 +23765,13 @@ msgstr "Treba li ovaj dnevnik prikazati na nadzornoj ploči ili ne"
 msgid "Will be used to name the Journal related to this bank account"
 msgstr ""
 "Koristit će se za imenovanje časopisa koji se odnosi na ovaj bankovni račun"
+
+#. module: account
+#: model:ir.model.fields,help:account.field_product_category__property_price_difference_account_id
+msgid ""
+"With perpetual valuation, this account will hold the price difference "
+"between the standard price and the bill price."
+msgstr ""
 
 #. module: account
 #: model_terms:ir.ui.view,arch_db:account.view_account_move_line_filter
@@ -23262,13 +23855,6 @@ msgid "Yes, confirm and secure them now."
 msgstr "Da, potvrdite i osigurajte ih sada."
 
 #. module: account
-#. odoo-javascript
-#: code:addons/account/static/src/components/account_batch_sending_summary/account_batch_sending_summary.xml:0
-#, fuzzy
-msgid "You are about to send"
-msgstr "Upravo ćete poslati"
-
-#. module: account
 #: model_terms:ir.ui.view,arch_db:account.portal_my_journal_mail_notifications
 #, fuzzy
 msgid "You are about to unsubscribe"
@@ -23306,21 +23892,14 @@ msgstr ""
 #. module: account
 #. odoo-python
 #: code:addons/account/models/account_journal.py:0
-#, fuzzy
 msgid ""
 "You can not archive a journal containing draft journal entries.\n"
 "\n"
 "To proceed:\n"
-"1/ click on the top-right button 'Journal Entries' from this journal form\n"
-"2/ then filter on 'Draft' entries\n"
+"1/ go to Accounting > Accounting > Journal Entries\n"
+"2/ filter on this journal and on 'Unposted' entries\n"
 "3/ select them all and post or delete them through the action menu"
 msgstr ""
-"Ne možete arhivirati dnevnik koji sadrži nacrte unosa dnevnika.\n"
-"\n"
-"Da nastavite:\n"
-"1/ kliknite na gornji desni gumb 'Unosi u dnevnik' iz ovog obrasca dnevnika\n"
-"2/ zatim filtrirajte unose 'Nacrti'\n"
-"3/ odaberite ih sve i proknjižite ili izbrišite ih putem menija radnji"
 
 #. module: account
 #. odoo-python
@@ -23381,6 +23960,12 @@ msgstr "Stavke iz istog dnevnika možete ponovo redoslijediti samo"
 #. odoo-python
 #: code:addons/account/models/account_move.py:0
 msgid "You can only switch the type of a draft document."
+msgstr ""
+
+#. module: account
+#. odoo-python
+#: code:addons/account/models/product.py:0
+msgid "You can only use the '=' operator to search on valuation field."
 msgstr ""
 
 #. module: account
@@ -23608,6 +24193,12 @@ msgid ""
 msgstr ""
 "Ne možete promijeniti tip računa postavljenog kao bankovni račun u dnevniku "
 "u Potraživanje ili plaćanje."
+
+#. module: account
+#. odoo-python
+#: code:addons/account/wizard/base_document_layout.py:0
+msgid "You cannot configure the document layout for this company."
+msgstr ""
 
 #. module: account
 #. odoo-python
@@ -23843,10 +24434,10 @@ msgstr ""
 #. module: account
 #. odoo-python
 #: code:addons/account/models/account_move.py:0
-#, fuzzy
-msgid "You cannot modify the following readonly fields on a posted move: %s"
+msgid ""
+"You cannot modify the following readonly fields on the posted move %(move)s: "
+"%(fields)s"
 msgstr ""
-"Ne možete mijenjati sljedeća polja samo za čitanje na proknjiženom potezu: %s"
 
 #. module: account
 #. odoo-python
@@ -23880,6 +24471,12 @@ msgstr "Ne možete proknjižiti unos u arhiviranom časopisu (%(journal)s)"
 #, fuzzy
 msgid "You cannot post an entry with an archived analytic account: %s"
 msgstr "Ne možete proknjižiti stavku s arhiviranim analitičkim kontom: %s"
+
+#. module: account
+#. odoo-python
+#: code:addons/account/wizard/base_document_layout.py:0
+msgid "You cannot preview this invoice."
+msgstr ""
 
 #. module: account
 #. odoo-python
@@ -23952,13 +24549,6 @@ msgstr ""
 #, fuzzy
 msgid "You cannot reset to draft a locked journal entry."
 msgstr "Ne možete vratiti na nacrt zaključanog unosa dnevnika."
-
-#. module: account
-#. odoo-python
-#: code:addons/account/models/account_move.py:0
-#, fuzzy
-msgid "You cannot reset to draft a tax cash basis journal entry."
-msgstr "Ne možete resetirati za izradu unosa u dnevniku poreske osnovice."
 
 #. module: account
 #. odoo-python
@@ -24064,6 +24654,12 @@ msgstr ""
 
 #. module: account
 #. odoo-python
+#: code:addons/account/models/account_journal_dashboard.py:0
+msgid "You do not have access to the Accounting Dashboard."
+msgstr ""
+
+#. module: account
+#. odoo-python
 #: code:addons/account/models/account_account.py:0
 #: code:addons/account/wizard/account_merge_wizard.py:0
 #, fuzzy
@@ -24149,13 +24745,6 @@ msgstr ""
 #, fuzzy
 msgid "You must select at least 2 accounts."
 msgstr "Morate odabrati najmanje 2 računa."
-
-#. module: account
-#. odoo-python
-#: code:addons/account/models/account_move.py:0
-#, fuzzy
-msgid "You must specify the Profit Account (company dependent)"
-msgstr "Morate navesti Konto dobiti (zavisno od kompanije)"
 
 #. module: account
 #. odoo-python
@@ -24886,15 +25475,6 @@ msgid "{{ object.company_id.name }} Invoice (Ref {{ object.name or 'n/a' }})"
 msgstr "{{ object.company_id.name }} Faktura (Ref {{ object.name or 'n/a' }})"
 
 #. module: account
-#: model:mail.template,subject:account.mail_template_data_payment_receipt
-#, fuzzy
-msgid ""
-"{{ object.company_id.name }} Payment Receipt (Ref {{ object.name or 'n/a' }})"
-msgstr ""
-"{{ object.company_id.name }} Potvrda o uplati (Ref {{ object.name or 'n/"
-"a' }})"
-
-#. module: account
 #: model:mail.template,subject:account.email_template_edi_self_billing_credit_note
 #, fuzzy
 msgid ""
@@ -24913,47 +25493,87 @@ msgid ""
 msgstr ""
 "{{ object.company_id.name }} Samofaktura (Ref {{ object.name or 'n/a' }})"
 
-#, fuzzy
-#~ msgid "PEPPOL Electronic Invoicing"
-#~ msgstr "PEPPOL elektronsko fakturisanje"
-
-#, fuzzy
-#~ msgid "%s, or / if not applicable"
-#~ msgstr "%s ili / ako nije primjenjivo"
-
-#, fuzzy
-#~ msgid "%s, or not applicable"
-#~ msgstr "%s ili nije primjenjivo"
-
-#, fuzzy
-#~ msgid "/ if not applicable"
-#~ msgstr "/ ako nije primjenjivo"
-
-#, fuzzy
-#~ msgid "Display the total amount of an invoice in letters"
-#~ msgstr "Prikaži ukupni iznos računa slovima"
+#. module: account
+#: model:mail.template,subject:account.mail_template_data_payment_receipt
+msgid ""
+"{{ object.company_id.name }} {{ object.payment_receipt_title }} (Ref "
+"{{ object.name or 'n/a' }})"
+msgstr ""
 
 #, fuzzy
 #~ msgid ""
-#~ "The Tax Identification Number. Values here will be validated based on the "
-#~ "country format. You can use '/' to indicate that the partner is not "
-#~ "subject to tax."
+#~ "%(order)s - %(order_line)s; %(qty_invoiced)s invoiced, %(qty_delivered)s "
+#~ "delivered at %(unit_price)s"
 #~ msgstr ""
-#~ "Porezni identifikacijski broj. Unesene vrijednosti provjeravaju se prema "
-#~ "formatu propisanom za pojedinu državu. Upišite '/' ako partner nije "
-#~ "obveznik poreza."
+#~ "%(order)s - %(order_line)s; %(qty_invoiced)s fakturisan, %"
+#~ "(qty_delivered)s isporučen na %(unit_price)s"
 
 #, fuzzy
-#~ msgid "Total amount of invoice in letters"
-#~ msgstr "Ukupan iznos računa u slovima"
+#~ msgid ""
+#~ "%(order)s - %(order_line)s; %(quantity_billed)s Billed, %"
+#~ "(quantity_received)s Received at %(unit_price)s each"
+#~ msgstr ""
+#~ "%(order)s - %(order_line)s; %(quantity_billed)s Naplaćeno, %"
+#~ "(quantity_received)s Primljeno po %(unit_price)s svaki"
 
 #, fuzzy
-#~ msgid "not applicable"
-#~ msgstr "nije primjenjivo"
+#~ msgid ""
+#~ "%(order)s - %(order_line)s; %(quantity_invoiced)s Invoiced, %"
+#~ "(quantity_delivered)s Delivered at %(unit_price)s each"
+#~ msgstr ""
+#~ "%(order)s - %(order_line)s; %(quantity_invoiced)s Fakturisano, %"
+#~ "(quantity_delivered)s Isporučeno %(unit_price)s svaki"
 
 #, fuzzy
-#~ msgid "Account Reconcile"
-#~ msgstr "Ravnanje konta"
+#~ msgid "%(order)s - %(order_line)s; price difference for %(product)s"
+#~ msgstr "%(order)s - %(order_line)s; razlika u cijeni za %(product)s"
+
+#, fuzzy
+#~ msgid "Accrued %(entry_type)s entry as of %(date)s"
+#~ msgstr "Akumulirani unos %(entry_type)s od %(date)s"
+
+#~ msgid "Cash Registers"
+#~ msgstr "Kase"
+
+#, fuzzy
+#~ msgid "Goods Delivered not Invoiced (perpetual valuation)"
+#~ msgstr "Isporučena roba nije fakturisana (stalna procena)"
+
+#, fuzzy
+#~ msgid "Goods Invoiced not Delivered (perpetual valuation)"
+#~ msgstr "Roba fakturisana nije isporučena (trajna procena)"
+
+#, fuzzy
+#~ msgid "ICE:"
+#~ msgstr "ICE:"
+
+#, fuzzy
+#~ msgid "Logs"
+#~ msgstr "Praćenja"
+
+#, fuzzy
+#~ msgid "Partners that are used in hashed entries cannot be merged."
+#~ msgstr "Partneri koji se koriste u heširanim unosima ne mogu se spojiti."
+
+#, fuzzy
+#~ msgid "Residual amount"
+#~ msgstr "Dospjeli iznos"
+
+#, fuzzy
+#~ msgid "Translated Product Name"
+#~ msgstr "Prevedeni naziv proizvoda"
+
+#, fuzzy
+#~ msgid "Warning for Cash Rounding Method: %s"
+#~ msgstr "Upozorenje za metodu zaokruživanja gotovine: %s"
+
+#, fuzzy
+#~ msgid "You are about to send"
+#~ msgstr "Upravo ćete poslati"
+
+#, fuzzy
+#~ msgid "You must specify the Profit Account (company dependent)"
+#~ msgstr "Morate navesti Konto dobiti (zavisno od kompanije)"
 
 #, fuzzy
 #~ msgid ""
@@ -24977,10 +25597,6 @@ msgstr ""
 #, fuzzy
 #~ msgid "Click or press enter to add a description"
 #~ msgstr "Kliknite ili pritisnite enter za dodavanje opisa"
-
-#, fuzzy
-#~ msgid "Stock Variation"
-#~ msgstr "Stock Variation"
 
 #~ msgid "Website Messages"
 #~ msgstr "Poruke sa website-a"

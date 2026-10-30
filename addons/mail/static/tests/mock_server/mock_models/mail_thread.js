@@ -43,6 +43,8 @@ export class MailThread extends models.ServerModel {
     ) {
         /** @type {import("mock_models").MailFollowers} */
         const MailFollowers = this.env["mail.followers"];
+        /** @type {import("mock_models").MailMessageSubtype} */
+        const MailMessageSubtype = this.env["mail.message.subtype"];
 
         const followersByThread = (thread) => {
             const domain = [
@@ -51,7 +53,11 @@ export class MailThread extends models.ServerModel {
                 ["partner_id", "!=", this.env.user.partner_id],
             ];
             if (filter_recipients) {
-                // subtype and partner active checks not done here for simplicity
+                domain.push([
+                    "subtype_ids",
+                    "in",
+                    MailMessageSubtype.search([["subtype_xmlid", "=", "mail.mt_comment"]]),
+                ]);
             }
             if (after) {
                 domain.push(["id", ">", after]);
@@ -612,6 +618,8 @@ export class MailThread extends models.ServerModel {
         const MailFollowers = this.env["mail.followers"];
         /** @type {import("mock_models").MailMessage} */
         const MailMessage = this.env["mail.message"];
+        /** @type {import("mock_models").MailMessageSubtype} */
+        const MailMessageSubtype = this.env["mail.message.subtype"];
         /** @type {import("mock_models").MailScheduledMessage} */
         const MailScheduledMessage = this.env["mail.scheduled.message"];
         /** @type {import("mock_models").MailThread} */
@@ -629,17 +637,24 @@ export class MailThread extends models.ServerModel {
             });
         }
         if (request_list.includes("attachments")) {
-            res.many("attachments", "_store_attachment_fields", {
-                value: (t) =>
-                    IrAttachment.browse(
-                        IrAttachment._filter([
-                            ["res_id", "=", t.id],
-                            ["res_model", "=", this._name],
-                        ])
-                            .sort((a1, a2) => a1.id - a2.id)
-                            .map((attachment) => attachment.id)
-                    ),
-            });
+            res.many(
+                "attachments",
+                (r) => {
+                    r.from_method("_store_attachment_fields");
+                    r.from_method("_store_thread_message_fields");
+                },
+                {
+                    value: (t) =>
+                        IrAttachment.browse(
+                            IrAttachment._filter([
+                                ["res_id", "=", t.id],
+                                ["res_model", "=", this._name],
+                            ])
+                                .sort((a1, a2) => a1.id - a2.id)
+                                .map((attachment) => attachment.id)
+                        ),
+                }
+            );
             res.attr("areAttachmentsLoaded", true);
             res.attr("isLoadingAttachments", false);
             // Specific implementation of mail.thread.main.attachment
@@ -657,9 +672,6 @@ export class MailThread extends models.ServerModel {
             res.attr("defaultSubject", (t) =>
                 MailThread._message_compute_subject.call(this, [t.id]).get(t.id)
             );
-        }
-        if (request_list.includes("display_name")) {
-            res.attr("display_name");
         }
         if (request_list.includes("followers")) {
             res.attr("followersCount", (t) =>
@@ -686,7 +698,11 @@ export class MailThread extends models.ServerModel {
                     ["res_id", "=", t.id],
                     ["res_model", "=", this._name],
                     ["partner_id", "!=", this.env.user.partner_id],
-                    // subtype and partner active checks not done here for simplicity
+                    [
+                        "subtype_ids",
+                        "in",
+                        MailMessageSubtype.search([["subtype_xmlid", "=", "mail.mt_comment"]]),
+                    ],
                 ])
             );
             this.env["mail.thread"]._store_message_followers_fields.call(this, res, {

@@ -2,8 +2,8 @@
 from contextlib import contextmanager
 
 from odoo import api, fields, models, _, Command
-from odoo.exceptions import UserError
-from odoo.fields import Domain
+from odoo.exceptions import UserError, ValidationError
+from odoo.fields import Datetime
 from odoo.tools.misc import formatLang
 
 
@@ -73,7 +73,7 @@ class AccountBankStatement(models.Model):
     line_ids = fields.One2many(
         comodel_name='account.bank.statement.line',
         inverse_name='statement_id',
-        string='Statement lines',
+        string="Transactions",
     )
 
     # A statement assumed to be complete when the sum of encoded lines is equal to the difference between start and
@@ -107,8 +107,36 @@ class AccountBankStatement(models.Model):
         bypass_search_access=True,
     )
 
+    is_statement_posted = fields.Boolean(default=True)
+    is_journal_hash = fields.Boolean(related='journal_id.restrict_mode_hash_table')
+
     _journal_id_date_desc_id_desc_idx = models.Index("(journal_id, date DESC, id DESC)")
     _first_line_index_idx = models.Index("(journal_id, first_line_index)")
+
+    @api.constrains('journal_id', 'is_statement_posted', 'line_ids')
+    def _check_hashed_journal_statement_state(self):
+        for statement in self:
+            if statement.is_journal_hash and any(line.move_id.inalterable_hash for line in statement.line_ids) and not statement.is_statement_posted:
+                raise ValidationError(
+                    self.env._(
+                        'A statement (%(statement_name)s) belonging to a hashed journal (%(journal_code)s) cannot be draft.',
+                        statement_name=statement.name,
+                        journal_code=statement.journal_id.code,
+                    )
+                )
+
+    @api.constrains('journal_id', 'balance_end_real', 'is_statement_posted')
+    def _check_hashed_journal_balance_end_real(self):
+        for statement in self:
+            currency_id = statement.currency_id or statement.journal_id.currency_id or statement.company_id.currency_id
+            if statement.journal_id.type == 'cash' and statement.is_journal_hash and statement.is_statement_posted and currency_id.compare_amounts(statement.balance_end_real, 0) < 0:
+                raise ValidationError(
+                    self.env._(
+                        'A statement (%(statement_name)s) belonging to a hashed journal (%(journal_code)s) cannot having an ending balance that is negative.',
+                        statement_name=statement.name,
+                        journal_code=statement.journal_id.code,
+                    )
+                )
 
     # -------------------------------------------------------------------------
     # COMPUTE METHODS
@@ -134,7 +162,7 @@ class AccountBankStatement(models.Model):
         for statement in self:
             # When we create lines manually from the form view, they don't have any `internal_index` set yet.
             sorted_lines = statement.line_ids.filtered('internal_index').sorted('internal_index')
-            statement.date = sorted_lines.filtered(lambda l: l.state == 'posted')[-1:].date
+            statement.date = sorted_lines.filtered(lambda l: l.state == 'posted')[-1:].date or statement.date
 
     @api.depends('create_date')
     def _compute_balance_start(self):
@@ -168,7 +196,7 @@ class AccountBankStatement(models.Model):
     @api.depends('balance_start', 'line_ids.amount', 'line_ids.state')
     def _compute_balance_end(self):
         for stmt in self:
-            lines = stmt.line_ids.filtered(lambda x: x.state == 'posted')
+            lines = stmt.line_ids.filtered(lambda x: x.state in {'draft', 'posted'})
             stmt.balance_end = stmt.balance_start + sum(lines.mapped('amount'))
 
     @api.depends('balance_start')
@@ -186,11 +214,10 @@ class AccountBankStatement(models.Model):
         for statement in self:
             statement.journal_id = statement.line_ids.journal_id
 
-    @api.depends('balance_end', 'balance_end_real', 'line_ids.amount', 'line_ids.state')
+    @api.depends('balance_end', 'balance_end_real', 'line_ids.amount', 'line_ids.state', 'currency_id')
     def _compute_is_complete(self):
         for stmt in self:
-            stmt.is_complete = stmt.line_ids.filtered(lambda l: l.state == 'posted') and stmt.currency_id.compare_amounts(
-                stmt.balance_end, stmt.balance_end_real) == 0
+            stmt.is_complete = len(stmt.line_ids) == 0 or (stmt.line_ids.filtered(lambda x: x.state in {'draft', 'posted'}) and stmt.currency_id and stmt.currency_id.compare_amounts(stmt.balance_end, stmt.balance_end_real) == 0)
 
     @api.depends('balance_end', 'balance_end_real')
     def _compute_is_valid(self):
@@ -230,6 +257,52 @@ class AccountBankStatement(models.Model):
     # -------------------------------------------------------------------------
     # BUSINESS METHODS
     # -------------------------------------------------------------------------
+    def action_post(self):
+        for statement in self:
+            if statement.is_statement_posted:
+                continue
+
+            statement.is_statement_posted = True
+            statement.line_ids.move_id._post()
+
+            statement._hash_statement()
+
+        if self.env.context.get('skip_pdf_attachment_generation'):
+            return
+
+        self.filtered(lambda statement: statement.is_complete and (
+            not statement.attachment_ids
+            or not any(attachment.mimetype == 'application/pdf' for attachment in statement.attachment_ids)
+        )).action_generate_attachment()
+
+    def _hash_statement(self):
+        self.ensure_one()
+        if not self.is_journal_hash:
+            return
+
+        last_stmt_line = self.env['account.bank.statement.line'].search_fetch(
+            [('journal_id', '=', self.journal_id.id), ('state', '=', 'posted'), ('statement_id', '!=', self.id)],
+            ['date'],
+            order="date desc",
+            limit=1,
+        )
+        # When the journal is hashed, the date must be more recent than the last transaction posted
+        if last_stmt_line and self.line_ids.filtered(lambda line: line.date < last_stmt_line.date):
+            raise UserError(self.env._("At least one transaction in the statement is prior the last posted transaction (%s)", last_stmt_line.date))
+
+        # For lines without reco model when hashed, we want to reconcile them
+        for statement_line in self.line_ids.filtered(lambda line: not line.is_reconciled):
+            statement_line.is_reconciled = True
+
+        self.line_ids.move_id._hash_moves()
+
+    def action_draft(self):
+        for statement in self:
+            if statement.is_journal_hash:
+                raise UserError(self.env._('The journal of this statement (%(statement_name)s) is hashed, the statement cannot be reset to draft', statement_name=statement.name))
+            statement.is_statement_posted = False
+            statement.line_ids.move_id.button_draft()
+
     def _get_previous_statement(self):
         """Get the previous statement based on first_line_index ordering."""
         self.ensure_one()
@@ -283,27 +356,6 @@ class AccountBankStatement(models.Model):
         })
         res = self.env.cr.fetchall()
         return [r[0] for r in res]
-
-    def action_open_statements_to_review(self):
-        self.ensure_one()
-
-        statement_ids = self.ids
-        if not self.is_valid and (previous_statement := self._get_previous_statement()):
-            statement_line_ids = self.line_ids + previous_statement.line_ids
-            statement_ids += previous_statement.ids
-        else:
-            statement_line_ids = self.line_ids
-
-        return statement_line_ids._get_records_action(
-            name=self.env._("Review Statements"),
-            domain=[],  # We use a filter to allow users to quickly switch back to all statement lines
-            views=[[False, 'kanban'], [False, 'list']],
-            context={
-                **self.env.context,
-                'review_statement_ids': statement_ids,
-                'search_default_statement_to_review': 1,
-            },
-        )
 
     # -------------------------------------------------------------------------
     # LOW-LEVEL METHODS
@@ -365,6 +417,11 @@ class AccountBankStatement(models.Model):
         if lines:
             defaults['line_ids'] = [Command.set(lines.ids)]
 
+        # When creating a statement from the view outside the bank rec widget, we want to start with a draft statement
+        if self.env.context.get('from_statement_view'):
+            defaults['is_statement_posted'] = False
+            defaults['date'] = Datetime.now()
+
         return defaults
 
     @contextmanager
@@ -392,6 +449,10 @@ class AccountBankStatement(models.Model):
         container = {'records': self.env['account.bank.statement']}
         with self._check_attachments(container, vals_list):
             container['records'] = stmts = super().create(vals_list)
+
+        if self.env.context.get('from_statement_view'):
+            stmts.is_statement_posted = False
+
         return stmts
 
     def write(self, vals):

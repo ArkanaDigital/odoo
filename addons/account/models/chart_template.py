@@ -35,6 +35,24 @@ TAX_TAG_DELIMITER = '||'
 SYSCOHADA_LIST = ['BJ', 'BF', 'CM', 'CF', 'KM', 'CG', 'CI', 'GA', 'GN', 'GW', 'GQ', 'ML', 'NE',
                   'CD', 'SN', 'TD', 'TG']
 
+# Territories that don't have their own fiscal localization and whose
+# chart of accounts should default to their parent country's template.
+# French DROM-COM territories all use the French PCG.
+CHART_TEMPLATE_COUNTRY_FALLBACK = {
+    'gp': 'fr',
+    'mq': 'fr',
+    're': 'fr',
+    'gf': 'fr',
+    'yt': 'fr',
+    'bl': 'fr',
+    'mf': 'fr',
+    'pm': 'fr',
+    'pf': 'fr',
+    'wf': 'fr',
+    'tf': 'fr',
+    'nc': 'fr',
+}
+
 
 def get_python_translation(module, lang, value):
     value_translated = code_translations.get_python_translations(module, lang).get(value)
@@ -131,6 +149,10 @@ class AccountChartTemplate(models.AbstractModel):
     def _select_chart_template(self, country=None):
         """Get the available templates in a format suited for Selection fields."""
         country = country if country is not None else self.env.company.country_id
+        if country and country.code:
+            fallback_code = CHART_TEMPLATE_COUNTRY_FALLBACK.get(country.code.lower())
+            if fallback_code:
+                country = self.env.ref(f'base.{fallback_code}', raise_if_not_found=False) or country
         chart_template_mapping = self._get_chart_template_mapping()
         return [
             (template_code, template['name'])
@@ -246,6 +268,7 @@ class AccountChartTemplate(models.AbstractModel):
         self._load_data(data)
         self._post_load_data(template_code, company, template_data)
         self._load_translations(companies=company)
+        self.env.cr.cache.pop('account_product_accounts', None)
 
         # Install the demo data when the first localization is instanciated on the company
         if install_demo and not reload_template:
@@ -373,10 +396,6 @@ class AccountChartTemplate(models.AbstractModel):
                     if xmlid not in xmlid2tax_group and not force_create:
                         skip_update.add((model_name, xmlid))
                         continue
-                    if xmlid in xmlid2tax_group:
-                        for field_name in ["tax_payable_account_id", "tax_receivable_account_id"]:
-                            if field_name in values and self.ref(values[field_name], raise_if_not_found=False):
-                                values.pop(field_name, None)
 
                 elif model_name == 'account.tax':
                     if xmlid not in xmlid2tax and 'name' not in values:
@@ -981,6 +1000,16 @@ class AccountChartTemplate(models.AbstractModel):
         ])
 
     @api.model
+    def _create_foreign_account(self, company, existing_account, additional_label, reconcilable=False):
+        return self.env['account.account'].create({
+            'name': f"{existing_account.name} - {additional_label}",
+            'code': self.env['account.account'].with_company(company)._search_new_account_code(existing_account.code),
+            'account_type': existing_account.account_type,
+            'reconcile': reconcilable or existing_account.reconcile,
+            'non_trade': existing_account.non_trade,
+            'company_ids': [Command.link(company.id)],
+        })
+
     def _instantiate_foreign_taxes(self, country, company):
         """Create and configure foreign taxes from the provided country.
 
@@ -1003,42 +1032,11 @@ class AccountChartTemplate(models.AbstractModel):
         if taxes_in_country:
             return
 
-        def create_foreign_tax_account(existing_account, additional_label, reconcilable=False):
-            new_code = self.env['account.account'].with_company(company)._search_new_account_code(existing_account.code)
-            return self.env['account.account'].create({
-                'name': f"{existing_account.name} - {additional_label}",
-                'code': new_code,
-                'account_type': existing_account.account_type,
-                'reconcile': reconcilable or existing_account.reconcile,
-                'non_trade': existing_account.non_trade,
-                'company_ids': [Command.link(company.id)],
-            })
-
         existing_accounts = {'': None, None: None}  # keeps tracks of the created account by foreign xml_id
         default_company_taxes = company.account_sale_tax_id + company.account_purchase_tax_id
         chart_template_code = self._guess_chart_template(country=country)
         tax_group_data = self._get_chart_template_data(chart_template_code)['account.tax.group']
         tax_data = self._get_chart_template_data(chart_template_code)['account.tax']
-
-        # Populate foreign accounts mapping
-        # Try to create tax group accounts if not mapped
-        field_and_names = (
-            ('tax_payable_account_id', _("Foreign tax account payable (%s)", country.code)),
-            ('tax_receivable_account_id', _("Foreign tax account receivable (%s)", country.code)),
-            ('advance_tax_payment_account_id', _("Foreign tax account advance payment (%s)", country.code)),
-        )
-        for field, account_name in field_and_names:
-            for tax_group in tax_group_data.values():
-                account_template_xml_id = tax_group.get(field)
-                if account_template_xml_id in existing_accounts:
-                    continue
-                local_tax_group = self.env["account.tax.group"].search([
-                    *self.env['account.tax.group']._check_company_domain(company),
-                    ('country_id', '=', company.account_fiscal_country_id.id),
-                    (field, '!=', False),
-                ], limit=1)
-                if local_tax_group:
-                    existing_accounts[account_template_xml_id] = create_foreign_tax_account(local_tax_group[field], account_name).id
 
         # Try to create repartition lines account if not mapped
         for tax_template in tax_data.values():
@@ -1071,7 +1069,7 @@ class AccountChartTemplate(models.AbstractModel):
 
                     if similar_repartition_line:
                         local_tax_account = similar_repartition_line.account_id
-                        similar_account_id = create_foreign_tax_account(local_tax_account, _("Foreign tax account (%s)", country.code))
+                        similar_account_id = self._create_foreign_account(company, local_tax_account, _("Foreign tax account (%s)", country.code))
                         existing_accounts[account_template_xml_id] = similar_account_id.id
 
         # Try to create cash basis account if not mapped
@@ -1089,7 +1087,8 @@ class AccountChartTemplate(models.AbstractModel):
                 account_xml_id = tax_template.get('cash_basis_transition_account_id')
                 if account_xml_id not in existing_accounts:
                     if local_cash_basis_tax:
-                        existing_accounts[account_xml_id] = create_foreign_tax_account(
+                        existing_accounts[account_xml_id] = self._create_foreign_account(
+                            company,
                             local_cash_basis_tax.cash_basis_transition_account_id,
                             _("Cash basis transition account"),
                             reconcilable=True,
@@ -1097,18 +1096,13 @@ class AccountChartTemplate(models.AbstractModel):
 
                     elif account_ids := [rep_line['account_id'] for _command, _id, rep_line in tax_template.get('repartition_line_ids', []) if rep_line.get('account_id')]:
                         local_account = self.env['account.account'].browse(existing_accounts[account_ids[0]])
-                        existing_accounts[account_xml_id] = create_foreign_tax_account(local_account, _("Cash basis transition account"), reconcilable=True).id
+                        existing_accounts[account_xml_id] = self._create_foreign_account(company, local_account, _("Cash basis transition account"), reconcilable=True).id
 
                     else:
                         existing_accounts[account_xml_id] = None
 
         if has_cash_basis:
             company.tax_exigibility = True
-
-        # Assign the account based on the map
-        for field, _account_name in field_and_names:
-            for tax_group in tax_group_data.values():
-                tax_group[field] = existing_accounts.get(tax_group.get(field))
 
         for tax_template in tax_data.values():
             # This is required because the country isn't provided directly by the template
@@ -1216,6 +1210,21 @@ class AccountChartTemplate(models.AbstractModel):
                 'show_on_dashboard': True,
                 'sequence': 7,
             },
+            "inventory_valuation": {
+                'name': _('Inventory Valuation'),
+                'code': 'STJ',
+                'type': 'general',
+                'sequence': 10,
+                'show_on_dashboard': False,
+            },
+        }
+
+    @template(model='res.company')
+    def _get_account_res_company(self, template_code):
+        return {
+            self.env.company.id: {
+                'account_stock_journal_id': 'inventory_valuation',
+            },
         }
 
     @template(model='account.reconcile.model')
@@ -1258,7 +1267,7 @@ class AccountChartTemplate(models.AbstractModel):
     def ref(self, xmlid, raise_if_not_found=True):
         return (
             self.env.ref(self.company_xmlid(xmlid), raise_if_not_found=False)
-            or self.env.ref(self.company_xmlid(xmlid, self.env.company.parent_ids[0]), raise_if_not_found)
+            or self.env.ref(self.company_xmlid(xmlid, self.env.company.root_id), raise_if_not_found)
         )
 
     def _get_parent_template(self, code):

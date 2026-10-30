@@ -8,9 +8,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server saas~18.2\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-03 17:36+0000\n"
-"PO-Revision-Date: 2026-06-22 00:04+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-08-28 17:41+0000\n"
+"PO-Revision-Date: 2026-09-09 13:59+0000\n"
+"Last-Translator: Saara Hakanen <sahak@odoo.com>\n"
 "Language-Team: Finnish <https://translate.odoo.com/projects/odoo-master/"
 "pos_adyen/fi/>\n"
 "Language: fi\n"
@@ -18,7 +18,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: pos_adyen
 #: model_terms:ir.ui.view,arch_db:pos_adyen.res_config_settings_view_form
@@ -28,7 +28,7 @@ msgstr "Lisää tippi maksupäätteen kautta (Adyen)"
 #. module: pos_adyen
 #: model_terms:ir.ui.view,arch_db:pos_adyen.pos_payment_method_view_form_inherit_pos_adyen
 msgid "Adyen"
-msgstr ""
+msgstr "Adyen"
 
 #. module: pos_adyen
 #: model:ir.model.fields,field_description:pos_adyen.field_pos_payment_method__adyen_api_key
@@ -132,6 +132,11 @@ msgid "ID"
 msgstr "Tunnus"
 
 #. module: pos_adyen
+#: model:ir.module.module,summary:base.module_pos_adyen
+msgid "Integrate your POS with an Adyen payment terminal"
+msgstr ""
+
+#. module: pos_adyen
 #. odoo-python
 #: code:addons/pos_adyen/models/pos_payment_method.py:0
 msgid "Invalid Adyen request"
@@ -142,6 +147,11 @@ msgstr "Virheellinen Adyen-pyyntö"
 #: code:addons/pos_adyen/static/src/app/utils/payment/payment_adyen.js:0
 msgid "Message from Adyen: %s"
 msgstr "Viesti Adyenilta: %s"
+
+#. module: pos_adyen
+#: model:ir.module.module,shortdesc:base.module_pos_adyen
+msgid "POS Adyen"
+msgstr ""
 
 #. module: pos_adyen
 #. odoo-python

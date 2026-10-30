@@ -2,9 +2,8 @@ import { MailColumnProgress } from "@mail/core/web/mail_column_progress";
 import { ActivityCell } from "@mail/views/web/activity/activity_cell";
 import { ActivityRecord } from "@mail/views/web/activity/activity_record";
 
-import { Component, proxy, types, useProps } from "@odoo/owl";
+import { Component, proxy, signal, types, useProps } from "@odoo/owl";
 
-import { browser } from "@web/core/browser/browser";
 import { CheckBox } from "@web/core/checkbox/checkbox";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
@@ -21,6 +20,11 @@ export class ActivityRenderer extends Component {
         CheckBox,
     };
     static template = "mail.ActivityRenderer";
+
+    storageActiveColumns = signal.Map(new Map(), {
+        keyType: types.number(),
+        valueType: types.boolean(),
+    });
 
     setup() {
         this.props = useProps({
@@ -184,33 +188,31 @@ export class ActivityRenderer extends Component {
     }
 
     get activeColumns() {
-        return this.props.activityTypes.filter(
-            (activityType) => this.storageActiveColumns[activityType.id]
+        return this.props.activityTypes.filter((activityType) =>
+            this.storageActiveColumns().get(activityType.id)
         );
     }
 
     setupStorageActiveColumns() {
-        const storageActiveColumnsList = browser.localStorage.getItem(this.storageKey)?.split(",");
-
-        this.storageActiveColumns = proxy({});
+        const storageActiveColumnsList = window.localStorage.getItem(this.storageKey)?.split(",");
+        const activeColumns = new Map();
         for (const activityType of this.props.activityTypes) {
-            if (storageActiveColumnsList) {
-                this.storageActiveColumns[activityType.id] = storageActiveColumnsList.includes(
-                    activityType.id.toString()
-                );
-            } else {
-                this.storageActiveColumns[activityType.id] = true;
-            }
+            activeColumns.set(
+                activityType.id,
+                storageActiveColumnsList
+                    ? storageActiveColumnsList.includes(activityType.id.toString())
+                    : true
+            );
         }
+        this.storageActiveColumns.set(activeColumns);
     }
 
     toggleDisplayColumn(typeId) {
-        this.storageActiveColumns[typeId] = !this.storageActiveColumns[typeId];
-        browser.localStorage.setItem(
+        const activeColumns = this.storageActiveColumns();
+        activeColumns.set(typeId, !activeColumns.get(typeId));
+        window.localStorage.setItem(
             this.storageKey.join(","),
-            Object.keys(this.storageActiveColumns).filter(
-                (activityType) => this.storageActiveColumns[activityType]
-            )
+            [...activeColumns.keys()].filter((activityType) => activeColumns.get(activityType))
         );
     }
 }

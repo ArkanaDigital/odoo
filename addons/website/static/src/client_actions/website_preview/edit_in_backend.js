@@ -1,12 +1,12 @@
 import { registry } from "@web/core/registry";
 import { useService, useBus } from "@web/core/utils/hooks";
-import { Component, onWillStart, proxy } from "@odoo/owl";
+import { Component, onWillStart, proxy, useProps } from "@odoo/owl";
 
 const websiteSystrayRegistry = registry.category("website_systray");
 
 export class EditInBackendSystrayItem extends Component {
     static template = "website.EditInBackendSystrayItem";
-    static props = {};
+    props = useProps({});
     setup() {
         this.websiteService = useService("website");
         this.actionService = useService("action");
@@ -30,6 +30,8 @@ export class EditInBackendSystrayItem extends Component {
     }
 
     async _updateMainObjectName() {
-        this.state.mainObjectName = await this.websiteService.getUserModelName();
+        if (this.websiteService.hasEditableRecordInBackend) {
+            this.state.mainObjectName = await this.websiteService.getUserModelName();
+        }
     }
 }

@@ -41,7 +41,7 @@ export class TextField extends Component {
         }
         useInputField({
             ref: this.textareaRef,
-            getValue: () => this.props.record.data[this.props.name] || "",
+            getValue: () => this.value,
             parse: (v) => this.parse(v),
             preventLineBreaks: !this.props.lineBreaks,
         });
@@ -54,6 +54,10 @@ export class TextField extends Component {
 
     get shouldTrim() {
         return this.props.record.fields[this.props.name].trim;
+    }
+
+    get value() {
+        return this.props.record.data[this.props.name] || "";
     }
 
     parse(value) {
@@ -74,7 +78,7 @@ export class TextField extends Component {
     }
 
     get isTranslatable() {
-        return this.props.record.fields[this.props.name].translate;
+        return this.props.record.isFieldTranslatable(this.props.name);
     }
     get minimumHeight() {
         return this.props.lineBreaks ? 50 : 0;

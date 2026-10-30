@@ -2,7 +2,11 @@ import { checkFilterFieldMatching } from "@spreadsheet/global_filters/helpers";
 import { CommandResult } from "../../o_spreadsheet/cancelled_reason";
 import { Domain } from "@web/core/domain";
 import { OdooCorePlugin } from "@spreadsheet/plugins";
+import { corePlugins, stores } from "@odoo/o-spreadsheet";
 import { _t } from "@web/core/l10n/translation";
+
+const { SidePanelStore } = stores;
+import { GlobalFiltersCorePlugin } from "@spreadsheet/global_filters";
 
 /**
  * @typedef {Object} Chart
@@ -35,53 +39,75 @@ export class OdooChartCorePlugin extends OdooCorePlugin {
         "getOdooChartFieldMatching",
         "getChartGranularity",
     ]);
+    static dependencies = [corePlugins.ChartPlugin, GlobalFiltersCorePlugin];
+
+    validators = {
+        ADD_GLOBAL_FILTER: this.checkChartFieldMatching,
+        EDIT_GLOBAL_FILTER: this.checkChartFieldMatching,
+    };
+
+    handlers = {
+        CREATE_CHART: this.onCreateChart,
+        DELETE_CHART: this.onDeleteChart,
+        REMOVE_GLOBAL_FILTER: this.onRemoveGlobalFilter,
+        ADD_GLOBAL_FILTER: this.onAddOrEditGlobalFilter,
+        EDIT_GLOBAL_FILTER: this.onAddOrEditGlobalFilter,
+    };
 
     constructor(config) {
         super(config);
 
         /** @type {Object.<string, Chart>} */
         this.charts = {};
+
+        this.getters.getGlobalFieldMatchingRegistry().replace("chart", {
+            getIds: () => this.getOdooChartIds(),
+            getDisplayName: (chartId) => this.getOdooChartName(chartId),
+            getFieldMatching: (chartId, filterId) =>
+                this.getOdooChartFieldMatching(chartId, filterId),
+            getModel: (chartId) =>
+                this.getters.getChart(chartId).getDefinition().dataSource.metaData.resModel,
+            getTag: (chartId) => {
+                const odooChartId = this.getOdooChartIds().indexOf(chartId) + 1;
+                return _t("Chart #%(odooChartId)s", { odooChartId });
+            },
+            getActionXmlId: (chartId) => this.getters.getChartDefinition(chartId).actionXmlId,
+            // Note: we don't support the datasource context on drilldown for the charts, so we never stored it
+            getContext: () => {},
+            openSidePanel: (env, chartId) => {
+                const figureId = env.model().getters.getFigureIdFromChartId(chartId);
+                env.model().dispatch("SELECT_FIGURE", { figureId });
+                env.getStore(SidePanelStore).open("ChartPanel", { chartId });
+            },
+        });
     }
 
-    allowDispatch(cmd) {
-        switch (cmd.type) {
-            case "ADD_GLOBAL_FILTER":
-            case "EDIT_GLOBAL_FILTER":
-                if (cmd.chart) {
-                    return checkFilterFieldMatching(cmd.chart);
-                }
+    checkChartFieldMatching(cmd) {
+        if (cmd.chart) {
+            return checkFilterFieldMatching(cmd.chart);
         }
         return CommandResult.Success;
     }
 
-    /**
-     * Handle a spreadsheet command
-     *
-     * @param {Object} cmd Command
-     */
-    handle(cmd) {
-        switch (cmd.type) {
-            case "CREATE_CHART": {
-                if (cmd.definition.dataSource?.type === "odoo") {
-                    this._addOdooChart(cmd.chartId);
-                }
-                break;
-            }
-            case "DELETE_CHART": {
-                const charts = { ...this.charts };
-                delete charts[cmd.chartId];
-                this.history.update("charts", charts);
-                break;
-            }
-            case "REMOVE_GLOBAL_FILTER":
-                this._onFilterDeletion(cmd.id);
-                break;
-            case "ADD_GLOBAL_FILTER":
-            case "EDIT_GLOBAL_FILTER":
-                if (cmd.chart) {
-                    this._setOdooChartFieldMatching(cmd.filter.id, cmd.chart);
-                }
-                break;
+    onCreateChart(cmd) {
+        if (cmd.definition.dataSource?.type === "odoo") {
+            this._addOdooChart(cmd.chartId);
+        }
+    }
+
+    onDeleteChart(cmd) {
+        const charts = { ...this.charts };
+        delete charts[cmd.chartId];
+        this.history.update("charts", charts);
+    }
+
+    onRemoveGlobalFilter(cmd) {
+        this._onFilterDeletion(cmd.id);
+    }
+
+    onAddOrEditGlobalFilter(cmd) {
+        if (cmd.chart) {
+            this._setOdooChartFieldMatching(cmd.filter.id, cmd.chart);
         }
     }
 

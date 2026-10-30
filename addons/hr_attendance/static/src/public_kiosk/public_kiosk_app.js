@@ -1,3 +1,4 @@
+import { BreakDurationDialog } from "@hr_attendance/components/break_duration_dialog/break_duration_dialog";
 import { CardLayout } from "@hr_attendance/components/card_layout/card_layout";
 import { KioskConfirmation } from "@hr_attendance/components/confirmation/confirmation";
 import { KioskGreetings } from "@hr_attendance/components/greetings/greetings";
@@ -5,8 +6,9 @@ import { KioskBarcodeScanner } from "@hr_attendance/components/kiosk_barcode/kio
 import { KioskManualSelection } from "@hr_attendance/components/manual_selection/manual_selection";
 import { NewEmployeeDialog } from "@hr_attendance/components/new_employee_dialog/new_employee_dialog";
 import { KioskPinCode } from "@hr_attendance/components/pin_code/pin_code";
-import { Component, proxy, whenReady } from "@odoo/owl";
+import { Component, proxy, t, usePlugin, useProps, whenReady } from "@odoo/owl";
 import { browser } from "@web/core/browser/browser";
+import { deserializeDateTime } from "@web/core/l10n/dates";
 import { _t } from "@web/core/l10n/translation";
 import { MainComponentsContainer } from "@web/core/main_components_container";
 import { rpc } from "@web/core/network/rpc";
@@ -15,20 +17,23 @@ import { url } from "@web/core/utils/urls";
 import { mountComponent } from "@web/env";
 import { session } from "@web/session";
 import { DocumentationLink } from "@web/views/widgets/documentation_link/documentation_link";
+import { BarcodePlugin } from "@barcodes/barcode_plugin";
 
 class kioskAttendanceApp extends Component {
     static template = "hr_attendance.public_kiosk_app";
-    static props = {
-        token: { type: String },
-        companyId: { type: Number },
-        companyName: { type: String },
-        departments: { type: Array },
-        kioskMode: { type: String },
-        barcodeSource: { type: String },
-        fromTrialMode: { type: Boolean },
-        deviceTrackingEnabled: { type: Boolean },
-        captureCheckInImage: { type: Boolean },
-    };
+
+    props = useProps({
+        token: t.string(),
+        companyId: t.number(),
+        companyName: t.string(),
+        departments: t.array(),
+        kioskMode: t.string(),
+        barcodeSource: t.string(),
+        fromTrialMode: t.boolean(),
+        deviceTrackingEnabled: t.boolean(),
+        captureCheckInImage: t.boolean(),
+        lang: { type: String },
+    });
     static components = {
         KioskBarcodeScanner,
         CardLayout,
@@ -42,7 +47,7 @@ class kioskAttendanceApp extends Component {
 
     setup() {
         this.dialogService = useService("dialog");
-        this.barcode = useService("barcode");
+        this.barcode = usePlugin(BarcodePlugin);
         this.notification = useService("notification");
         this.ui = useService("ui");
         this.companyImageUrl = url("/web/binary/company_logo", {
@@ -57,6 +62,7 @@ class kioskAttendanceApp extends Component {
         });
         this.lockScanner = false;
         this.cameraCapture = null;
+        this.lastIdentification = null;
         if (this.state.kioskMode === "settings" || this.props.fromTrialMode) {
             this.manualKioskMode = false;
             useBus(this.barcode.bus, "barcode_scanned", (ev) =>
@@ -72,6 +78,7 @@ class kioskAttendanceApp extends Component {
             this.manualKioskMode = true;
             this.state.active_display = "manual";
         }
+        luxon.Settings.defaultLocale = this.props.lang;
     }
 
     switchDisplay(screen) {
@@ -194,6 +201,10 @@ class kioskAttendanceApp extends Component {
             check_in_image: checkInImage,
         });
         if (result && result.attendance) {
+            this.lastIdentification = {
+                employeeId,
+                params: { employee_id: employeeId, pin_code: enteredPin },
+            };
             this.employeeData = result;
             this.displayServerNotification(result.notification);
             this.switchDisplay("greet");
@@ -221,6 +232,10 @@ class kioskAttendanceApp extends Component {
             });
 
             if (result && result.employee_name) {
+                this.lastIdentification = {
+                    employeeId: result.id,
+                    params: { barcode },
+                };
                 this.employeeData = result;
                 this.displayServerNotification(result.notification);
                 this.switchDisplay("greet");
@@ -233,6 +248,68 @@ class kioskAttendanceApp extends Component {
             this.displayNotification(error.data.message);
         } finally {
             this.lockScanner = false;
+            this.ui.unblock();
+        }
+    }
+
+    continueAsBreakTime() {
+        const employee = this.employeeData;
+        if (!employee?.id) {
+            this.kioskReturn();
+            return;
+        }
+
+        this.dialogService.add(
+            BreakDurationDialog,
+            {
+                employeeName: employee.employee_name,
+                maxMinutes: this.attendanceDurationInMinutes(employee.attendance),
+                onConfirm: (minutes) => this.saveBreakDuration(employee, minutes),
+            },
+            {
+                onClose: () => this.kioskReturn(),
+            }
+        );
+    }
+
+    attendanceDurationInMinutes(attendance) {
+        if (!attendance?.check_in || !attendance?.check_out) {
+            return undefined;
+        }
+        const checkIn = deserializeDateTime(attendance.check_in);
+        const checkOut = deserializeDateTime(attendance.check_out);
+        return Math.floor(checkOut.diff(checkIn).as("minutes"));
+    }
+
+    async saveBreakDuration(employee, minutes) {
+        this.ui.block();
+        try {
+            const identificationParams =
+                this.lastIdentification?.employeeId === employee.id
+                    ? this.lastIdentification.params
+                    : { employee_id: employee.id };
+            const result = await rpc("update_break_duration", {
+                token: this.props.token,
+                ...identificationParams,
+                attendance_id: employee.attendance.id,
+                break_duration: minutes / 60,
+            });
+
+            if (!result?.attendance) {
+                // No duration would go through: let the dialog close so that the
+                // employee can identify again.
+                this.displayNotification(
+                    _t("Could not save break duration. Please identify again.")
+                );
+                return true;
+            }
+            this.employeeData = result;
+            this.displayServerNotification(result.notification);
+            return true;
+        } catch (error) {
+            this.displayNotification(error?.data?.message || error?.message);
+            return false;
+        } finally {
             this.ui.unblock();
         }
     }
@@ -267,6 +344,7 @@ export async function createPublicKioskAttendance(document, kiosk_backend_info) 
             fromTrialMode: kiosk_backend_info.from_trial_mode,
             deviceTrackingEnabled: kiosk_backend_info.device_tracking_enabled,
             captureCheckInImage: kiosk_backend_info.capture_check_in_image,
+            lang: kiosk_backend_info.lang,
         },
     });
 }

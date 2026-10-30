@@ -490,7 +490,7 @@ export function usePicker(PickerComponent, ref, props, options = {}) {
     const popover = usePopover(PickerComponent, {
         ...newOptions,
         animation: false,
-        popoverClass: options.popoverClass ?? "" + " bg-100 border border-secondary",
+        popoverClass: options.popoverClass ?? "" + " bg-100 border",
     });
     props.storeScroll = useEmojiPickerStoreScroll();
 
@@ -633,7 +633,7 @@ class PickerMobileInDialog extends PickerMobile {
             window,
             "click",
             (ev) => {
-                if (ev.target !== this.root() && !this.root().contains(ev.target)) {
+                if (ev.target !== this.root() && !this.root()?.contains(ev.target)) {
                     this.props.close?.();
                 }
             },

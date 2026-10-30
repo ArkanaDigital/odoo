@@ -1,16 +1,15 @@
 import { fields, Record } from "@mail/model/export";
 import { BlurManager } from "@mail/discuss/call/common/blur_manager";
+import { DiscussP2PPlugin } from "@mail/discuss/call/common/discuss_p2p_plugin";
 import { CallPermissionDialog } from "@mail/discuss/call/common/call_permission_dialog";
-import { CALL_PROMOTE_FULLSCREEN } from "@mail/discuss/call/common/discuss_channel_model_patch";
 import { CALL_GRID_LAYOUT } from "@mail/discuss/call/common/call_layout";
 import { monitorAudio } from "@mail/utils/common/media_monitoring";
 import { CallPermissionDeniedDialog } from "@mail/discuss/call/common/call_permission_denied_dialog";
 import { rpc } from "@web/core/network/rpc";
 import { assignDefined, closeStream } from "@mail/utils/common/misc";
 
-import { markup, proxy, toRaw } from "@odoo/owl";
+import { markup, proxy, toRaw, usePlugin } from "@odoo/owl";
 
-import { browser } from "@web/core/browser/browser";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
@@ -93,6 +92,7 @@ function subscribe(target, event, f) {
 }
 
 export const PTT_RELEASE_DURATION = 200;
+const RECORDING_CONNECTION_TIMEOUT = 15_000;
 const SW_MESSAGE_TYPE = {
     POST_RTC_LOGS: "POST_RTC_LOGS",
 };
@@ -148,15 +148,12 @@ const VIEW_TO_RESTORE = Object.freeze({
 });
 
 /**
- * @param {Array<RTCIceServer>} iceServers
+ * @param {Array<RTCIceServer & { url?: string }>} iceServers
  * @returns {Boolean}
  */
 function hasTurn(iceServers) {
-    return iceServers.some(
-        (server) =>
-            server.url?.startsWith("turn:") ||
-            server.urls?.startsWith?.("turn:") ||
-            server.urls?.some?.((url) => url.startsWith("turn:"))
+    return iceServers.some((server) =>
+        [server.url, server.urls].flat().some((url) => url?.startsWith("turn:"))
     );
 }
 
@@ -369,23 +366,33 @@ export class Rtc extends Record {
      * @type {ViewToRestore}
      */
     viewToRestore = VIEW_TO_RESTORE.NONE;
+    can_record_audio = false;
+    can_record_transcription = false;
+    can_record_video = false;
+    /** @type {{audio?: boolean, video?: boolean, transcription?: boolean} | null} */
+    recordingRequest = null;
+    recordingState = fields.Attr({ audio: false, transcription: false, video: false });
     /** @type {RtcLog} */
     logs = {};
-    /** @type {Map<any, {id: any, position: "bottom"|"top", text: string}>} call notifications by id */
+    /** @type {Map<any, {id: any, position: "bottom"|"top", text: TranslatedString}>} call notifications by id */
     notifications = proxy(new Map());
     /** @type {Map<string, number>} timeoutId by notificationId for call notifications */
     timeouts = new Map();
     /** @type {Map<number, number>} timeoutId by sessionId for download pausing delay */
     downloadTimeouts = new Map();
-    /** @type {{urls: string[]}[]} */
-    iceServers = fields.Attr(undefined, {
-        compute() {
-            return this.iceServers ? this.iceServers : GET_DEFAULT_ICE_SERVERS();
-        },
-    });
+    /** @type {RTCIceServer[]|false} */
+    iceServers = undefined;
+    /** @returns {RTCIceServer[]} */
+    get effectiveIceServers() {
+        return this.iceServers ? this.iceServers : GET_DEFAULT_ICE_SERVERS();
+    }
+    /** @type {Promise<void[]>|undefined} */
+    mediaPermissionsPromise;
     /** @type {"granted" | "denied" | "prompt" | undefined} */
     microphonePermission;
     isMicrophonePermissionWarningDismissed = false;
+    /** Whether a media permission dialog is currently shown, it already conveys the permission warning. */
+    isCallPermissionDialogOpen = false;
     /** @type {"granted" | "denied" | "prompt" | undefined} */
     cameraPermission;
     /**
@@ -403,36 +410,23 @@ export class Rtc extends Record {
      * unless you need to access actual connection data (connection stats, streams,...), which can only
      * be accessed from the tab that is hosting the call.
      */
-    selfSession = fields.One("discuss.channel.rtc.session", {
-        compute() {
-            return (
-                this.localSession ||
-                this.store["discuss.channel.rtc.session"].get(this._remotelyHostedSessionId)
-            );
-        },
-        onDelete() {
-            if (this.channel) {
-                this.channel.promoteFullscreen = CALL_PROMOTE_FULLSCREEN.INACTIVE;
-            }
-        },
-    });
+    selfSession = this.computed(
+        () =>
+            this.localSession ||
+            this.store["discuss.channel.rtc.session"].get(this._remotelyHostedSessionId)
+    );
     /**
      * The DiscussChannel of the current user for the call hosted by this tab.
      */
     localChannel = fields.One("discuss.channel");
-    channel = fields.One("discuss.channel", {
-        compute() {
-            if (this.localChannel) {
-                return this.localChannel;
-            }
-            return this._remotelyHostedChannelId;
-        },
-        onUpdate() {
-            if (!this.channel) {
-                return;
-            }
-            this.store["discuss.channel"].getOrFetch(this.channel.id);
-        },
+    channel = this.computed(() => {
+        if (this.localChannel) {
+            return this.localChannel;
+        }
+        if (this._remotelyHostedChannelId) {
+            return this.store["discuss.channel"].insert(this._remotelyHostedChannelId);
+        }
+        return undefined;
     });
     /**
      * Html element embedding the rtc service. Used to scope the dialog to the correct
@@ -461,7 +455,7 @@ export class Rtc extends Record {
     /** @type {AudioContext} AudioContext used to mix screen and mic audio */
     audioContext;
     // cross tab sync
-    _broadcastChannel = new browser.BroadcastChannel("call_sync_state");
+    _broadcastChannel = new window.BroadcastChannel("call_sync_state");
     _remotelyHostedSessionId;
     _remotelyHostedChannelId;
     _crossTabTimeoutId;
@@ -489,9 +483,27 @@ export class Rtc extends Record {
         return this.isFullscreen && this.fullscreen.isBrowserFullscreen;
     }
 
+    /**
+     * Starting requires transcription or video with audio. Any recording
+     * capability permits stopping an existing recording.
+     */
+    canRecord() {
+        if (this.isRecording()) {
+            return this.can_record_audio || this.can_record_transcription || this.can_record_video;
+        }
+        return this.can_record_transcription || (this.can_record_audio && this.can_record_video);
+    }
+
+    isRecording() {
+        const { audio, transcription, video } = this.recordingState;
+        return Boolean(audio || transcription || video);
+    }
+
     get showMicrophonePermissionWarning() {
         return (
-            !this.isMicrophonePermissionWarningDismissed && this.microphonePermission !== "granted"
+            !this.isCallPermissionDialogOpen &&
+            !this.isMicrophonePermissionWarningDismissed &&
+            this.microphonePermission !== "granted"
         );
     }
 
@@ -499,48 +511,23 @@ export class Rtc extends Record {
         return !this.selfSession?.isMute && this.isMicAudioTrackMuted;
     }
 
-    /** @type {CallAction[]} */
-    callActions = fields.Attr([], {
-        /** @this {import("models").Rtc} */
-        compute() {
-            const transformedActions = registry
-                .category("discuss.call/actions")
-                .getEntries()
-                .map(([id, definition]) => new CallAction({ owner: this, id, definition }));
-            for (const action of transformedActions) {
-                action.setup();
-                void action.isActive;
-            }
-            return transformedActions;
-        },
-        /** @this {import("models").Rtc} */
-        onUpdate() {
-            for (const action of this.callActions) {
-                if (action.isActive === this.lastActions[action.id]) {
-                    continue;
-                }
-                if (!action.tags.includes(ACTION_TAGS.CALL_ACTION_TRACKED)) {
-                    continue;
-                }
-                if (action.isActive) {
-                    if (!this.actionsStack.includes(action.id)) {
-                        this.actionsStack.unshift(action.id);
-                    }
-                } else {
-                    const index = this.actionsStack.indexOf(action.id);
-                    if (index !== -1) {
-                        this.actionsStack.splice(index, 1);
-                    }
-                }
-            }
-            this.lastSelfCallAction = this.actionsStack[0];
-            this.lastActions = Object.fromEntries(
-                this.callActions.map((action) => [action.id, action.isActive])
-            );
-        },
+    callActions = this.computed(() => {
+        const transformedActions = registry
+            .category("discuss.call/actions")
+            .getEntries()
+            .map(([id, definition]) => new CallAction({ owner: this, id, definition }));
+        for (const action of transformedActions) {
+            action.setup();
+            void action.isActive;
+        }
+        return transformedActions;
     });
 
     setup() {
+        this.onEnter(
+            () => [this.channel],
+            (channel) => () => channel.clearActiveSpeakers()
+        );
         // the services and the dialog the record holds, assigned when the service starts or
         // when a call runs
         /** @type {SfuClientState} */
@@ -551,16 +538,16 @@ export class Rtc extends Record {
         this.dialog = undefined;
         /** @type {Services["mail.fullscreen"]} */
         this.fullscreen = undefined;
-        /** @type {Services["notification"]} */
+        /** @type {import("@web/core/notifications/notification_plugin").NotificationPlugin} */
         this.notification = undefined;
-        /** @type {Services["discuss.p2p"]} */
+        /** @type {import("@mail/discuss/call/common/peer_to_peer").PeerToPeer} */
         this.p2pService = undefined;
         /** @type {Services["discuss.pip_service"]} */
         this.pipService = undefined;
         /** @type {Services["discuss.ptt_extension"]} */
         this.pttExtService = undefined;
-        /** @type {Services["mail.sound_effects"]} */
-        this.soundEffectsService = undefined;
+        /** @type {import("@mail/core/common/sound_effects_plugin").SoundEffectsPlugin} */
+        this.soundEffects = undefined;
         this.linkVoiceActivationDebounce = debounce(this.linkVoiceActivation, 500);
         this.upgradeConnectionDebounce = debounce(this._upgradeConnection, 15000, true);
         this.blurManager = undefined;
@@ -568,15 +555,87 @@ export class Rtc extends Record {
 
     start() {
         const services = this.store.env.services;
-        this.notification = services.notification;
+        this.notification = this.store.notification;
         this.dialog = services.dialog;
-        this.soundEffectsService = services["mail.sound_effects"];
+        this.soundEffects = this.store.soundEffects;
         this.pttExtService = services["discuss.ptt_extension"];
         if (this._broadcastChannel) {
             this._broadcastChannel.onmessage = this._onBroadcastChannelMessage.bind(this);
             this._postToTabs({ type: CROSS_TAB_CLIENT_MESSAGE.INIT });
         }
-        this.p2pService = services["discuss.p2p"];
+        this.onChange(
+            () => [this.channel],
+            function onChangeChannel(channel) {
+                if (channel) {
+                    this.store["discuss.channel"].getOrFetch(channel.id);
+                }
+            },
+            { immediate: true }
+        );
+        this.onChange(
+            () => [this.callActions],
+            function onChangeCallActions(callActions) {
+                for (const action of callActions) {
+                    if (action.isActive === this.lastActions[action.id]) {
+                        continue;
+                    }
+                    if (!action.tags.includes(ACTION_TAGS.CALL_ACTION_TRACKED)) {
+                        continue;
+                    }
+                    if (action.isActive) {
+                        if (!this.actionsStack.includes(action.id)) {
+                            this.actionsStack.unshift(action.id);
+                        }
+                    } else {
+                        const index = this.actionsStack.indexOf(action.id);
+                        if (index !== -1) {
+                            this.actionsStack.splice(index, 1);
+                        }
+                    }
+                }
+                this.lastSelfCallAction = this.actionsStack[0];
+                this.lastActions = Object.fromEntries(
+                    callActions.map((action) => [action.id, action.isActive])
+                );
+            },
+            { immediate: true }
+        );
+        this.onChange(
+            () => [this.isRecording()],
+            function onChangeRecordingState(isRecording) {
+                if (isRecording) {
+                    this.addCallNotification({
+                        id: "recording_started",
+                        text: _t("Recording has started"),
+                    });
+                }
+            },
+            { immediate: true, initialRun: false }
+        );
+        this.onChange(
+            () => [this.recordingRequest],
+            function onChangeRecordingRequest(recordingRequest) {
+                if (!recordingRequest) {
+                    return;
+                }
+                const timeout = window.setTimeout(() => {
+                    this.recordingRequest = null;
+                    this.addCallNotification({
+                        id: "recording_failed",
+                        text: _t("Could not start the recording"),
+                    });
+                }, RECORDING_CONNECTION_TIMEOUT);
+                return () => window.clearTimeout(timeout);
+            },
+            { immediate: true }
+        );
+        this.onChange(
+            () => [this.store.settings.useCallAutoFocus],
+            function onChangeUseCallAutoFocus() {
+                this.channel?.updateActiveSpeakers();
+            },
+            { initialRun: false }
+        );
         this.onChange(
             () => [this.store.settings.useBlur],
             function onChangeUseBlur(useBlur) {
@@ -639,15 +698,15 @@ export class Rtc extends Record {
                 session.playAudio();
             }
         });
-        browser.addEventListener("blur", () => this.onBlur());
-        browser.addEventListener(
+        window.addEventListener("blur", () => this.onBlur());
+        window.addEventListener(
             "keydown",
             (ev) => {
                 this.onKeyDown(ev);
             },
             { capture: true }
         );
-        browser.addEventListener(
+        window.addEventListener(
             "keyup",
             (ev) => {
                 this.onKeyUp(ev);
@@ -655,7 +714,7 @@ export class Rtc extends Record {
             { capture: true }
         );
 
-        browser.addEventListener("pagehide", () => {
+        window.addEventListener("pagehide", () => {
             if (this.localChannel) {
                 const data = JSON.stringify({
                     params: { channel_id: this.localChannel.id, session_id: this.selfSession.id },
@@ -664,7 +723,7 @@ export class Rtc extends Record {
                 // using sendBeacon allows sending a post request even when the
                 // browser prevents async requests from firing when the browser
                 // is closed. Alternatives like synchronous XHR are not reliable.
-                browser.navigator.sendBeacon("/mail/rtc/channel/leave_call", blob);
+                window.navigator.sendBeacon("/mail/rtc/channel/leave_call", blob);
                 this.sfuClient?.disconnect();
             }
         });
@@ -676,7 +735,7 @@ export class Rtc extends Record {
          * This is distinct from this.recover which tries to restore
          * connections that were established but failed or timed out.
          */
-        browser.setInterval(async () => {
+        window.setInterval(async () => {
             if (!this.localSession || !this.localChannel) {
                 return;
             }
@@ -731,10 +790,10 @@ export class Rtc extends Record {
     }
 
     setPttReleaseTimeout(duration = PTT_RELEASE_DURATION) {
-        this.pttReleaseTimeout = browser.setTimeout(() => {
+        this.pttReleaseTimeout = window.setTimeout(() => {
             this.setTalking(false);
             if (!this.localSession?.isMute) {
-                this.soundEffectsService.play("ptt-release");
+                this.soundEffects.play("ptt-release");
             }
         }, Math.max(this.store.settings.voiceActiveDuration || 0, duration));
     }
@@ -747,9 +806,9 @@ export class Rtc extends Record {
         ) {
             return;
         }
-        browser.clearTimeout(this.pttReleaseTimeout);
+        window.clearTimeout(this.pttReleaseTimeout);
         if (!this.localSession.isTalking && !this.localSession.isMute) {
-            this.soundEffectsService.play("ptt-press");
+            this.soundEffects.play("ptt-press");
         }
         this.setTalking(true);
     }
@@ -782,7 +841,7 @@ export class Rtc extends Record {
     /**
      * @param {Object} param0
      * @param {any} param0.id
-     * @param {string} param0.text
+     * @param {TranslatedString} param0.text
      * @param {number} [param0.delay]
      * @param {"bottom"|"top"} [param0.position="bottom"] Corner of the call view the notification is anchored to.
      */
@@ -793,7 +852,7 @@ export class Rtc extends Record {
         this.notifications.set(id, { id, position, text });
         this.timeouts.set(
             id,
-            browser.setTimeout(() => {
+            window.setTimeout(() => {
                 this.notifications.delete(id);
                 this.timeouts.delete(id);
             }, delay)
@@ -804,7 +863,7 @@ export class Rtc extends Record {
      * @param {any} id
      */
     removeCallNotification(id) {
-        browser.clearTimeout(this.timeouts.get(id));
+        window.clearTimeout(this.timeouts.get(id));
         this.notifications.delete(id);
         this.timeouts.delete(id);
     }
@@ -815,8 +874,9 @@ export class Rtc extends Record {
     async leaveCall(channel = this.localChannel) {
         this.store.fullscreenChannel = null;
         this.hasPendingRequest = true;
-        await rpc("/mail/rtc/channel/leave_call", { channel_id: channel.id }, { silent: true });
+        // Must precede the RPC: otherwise, the echoed session removal would read as a server-initiated disconnect.
         this.endCall(channel);
+        await rpc("/mail/rtc/channel/leave_call", { channel_id: channel.id }, { silent: true });
         this.hasPendingRequest = false;
     }
 
@@ -835,7 +895,7 @@ export class Rtc extends Record {
             this.pttExtService.unsubscribe();
             this.network?.disconnect();
             this.clear();
-            this.soundEffectsService.play("call-leave");
+            this.soundEffects.play("call-leave");
         }
     }
 
@@ -845,7 +905,7 @@ export class Rtc extends Record {
             return;
         }
         await this.setDeaf(true);
-        this.soundEffectsService.play("earphone-off");
+        this.soundEffects.play("earphone-off");
     }
 
     /**
@@ -888,7 +948,7 @@ export class Rtc extends Record {
             return;
         }
         await this.setMute(true);
-        this.soundEffectsService.play("mic-off");
+        this.soundEffects.play("mic-off");
     }
 
     /**
@@ -908,7 +968,7 @@ export class Rtc extends Record {
                 ? VIEW_TO_RESTORE.FULLSCREEN
                 : VIEW_TO_RESTORE.NONE;
         this.store.fullscreenChannel = this.channel;
-        if (browserFullscreen) {
+        if (browserFullscreen || isMobileOS()) {
             this.removeCallNotification("minimize_hint");
         } else {
             this.addCallNotification({
@@ -939,10 +999,10 @@ export class Rtc extends Record {
      *
      * @param {Object} [options]
      * @param {string} [options.confirmIcon] Icon displayed on the confirm button.
-     * @param {string} [options.confirmLabel] Label of the confirm button.
-     * @param {string} [options.description] Secondary text describing the consequences of switching.
-     * @param {string} [options.message] Message displayed in the dialog.
-     * @param {string} [options.title] Title of the dialog.
+     * @param {TranslatedString} [options.confirmLabel] Label of the confirm button.
+     * @param {TranslatedString} [options.description] Secondary text describing the consequences of switching.
+     * @param {TranslatedString} [options.message] Message displayed in the dialog.
+     * @param {TranslatedString} [options.title] Title of the dialog.
      * @returns {Promise<boolean>} Whether the user confirmed the action.
      */
     async askCallSwitchConfirmation({
@@ -1054,7 +1114,7 @@ export class Rtc extends Record {
             }
             await this.joinCall(channel, joinCallOpts);
             if (fullscreen && this.selfSession) {
-                this.enterFullscreen();
+                await this.enterFullscreen();
             }
         }
     }
@@ -1095,7 +1155,71 @@ export class Rtc extends Record {
             return;
         }
         await this.setDeaf(false);
-        this.soundEffectsService.play("earphone-on");
+        this.soundEffects.play("earphone-on");
+    }
+
+    stopRecording() {
+        return this.setRecording({ audio: false, transcription: false, video: false });
+    }
+
+    /**
+     * Apply recording output changes or queue them until the SFU connects.
+     * Queued requests expire after 15 seconds without an SFU connection.
+     * Omitted outputs keep their current state. Disabling every output cancels
+     * a pending request and requires a connected SFU. Request failures appear
+     * in call notifications.
+     *
+     * @param {Object} [options]
+     * @param {boolean} [options.audio]
+     * @param {boolean} [options.video]
+     * @param {boolean} [options.transcription]
+     */
+    async setRecording(options = {}) {
+        const {
+            audio = this.recordingState.audio,
+            transcription = this.recordingState.transcription,
+            video = this.recordingState.video,
+        } = options;
+        const isStopping = !audio && !transcription && !video;
+        if (!this.sfuClient || this.sfuClient.state !== this.SFU_CLIENT_STATE.CONNECTED) {
+            if (isStopping) {
+                this.recordingRequest = null;
+                this.addCallNotification({
+                    id: "stop_recording_failed",
+                    text: _t("Could not stop the recording"),
+                });
+                return;
+            }
+            if (this.recordingRequest) {
+                return;
+            }
+            this.recordingRequest = options;
+            if (!this.serverInfo) {
+                this.upgradeConnectionDebounce();
+            }
+            return;
+        }
+        this.recordingRequest = null;
+        let allowed;
+        try {
+            allowed = await this.sfuClient.setRecording(options);
+        } catch {
+            this.addCallNotification({
+                id: isStopping ? "stop_recording_failed" : "recording_failed",
+                text: isStopping
+                    ? _t("Could not stop the recording")
+                    : _t("Could not start the recording"),
+            });
+            return;
+        }
+        if (!allowed) {
+            this.addCallNotification({
+                id: isStopping ? "stop_recording_not_allowed" : "recording_not_allowed",
+                text: isStopping
+                    ? _t("You are not allowed to stop the recording")
+                    : _t("Recording is not allowed"),
+            });
+        }
     }
 
     /**
@@ -1113,6 +1237,8 @@ export class Rtc extends Record {
             this.showMediaUnavailableWarning({ [media]: true }, options);
             return;
         }
+        const onClose = options.onClose;
+        this.isCallPermissionDialogOpen = true;
         this.closeCallPermissionDialog = this.dialog.add(
             CallPermissionDialog,
             {
@@ -1130,8 +1256,43 @@ export class Rtc extends Record {
             {
                 rootRef: options.rootRef || (() => this.rootEl),
                 ...options,
+                onClose: () => {
+                    this.isCallPermissionDialogOpen = false;
+                    onClose?.();
+                },
             }
         );
+    }
+
+    /**
+     * Starts a meeting call and requests any required media permissions.
+     *
+     * @param {import("models").DiscussChannel} channel
+     * @param {Object} [initialState={}]
+     * @param {boolean} [initialState.fullscreen=false] open the fullscreen meeting view once joined
+     */
+    async startMeetingCall(channel, { fullscreen = false } = {}) {
+        await this.mediaPermissionsPromise;
+        const isMicrophonePermissionPending = this.microphonePermission === "prompt";
+        await this.toggleCall(channel, {
+            camera: this.cameraPermission === "granted" || !isMicrophonePermissionPending,
+            fullscreen,
+        });
+        if (isMicrophonePermissionPending && channel.isSelfInCall) {
+            this.showMediaPermissionDialog("microphone");
+        }
+    }
+
+    /**
+     * Prompts the user for the media permissions required by a meeting
+     */
+    async showMeetingMediaPermissionDialog() {
+        await this.mediaPermissionsPromise;
+        if (this.microphonePermission === "prompt") {
+            this.showMediaPermissionDialog("microphone");
+        } else if (this.cameraPermission === "prompt") {
+            this.showMediaPermissionDialog("camera");
+        }
     }
 
     /**
@@ -1173,7 +1334,7 @@ export class Rtc extends Record {
      */
     async askForBrowserPermission({ audio, video, deviceId }, options = {}) {
         try {
-            const sourceWindow = options.rootRef?.()?.ownerDocument?.defaultView || browser;
+            const sourceWindow = options.rootRef?.()?.ownerDocument?.defaultView || window;
             const stream = await sourceWindow.navigator.mediaDevices.getUserMedia({
                 audio: audio
                     ? { ...this.store.settings.audioConstraints, ...(deviceId && { deviceId }) }
@@ -1220,7 +1381,7 @@ export class Rtc extends Record {
         } else {
             await this.resetMicAudioTrack({ force: true }, options);
         }
-        this.soundEffectsService.play("mic-on");
+        this.soundEffects.play("mic-on");
     }
 
     //----------------------------------------------------------------------
@@ -1230,7 +1391,9 @@ export class Rtc extends Record {
     async _loadSfu() {
         const load = async () => {
             await loadSfuAssets();
-            const sfuModule = odoo.loader.modules.get("@mail/../lib/odoo_sfu/odoo_sfu");
+            const sfuModule =
+                odoo.loader.modules.get("@_custom/mail/../lib/odoo_sfu/odoo_sfu") ??
+                odoo.loader.modules.get("@mail/../lib/odoo_sfu/odoo_sfu");
             this.SFU_CLIENT_STATE = sfuModule.SFU_CLIENT_STATE;
             this.sfuClient = new sfuModule.SfuClient();
         };
@@ -1239,7 +1402,7 @@ export class Rtc extends Record {
         } catch {
             // trying again with a delay in case of race condition with the asset loading.
             await new Promise((resolve, reject) => {
-                browser.setTimeout(async () => {
+                window.setTimeout(async () => {
                     try {
                         await load();
                     } catch (error) {
@@ -1264,7 +1427,7 @@ export class Rtc extends Record {
         // loading p2p in any case as we may need to receive peer-to-peer connections from users who failed to connect to the SFU.
         this.p2pService.connect(this.localSession.id, this.localChannel.id, {
             info: this.formatInfo(),
-            iceServers: this.iceServers,
+            iceServers: this.effectiveIceServers,
         });
         this.network = new Network(this.p2pService);
         this.updateUpload();
@@ -1369,8 +1532,8 @@ export class Rtc extends Record {
     }
 
     _refreshCrossTabTimeout() {
-        browser.clearTimeout(this._crossTabTimeoutId);
-        this._crossTabTimeoutId = browser.setTimeout(() => {
+        window.clearTimeout(this._crossTabTimeoutId);
+        this._crossTabTimeoutId = window.setTimeout(() => {
             this.clear();
         }, PING_INTERVAL + 10_000);
     }
@@ -1483,7 +1646,7 @@ export class Rtc extends Record {
 
     /**
      * @param {import("models").RtcSession} session
-     * @param {String} entry
+     * @param {TranslatedString} entry
      * @param {Object} [param2]
      * @param {Error} [param2.error]
      * @param {String} [param2.step] current step of the flow
@@ -1587,6 +1750,26 @@ export class Rtc extends Record {
             case "info_change":
                 this.updateSessionInfo(payload);
                 return;
+            case "channel_info_change": {
+                if (payload.stopCode === "recording_timeout") {
+                    this.notification.add(_t("Recording stopped due to timeout"), {
+                        type: "warning",
+                        sticky: true,
+                    });
+                } else if (payload.stopCode === "disk_space_exhausted") {
+                    this.notification.add(
+                        _t("Recording cannot start due to insufficient disk space"),
+                        { type: "danger", sticky: true }
+                    );
+                } else if (payload.stopCode === "recording_failed") {
+                    this.notification.add(_t("Recording stopped due to an internal error"), {
+                        type: "danger",
+                        sticky: true,
+                    });
+                }
+                this.recordingState = payload.state;
+                return;
+            }
             case "track":
                 {
                     const { sessionId, type, track, active, sequence } = payload;
@@ -1632,7 +1815,7 @@ export class Rtc extends Record {
                     return;
                 }
                 this._p2pRecoveryCount++;
-                if (this._p2pRecoveryCount > 1 || !hasTurn(this.iceServers)) {
+                if (this._p2pRecoveryCount > 1 || !hasTurn(this.effectiveIceServers)) {
                     this.upgradeConnectionDebounce();
                 }
             }
@@ -1649,19 +1832,35 @@ export class Rtc extends Record {
                 this.sfuClient.broadcast({ sequence: getSequence() });
                 break;
             case this.SFU_CLIENT_STATE.CONNECTED:
-                browser.clearTimeout(this.sfuTimeout);
+                window.clearTimeout(this.sfuTimeout);
                 this.sfuClient.updateInfo(this.formatInfo(), {
                     needRefresh: true, // asks the server to send the info from all the channel
                 });
                 this.sfuClient.updateUpload("audio", this.audioTrack);
                 this.sfuClient.updateUpload("camera", this.cameraTrack);
                 this.sfuClient.updateUpload("screen", this.screenTrack);
+                this.recordingState = this.sfuClient.recordingState;
+                this.can_record_audio = this.sfuClient.availableFeatures.recording.audio;
+                this.can_record_transcription =
+                    this.sfuClient.availableFeatures.recording.transcription;
+                this.can_record_video = this.sfuClient.availableFeatures.recording.video;
+                if (this.recordingRequest) {
+                    this.setRecording(this.recordingRequest);
+                }
                 return;
             case this.SFU_CLIENT_STATE.CLOSED:
                 {
                     if (!this.localChannel) {
                         return;
                     }
+                    this.can_record_audio = false;
+                    this.can_record_transcription = false;
+                    this.can_record_video = false;
+                    this.recordingState = {
+                        audio: false,
+                        transcription: false,
+                        video: false,
+                    };
                     let text;
                     if (cause === "full") {
                         text = _t("Channel full");
@@ -1745,14 +1944,14 @@ export class Rtc extends Record {
         }
         if (this.connectionType === CONNECTION_TYPES.SERVER) {
             if (this.sfuClient.state === this.SFU_CLIENT_STATE.DISCONNECTED) {
-                browser.clearTimeout(this.sfuTimeout);
-                this.sfuTimeout = browser.setTimeout(() => {
+                window.clearTimeout(this.sfuTimeout);
+                this.sfuTimeout = window.setTimeout(() => {
                     this.log(this.selfSession, "sfu connection timeout", { important: true });
                     this._downgradeConnection();
                 }, 10000);
                 await this.sfuClient.connect(this.serverInfo.url, this.serverInfo.jsonWebToken, {
                     channelUUID: this.serverInfo.channelUUID,
-                    iceServers: this.iceServers,
+                    iceServers: this.effectiveIceServers,
                 });
             }
             return;
@@ -1849,19 +2048,19 @@ export class Rtc extends Record {
         if (!this.localChannel?.id) {
             return;
         }
-        this.soundEffectsService.play("call-join");
+        this.soundEffects.play("call-join");
         this._host();
         this.cleanups.push(
             // only register the beforeunload event if there is a call as FireFox will not place
             // the pages with beforeunload listeners in the bfcache.
-            subscribe(browser, "beforeunload", (event) => {
+            subscribe(window, "beforeunload", (event) => {
                 event.preventDefault();
             })
         );
         this.channel?.focusAvailableVideo();
         let isPipActionSupported = false;
         try {
-            browser.navigator.mediaSession.setActionHandler(
+            window.navigator.mediaSession.setActionHandler(
                 "enterpictureinpicture",
                 ({ enterPictureInPictureReason }) => {
                     if (enterPictureInPictureReason === "contentoccluded") {
@@ -1875,7 +2074,7 @@ export class Rtc extends Record {
         }
         if (isPipActionSupported) {
             this.cleanups.push(() =>
-                browser.navigator.mediaSession.setActionHandler("enterpictureinpicture", null)
+                window.navigator.mediaSession.setActionHandler("enterpictureinpicture", null)
             );
         }
     }
@@ -1885,7 +2084,7 @@ export class Rtc extends Record {
             channelId: this.localChannel.id,
             selfSessionId: this.localSession.id,
             start: new Date().toISOString(),
-            hasTurn: hasTurn(this.iceServers),
+            hasTurn: hasTurn(this.effectiveIceServers),
             entriesBySessionId: {},
         };
     }
@@ -1907,7 +2106,7 @@ export class Rtc extends Record {
             logs.push(this.buildSnapshot());
         }
         if (logs.length || download) {
-            browser.navigator.serviceWorker?.controller?.postMessage({
+            window.navigator.serviceWorker?.controller?.postMessage({
                 name: SW_MESSAGE_TYPE.POST_RTC_LOGS,
                 logs,
                 download,
@@ -1965,17 +2164,6 @@ export class Rtc extends Record {
         };
     }
 
-    logSnapshot() {
-        if (!this.localChannel) {
-            // a snapshot out of a call would not collect any data
-            return;
-        }
-        browser.navigator.serviceWorker?.controller?.postMessage({
-            name: SW_MESSAGE_TYPE.POST_RTC_LOGS,
-            logs: [this.buildSnapshot()],
-        });
-    }
-
     async ping() {
         const data = await rpc(
             "/discuss/channel/ping",
@@ -2022,12 +2210,21 @@ export class Rtc extends Record {
         this.exitFullscreen();
         this._remotelyHostedSessionId = undefined;
         this._remotelyHostedChannelId = undefined;
-        browser.clearTimeout(this._crossTabTimeoutId);
+        window.clearTimeout(this._crossTabTimeoutId);
         this.cleanups.splice(0).forEach((cleanup) => cleanup());
-        browser.clearTimeout(this.sfuTimeout);
+        window.clearTimeout(this.sfuTimeout);
         this.sfuClient = undefined;
         this.network = undefined;
+        this.can_record_audio = false;
+        this.can_record_transcription = false;
+        this.can_record_video = false;
+        this.recordingRequest = null;
         this.audioContext?.close();
+        this.recordingState = {
+            audio: false,
+            transcription: false,
+            video: false,
+        };
         this.audioContext = undefined;
         this._p2pRecoveryCount = 0;
         this.closeCallPermissionDialog?.();
@@ -2060,6 +2257,7 @@ export class Rtc extends Record {
             isSendingCamera: false,
             isSendingScreen: false,
             isMicAudioTrackMuted: false,
+            isCallPermissionDialogOpen: false,
             isMicrophonePermissionWarningDismissed: false,
             localChannel: undefined,
             localSession: undefined,
@@ -2298,7 +2496,7 @@ export class Rtc extends Record {
         };
         if (!activateVideo) {
             if (type === "screen") {
-                this.soundEffectsService.play("screen-sharing");
+                this.soundEffects.play("screen-sharing");
             }
             if (type === "camera" && this.blurManager) {
                 this.blurManager.close();
@@ -2309,7 +2507,7 @@ export class Rtc extends Record {
         }
         /** @type {MediaStream} */
         let sourceStream;
-        const sourceWindow = env?.pipWindow ?? browser;
+        const sourceWindow = env?.pipWindow ?? window;
         try {
             if (type === "camera") {
                 if (this.sourceCameraStream && !options?.refreshStream) {
@@ -2338,7 +2536,7 @@ export class Rtc extends Record {
                         controller,
                     });
                 }
-                this.soundEffectsService.play("screen-sharing");
+                this.soundEffects.play("screen-sharing");
             }
         } catch {
             this.showMediaUnavailableWarning(
@@ -2456,7 +2654,7 @@ export class Rtc extends Record {
         if (force) {
             let micAudioTrack;
             try {
-                const audioStream = await browser.navigator.mediaDevices.getUserMedia({
+                const audioStream = await window.navigator.mediaDevices.getUserMedia({
                     audio: this.store.settings.audioConstraints,
                 });
                 micAudioTrack = audioStream.getAudioTracks()[0];
@@ -2720,7 +2918,7 @@ export class Rtc extends Record {
         const downloadTimeout = this.downloadTimeouts.get(rtcSession.id);
         if (downloadTimeout) {
             this.downloadTimeouts.delete(rtcSession.id);
-            browser.clearTimeout(downloadTimeout);
+            window.clearTimeout(downloadTimeout);
         }
         if (rtcSession.videoComponentCount > 0) {
             this.network?.updateDownload(rtcSession.id, {
@@ -2734,7 +2932,7 @@ export class Rtc extends Record {
              */
             this.downloadTimeouts.set(
                 rtcSession.id,
-                browser.setTimeout(() => {
+                window.setTimeout(() => {
                     this.downloadTimeouts.delete(rtcSession.id);
                     this.network?.updateDownload(rtcSession.id, {
                         camera: false,
@@ -2751,13 +2949,10 @@ Rtc.register();
 export const rtcService = {
     dependencies: [
         "bus_service",
-        "discuss.p2p",
         "discuss.pip_service",
         "discuss.ptt_extension",
         "mail.fullscreen",
-        "mail.sound_effects",
         "mail.store",
-        "notification",
         "presence",
     ],
     /**
@@ -2786,6 +2981,15 @@ export const rtcService = {
             },
             { immediate: true, initialRun: false }
         );
+        rtc.onChange(
+            () => [store.meetingViewOpened],
+            function onChangeMeetingViewOpened(meetingViewOpened) {
+                if (!meetingViewOpened) {
+                    rtc.channel?.resetCallFocus();
+                }
+            },
+            { immediate: true, initialRun: false }
+        );
         rtc.fullscreen = services["mail.fullscreen"];
         rtc.onChange(
             () => [rtc.fullscreen.id],
@@ -2806,15 +3010,23 @@ export const rtcService = {
             },
             { immediate: true, initialRun: false }
         );
-        browser.navigator.permissions?.query({ name: "microphone" }).then((status) => {
-            rtc.microphonePermission = status.state;
-            status.onchange = () => (rtc.microphonePermission = status.state);
-        });
-        browser.navigator.permissions?.query({ name: "camera" }).then((status) => {
-            rtc.cameraPermission = status.state;
-            status.onchange = () => (rtc.cameraPermission = status.state);
-        });
-        rtc.p2pService = services["discuss.p2p"];
+        rtc.mediaPermissionsPromise = Promise.all([
+            window.navigator.permissions
+                ?.query({ name: "microphone" })
+                .then((status) => {
+                    rtc.microphonePermission = status.state;
+                    status.onchange = () => (rtc.microphonePermission = status.state);
+                })
+                .catch(() => {}),
+            window.navigator.permissions
+                ?.query({ name: "camera" })
+                .then((status) => {
+                    rtc.cameraPermission = status.state;
+                    status.onchange = () => (rtc.cameraPermission = status.state);
+                })
+                .catch(() => {}),
+        ]);
+        rtc.p2pService = usePlugin(DiscussP2PPlugin).p2p;
         rtc.p2pService.acceptOffer = async (id, sequence) => {
             const session = await store["discuss.channel.rtc.session"].getWhenReady(Number(id));
             /**

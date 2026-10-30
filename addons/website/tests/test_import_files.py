@@ -1,15 +1,10 @@
-import unittest
-
-from odoo.tests import TransactionCase, can_import, loaded_demo_data, tagged
+from odoo.tests import TransactionCase, loaded_demo_data, tagged
 
 
 @tagged("post_install", "-at_install")
 class TestImportFiles(TransactionCase):
 
-    @unittest.skipUnless(
-        can_import("xlrd.xlsx") or can_import("openpyxl"), "XLRD/XLSX not available",
-    )
-    def test_import_task_template_xls(self):
+    def test_import_task_template_xlsx(self):
         if not loaded_demo_data(self.env):
             self.skipTest('Needs demo data to be able to import those files')
         model = "website.rewrite"
@@ -58,6 +53,6 @@ class TestImportFiles(TransactionCase):
             results["messages"],
             "results should be empty on successful import of ",
         )
-        self.assertEqual(len(result), 10)
+        self.assertEqual(len(result), 11)
         self.assertEqual(result['num_rows'], 2)
         self.assertItemsEqual(result['preview'], [['301 Moved permanently'], ['Shop'], ['/shop'], ['/boutique'], ['My Website']])

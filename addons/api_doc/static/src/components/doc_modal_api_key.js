@@ -4,7 +4,6 @@ export class ApiKeyModal extends Component {
     static template = "web.DocApiKeyModal";
 
     static components = {};
-    static props = {};
 
     modalRef = signal.ref();
 
@@ -16,7 +15,7 @@ export class ApiKeyModal extends Component {
         });
 
         useListener(window, "click", (event) => {
-            if (!this.modalRef()?.contains(event.target)) {
+            if (this.modalRef() && !this.modalRef().contains(event.target)) {
                 this.cancel();
             }
         });

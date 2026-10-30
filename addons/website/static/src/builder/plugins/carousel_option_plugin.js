@@ -1,8 +1,9 @@
+import { usePlugin } from "@odoo/owl";
 import { Plugin } from "@html_editor/plugin";
+import { BootstrapInstance } from "@web/core/utils/bootstrap_plugin";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
 import { CarouselItemHeaderMiddleButtons } from "./carousel_item_header_buttons";
-import { renderToElement } from "@web/core/utils/render";
 import { BuilderAction } from "@html_builder/core/builder_action";
 import { selectElements } from "@html_editor/utils/dom_traversal";
 
@@ -64,6 +65,10 @@ export class CarouselOptionPlugin extends Plugin {
         on_will_save_handlers: this.restoreCarousels.bind(this),
         is_unremovable_selectors: carouselItemOptionSelector,
     };
+
+    setup() {
+        this.bootstrap = usePlugin(BootstrapInstance);
+    }
 
     /**
      * Restores all the carousels so their first slide is the active one.
@@ -177,47 +182,64 @@ export class CarouselOptionPlugin extends Plugin {
      * @returns {Promise}
      */
     slide(editingElement, direction) {
-        editingElement.addEventListener("slide.bs.carousel", () => {
+        // Both listeners below are only ever meant to fire once, for the
+        // transition this call triggers: `{ once: true }` both prevents them
+        // from piling up on `editingElement` across repeated slide() calls,
+        // and (combined with the explicit removeEventListener cleanups) makes
+        // sure they don't linger if the plugin is destroyed before they fire.
+        const onSlideStart = () => {
             this.slideTimestamp = window.performance.now();
-        });
+        };
+        editingElement.addEventListener("slide.bs.carousel", onSlideStart, { once: true });
+        this._cleanups.push(() =>
+            editingElement.removeEventListener("slide.bs.carousel", onSlideStart)
+        );
 
         return new Promise((resolve) => {
-            editingElement.addEventListener(
-                "slid.bs.carousel",
-                () => {
-                    // slid.bs.carousel is most of the time fired too soon by
-                    // bootstrap since it emulates the transitionEnd with a
-                    // setTimeout. We wait here an extra 20% of the time before
-                    // retargeting edition, which should be enough...
-                    const slideDuration = window.performance.now() - this.slideTimestamp;
-                    setTimeout(() => {
-                        // Setting the active indicator manually, as Bootstrap
-                        // could not do it because the `data-bs-slide-to`
-                        // attribute is not here in edit mode anymore.
-                        const itemEls = editingElement.querySelectorAll(".carousel-item");
-                        const activeItemEl = editingElement.querySelector(".carousel-item.active");
-                        const activeIndex = [...itemEls].indexOf(activeItemEl);
-                        const indicatorEls = editingElement.querySelectorAll(
-                            ".carousel-indicators > *"
-                        );
-                        const activeIndicatorEl = [...indicatorEls][activeIndex];
-                        activeIndicatorEl.classList.add("active");
-                        activeIndicatorEl.setAttribute("aria-selected", "true");
-
-                        // Activate the active item.
-                        this.dependencies["builderOptions"].setNextTarget(activeItemEl);
-
+            const onSlid = () => {
+                // slid.bs.carousel is most of the time fired too soon by
+                // bootstrap since it emulates the transitionEnd with a
+                // setTimeout. We wait here an extra 20% of the time before
+                // retargeting edition, which should be enough...
+                const slideDuration = window.performance.now() - this.slideTimestamp;
+                setTimeout(() => {
+                    if (this.isDestroyed) {
                         resolve();
-                    }, 0.2 * slideDuration);
-                },
-                { once: true }
+                        return;
+                    }
+                    // Setting the active indicator manually, as Bootstrap
+                    // could not do it because the `data-bs-slide-to`
+                    // attribute is not here in edit mode anymore.
+                    const itemEls = editingElement.querySelectorAll(".carousel-item");
+                    const activeItemEl = editingElement.querySelector(".carousel-item.active");
+                    const activeIndex = [...itemEls].indexOf(activeItemEl);
+                    const indicatorEls = editingElement.querySelectorAll(
+                        ".carousel-indicators > *"
+                    );
+                    const activeIndicatorEl = [...indicatorEls][activeIndex];
+                    activeIndicatorEl.classList.add("active");
+                    activeIndicatorEl.setAttribute("aria-selected", "true");
+
+                    // Activate the active item.
+                    this.dependencies["builderOptions"].setNextTarget(activeItemEl);
+
+                    resolve();
+                }, 0.2 * slideDuration);
+            };
+            editingElement.addEventListener("slid.bs.carousel", onSlid, { once: true });
+            this._cleanups.push(() =>
+                editingElement.removeEventListener("slid.bs.carousel", onSlid)
             );
 
-            const carouselInstance = this.window.Carousel.getOrCreateInstance(editingElement, {
-                ride: false,
-                pause: true,
-                keyboard: false,
-            });
+            const carouselInstance = this.bootstrap.getOrCreateInstance(
+                this.window.Carousel,
+                editingElement,
+                {
+                    ride: false,
+                    pause: true,
+                    keyboard: false,
+                }
+            );
             if (typeof direction === "number") {
                 carouselInstance.to(direction);
             } else {
@@ -406,11 +428,14 @@ export class ToggleControllersAction extends BuilderAction {
 }
 export class ToggleCardImgAction extends BuilderAction {
     static id = "toggleCardImg";
+    static dependencies = ["websiteBridge"];
     apply({ editingElement }) {
         const carouselEl = editingElement.closest(".carousel");
         const cardEls = carouselEl.querySelectorAll(".card");
         for (const cardEl of cardEls) {
-            const imageWrapperEl = renderToElement("website.s_carousel_cards.imageWrapper");
+            const imageWrapperEl = this.dependencies.websiteBridge.renderToElement(
+                "website.s_carousel_cards.imageWrapper"
+            );
             cardEl.insertAdjacentElement("afterbegin", imageWrapperEl);
         }
     }

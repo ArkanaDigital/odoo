@@ -73,10 +73,6 @@ test("can get a pivotId from cell formula with '-' before the formula", async fu
                     <field name="probability" type="measure"/>
                 </pivot>`,
     });
-    model.dispatch("SET_VALUE", {
-        xc: "C3",
-        text: `=-PIVOT.VALUE("1","probability","bar","false","foo","2")`,
-    });
     const sheetId = model.getters.getActiveSheetId();
     const pivotId = model.getters.getPivotIdFromPosition({ sheetId, col: 2, row: 2 });
     expect(pivotId).toBe(model.getters.getPivotId("1"));
@@ -91,10 +87,6 @@ test("can get a pivotId from cell formula with other numerical values", async fu
                     <field name="probability" type="measure"/>
                 </pivot>`,
     });
-    model.dispatch("SET_VALUE", {
-        xc: "C3",
-        text: `=3*PIVOT.VALUE("1","probability","bar","false","foo","2")+2`,
-    });
     const sheetId = model.getters.getActiveSheetId();
     const pivotId = model.getters.getPivotIdFromPosition({ sheetId, col: 2, row: 2 });
     expect(pivotId).toBe(model.getters.getPivotId("1"));
@@ -108,10 +100,6 @@ test("can get a pivotId from cell formula where pivot is in a function call", as
                 <field name="foo" type="row"/>
                 <field name="probability" type="measure"/>
             </pivot>`,
-    });
-    model.dispatch("SET_VALUE", {
-        xc: "C3",
-        text: `=SUM(PIVOT.VALUE("1","probability","bar","false","foo","2"),PIVOT.VALUE("1","probability","bar","false","foo","2"))`,
     });
     const sheetId = model.getters.getActiveSheetId();
     const pivotId = model.getters.getPivotIdFromPosition({ sheetId, col: 2, row: 2 });
@@ -147,10 +135,6 @@ test("can get a pivotId from cell formula (Mix of test scenarios above)", async 
                         <field name="foo" type="row"/>
                         <field name="probability" type="measure"/>
                     </pivot>`,
-    });
-    model.dispatch("SET_VALUE", {
-        xc: "C3",
-        text: `=3*SUM(PIVOT.VALUE("1","probability","bar","false","foo","2"),PIVOT.VALUE("1","probability","bar","false","foo","2"))+2*PIVOT.VALUE("1","probability","bar","false","foo","2")`,
     });
     const sheetId = model.getters.getActiveSheetId();
     const pivotId = model.getters.getPivotIdFromPosition({ sheetId, col: 2, row: 2 });
@@ -472,7 +456,7 @@ test("fetch metadata only once per model", async function () {
 });
 
 test("An error is displayed if the pivot has invalid model", async function () {
-    const { model, env, pivotId } = await createSpreadsheetWithPivot({
+    const { model, pivotId } = await createSpreadsheetWithPivot({
         mockRPC: async function (route, { model, method, kwargs }) {
             if (model === "unknown" && method === "fields_get") {
                 throw makeServerError({ code: 404 });
@@ -480,7 +464,7 @@ test("An error is displayed if the pivot has invalid model", async function () {
         },
     });
     const pivot = model.getters.getPivotCoreDefinition(pivotId);
-    env.model.dispatch("UPDATE_PIVOT", {
+    model.dispatch("UPDATE_PIVOT", {
         pivotId,
         pivot: {
             ...pivot,

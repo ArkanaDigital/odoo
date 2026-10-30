@@ -1,5 +1,5 @@
-import { browser } from "@web/core/browser/browser";
 import { fields, Record } from "@mail/model/export";
+import { subscribeToStorage } from "@mail/utils/common/local_storage";
 
 import { Mutex } from "@web/core/utils/concurrency";
 
@@ -18,12 +18,9 @@ export class ChatHub extends Record {
 
     BUBBLE = 56; // same value as $o-mail-ChatHub-bubblesWidth
     recomputeBubbleStart = 0;
-    BUBBLE_START = fields.Attr(CHAT_HUB_DEFAULT_BUBBLE_START, {
-        /** @this {import("models").Chathub} */
-        compute() {
-            void this.recomputeBubbleStart;
-            return this.computeBubbleStart();
-        },
+    BUBBLE_START = this.computed(() => {
+        void this.recomputeBubbleStart;
+        return this.computeBubbleStart();
     });
     computeBubbleStart() {
         return CHAT_HUB_DEFAULT_BUBBLE_START;
@@ -35,33 +32,35 @@ export class ChatHub extends Record {
     WINDOW = 380; // same value as $o-mail-ChatWindow-width
 
     /** @returns {import("models").ChatHub} */
-    static new() {
-        /** @type {import("models").ChatHub} */
-        const chatHub = super.new(...arguments);
-        browser.addEventListener("storage", (ev) => {
-            if (ev.key === CHAT_HUB_KEY) {
-                chatHub.load(ev.newValue);
-            } else if (ev.key === null) {
-                chatHub.load();
+    setup() {
+        super.setup(...arguments);
+        this.onEnter(
+            () => this.opened,
+            () => this.onRecompute()
+        );
+        this.onChange(
+            () => [],
+            () => {
+                const stopStorage = subscribeToStorage(CHAT_HUB_KEY, (ev) => {
+                    if (ev.key === CHAT_HUB_KEY) {
+                        this.load(ev.newValue);
+                    } else {
+                        this.load();
+                    }
+                });
+                this.load(window.localStorage.getItem(CHAT_HUB_KEY) ?? undefined).then(() =>
+                    this._resolveInit()
+                );
+                return stopStorage;
             }
-        });
-        chatHub
-            .load(browser.localStorage.getItem(CHAT_HUB_KEY) ?? undefined)
-            .then(() => chatHub._resolveInit());
-        return chatHub;
+        );
     }
 
-    compact = fields.Attr(false, { localStorage: true });
+    compact = this.localStorage(false);
     canShowOpened = fields.Many("ChatWindow");
     canShowFolded = fields.Many("ChatWindow");
     /** From left to right. Right-most will actually be folded */
-    opened = fields.Many("ChatWindow", {
-        inverse: "hubAsOpened",
-        /** @this {import("models").ChatHub} */
-        onAdd(r) {
-            this.onRecompute();
-        },
-    });
+    opened = fields.Many("ChatWindow", { inverse: "hubAsOpened" });
     /** From top to bottom. Bottom-most will actually be hidden */
     folded = fields.Many("ChatWindow", { inverse: "hubAsFolded" });
     initPromise = new Promise((resolve) => (this._resolveInit = resolve));
@@ -124,9 +123,9 @@ export class ChatHub extends Record {
 
     get maxOpened() {
         const chatBubblesWidth = this.BUBBLE_START + this.BUBBLE + this.BUBBLE_OUTER * 2;
-        const startGap = this.store.env.services.ui.isSmall ? 0 : this.WINDOW_GAP;
-        const endGap = this.store.env.services.ui.isSmall ? 0 : this.WINDOW_GAP;
-        const available = browser.innerWidth - startGap - endGap - chatBubblesWidth;
+        const startGap = this.store.ui.isSmall() ? 0 : this.WINDOW_GAP;
+        const endGap = this.store.ui.isSmall() ? 0 : this.WINDOW_GAP;
+        const available = window.innerWidth - startGap - endGap - chatBubblesWidth;
         const maxAmountWithoutHidden = Math.max(
             1,
             Math.floor(available / (this.WINDOW + this.WINDOW_INBETWEEN))
@@ -136,11 +135,11 @@ export class ChatHub extends Record {
 
     get maxFolded() {
         const chatBubbleSpace = this.BUBBLE_START + this.BUBBLE + this.BUBBLE_OUTER * 2;
-        return Math.min(this.BUBBLE_LIMIT, Math.floor(browser.innerHeight / chatBubbleSpace));
+        return Math.min(this.BUBBLE_LIMIT, Math.floor(window.innerHeight / chatBubbleSpace));
     }
 
     save() {
-        browser.localStorage.setItem(
+        window.localStorage.setItem(
             CHAT_HUB_KEY,
             JSON.stringify({
                 opened: this.opened.map((chatWindow) => ({ id: chatWindow.channel.id })),
@@ -149,11 +148,9 @@ export class ChatHub extends Record {
         );
     }
 
-    showConversations = fields.Attr(false, {
-        compute() {
-            return this.canShowOpened.length + this.canShowFolded.length > 0;
-        },
-    });
+    showConversations = this.computed(
+        () => this.canShowOpened.length + this.canShowFolded.length > 0
+    );
 }
 
 ChatHub.register();

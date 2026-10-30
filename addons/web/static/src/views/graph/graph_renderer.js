@@ -14,6 +14,7 @@ import { sortBy } from "@web/core/utils/arrays";
 import { renderToMarkup } from "@web/core/utils/render";
 import { useChart } from "@web/core/utils/chart_hook";
 import { useService } from "@web/core/utils/hooks";
+import { uniqueId } from "@web/core/utils/functions";
 
 import { Component, markup, signal, t, useProps } from "@odoo/owl";
 import { Dropdown } from "@web/core/dropdown/dropdown";
@@ -29,8 +30,8 @@ const formatters = registry.category("formatters");
 const colorScheme = cookie.get("color_scheme");
 const GRAPH_LEGEND_COLOR = getCustomColor(colorScheme, "#111827", "#ffffff");
 const GRAPH_GRID_COLOR = getCustomColor(colorScheme, "rgba(0,0,0,.1)", "rgba(255,255,255,.15");
-const GRAPH_LABEL_COLOR = getCustomColor(colorScheme, "#111827", "#E4E4E4");
-const NO_DATA_COLOR = getCustomColor(colorScheme, DEFAULT_BG, "#3C3E4B");
+const GRAPH_LABEL_COLOR = getCustomColor(colorScheme, "#111827", "#E4E4E5");
+const NO_DATA_COLOR = getCustomColor(colorScheme, DEFAULT_BG, "#3A3B41");
 
 /**
  * Custom Plugin for Line chart:
@@ -134,6 +135,11 @@ export class GraphRenderer extends Component {
 
         this.tooltip = null;
         this.legendTooltip = null;
+        this.buttonTemplateSwitchesIds = {
+            switchCumulated: uniqueId("switchCumulated"),
+            switchAllDates: uniqueId("switchAllDates"),
+            switchStacked: uniqueId("switchStacked"),
+        };
     }
 
     /**
@@ -160,7 +166,7 @@ export class GraphRenderer extends Component {
             const td = document.createElement("td");
             tr.classList.add("o_show_more", "text-center", "fw-bold");
             td.setAttribute("colspan", "2");
-            td.innerText = _t("...");
+            td.textContent = String(_t("..."));
             tr.appendChild(td);
             tooltip.querySelector("tbody").appendChild(tr);
         }
@@ -910,5 +916,10 @@ export class GraphRenderer extends Component {
     toggleCumulated() {
         const { cumulated } = this.model.metaData;
         this.model.updateMetaData({ cumulated: !cumulated });
+    }
+
+    toggleAllDates() {
+        const { allDates } = this.model.metaData;
+        this.model.updateMetaData({ allDates: !allDates });
     }
 }

@@ -1,20 +1,29 @@
-import { useSubEnv } from "@web/owl2/utils";
 import { Composer } from "@mail/core/common/composer";
 import { Thread } from "@mail/core/common/thread";
 import { Call } from "@mail/discuss/call/common/call";
 import { CallActionList } from "@mail/discuss/call/common/call_action_list";
-import { useMessageScrolling } from "@mail/utils/common/hooks";
+import { MessageHighlightPlugin } from "@mail/core/common/message_highlight_plugin";
 
-import { Component, onMounted, onWillUnmount, types, useProps } from "@odoo/owl";
+import {
+    Component,
+    onMounted,
+    onWillUnmount,
+    providePlugins,
+    types,
+    usePlugin,
+    useProps,
+} from "@odoo/owl";
 
 import { Dropdown } from "@web/core/dropdown/dropdown";
+import { UIPlugin } from "@web/core/ui/ui_plugin";
 import { user } from "@web/core/user";
 import { useService } from "@web/core/utils/hooks";
 import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
 import { MeetingReadyBanner } from "./meeting_ready_banner";
-import { MeetingSideActions } from "./meeting_side_actions";
+import { meetingMoreActionGroups, MeetingSideActions } from "./meeting_side_actions";
 import { useThreadActions } from "@mail/core/common/thread_actions";
-import { useMessageSearch } from "@mail/core/common/message_search_hook";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
+import { assignGetter } from "@mail/utils/common/misc";
 
 const { DateTime } = luxon;
 const PIP_EXTRA_ACTION_IDS = ["copy-invite-link", "meeting-chat"];
@@ -39,25 +48,20 @@ export class Meeting extends Component {
             isPip: types.boolean().optional(),
         });
         this.store = useService("mail.store");
-        this.ui = useService("ui");
+        this.ui = usePlugin(UIPlugin);
         this.rtc = useService("discuss.rtc");
-        useSubEnv({
+        useAncestors({
+            inDiscussCallTheme: true,
             inDiscussCallView: true,
-            inMeetingView: {
-                openChat: () =>
-                    this.threadActions.actions
-                        .find((action) => action.id === "meeting-chat")
-                        ?.actionPanelOpen(),
-            },
+            inMeetingView: assignGetter(
+                {
+                    openChat: () => this.threadActions.get("meeting-chat")?.openPanel(),
+                },
+                { hasPreviousActionPanel: () => this.threadActions.panelStack.length > 0 }
+            ),
         });
         this.threadActions = useThreadActions({ thread: () => this.channel.thread });
-        this.messageHighlight = useMessageScrolling({ thread: () => this.channel.thread });
-        this.messageSearch = useMessageSearch(this.channel.thread);
-        useSubEnv({
-            hasPreviousActionPanel: () => this.threadActions.actionStack.length > 0,
-            messageHighlight: this.messageHighlight,
-            messageSearch: this.messageSearch,
-        });
+        providePlugins([MessageHighlightPlugin], { thread: () => this.channel.thread });
         onMounted(() => (this.store.meetingViewOpened = true));
         onWillUnmount(() => (this.store.meetingViewOpened = false));
         useHotkey("escape", () => this.onEscape());
@@ -79,6 +83,30 @@ export class Meeting extends Component {
         });
     }
 
+    /** @returns {boolean} */
+    get showInviteBanner() {
+        return Boolean(
+            this.channel &&
+                !this.rtc.isPipMode &&
+                this.channel.channel_type !== "chat" &&
+                !this.rtc.isMeetingReadyBannerDismissed &&
+                this.channel.rtc_session_ids.length <= 1
+        );
+    }
+
+    /** Handed to the call bar's "More" when this bar has no room for a cluster of its own. */
+    get sideActionGroups() {
+        // PiP has its own, much shorter list ({@link pipExtraActions}).
+        if (this.hasSideActions || this.rtc.isPipMode) {
+            return [];
+        }
+        return meetingMoreActionGroups(this.threadActions);
+    }
+
+    get hasSideActions() {
+        return !this.rtc.isPipMode && !this.ui.isSmall();
+    }
+
     get pipExtraActions() {
         if (!this.rtc.isPipMode) {
             return [];
@@ -87,8 +115,8 @@ export class Meeting extends Component {
     }
 
     onEscape() {
-        if (this.threadActions.activeAction) {
-            this.threadActions.activeAction.actionPanelClose();
+        if (this.threadActions.panelAction) {
+            this.threadActions.panelAction.closePanel();
             return true;
         }
         if (this.rtc.isFullscreen && !this.rtc.isBrowserFullscreen) {

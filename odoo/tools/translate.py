@@ -40,6 +40,7 @@ from .config import config
 from .i18n import format_list
 from .misc import file_open, file_path, frozendict, split_every, OrderedSet, SKIPPED_ELEMENT_TYPES
 from .sql import SQL
+from odoo.tools.constants import IN_MAX
 
 if typing.TYPE_CHECKING:
     import types
@@ -939,7 +940,7 @@ def adapt_translated_field_value(
     if not isinstance(val, dict):
         return adapter(env.lang or 'en_US', val)
     assert field.translate
-    adapted = {k: adapter(k, v) for k, v in val.items()}
+    adapted = {k: adapter(k, v) for k, v in val.items() if k == 'en_US' or env['res.lang']._lang_get(k)}
     if isinstance(val, StoredTranslations):
         model = env[field.model_name]
         return StoredTranslations({
@@ -1073,7 +1074,10 @@ def _get_uid(frame) -> int | None:
     if 'uid' in frame.f_locals:
         return frame.f_locals['uid']
     if 'user' in frame.f_locals:
-        return int(frame.f_locals['user'])      # user may be a record
+        from odoo.models import BaseModel  # noqa: PLC0415
+        user = frame.f_locals['user']           # user may be a record
+        if isinstance(user, int) or (isinstance(user, BaseModel) and user._name == 'res.users'):
+            return int(user)
     if (local_self := frame.f_locals.get('self')) is not None:
         if hasattr(local_self, 'env') and (uid := local_self.env.uid):
             return uid
@@ -1956,8 +1960,8 @@ class TranslationModuleReader(TranslationReader):
         import odoo.addons  # noqa: PLC0415
         self._path_list = [(path, True) for path in odoo.addons.__path__]
         self._installed_modules = [
-            m['name']
-            for m in self.env['ir.module.module'].search_read([('state', '=', 'installed')], fields=['name'])
+            m.name
+            for m in self.env['ir.module.module'].search_fetch([('state', '=', 'installed')], field_names=['name'])
         ]
 
         self._export_translatable_records()
@@ -2218,7 +2222,7 @@ class TranslationImporter:
             # field_name, {xmlid: {src: {lang: value}}}
             for field_name, field_dictionary in model_dictionary.items():
                 field = fields.get(field_name)
-                for sub_xmlids in split_every(env.cr.IN_MAX, field_dictionary.keys()):
+                for sub_xmlids in split_every(IN_MAX, field_dictionary.keys()):
                     # [module_name, imd_name, module_name, imd_name, ...]
                     params = [xmlid.split('.', maxsplit=1) for xmlid in sub_xmlids]
                     rows = env.execute_query(SQL("""
@@ -2279,7 +2283,7 @@ class TranslationImporter:
             Model = env[model_name]
             model_table = Model._table
             for field_name, field_dictionary in model_dictionary.items():
-                for sub_field_dictionary in split_every(env.cr.IN_MAX, field_dictionary.items()):
+                for sub_field_dictionary in split_every(IN_MAX, field_dictionary.items()):
                     # Parallel arrays + ORDINALITY preserve sub_field_dictionary order
                     # so colliding xmlids merge deterministically in SQL.
                     imd_modules, imd_names, values = [], [], []

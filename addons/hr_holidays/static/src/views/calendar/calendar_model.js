@@ -6,11 +6,16 @@ import {
     serializeDateTime,
 } from "@web/core/l10n/dates";
 import { Cache } from "@web/core/utils/cache";
+import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
+import { _t } from "@web/core/l10n/translation";
 
 export class TimeOffCalendarModel extends CalendarModel {
+    static services = [...CalendarModel.services, "dialog"];
+
     setup(params, services) {
         super.setup(params, services);
 
+        this.dialog = services.dialog;
         this.data.mandatoryDays = {};
         if (this.uiService.isSmall) {
             this.meta.scale = "month";
@@ -20,6 +25,18 @@ export class TimeOffCalendarModel extends CalendarModel {
             (data) => this.fetchMandatoryDays(data),
             (data) => `${serializeDateTime(data.range.start)},${serializeDateTime(data.range.end)}`
         );
+    }
+
+    /**
+     * Requests are read on the clock the grid is drawn on, not on the reader's profile.
+     * @override
+     */
+    async load(params = {}) {
+        const context = params.context ?? this.meta.context;
+        return super.load({
+            ...params,
+            context: { ...context, tz: luxon.Settings.defaultZone.name },
+        });
     }
 
     /**
@@ -58,23 +75,85 @@ export class TimeOffCalendarModel extends CalendarModel {
         }
         if (["week", "day"].includes(this.scale)) {
             context["default_work_entry_type_request_unit"] = "hour";
-            const hour_from = deserialize(context["default_date_from"] ?? this.date);
-            const hour_to = deserialize(context["default_date_to"] ?? this.date);
+            const hour_from = deserialize(context["default_request_date_hour_from"] ?? this.date);
+            const hour_to = deserialize(context["default_request_date_hour_to"] ?? this.date);
             context["default_request_hour_from"] = hour_from.hour + hour_from.minute / 60;
             context["default_request_hour_to"] = hour_to.hour + hour_to.minute / 60;
         }
 
-        if ("default_date_from" in context) {
-            context["default_date_from"] = serializeDateTime(
-                deserialize(context["default_date_from"]).set({ hours: 7 })
-            );
-        }
-        if ("default_date_to" in context) {
-            context["default_date_to"] = serializeDateTime(
-                deserialize(context["default_date_to"]).set({ hours: 19 })
-            );
+        for (const [bound, hour] of [
+            ["from", 7],
+            ["to", 19],
+        ]) {
+            const key = `default_request_date_hour_${bound}`;
+            if (key in context) {
+                context[key] = serializeDateTime(deserialize(context[key]).set({ hours: hour }));
+            }
         }
         return context;
+    }
+
+    /**
+     * @override
+     */
+    get canEdit() {
+        return this.meta.canEdit;
+    }
+
+    /**
+     * @override
+     * Reschedule an hr.leave drag/resize via a backend method that reads the endpoints
+     * in the employee's timezone and snaps to the request unit. Rescheduling an approved
+     * request needs re-approval, so confirm first; the backend then resets it to "To
+     * Approve". A backend failure rejects so the renderer reverts the event.
+     */
+    async updateRecord(record, options = {}) {
+        if (this.resModel !== "hr.leave") {
+            return super.updateRecord(record, options);
+        }
+        const rawRecord = this.records[record.id]?.rawRecord;
+        const needsReapproval =
+            rawRecord &&
+            ["validate", "validate1"].includes(rawRecord.state) &&
+            rawRecord.validation_type !== "no_validation";
+        if (!needsReapproval) {
+            return this._rescheduleRecord(record);
+        }
+        return new Promise((resolve, reject) => {
+            this.dialog.add(ConfirmationDialog, {
+                title: _t("Confirmation"),
+                body: _t(
+                    "If you modify this request, it will need to be approved again. Do you wish to continue?"
+                ),
+                confirmLabel: _t("Confirm"),
+                cancelLabel: _t("Discard"),
+                confirm: async () => {
+                    try {
+                        await this._rescheduleRecord(record);
+                        resolve();
+                    } catch (error) {
+                        // Re-throw so the renderer reverts the event and the error service shows the message.
+                        reject(error);
+                    }
+                },
+                // Discard: reload so the event snaps back to its original period.
+                cancel: async () => {
+                    await this.load();
+                    resolve();
+                },
+            });
+        });
+    }
+
+    async _rescheduleRecord(record) {
+        const end = record.end?.isValid ? record.end : record.start;
+        await this.orm.call(
+            this.resModel,
+            "reschedule_from_calendar",
+            [[record.id], serializeDateTime(record.start), serializeDateTime(end)],
+            { context: this.meta.context }
+        );
+        await this.load();
     }
 
     async updateData(data) {
@@ -93,6 +172,7 @@ export class TimeOffCalendarModel extends CalendarModel {
             [serializeDateTime(data.range.start), serializeDateTime(data.range.end)],
             {
                 context: {
+                    ...this.meta.context,
                     employee_id: this.employeeId,
                 },
             }
@@ -131,13 +211,16 @@ export class TimeOffCalendarModel extends CalendarModel {
                       "work_entry_type_request_unit",
                       "request_date_from_period",
                       "request_date_to_period",
+                      "state",
+                      "validation_type",
+                      "can_reschedule",
                   ]
                 : [];
         return this.orm.searchRead(
             resModel,
             this.computeDomain(data),
             [...fieldNames, ...fieldNamesToAdd],
-            { context }
+            { context: { ...this.meta.context, ...context } }
         );
     }
 

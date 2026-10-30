@@ -190,18 +190,6 @@ export class PeerToPeer {
         this._stopped = true;
     }
 
-    getConnectedPeerIds() {
-        return Object.entries(this.peersInfos)
-            .filter(
-                ([id, infos]) =>
-                    infos.peerConnection &&
-                    infos.peerConnection.iceConnectionState === "connected" &&
-                    infos.dataChannel &&
-                    infos.dataChannel.readyState === "open"
-            )
-            .map(([id]) => id);
-    }
-
     removePeer(peerId) {
         if (debugShowLog) {
             console.log(`%c REMOVE PEER ${peerId}`, "background: chocolate;");
@@ -219,8 +207,11 @@ export class PeerToPeer {
     }
 
     closeAllConnections() {
-        for (const peerId of Object.keys(this.peersInfos)) {
+        const peerIds = Object.keys(this.peersInfos);
+        if (peerIds.length) {
             this.notifyAllPeers("ptp_disconnect");
+        }
+        for (const peerId of peerIds) {
             this.removePeer(peerId);
         }
     }

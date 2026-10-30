@@ -9,6 +9,9 @@ from odoo.tools.misc import formatLang
 class AccountMove(models.Model):
     _inherit = 'account.move'
 
+    def _get_related_pickings(self):
+        return self.invoice_line_ids.sale_line_ids.move_ids.picking_id or super()._get_related_pickings()
+
     def _get_invoiced_lot_values(self):
         """ Get and prepare data to show a table of invoiced lot on the invoice's report. """
         self.ensure_one()
@@ -106,13 +109,6 @@ class AccountMove(models.Model):
             # if multiple sale order we take the bigger effective_date
             if effective_date_res:
                 move.delivery_date = fields.Datetime.context_timestamp(self, effective_date_res)
-
-    def _get_anglo_saxon_price_ctx(self):
-        ctx = super()._get_anglo_saxon_price_ctx()
-        move_is_downpayment = self.invoice_line_ids.filtered(
-            lambda line: any(line.sale_line_ids.mapped("is_downpayment"))
-        )
-        return dict(ctx, move_is_downpayment=move_is_downpayment)
 
     def _get_protected_vals(self, vals, records):
         res = super()._get_protected_vals(vals, records)

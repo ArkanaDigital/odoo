@@ -8,7 +8,7 @@ from odoo.tools.bank_account_number import validate_iban
 class ResPartnerBank(models.Model):
     _inherit = 'res.partner.bank'
 
-    employee_id = fields.Many2many('hr.employee', 'Employee', compute="_compute_employee_id", search="_search_employee_id")
+    employee_id = fields.Many2many('hr.employee', compute="_compute_employee_id", search="_search_employee_id")
     employee_salary_amount = fields.Float(string='Salary Allocation', compute='_compute_salary_amount', digits=(16, 4), readonly=True, store=False)
     employee_salary_amount_is_percentage = fields.Boolean(compute='_compute_salary_amount', readonly=True, store=False)
     currency_symbol = fields.Char(related='employee_id.currency_id.symbol')
@@ -34,22 +34,36 @@ class ResPartnerBank(models.Model):
         self.ensure_one()
         return self.employee_id.action_open_allocation_wizard()
 
-    @api.depends('partner_id')
+    @api.depends('partner_id', 'partner_id.employee_ids.bank_account_ids')
     def _compute_employee_id(self):
         for bank in self:
-            if bank.partner_id.employee:
-                bank.employee_id = bank.partner_id.employee_ids.filtered(lambda e: e.company_id in self.env.companies)[:1]
-            else:
+            if not bank.partner_id.employee:
                 bank.employee_id = False
+                continue
 
+            def same_company(employee):
+                return not bank.company_id or employee.company_id == bank.company_id
+
+            employees = bank.partner_id.employee_ids.filtered(lambda e: e.company_id in self.env.companies)
+            linked_employees = employees.filtered(lambda e: bank in e.bank_account_ids)
+
+            bank.employee_id = (linked_employees.filtered(same_company) or linked_employees or employees.filtered(same_company))[:1]
+
+    @api.depends_context('uid')
     def _compute_display_name(self):
-        account_employee = self.browse()
-        if not self.env.user.has_group('hr.group_hr_user'):
-            account_employee = self.sudo().filtered("partner_id.employee_ids")
-            for account in account_employee:
-                account.sudo(self.env.su).display_name = \
-                    account.account_number[:2] + "*" * len(account.account_number[2:-4]) + account.account_number[-4:]
-        super(ResPartnerBank, self - account_employee)._compute_display_name()
+        # Because a read access at the recordset level would evaluate to False if one record is not accessible,
+        # the permission check is done at the record level. As a user can have access to some bank accounts, but not others.
+        accessible_accounts = self._filtered_access('read')
+        restricted_accounts = self - accessible_accounts
+        for account in restricted_accounts:
+            acc_num = account.sudo().sanitized_account_number or ''
+            if len(acc_num) == 0:
+                account.display_name = ""
+            elif len(acc_num) <= 6:
+                account.display_name = "****"
+            else:
+                account.display_name = f"{acc_num[:2]}{(len(acc_num) - 6) * '*'}{acc_num[-4:]}"
+        super(ResPartnerBank, accessible_accounts)._compute_display_name()
 
     @api.model
     def _is_iban_valid(self, iban):

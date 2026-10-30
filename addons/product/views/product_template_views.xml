@@ -6,10 +6,9 @@
         <field name="priority">10</field>
         <field name="arch" type="xml">
             <list string="Product" multi_edit="1" sample="1">
-                <field name="product_variant_count" column_invisible="True"/>
-                <field name="sale_ok" column_invisible="True"/>
-                <field name="currency_id" column_invisible="True"/>
-                <field name="cost_currency_id" column_invisible="True"/>
+                <field name="sale_ok" column_invisible="True"/> <!-- drives decoration-muted on list_price below -->
+                <field name="currency_id" column_invisible="True"/> <!-- drives currency_field on list_price monetary widget below -->
+                <field name="cost_currency_id" column_invisible="True"/> <!-- drives currency_field on standard_price monetary widget below -->
                 <field name="is_favorite" widget="boolean_favorite" nolabel="1"/>
                 <field name="name" string="Product Name"/>
                 <field name="default_code" optional="show"/>
@@ -19,13 +18,11 @@
                     groups="base.group_multi_company" optional="hide"/>
                 <field name="list_price" string="Sales Price" widget='monetary' options="{'currency_field': 'currency_id'}" optional="show" decoration-muted="not sale_ok"/>
                 <field name="standard_price" widget='monetary' options="{'currency_field': 'cost_currency_id'}" optional="show" readonly="1"/>
-                <field name="qty_available" string="On Hand" decoration-danger="qty_available &lt; 0" optional="show" sum="Total On Hand" readonly="1"/>
-                <field name="free_qty" invisible="not is_storable" readonly="1" optional="show" sum="Total Free To Use"/>
-                <field name="virtual_available" string="Forecasted" decoration-danger="virtual_available &lt; 0" optional="show" decoration-bf="1" sum="Total Forecasted" readonly="1"/>
+                <field name="qty_available" string="On Hand" invisible="not is_storable" decoration-danger="qty_available &lt; 0" optional="show" sum="Total On Hand" readonly="1"/>
                 <field name="categ_id" optional="hide"/>
                 <field name="type" optional="hide" readonly="1"/>
                 <field name="uom_id" readonly="1" optional="show" groups="uom.group_uom"/>
-                <field name="active" column_invisible="True"/>
+                <field name="active" column_invisible="True"/> <!-- enables the Archive/Unarchive action in this list -->
                 <field name="activity_exception_decoration" widget="activity_exception"/>
             </list>
         </field>
@@ -78,13 +75,8 @@
             </div>
 
             <field name="categ_id" position="after">
-                <field name="default_code" string="Reference" invisible="product_variant_count &gt; 1"/>
-                <field name="valid_product_template_attribute_line_ids" invisible="1"/>
-                <field name="barcode"
-                    invisible="product_variant_count &gt; 1
-                        or (product_variant_count == 0
-                        and valid_product_template_attribute_line_ids)
-                        or type in ['service', 'combo']"/>
+                <field name="default_code" string="Reference"/>
+                <field name="barcode" invisible="type in ['service', 'combo']"/>
             </field>
 
             <button name="action_open_documents" position="before">
@@ -105,7 +97,6 @@
                 >
                     <field name="attribute_line_ids" widget="one2many" context="{'show_attribute': False}" force_save="1">
                         <list string="Variants" editable="bottom" decoration-info="value_count &lt;= 1">
-                            <field name="value_count" column_invisible="True"/>
                             <field name="sequence" widget="handle"/>
                             <field name="attribute_id" placeholder="Attribute name (e.g. Color, Size, ... )" readonly="id"/>
                             <field
@@ -147,7 +138,7 @@
                 <field name="is_storable" invisible="1"/>
                 <progressbar field="activity_state" colors='{"planned": "success", "today": "warning", "overdue": "danger"}'/>
                 <templates>
-                    <t t-name="card" class="flex-row">
+                    <t t-name="card" class="o_card_product_record flex-row">
                         <main class="pe-2">
                             <div class="mb-1">
                                 <div class="d-flex gap-1 mb-0 h5">
@@ -161,8 +152,8 @@
                                     <field name="product_variant_count"/> Variants
                                 </strong>
                             </div>
-                            <div class="d-flex align-items-start gap-2">
-                                <div class="d-flex flex-column">
+                            <div class="d-flex align-items-start gap-2 mb-1">
+                                <div class="d-flex flex-column flex-shrink-0">
                                     <strong invisible="not context.get('show_lst_price', True)">
                                         <field name="list_price" widget="monetary" options="{'currency_field': 'currency_id'}"/>
                                     </strong>
@@ -170,16 +161,16 @@
                                         <field name="standard_price" widget="monetary" options="{'currency_field': 'cost_currency_id', 'field_digits': True}"/>
                                     </strong>
                                 </div>
-                                <span t-if="record.default_code.value" class="text-muted">
+                                <span t-if="record.default_code.value" class="text-muted text-break min-w-0">
                                     <field name="default_code"/>
                                 </span>
                             </div>
                             <field name="product_properties" widget="properties"/>
                             <div name="on_hand_qty_kanban" t-if="record.is_storable.raw_value" class="d-flex gap-1 align-items-baseline">
                                 <strong>
-                                    <field name="qty_available" digits="[16, 0]"/> 
+                                    <field name="qty_available" digits="[16, 0]"/>
                                 </strong>
-                                <field name="uom_id" groups="uom.group_uom"/> 
+                                <field name="uom_id" groups="uom.group_uom"/>
                                 <span class="text-muted">On Hand</span>
                             </div>
                         </main>
@@ -190,6 +181,7 @@
                                 alt="Product"
                                 options="{'img_class': 'w-100 object-fit-contain'}"
                                 invisible="not image_128"
+                                class="rounded"
                             />
                         </aside>
                     </t>

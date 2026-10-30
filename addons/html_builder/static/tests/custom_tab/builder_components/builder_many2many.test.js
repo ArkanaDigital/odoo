@@ -45,7 +45,7 @@ test("many2many: find tag, select tag, unselect tag", async () => {
     const editableContent = getEditableContent();
 
     await contains(":iframe .test-options-target").click();
-    expect(".options-container").toBeDisplayed();
+    expect(".o_hb_options_container").toBeDisplayed();
     expect("table tr").toHaveCount(0);
     expect(editableContent).toHaveInnerHTML(`<div class="test-options-target">b</div>`);
 
@@ -129,4 +129,19 @@ test("many2many: async load", async () => {
     expect(editableContent).toHaveInnerHTML(
         `<div class="test-options-target" data-test="[{&quot;id&quot;:1,&quot;display_name&quot;:&quot;First&quot;,&quot;name&quot;:&quot;First&quot;}]">b</div>`
     );
+});
+
+test("many2many: support action that did not store the names of selected elements", async () => {
+    addBuilderOption({
+        selector: ".test-options-target",
+        template: xml`<BuilderMany2Many dataAttributeAction="'test'" model="'test'"/>`,
+    });
+    const { waitSidebarUpdated } = await setupHTMLBuilder(
+        `<div class="test-options-target" data-test='[{"id":1},{"id":3}]'>b</div>`
+    );
+    await contains(":iframe .test-options-target").click();
+    await waitSidebarUpdated();
+    expect("td [data-name=First]").toHaveCount(1);
+    expect("td [data-name=Second]").toHaveCount(0);
+    expect("td [data-name=Third]").toHaveCount(1);
 });

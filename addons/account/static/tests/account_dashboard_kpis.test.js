@@ -7,45 +7,36 @@ import { AccountDashboardKpis } from "@account/components/account_dashboard_kpis
 
 defineMailModels();
 
+test.tags("desktop");
 test("account dashboard KPIs are loaded, rendered, and clickable", async () => {
-    mockService("orm", {
+    const orm = {
+        cache: () => orm,
         async call(model, method, args) {
-            expect.step("load kpis");
             expect(model).toBe("account.journal");
-            expect(method).toBe("get_account_dashboard_kpis");
             expect(args).toEqual([]);
-
+            expect.step("load kpis");
+            expect(method).toBe("get_account_dashboard_kpis");
             return [
                 {
-                    id: "gross_margin",
-                    name: "Gross Margin",
-                    has_total: true,
-                    value: "$ 60.00",
+                    id: "invoices",
+                    name: "Invoices",
+                    value: "$ 100.00",
                     action_id: 42,
                 },
                 {
-                    id: "unpaid",
-                    name: "Unpaid",
-                    has_total: false,
-                    values: [
-                        {
-                            label: "Customers",
-                            value: "$ 100.00",
-                        },
-                        {
-                            label: "Suppliers",
-                            value: "$ 40.00",
-                        },
-                    ],
+                    id: "cash",
+                    name: "Cash",
+                    value: "$ 60.00",
                     action_id: 43,
                 },
             ];
         },
-    });
+    };
+    mockService("orm", orm);
 
     mockService("action", {
-        doAction(actionId) {
-            expect.step(`open action ${actionId}`);
+        doAction(action) {
+            expect.step(`open action ${action}`);
         },
     });
 
@@ -56,35 +47,13 @@ test("account dashboard KPIs are loaded, rendered, and clickable", async () => {
     await expect.waitForSteps(["load kpis"]);
 
     expect(".o_account_dashboard_kpi_card").toHaveCount(2);
-    expect(".o_account_dashboard_kpi_card:eq(0) .o_account_dashboard_kpi_name").toHaveText(
-        "Gross Margin"
-    );
-    expect(".o_account_dashboard_kpi_card:eq(0) .o_account_dashboard_kpi_value").toHaveText(
-        "$ 60.00"
-    );
+    expect('[data-kpi-id="invoices"] .o_account_dashboard_kpi_name').toHaveText("Invoices");
+    expect('[data-kpi-id="invoices"] .o_account_dashboard_kpi_value').toHaveText("$ 100.00");
+    expect('[data-kpi-id="cash"] .o_account_dashboard_kpi_name').toHaveText("Cash");
+    expect('[data-kpi-id="cash"] .o_account_dashboard_kpi_value').toHaveText("$ 60.00");
 
-    expect(".o_account_dashboard_kpi_card:eq(1) .o_account_dashboard_kpi_name").toHaveText(
-        "Unpaid"
-    );
-    expect(".o_account_dashboard_kpi_card:eq(1) .o_account_dashboard_kpi_value").toHaveCount(0);
-    expect(".o_account_dashboard_kpi_card:eq(1) .o_account_dashboard_kpi_value_item").toHaveCount(
-        2
-    );
-    expect(
-        ".o_account_dashboard_kpi_card:eq(1) .o_account_dashboard_kpi_value_label:eq(0)"
-    ).toHaveText("Customers");
-    expect(
-        ".o_account_dashboard_kpi_card:eq(1) .o_account_dashboard_kpi_value_amount:eq(0)"
-    ).toHaveText("$ 100.00");
-    expect(
-        ".o_account_dashboard_kpi_card:eq(1) .o_account_dashboard_kpi_value_label:eq(1)"
-    ).toHaveText("Suppliers");
-    expect(
-        ".o_account_dashboard_kpi_card:eq(1) .o_account_dashboard_kpi_value_amount:eq(1)"
-    ).toHaveText("$ 40.00");
-
-    await contains(".o_account_dashboard_kpi_card:eq(0)").click();
-    await contains(".o_account_dashboard_kpi_card:eq(1)").click();
+    await contains('[data-kpi-id="invoices"]').click();
+    await contains('[data-kpi-id="cash"]').click();
 
     expect.verifySteps(["open action 42", "open action 43"]);
 });

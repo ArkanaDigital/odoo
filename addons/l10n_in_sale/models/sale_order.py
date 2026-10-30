@@ -8,7 +8,7 @@ class SaleOrder(models.Model):
     _inherit = "sale.order"
 
     l10n_in_reseller_partner_id = fields.Many2one('res.partner',
-        string='Reseller', domain="[('vat', '!=', False), '|', ('company_id', '=', False), ('company_id', '=', company_id)]", readonly=False)
+        string='Reseller', domain="[('has_vat', '=', True), '|', ('company_id', '=', False), ('company_id', '=', company_id)]", readonly=False)
 
     @api.depends('partner_invoice_id')
     def _compute_fiscal_position_id(self):
@@ -46,10 +46,9 @@ class SaleOrder(models.Model):
 
         # Handle non-Indian orders using standard logic
         FiscalPosition = self.env['account.fiscal.position']
-        non_in_orders = self.filtered(lambda o: o.country_code != 'IN')
+        non_in_orders, in_orders = self.partitioned(lambda o: o.country_code != 'IN')
         super(SaleOrder, non_in_orders)._compute_fiscal_position_id()
 
-        in_orders = self - non_in_orders
         orders_group_by_fp = in_orders.grouped(_get_partner_fiscal)
         orders_without_fiscal = orders_group_by_fp.pop(FiscalPosition, False)
         for fiscal_position, orders in orders_group_by_fp.items():

@@ -17,7 +17,7 @@ from odoo.models import Query
 from odoo.tools import format_date, frozendict
 from odoo.tools.mail import is_html_empty, html_to_inner_content
 from odoo.tools.misc import formatLang
-from odoo.tools.translate import html_translate, mark_as_copy
+from odoo.tools.translate import html_translate
 
 _logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ class EventEvent(models.Model):
     def _default_question_ids(self):
         return self.env['event.type']._default_question_ids()
 
-    name = fields.Char(string='Event', translate=True, required=True, copy=mark_as_copy('name'))
+    name = fields.Char(string='Event', translate=True, required=True)
     note = fields.Html(string='Note', store=True, compute="_compute_note", readonly=False)
     description = fields.Html(string='Description', translate=html_translate, sanitize_attributes=False, sanitize_form=False, default=_default_description)
     active = fields.Boolean(default=True)
@@ -635,6 +635,46 @@ class EventEvent(models.Model):
         domain = Domain(domain).optimize(self).map_conditions(
             lambda c: self._search_address_search(c.operator, c.value) if c.field_expr == 'address_search' else c)
         return super()._search(domain, *a, **kw)
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        events = super().create(vals_list)
+        events.filtered('event_type_id')._sync_event_ticket_translations_from_type()
+        return events
+
+    def write(self, vals):
+        events_to_sync = self.env['event.event']
+        if vals.get('event_type_id'):
+            events_to_sync = self.filtered(
+                lambda event: event.event_type_id.id != vals['event_type_id']
+            )
+        res = super().write(vals)
+        if events_to_sync:
+            events_to_sync._sync_event_ticket_translations_from_type()
+        return res
+
+    def _sync_event_ticket_translations_from_type(self):
+        """ Copy ticket translations from the event template after tickets are stored.
+
+        Translatable fields copied via Command.create only get the active language;
+        restore the other languages from the template.
+        """
+        TemplateTicket = self.env['event.type.ticket']
+        translated_fnames = [
+            fname for fname in TemplateTicket._get_event_ticket_fields_whitelist()
+            if TemplateTicket._fields[fname].translate
+        ]
+        for event in self.filtered('event_type_id'):
+            event_tickets = event.event_ticket_ids.filtered(lambda ticket: not ticket.registration_ids)
+            for template_ticket in event.event_type_id.event_type_ticket_ids:
+                event_ticket = next(
+                    (ticket for ticket in event_tickets if ticket.name == template_ticket.name), None
+                )
+                if event_ticket:
+                    for fname in translated_fnames:
+                        if translations := template_ticket._get_stored_translations(fname):
+                            event_ticket[fname] = translations
+                    event_tickets -= event_ticket
 
     @api.depends('event_registrations_sold_out', 'seats_limited', 'seats_max', 'seats_available')
     @api.depends_context('name_with_seats_availability')

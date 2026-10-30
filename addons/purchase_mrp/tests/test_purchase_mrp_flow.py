@@ -578,6 +578,7 @@ class TestPurchaseMrpFlow(AccountTestInvoicingCommon):
 
         manu_route = self.warehouse.manufacture_pull_id.route_id
         buy_route = self.warehouse.buy_pull_id.route_id
+        (manu_route + buy_route).product_selectable = True
 
         # un-prioritize the buy rules
         self.env['stock.rule'].search([]).sequence = 1
@@ -660,8 +661,6 @@ class TestPurchaseMrpFlow(AccountTestInvoicingCommon):
     def test_compute_bom_json_popover(self):
         """Test to ensure json_popover data is correctly computed for BoM.
         """
-        buy_route = self.warehouse.buy_pull_id.route_id
-        self.kit_1.route_ids = self.kit_3.route_ids = [Command.set([self.warehouse.manufacture_pull_id.route_id.id])]
         bom1, bom2 = self.kit_1.bom_ids, self.kit_3.bom_ids
         bom1.type = bom2.type = 'normal'
         self.component_f.is_storable = self.component_g.is_storable = False
@@ -676,7 +675,6 @@ class TestPurchaseMrpFlow(AccountTestInvoicingCommon):
             (self.component_c, self.partner_a.id, 11),
         ]:
             component.write({
-                'route_ids': [Command.link(buy_route.id)],
                 'seller_ids': [
                     Command.create({
                         'partner_id': partner_id,
@@ -1067,19 +1065,14 @@ class TestPurchaseMrpFlow(AccountTestInvoicingCommon):
     def test_mo_overview_mto_purchase_with_backorders(self):
         self.warehouse.reception_steps = 'two_steps'
         # Enable MTO route for Component
-        self.env.ref('stock.route_warehouse0_mto').active = True
-        route_buy = self.warehouse.buy_pull_id.route_id
         route_mto = self.warehouse.mto_pull_id.route_id
+        route_mto.active = True
         route_mto.rule_ids.procure_method = "make_to_order"
-        (route_buy + route_mto).product_selectable = True
         self.component_a.write({
             'seller_ids': [
                 Command.create({'partner_id': self.partner_a.id},
             )],
-            'route_ids': [
-                Command.link(route_buy.id),
-                Command.link(route_mto.id),
-            ],
+            'route_ids': [Command.link(route_mto.id)],
         })
 
         bom = self.env['mrp.bom'].create({
@@ -1121,19 +1114,14 @@ class TestPurchaseMrpFlow(AccountTestInvoicingCommon):
 
     def test_cancel_mo_with_mto_purchase_component(self):
         # Enable MTO route for Component
-        self.env.ref('stock.route_warehouse0_mto').active = True
-        route_buy = self.warehouse.buy_pull_id.route_id
         route_mto = self.warehouse.mto_pull_id.route_id
+        route_mto.active = True
         route_mto.rule_ids.procure_method = "make_to_order"
-        (route_buy + route_mto).product_selectable = True
         self.component_a.write({
             'seller_ids': [
                 Command.create({'partner_id': self.partner_a.id},
             )],
-            'route_ids': [
-                Command.link(route_buy.id),
-                Command.link(route_mto.id),
-            ],
+            'route_ids': [Command.link(route_mto.id)],
         })
 
         bom = self.env['mrp.bom'].create({
@@ -1183,10 +1171,6 @@ class TestPurchaseMrpFlow(AccountTestInvoicingCommon):
         self.assertTrue(bom)
 
     def test_kit_price_without_rounding(self):
-        warehouse = self.warehouse
-        buy_route = warehouse.buy_pull_id.route_id
-        manufacture_route = warehouse.manufacture_pull_id.route_id
-
         avco_category = self.env['product.category'].create({
             'name': 'AVCO',
             'property_cost_method': 'average',
@@ -1197,8 +1181,7 @@ class TestPurchaseMrpFlow(AccountTestInvoicingCommon):
         'name': name,
         'type': 'consu',
         'categ_id': avco_category.id,
-        'route_ids': [(4, route_id)],
-        } for name, route_id in [('product a', manufacture_route.id), ('component a', buy_route.id)]])
+        } for name in ['product a', 'component a']])
 
         self.env['mrp.bom'].create({
             'product_tmpl_id': prod.product_tmpl_id.id,
@@ -1302,6 +1285,72 @@ class TestPurchaseMrpFlow(AccountTestInvoicingCommon):
 
         self.assertEqual(po.order_line.qty_received, 1)
 
+    def test_consumption_warning_mto_buy_serial_pbm_early_serial(self):
+        """ Test that a consumption warning is not triggered when:
+        - warehouse in 2-step manufacturing
+        - finished product tracked by serial number
+        - component tracked by serial number, routed MTO + Buy
+        - the finished product's serial number is generated on the MO
+          *before* the related purchase order is even confirmed
+        - purchase order is confirmed and the component is received
+        - the component is transferred to WH/Pre-Production
+        - Produce All is clicked on the MO
+        """
+        self.warehouse.manufacture_steps = 'pbm'
+        route_mto = self.warehouse.mto_pull_id.route_id
+        route_mto.active = True
+
+        component = self.env['product.product'].create({
+            'name': 'Serial Component',
+            'is_storable': True,
+            'tracking': 'serial',
+            'seller_ids': [Command.create({'partner_id': self.partner_a.id})],
+            'route_ids': [Command.set([route_mto.id])],
+        })
+        finished_product = self.env['product.product'].create({
+            'name': 'Serial Finished Product',
+            'is_storable': True,
+            'tracking': 'serial',
+        })
+        self.env['mrp.bom'].create({
+            'product_tmpl_id': finished_product.product_tmpl_id.id,
+            'product_qty': 1.0,
+            'bom_line_ids': [Command.create({
+                'product_id': component.id,
+                'product_qty': 1.0,
+            })],
+        })
+
+        production = self.env['mrp.production'].create({
+            'product_id': finished_product.id,
+            'product_qty': 1.0,
+        })
+        production.action_confirm()
+        production.action_generate_serial()
+        self.assertEqual(production.qty_producing, 1.0)
+
+        # Confirm the PO and receive the component.
+        sn_lot = self.env['stock.lot'].create({
+            'product_id': component.id,
+            'name': 'USN01',
+        })
+        purchase = production._get_purchase_orders()
+        self.assertEqual(len(purchase), 1)
+        purchase.button_confirm()
+        receipt = purchase.picking_ids
+        receipt.move_ids.lot_ids = sn_lot
+        receipt.button_validate()
+        self.assertEqual(receipt.state, 'done')
+
+        # Transfer the component to WH/Pre-Production.
+        pick_picking = production.picking_ids - receipt
+        self.assertEqual(len(pick_picking), 1)
+        pick_picking.button_validate()
+        self.assertEqual(pick_picking.state, 'done')
+
+        production.button_mark_done()
+        self.assertEqual(production.state, 'done')
+
     def test_purchase_kit_bill_before_reception_component_cost_exactly_aligns_with_kit_product_cost(self):
         """ When a kit product is invoiced prior to delivery, we want to make sure to reconcile all
         the AMLs from its explosion together, else we risk re-reconciliation attempts (which will
@@ -1386,7 +1435,6 @@ class TestPurchaseMrpFlow(AccountTestInvoicingCommon):
         Ensure that even after MO confirmation, reducing the component quantity
         reduces the quantity of the MTO purchase aswell.
         '''
-        route_buy = self.warehouse.buy_pull_id.route_id
         route_mto = self.warehouse.mto_pull_id.route_id
         route_mto.active = True
         route_mto.rule_ids.procure_method = "make_to_order"
@@ -1394,10 +1442,7 @@ class TestPurchaseMrpFlow(AccountTestInvoicingCommon):
             'seller_ids': [
                 Command.create({'partner_id': self.partner_a.id},
             )],
-            'route_ids': [
-                Command.link(route_buy.id),
-                Command.link(route_mto.id),
-            ],
+            'route_ids': [Command.link(route_mto.id)],
         })
         mo = self.env['mrp.production'].create({
             'product_id': self.component_b.id,

@@ -10,6 +10,7 @@ import { prepareRoundingVals } from "../accounting/utils";
 import { getService, patchWithCleanup } from "@web/../tests/web_test_helpers";
 import { localization } from "@web/core/l10n/localization";
 import { PosNumberBufferPlugin } from "@point_of_sale/app/plugins/pos_number_buffer_plugin";
+import { patch } from "@web/core/utils/patch";
 
 const { DateTime } = luxon;
 
@@ -25,6 +26,20 @@ describe("pos_store.js", () => {
         expect(order.is_tipped).toBe(true);
         expect(order.tip_amount).toBe(50);
         expect(order.lines.length).toBe(3); // 2 original lines + 1 tip line
+    });
+
+    test("a popstate after clickSaveOrder does not reopen the saved order", async () => {
+        const store = await setupPosEnv();
+        const order = await getFilledOrder(store);
+        store.navigate("ProductScreen", { orderUuid: order.uuid });
+
+        store.clickSaveOrder();
+        const newOrder = store.getOrder();
+        expect(newOrder.uuid).not.toBe(order.uuid);
+        expect(store.router.currentScreenParams().orderUuid).toBe(newOrder.uuid);
+        await store.router.popStateCallback();
+
+        expect(store.getOrder().uuid).toBe(newOrder.uuid);
     });
 
     test("orderNoteFormat", async () => {
@@ -90,6 +105,103 @@ describe("pos_store.js", () => {
 
         expect(printCalled).toBe(false);
         expect(order.hasChange).toBe(false);
+    });
+
+    test("sendOrderInPreparation retries only the failed preparation printer", async () => {
+        const store = await setupPosEnv();
+        const kitchen = store.models["pos.printer"].get(1);
+        kitchen.name = "Kitchen";
+        kitchen.product_categories_ids = [store.models["pos.category"].get(1)];
+        const bar = store.models["pos.printer"].create({
+            name: "Bar",
+            product_categories_ids: [store.models["pos.category"].get(2)],
+            printer_type: "epson_epos",
+        });
+        store.config.preparation_printer_ids = [kitchen, bar];
+        await store.ticketPrinter.initPrinters();
+        // 3 "TEST" for the kitchen and 2 "TEST 2" for the bar
+        const order = await getFilledOrder(store);
+
+        const printed = [];
+        let barFailures = 1;
+        let retry;
+        patchWithCleanup(store.ticketPrinter, {
+            async generateIframe(template, ticket) {
+                return ticket;
+            },
+            setIframeSizeFromPrinter() {},
+            async generateImage(ticket) {
+                return ticket;
+            },
+            async print({ printer, image }) {
+                if (printer === bar && barFailures-- > 0) {
+                    return { successful: false, message: { body: "Bar is not reachable" } };
+                }
+                const lines = image.changes.data.map(
+                    (line) => `${line.quantity} ${line.basic_name}`
+                );
+                printed.push(`${printer.name}: ${lines.join(", ")}`);
+                return { successful: true };
+            },
+            showPrinterErrorDialog(message, retryFunction) {
+                retry = retryFunction;
+            },
+        });
+
+        await store.sendOrderInPreparation(order);
+        expect(printed).toEqual(["Kitchen: 3 TEST"]);
+
+        // The kitchen must not print its lines again, and the bar must print its own lines
+        await retry();
+        expect(printed).toEqual(["Kitchen: 3 TEST", "Bar: 2 TEST 2"]);
+
+        expect(order.preparationChanges.quantity).toBe(0);
+        // The changes printed on retry must not be printed again with the next ones
+        await store.sendOrderInPreparation(order);
+        expect(printed).toEqual(["Kitchen: 3 TEST", "Bar: 2 TEST 2"]);
+    });
+
+    test("reprintOrderChanges preserves the reprint data when retrying", async () => {
+        const store = await setupPosEnv();
+        const printer = store.models["pos.printer"].get(1);
+        printer.product_categories_ids = [store.models["pos.category"].get(1)];
+        store.config.preparation_printer_ids = [printer];
+        await store.ticketPrinter.initPrinters();
+        const order = await getFilledOrder(store);
+        order.updateLastOrderChange();
+
+        const printedLines = [];
+        let printAttempts = 0;
+        let retry;
+        patch(store.ticketPrinter, {
+            async generateIframe(template, ticket) {
+                return ticket;
+            },
+            setIframeSizeFromPrinter() {},
+            async generateImage(ticket) {
+                return ticket;
+            },
+            async print({ image }) {
+                printAttempts++;
+                printedLines.push(
+                    image.changes.data.map((line) => `${line.quantity} ${line.basic_name}`)
+                );
+                return printAttempts === 1
+                    ? { successful: false, message: { body: "Printer is not reachable" } }
+                    : { successful: true };
+            },
+            showPrinterErrorDialog(message, retryFunction) {
+                retry = retryFunction;
+            },
+        });
+
+        await store.ticketPrinter.reprintOrderChanges({ order });
+        expect(printAttempts).toBe(1);
+        expect(printedLines).toEqual([["3 TEST"]]);
+
+        await retry();
+        expect(printAttempts).toBe(2);
+        expect(printedLines).toEqual([["3 TEST"], ["3 TEST"]]);
     });
 
     describe("syncAllOrders", () => {
@@ -405,18 +517,8 @@ describe("pos_store.js", () => {
                 {
                     uuid: "combo-parent-uuid",
                     combo_line_ids: [
-                        {
-                            uuid: "combo-child-a-uuid",
-                            combo_parent_uuid: "combo-parent-uuid",
-                            product_id: productA,
-                            combo_line_ids: false,
-                        },
-                        {
-                            uuid: "combo-child-b-uuid",
-                            combo_parent_uuid: "combo-parent-uuid",
-                            product_id: productB,
-                            combo_line_ids: false,
-                        },
+                        { id: 1, product_id: productA.id },
+                        { id: 2, product_id: productB.id },
                     ],
                 },
                 {
@@ -448,6 +550,45 @@ describe("pos_store.js", () => {
         const actualUuids = filtered.addedQuantity.map((c) => c.uuid);
 
         expect(actualUuids.sort()).toEqual(expectedUuids.sort());
+    });
+
+    test("filterChangeByCategories on a combo after a print history round trip", async () => {
+        const store = await setupPosEnv();
+        const order = store.addNewOrder();
+
+        await store.addLineToOrder(
+            {
+                product_tmpl_id: store.models["product.template"].get(7),
+                payload: [
+                    [{ combo_item_id: store.models["product.combo.item"].get(1), qty: 1 }],
+                    [{ combo_item_id: store.models["product.combo.item"].get(3), qty: 1 }],
+                ],
+                qty: 1,
+            },
+            order
+        );
+
+        const parentLine = order.lines.find((l) => l.combo_line_ids.length);
+        const childLines = parentLine.combo_line_ids;
+        const childCategIds = childLines.flatMap((l) => l.product_id.parentPosCategIds);
+        expect(childCategIds.length).toBeGreaterThan(0);
+
+        const change = { addedQuantity: [order.dataMaker(parentLine, 1).data] };
+        const restored = JSON.parse(JSON.stringify(change));
+
+        expect(restored.addedQuantity[0].combo_line_ids).toEqual(
+            childLines.map((l) => ({ id: l.id, product_id: l.product_id.id }))
+        );
+
+        const filtered = filterChangeByCategories(new Set(childCategIds), restored, store.models);
+        expect(filtered.addedQuantity).toHaveLength(1);
+
+        const otherCategId = store.models["pos.category"].find(
+            (c) => !childCategIds.includes(c.id)
+        ).id;
+        expect(
+            filterChangeByCategories(new Set([otherCategId]), restored, store.models).addedQuantity
+        ).toEqual([]);
     });
 
     test("deleteOrders", async () => {
@@ -632,6 +773,18 @@ describe("pos_store.js", () => {
         expect(store.models["pos.order"].getBy("uuid", order.uuid)).toBeEmpty();
     });
 
+    test("onDeleteOrder keeps the router state in sync with the order it switches to", async () => {
+        const store = await setupPosEnv();
+        const order = store.addNewOrder();
+        store.navigate("ProductScreen", { orderUuid: order.uuid });
+
+        await store.onDeleteOrder(order);
+
+        const newOrder = store.getOrder();
+        expect(newOrder.uuid).not.toBe(order.uuid);
+        expect(store.router.currentScreenParams().orderUuid).toBe(newOrder.uuid);
+    });
+
     test("setNextOrderRefs", async () => {
         const store = await setupPosEnv();
         const order = store.addNewOrder();
@@ -727,8 +880,11 @@ describe("pos_store.js", () => {
         const store = await setupPosEnv();
         const order = await getFilledOrder(store);
 
-        const fastPM = store.config.payment_method_ids[0];
+        const fastPM = store.config.paymentMethods[0];
         const card = store.models["pos.payment.method"].get(2);
+        // Card comes first in payment_method_ids but Cash has the lowest sequence
+        expect(store.config.payment_method_ids[0]).toBe(card);
+        expect(fastPM.name).toBe("Cash");
         const payLaterMethod = store.models["pos.payment.method"].find(
             (pm) => pm.type === "pay_later"
         );
@@ -845,5 +1001,138 @@ describe("pos_store.js", () => {
         store.setOrder(order);
         await store.setTip(numberBuffer.getFloat());
         expect(order.tip_amount).toBe(2.5);
+    });
+
+    describe("updateCustomerDisplayQrData", () => {
+        test("sets, clears, and merges extra data", async () => {
+            const store = await setupPosEnv();
+            const qrCode = "https://example.com/qr-code";
+
+            store.updateCustomerDisplayQrData(qrCode, { extra: { amount: 10 } });
+            expect(store.customerDisplayQrData).toEqual({
+                title: "Scan the QR for payment",
+                qrCode,
+                amount: 10,
+            });
+
+            store.updateCustomerDisplayQrData(null);
+            expect(store.customerDisplayQrData).toBe(null);
+
+            store.updateCustomerDisplayQrData("correct-qr", {
+                extra: { qrCode: "stale-qr", amount: 10 },
+            });
+            expect(store.customerDisplayQrData).toEqual({
+                title: "Scan the QR for payment",
+                qrCode: "correct-qr",
+                amount: 10,
+            });
+
+            // title overrides the default
+            store.updateCustomerDisplayQrData(qrCode, { title: "Custom title" });
+            expect(store.customerDisplayQrData).toEqual({ title: "Custom title", qrCode });
+        });
+
+        test("merges payment props, explicit qrCode wins", async () => {
+            const store = await setupPosEnv();
+            const order = await getFilledOrder(store);
+            const paymentMethod = store.models["pos.payment.method"].get(1);
+            const payment = createPaymentLine(store, order, paymentMethod, { qr_code: "stale-qr" });
+
+            store.updateCustomerDisplayQrData("fresh-qr", { payment });
+
+            expect(store.customerDisplayQrData).toEqual({
+                title: "Scan the QR for payment",
+                ...payment.getQrPopupProps(),
+                qrCode: "fresh-qr",
+            });
+        });
+    });
+
+    describe("customerDisplayQrData", () => {
+        test("falls back to the selected in-progress payment line", async () => {
+            const store = await setupPosEnv();
+            const order = await getFilledOrder(store);
+            const paymentMethod = store.models["pos.payment.method"].get(1);
+            const payment = createPaymentLine(store, order, paymentMethod, {
+                qr_code: "data:image/png;base64,qr",
+                payment_status: "waitingScan",
+            });
+
+            // Not selected
+            order.selectPaymentline(undefined);
+            expect(store.customerDisplayQrData).toBe(null);
+
+            // Selected and in progress.
+            order.selectPaymentline(payment);
+            expect(store.customerDisplayQrData).toEqual({
+                title: "Scan the QR for payment",
+                ...payment.getQrPopupProps(),
+            });
+
+            // No longer in progress
+            payment.payment_status = "done";
+            expect(store.customerDisplayQrData).toBe(null);
+        });
+
+        test("an explicit value takes precedence over the fallback", async () => {
+            const store = await setupPosEnv();
+            const order = await getFilledOrder(store);
+            const paymentMethod = store.models["pos.payment.method"].get(1);
+            const payment = createPaymentLine(store, order, paymentMethod, {
+                qr_code: "data:image/png;base64,qr",
+                payment_status: "waitingScan",
+            });
+            order.selectPaymentline(payment);
+
+            store._customerDisplayQrData = {
+                title: "Custom",
+                qrCode: "data:image/png;base64,explicit",
+            };
+
+            expect(store.customerDisplayQrData).toEqual({
+                title: "Custom",
+                qrCode: "data:image/png;base64,explicit",
+            });
+        });
+    });
+
+    describe("reloadData", () => {
+        test("keeps a paid order that could not be synced", async () => {
+            const store = await setupPosEnv();
+            const order = await getFilledOrder(store);
+            order.state = "paid";
+            store.data.network.offline = true;
+            patchWithCleanup(store.data, {
+                async resetIndexedDB() {
+                    expect.step("resetIndexedDB");
+                    throw new Error("stop before leaving the page");
+                },
+            });
+            patchWithCleanup(store.dialog, {
+                add(component, props) {
+                    expect.step(props.title);
+                },
+            });
+
+            await store.reloadData().catch(() => {});
+            expect.verifySteps(["Reload Data"]);
+            expect(store.models["pos.order"].get(order.id)).toBe(order);
+            expect(order.isSynced).toBe(false);
+        });
+
+        test("syncs a paid order before wiping local data", async () => {
+            const store = await setupPosEnv();
+            const order = await getFilledOrder(store);
+            order.state = "paid";
+            patchWithCleanup(store.data, {
+                async resetIndexedDB() {
+                    expect.step(`resetIndexedDB, synced: ${order.isSynced}`);
+                    throw new Error("stop before leaving the page");
+                },
+            });
+
+            await expect(store.reloadData()).rejects.toThrow("stop before leaving the page");
+            expect.verifySteps(["resetIndexedDB, synced: true"]);
+        });
     });
 });

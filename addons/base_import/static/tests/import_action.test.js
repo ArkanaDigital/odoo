@@ -22,7 +22,7 @@ import {
     patchWithCleanup,
     serverState,
 } from "@web/../tests/web_test_helpers";
-import { browser } from "@web/core/browser/browser";
+import { location } from "@web/core/browser/browser";
 import { localization } from "@web/core/l10n/localization";
 import { redirect } from "@web/core/utils/urls";
 import { ImportAction } from "../src/import_action/import_action";
@@ -352,7 +352,7 @@ describe("Import view", () => {
             "/web/dataset/call_kw/partner/get_import_templates",
             "/web/dataset/call_kw/base_import.import/create",
         ]);
-        expect(browser.location.href).toBe("https://www.hoot.test/odoo/action-2/import");
+        expect(location.href).toBe("https://www.hoot.test/odoo/action-2/import");
         expect(".o_import_action").toHaveCount(1);
         expect(".o_nocontent_help > div").toHaveCount(2);
         expect(".o_nocontent_help > div:first").toHaveText("Some Import Template");
@@ -384,7 +384,7 @@ describe("Import view", () => {
             "/web/dataset/call_kw/partner/get_import_templates",
             "/web/dataset/call_kw/base_import.import/create",
         ]);
-        expect(browser.location.href).toBe("https://www.hoot.test/odoo/action-2/import");
+        expect(location.href).toBe("https://www.hoot.test/odoo/action-2/import");
         expect(".o_import_action").toHaveCount(1);
     });
 
@@ -647,7 +647,7 @@ describe("Import view", () => {
             "action",
         ]);
         expect(".o_list_view").toHaveCount(1);
-        expect(browser.location.href).toBe(
+        expect(location.href).toBe(
             "https://www.hoot.test/odoo/action-2/import/imported-records"
         );
     });
@@ -767,7 +767,7 @@ describe("Import view", () => {
         await contains(".o_import_data_content .o_select_menu").selectDropdownItem("Display name");
         if (isSmall()) {
             await contains(
-                ".o_control_panel_main_buttons button > [data-icon='more_vert']"
+                ".o_control_panel_main_buttons button.o-control-panel-adaptive-dropdown"
             ).click();
             await contains(".o-dropdown--menu button:visible").click();
         } else {
@@ -811,7 +811,7 @@ describe("Import view", () => {
         await contains(".o_import_data_content .o_select_menu").selectDropdownItem("Selection");
         if (isSmall()) {
             await contains(
-                ".o_control_panel_main_buttons button > [data-icon='more_vert']"
+                ".o_control_panel_main_buttons button.o-control-panel-adaptive-dropdown"
             ).click();
             await contains(".o-dropdown--menu button:visible").click();
         } else {
@@ -876,7 +876,7 @@ describe("Import view", () => {
         await contains(".o_import_data_content .o_select_menu").selectDropdownItem("Bar");
         if (isSmall()) {
             await contains(
-                ".o_control_panel_main_buttons button > [data-icon='more_vert']"
+                ".o_control_panel_main_buttons button.o-control-panel-adaptive-dropdown"
             ).click();
             await contains(".o-dropdown--menu button:visible").click();
         } else {
@@ -948,7 +948,7 @@ describe("Import view", () => {
         await contains(".o_import_field_many2many select").select("import_skip_records");
         if (isSmall()) {
             await contains(
-                ".o_control_panel_main_buttons button > [data-icon='more_vert']"
+                ".o_control_panel_main_buttons button.o-control-panel-adaptive-dropdown"
             ).click();
             await contains(".o-dropdown--menu button:visible").click();
         } else {
@@ -1106,7 +1106,7 @@ describe("Import view", () => {
         await contains("input#o_import_batch_limit").edit(1);
         if (isSmall()) {
             await contains(
-                ".o_control_panel_main_buttons button > [data-icon='more_vert']"
+                ".o_control_panel_main_buttons button.o-control-panel-adaptive-dropdown"
             ).click();
             await contains(".o-dropdown--menu button:visible").click();
         } else {
@@ -1238,7 +1238,7 @@ describe("Import view", () => {
 
         if (isSmall()) {
             await contains(
-                ".o_control_panel_main_buttons button > [data-icon='more_vert']"
+                ".o_control_panel_main_buttons button.o-control-panel-adaptive-dropdown"
             ).click();
             await contains(".o-dropdown--menu button:contains('Import')").click();
         } else {
@@ -1458,7 +1458,7 @@ describe("Import view", () => {
         await contains(".o_import_data_content .o_select_menu").selectDropdownItem("Many2Many");
         if (isSmall()) {
             await contains(
-                ".o_control_panel_main_buttons button > [data-icon='more_vert']"
+                ".o_control_panel_main_buttons button.o-control-panel-adaptive-dropdown"
             ).click();
             await contains(".o-dropdown--menu button:visible").click();
         } else {
@@ -1512,7 +1512,7 @@ describe("Import view", () => {
 
         if (isSmall()) {
             await contains(
-                ".o_control_panel_main_buttons button > [data-icon='more_vert']"
+                ".o_control_panel_main_buttons button.o-control-panel-adaptive-dropdown"
             ).click();
             await contains(".o-dropdown--menu button:visible").click();
         } else {
@@ -1559,7 +1559,7 @@ describe("Import view", () => {
         ]);
 
         await runAllTimers(); // wait for router pushState
-        expect(browser.location.href).toBe("https://www.hoot.test/odoo/import?active_model=team");
+        expect(location.href).toBe("https://www.hoot.test/odoo/import?active_model=team");
     });
 
     test("model in params is the main model (retrocompatibility)", async () => {
@@ -1599,7 +1599,7 @@ describe("Import view", () => {
         ]);
 
         await runAllTimers(); // wait for router pushState
-        expect(browser.location.href).toBe("https://www.hoot.test/odoo/import?active_model=team");
+        expect(location.href).toBe("https://www.hoot.test/odoo/import?active_model=team");
     });
 
     test.tags("desktop");
@@ -1779,7 +1779,7 @@ test("locale separators only apply to CSV, not to other formats", async () => {
 
     const xlsxFile = new File(["fake_file"], "data.xlsx", { type: "text/plain" });
     if (isSmall()) {
-        await contains(".o_control_panel_main_buttons button > [data-icon='more_vert']").click();
+        await contains(".o_control_panel_main_buttons button.o-control-panel-adaptive-dropdown").click();
         await contains(".o-dropdown--menu .o_file_input_trigger").click();
     } else {
         await contains(".o_control_panel_main_buttons .o_file_input button").click();

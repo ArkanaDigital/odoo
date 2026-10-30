@@ -7,6 +7,7 @@ import { registry } from "@web/core/registry";
 
 export const modelRegistry = registry.category("discuss.model");
 
+export const COMPUTED_SYM = Symbol("computed");
 export const FIELD_DEFINITION_SYM = Symbol("field_definition");
 /** @typedef {ATTR_SYM|MANY_SYM|ONE_SYM} FIELD_SYM */
 export const ATTR_SYM = Symbol("attr");
@@ -15,7 +16,6 @@ export const ONE_SYM = Symbol("one");
 export const OR_SYM = Symbol("or");
 const AND_SYM = Symbol("and");
 export const IS_RECORD_SYM = Symbol("isRecord");
-export const IS_FIELD_SYM = Symbol("isField");
 export const STORE_SYM = Symbol("store");
 
 export function AND(...args) {
@@ -94,6 +94,10 @@ export function isFieldDefinition(val) {
     return val?.[FIELD_DEFINITION_SYM];
 }
 
+export function isComputedDefinition(val) {
+    return val?.[COMPUTED_SYM];
+}
+
 export const fields = {
     /**
      * @template {keyof import("models").Models} M
@@ -108,12 +112,8 @@ export const fields = {
      *   the field is immediately (re-)computed when dependencies changes, which matches the built-in
      *   behaviour of OWL reactive.
      * @param {string} [param1.inverse] if set, the name of field in targetModel that acts as the inverse.
-     * @param {(this: Record, r: import("models").Models[M]) => void} [param1.onAdd] function that is called when a record is added
      *   in the relation.
-     * @param {(this: Record, r: import("models").Models[M]) => void} [param1.onDelete] function that is called when a record is removed
      *   from the relation.
-     * @param {(this: Record) => void} [param1.onUpdate] function that is called when the field value is updated.
-     *   This is called at least once at record creation.
      * @returns {import("models").Models[M]}
      */
     One(targetModel, param1) {
@@ -132,12 +132,8 @@ export const fields = {
      *   the field is immediately (re-)computed when dependencies changes, which matches the built-in
      *   behaviour of OWL reactive.
      * @param {string} [param1.inverse] if set, the name of field in targetModel that acts as the inverse.
-     * @param {(this: Record, r: import("models").Models[M]) => void} [param1.onAdd] function that is called when a record is added
      *   in the relation.
-     * @param {(this: Record, r: import("models").Models[M]) => void} [param1.onDelete] function that is called when a record is removed
      *   from the relation.
-     * @param {(this: Record) => void} [param1.onUpdate] function that is called when the field value is updated.
-     *   This is called at least once at record creation.
      * @returns {import("models").Models[M][]}
      */
     Many(targetModel, param1) {
@@ -155,8 +151,6 @@ export const fields = {
      *   they are computed when dependencies change AND when this field is being used. In eager mode,
      *   the field is immediately (re-)computed when dependencies changes, which matches the built-in
      *   behaviour of OWL reactive.
-     * @param {(this: Record) => void} [param1.onUpdate] function that is called when the field value is updated.
-     *   This is called at least once at record creation.
      * @param {boolean} [param1.asProxy=false] a read returns the value as a proxy, so that
      *   mutating its content is observed too. Only for an object, an array, a Map or a Set.
      * @param {'datetime'|'date'} [param1.type] if defined, automatically transform to a
@@ -179,8 +173,6 @@ export const fields = {
      *   they are computed when dependencies change AND when this field is being used. In eager mode,
      *   the field is immediately (re-)computed when dependencies changes, which matches the built-in
      *   behaviour of OWL reactive.
-     * @param {(this: Record) => void} [param1.onUpdate] function that is called when the field value is updated.
-     *   This is called at least once at record creation.
      * @returns {string|markup }
      */
     Html(def, param1) {
@@ -203,9 +195,7 @@ export const fields = {
      *   they are computed when dependencies change AND when this field is being used. In eager mode,
      *   the field is immediately (re-)computed when dependencies changes, which matches the built-in
      *   behaviour of OWL reactive.
-     * @param {(this: Record) => void} [param0.onUpdate] function that is called when the field value is updated.
-     *   This is called at least once at record creation.
-     * @returns {luxon.DateTime}
+     * @returns {import("luxon").DateTime}
      */
     Date(param0) {
         return {
@@ -225,9 +215,7 @@ export const fields = {
      *   they are computed when dependencies change AND when this field is being used. In eager mode,
      *   the field is immediately (re-)computed when dependencies changes, which matches the built-in
      *   behaviour of OWL reactive.
-     * @param {(this: Record) => void} [param0.onUpdate] function that is called when the field value is updated.
-     *   This is called at least once at record creation.
-     * @returns {luxon.DateTime}
+     * @returns {import("luxon").DateTime}
      */
     Datetime(param0) {
         return {

@@ -46,7 +46,7 @@ class AccountPaymentRegister(models.TransientModel):
     )
     partner_bank_id = fields.Many2one(
         comodel_name='res.partner.bank',
-        string="Recipient Bank Account",
+        string="Recipient Account",
         readonly=False,
         store=True,
         compute='_compute_partner_bank_id',
@@ -85,7 +85,7 @@ class AccountPaymentRegister(models.TransientModel):
     unreconciled_paid_amount = fields.Monetary(currency_field="currency_id", compute="_compute_unreconciled_paid_amount")
     exchange_rate = fields.Float(
         compute="_compute_exchange_rate",
-        digits=(12, 6),
+        digits=0,
         readonly=True,
         store=False
     )
@@ -137,6 +137,7 @@ class AccountPaymentRegister(models.TransientModel):
         "SEPA Direct Debit: Get paid in the SEPA zone thanks to a mandate your partner will have granted to you. Module account_sepa is necessary.\n")
     available_payment_method_line_ids = fields.Many2many('account.payment.method.line', compute='_compute_payment_method_line_fields')
     payment_method_code = fields.Char(related='payment_method_line_id.code')
+    hide_payment_method = fields.Boolean(compute='_compute_hide_payment_method')
 
     # == Payment difference fields ==
     payment_difference = fields.Monetary(
@@ -510,10 +511,12 @@ class AccountPaymentRegister(models.TransientModel):
             else:
                 wizard.group_payment = False
 
-    @api.depends('journal_id')
+    @api.depends('journal_id', 'line_ids.move_id.currency_id')
     def _compute_currency_id(self):
         for wizard in self:
-            wizard.currency_id = wizard.journal_id.currency_id or wizard.source_currency_id or wizard.company_id.currency_id
+            move_currencies = wizard.line_ids.move_id.currency_id
+            shared_currency = move_currencies if len(move_currencies) == 1 else wizard.company_id.currency_id
+            wizard.currency_id = wizard.journal_id.currency_id or wizard.source_currency_id or shared_currency
 
     @api.depends('payment_type', 'company_id', 'can_edit_wizard')
     def _compute_available_journal_ids(self):
@@ -572,6 +575,11 @@ class AccountPaymentRegister(models.TransientModel):
             else:
                 wizard.available_payment_method_line_ids = False
 
+    @api.depends('available_payment_method_line_ids')
+    def _compute_hide_payment_method(self):
+        for wizard in self:
+            wizard.hide_payment_method = len(wizard.available_payment_method_line_ids) <= 1
+
     @api.depends('payment_type', 'journal_id')
     def _compute_payment_method_line_id(self):
         for wizard in self:
@@ -610,13 +618,13 @@ class AccountPaymentRegister(models.TransientModel):
             actionable_errors = {}
             if unreconciled_matched_payments := wizard.line_ids.move_id.reconciled_payment_ids.filtered(lambda p: not p.is_reconciled and not p.is_matched and p.state == 'paid'):
                 actionable_errors['unreconciled_matched_payments'] = {
-                    'message': self.env._("Amount of %(amount).2f %(currency)s is already paid. Make sure you don't pay twice.",
+                    'message': self.env._("%(amount).2f %(currency)s already paid.",
                         amount=wizard.unreconciled_paid_amount,
                         currency=wizard.currency_id.symbol,
                     ),
-                    'action_text': self.env._("Check payments"),
+                    'action_text': self.env._("View payments"),
                     'action': unreconciled_matched_payments._get_records_action(name=self.env._("Payments")),
-                    'level': 'warning',
+                    'level': 'info',
                 }
             wizard.actionable_errors = actionable_errors
 
@@ -1192,6 +1200,7 @@ class AccountPaymentRegister(models.TransientModel):
         payments = self.env['account.payment']\
             .with_context(skip_invoice_sync=True)\
             .create([x['create_vals'] for x in to_process])
+        payments = payments.with_env(self.env)  # avoid propagating the 'skip_invoice_sync' context more than necessary
 
         for payment, vals in zip(payments, to_process):
             vals['payment'] = payment
@@ -1367,6 +1376,8 @@ class AccountPaymentRegister(models.TransientModel):
         payments = wizard.with_context(clean_context(self.env.context))._init_payments(to_process, edit_mode=edit_mode)
         wizard._post_payments(to_process, edit_mode=edit_mode)
         wizard._reconcile_payments(to_process, edit_mode=edit_mode)
+        if not self.env.context.get('keep_payment_register'):
+            wizard.sudo().unlink()
         return payments.sudo(flag=False)
 
     def _get_next_payment_date_in_context(self):

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "@odoo/hoot";
 import { queryAll, queryAllTexts, queryText } from "@odoo/hoot-dom";
 import { animationFrame } from "@odoo/hoot-mock";
-import { Component, onMounted, useProps, xml } from "@odoo/owl";
+import { Component, onMounted, xml } from "@odoo/owl";
 import {
     contains,
     defineActions,
@@ -52,6 +52,12 @@ class Partner extends models.Model {
             </kanban>`,
         list: `<list><field name="display_name"/></list>`,
         "list,2": `<list limit="3"><field name="display_name"/></list>`,
+        "form,3": `
+            <form>
+                <group>
+                    <field name="display_name" readonly="0"/>
+                </group>
+            </form>`,
     };
 }
 
@@ -382,7 +388,6 @@ describe("new", () => {
 
         class ErrorClientAction extends Component {
             static template = xml`<div/>`;
-            props = useProps();
             setup() {
                 throw new Error("my error");
             }
@@ -391,7 +396,6 @@ describe("new", () => {
 
         class ClientActionTargetNew extends Component {
             static template = xml`<div class="my_action_new" />`;
-            props = useProps();
         }
         registry.category("actions").add("clientActionNew", ClientActionTargetNew);
 
@@ -400,7 +404,6 @@ describe("new", () => {
                 <div class="my_action" t-on-click="this.onClick">
                     My Action
                 </div>`;
-            props = useProps();
             setup() {
                 this.action = useService("action");
             }
@@ -469,6 +472,30 @@ describe("new", () => {
         expect(".modal .o_breadcrumb").toHaveCount(0);
     });
 
+    test('no view switcher in actions in target="new"', async () => {
+        await mountWithCleanup(WebClient);
+
+        // execute an action in target="current"
+        await getService("action").doAction(4);
+        expect(".o_cp_switch_buttons").toHaveCount(1);
+
+        // execute an action in target="new" with several views (s.t. there could
+        // be a view switcher), even though switching view isn't supported
+        await getService("action").doAction({
+            xml_id: "action_5",
+            name: "Create a Partner",
+            res_model: "partner",
+            target: "new",
+            type: "ir.actions.act_window",
+            views: [
+                [false, "list"],
+                [false, "kanban"],
+            ],
+        });
+        expect(".modal .o_list_view").toHaveCount(1);
+        expect(".modal .o_cp_switch_buttons").toHaveCount(0);
+    });
+
     test('call switchView in an action in target="new"', async () => {
         await mountWithCleanup(WebClient);
 
@@ -521,6 +548,27 @@ describe("new", () => {
         expect(".o_dialog .modal-dialog").toHaveClass("modal-xl");
     });
 
+    test("action in target='new' with 'dialog_size' attribute on the view's arch", async () => {
+        Partner._views["form,2"] = `
+            <form dialog_size="sm">
+                <group>
+                    <field name="display_name"/>
+                </group>
+            </form>`;
+        const action = {
+            name: "Some Action",
+            res_model: "partner",
+            type: "ir.actions.act_window",
+            target: "new",
+            views: [[2, "form"]],
+        };
+        await mountWithCleanup(WebClient);
+
+        // the arch attribute takes precedence over the 'dialog_size' context key
+        await getService("action").doAction({ ...action, context: { dialog_size: "large" } });
+        expect(".o_dialog .modal-dialog").toHaveClass("modal-sm");
+    });
+
     test('click on record in list view action in target="new"', async () => {
         await mountWithCleanup(WebClient);
         await getService("action").doAction({
@@ -542,6 +590,107 @@ describe("new", () => {
         expect(".o_dialog .modal-dialog .o_list_view").toHaveCount(1);
         expect(".o_form_view").toHaveCount(0);
     });
+
+    test("form action with target=new has an expand button, which creates a new action with target=current", async () => {
+        await mountWithCleanup(WebClient);
+        let capturedAction = null;
+        mockService("action", {
+            doAction(action, options) {
+                if (action.target === "new") {
+                    return super.doAction(action, options);
+                }
+                capturedAction = action;
+            },
+        });
+
+        await getService("action").doAction({
+            name: "My form",
+            type: "ir.actions.act_window",
+            res_model: "partner",
+            views: [[false, "form"]],
+            target: "new",
+            can_expand: true,
+            context: {
+                form_view_ref: "my.form",
+                anything_else: true,
+            },
+        });
+        expect(".o_dialog .o_expand_button").toHaveCount(1);
+        await contains(".o_dialog .o_expand_button").click();
+
+        expect(capturedAction).toEqual({
+            type: "ir.actions.act_window",
+            res_model: "partner",
+            res_id: false,
+            views: [[false, "form"]],
+            target: "current",
+            context: {
+                form_view_ref: undefined,
+                anything_else: true,
+            },
+        });
+    });
+
+    test("form action with target=new, without can_expand=true, does not show an expand button", async () => {
+        await mountWithCleanup(WebClient);
+
+        await getService("action").doAction({
+            name: "My form",
+            type: "ir.actions.act_window",
+            res_model: "partner",
+            views: [[false, "form"]],
+            target: "new",
+            context: {
+                form_view_ref: "my.form",
+                anything_else: true,
+            },
+        });
+
+        expect(".o_dialog").toHaveCount(1);
+        expect(".o_dialog .o_expand_button").toHaveCount(0);
+    });
+
+
+    test("clicking expand on a dirty form captures the res_id", async () => {
+        await mountWithCleanup(WebClient);
+        let capturedAction = null;
+        mockService("action", {
+            doAction(action, options) {
+                if (action.target === "new") {
+                    return super.doAction(action, options);
+                }
+                capturedAction = action;
+            },
+        });
+
+        await getService("action").doAction({
+            name: "My form",
+            type: "ir.actions.act_window",
+            res_model: "partner",
+            views: [[3, "form"]],
+            target: "new",
+            can_expand: true,
+            context: {
+                form_view_ref: "my.form",
+                anything_else: true,
+            },
+        });
+        await contains(".o_dialog .o_field_widget[name=display_name] input").edit("John");
+        await contains(".o_dialog .o_expand_button").click();
+
+        expect(capturedAction).toEqual({
+            type: "ir.actions.act_window",
+            res_model: "partner",
+            res_id: 3, // res_id was captured
+            views: [[false, "form"]],
+            target: "current",
+            context: {
+                form_view_ref: undefined,
+                anything_else: true,
+            },
+        });
+    });
+
 });
 
 describe("fullscreen", () => {

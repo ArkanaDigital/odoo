@@ -68,6 +68,7 @@ class TestResPartnerBank(AccountTestInvoicingCommon, MailCase):
         self.assertFalse(self.partner_bank_a.duplicate_bank_partner_ids)
 
     def test_tracking(self):
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         bank_a = self.partner_bank_a.with_user(self.env.user)
         with self.mock_mail_gateway(), self.mock_mail_app():
             bank_a.write({
@@ -86,7 +87,7 @@ class TestResPartnerBank(AccountTestInvoicingCommon, MailCase):
         self.assertEqual(sorted(partner_msgs.mapped('res_id')), sorted((self.partner_a + self.partner_b).ids))
         for msg in partner_msgs:
             self.assertMessageFields(msg, {
-                'body': f'<p>Bank Account <a href="#" data-oe-model="{bank_a._name}" data-oe-id="{bank_a.id}">#{bank_a.id}</a> updated</p>',
+                'body': f'<p>Bank Account <a href="/mail/view?model={bank_a._name}&amp;res_id={bank_a.id}" data-oe-model="{bank_a._name}" data-oe-id="{bank_a.id}">#{bank_a.id}</a> updated</p>',
                 'message_type': 'tracking',
                 'model': 'res.partner',
                 'subtype_id': self.env.ref('mail.mt_note'),

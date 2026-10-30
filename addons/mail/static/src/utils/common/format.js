@@ -26,15 +26,17 @@ import { escapeRegExp, nbsp } from "@web/core/utils/strings";
 import { getOrigin } from "@web/core/utils/urls";
 import { setAttributes } from "@web/core/utils/xml";
 
-const urlRegexp =
+export const urlRegexp =
     /\b(?:https?:\/\/\d{1,3}(?:\.\d{1,3}){3}|(?:https?:\/\/|(?:www\.))[-a-z0-9@:%._+~#=\u00C0-\u024F\u1E00-\u1EFF]{1,256}(?:\.{1})?(?:[a-z]{2,13}))\b(?:[-a-z0-9@:%_+~#?&[\]^|{}`\\'$//=\u00C0-\u024F\u1E00-\u1EFF]|[.]*[-a-z0-9@:%_+~#?&[\]^|{}`\\'$//=\u00C0-\u024F\u1E00-\u1EFF]|,(?!$| )|\.(?!$| |\.)|;(?!$| ))*/gi;
-const messageUrlRegExp = new RegExp(`^${escapeRegExp(getOrigin())}/mail/message/(\\d+)$`);
+export const messageUrlRegExp = new RegExp(`^${escapeRegExp(getOrigin())}/mail/message/(\\d+)$`);
 const MENTION_CLASSNAMES = new Set([
     "o_mail_redirect",
     "o_message_redirect",
     "o_channel_redirect",
     "o-discuss-mention",
 ]);
+const JS_HANDLED_LINK_ATTRIBUTES = new Set(["oeId", "oeModel", "oeType"]);
+const INLINE_FORMAT_TAGS = new Set(["B", "CODE", "EM", "I", "S", "STRONG", "U"]);
 
 /**
  * @param {string|ReturnType<markup>} rawBody
@@ -139,6 +141,30 @@ function _parseAndTransform(nodes, transformFunction) {
 }
 
 /**
+ * Marks the link to a message of this database, and tells whether it is one.
+ *
+ * @param {HTMLAnchorElement} link
+ */
+export function markMessageLink(link) {
+    const messageId = messageUrlRegExp.exec(link.getAttribute("href"))?.[1];
+    if (!messageId) {
+        return false;
+    }
+    for (const [name, value] of Object.entries({
+        "data-oe-id": messageId,
+        "data-oe-model": "mail.message",
+    })) {
+        if (link.getAttribute(name) !== value) {
+            link.setAttribute(name, value);
+        }
+    }
+    if (!link.classList.contains("o_message_redirect")) {
+        link.classList.add("o_message_redirect");
+    }
+    return true;
+}
+
+/**
  * @param {string} text
  * @return {ReturnType<markup>} linkified text
  */
@@ -161,14 +187,7 @@ function linkify(text) {
             href,
         });
         link.textContent = url;
-        const messageMatch = messageUrlRegExp.exec(fixedUrl);
-        if (messageMatch !== null) {
-            setAttributes(link, {
-                "data-oe-id": messageMatch[1],
-                "data-oe-model": "mail.message",
-            });
-            link.classList.add("o_message_redirect");
-        }
+        markMessageLink(link);
         result = htmlJoin([result, getOuterHtml(link)]);
         curIndex = match.index + match[0].length;
     }
@@ -208,7 +227,7 @@ export function addLink(node, transformChildren) {
  * @param {string} [param0.className] CSS class name for the mention element
  * @param {number} [param0.id] Record ID of the mentioned entity
  * @param {string} [param0.model] Model name of the mentioned entity
- * @param {string} [param0.text] Display text for the mention
+ * @param {TranslatedString} param0.text Display text for the mention
  * @param {boolean} [param0.readonly] If true, returns a non-clickable span; if false, returns a clickable link
  * @returns {HTMLElement} Either an HTMLSpanElement(readonly) or HTMLAnchorElement(clickable)
  */
@@ -221,7 +240,7 @@ export function generateMentionElement({ className, id, model, text, readonly })
             "data-oe-model": model,
             contenteditable: "false",
         });
-        span.textContent = text;
+        span.textContent = String(text);
         return span;
     }
     const link = document.createElement("a");
@@ -233,8 +252,20 @@ export function generateMentionElement({ className, id, model, text, readonly })
         target: "_blank",
         contenteditable: "false",
     });
-    link.textContent = text;
+    link.textContent = String(text);
     return link;
+}
+
+/**
+ * Name used to mention a partner, without leading/trailing spaces so that
+ * the mention text stays identical everywhere it is built or searched.
+ *
+ * @param {import("models").ResPartner} partner
+ * @param {import("models").Thread} [thread]
+ * @returns {string}
+ */
+export function getPartnerMentionName(partner, thread) {
+    return (thread?.getPersonaName?.(partner) ?? partner.name ?? "").trim();
 }
 
 /**
@@ -249,7 +280,7 @@ export function generatePartnerMentionElement(partner, { thread, readonly } = {}
         className: "o_mail_redirect",
         id: partner.id,
         model: "res.partner",
-        text: `@${thread?.getPersonaName(partner) ?? partner.name}`,
+        text: `@${getPartnerMentionName(partner, thread)}`,
         readonly,
     });
 }
@@ -288,7 +319,7 @@ function generateMentionsLinks(body, { partners = [], roles = [], specialMention
     const mentions = [];
     for (const partner of partners) {
         const placeholder = `@-mention-partner-${partner.id}!`;
-        const text = `@${thread?.getPersonaName(partner) ?? partner.name}`;
+        const text = `@${getPartnerMentionName(partner, thread)}`;
         mentions.push({
             link: generatePartnerMentionElement(partner, { thread }),
             placeholder,
@@ -373,14 +404,8 @@ export function prepareBodyForEditing(body) {
  */
 export function htmlToTextContentInline(htmlString) {
     htmlString = htmlReplace(htmlString, /<br\s*\/?>/gi, () => " ");
-    const div = document.createElement("div");
-    try {
-        setElementContent(div, htmlString);
-    } catch {
-        div.appendChild(createElementWithContent("pre", htmlString));
-    }
-    return div.textContent
-        .trim()
+    return createElementFromContent(htmlString)
+        .textContent.trim()
         .replace(/[\n\r]/g, "")
         .replace(/\s\s+/g, " ");
 }
@@ -480,7 +505,9 @@ export function trimEmptyBlocksAround(content) {
                 return;
             }
             trimTextNodes(node, side);
-            if (isHtmlEmpty(node.innerHTML)) {
+            // isHtmlEmpty intentionally ignores images, which must not be trimmed.
+            const containsImage = node.nodeName === "IMG" || node.querySelector("img");
+            if (isHtmlEmpty(node.innerHTML) && !containsImage) {
                 removeNode(node);
                 return trimTextNodes(element, side);
             }
@@ -493,7 +520,7 @@ export function trimEmptyBlocksAround(content) {
 
 /**
  * Converts the content of an element to its inline representation.
- * - Links and mentions are preserved
+ * - Links, mentions and text formats (bold, italic, underline, strike, code) are preserved
  * - For the rest: text content of nodes
  *
  * @param {Element} element modified in place
@@ -550,6 +577,10 @@ export function inlineElement(element) {
             const href = node.getAttribute("href");
             if ([...node.classList].some((cls) => MENTION_CLASSNAMES.has(cls))) {
                 parent.append(node);
+            } else if (
+                Object.keys(node.dataset).some((attr) => JS_HANDLED_LINK_ATTRIBUTES.has(attr))
+            ) {
+                appendText(parent, node.textContent);
             } else if (href) {
                 const link = element.ownerDocument.createElement("a");
                 link.setAttribute("href", href);
@@ -561,6 +592,15 @@ export function inlineElement(element) {
                 link.append(element.ownerDocument.createTextNode(href));
                 parent.append(link);
             }
+            return;
+        }
+        if (INLINE_FORMAT_TAGS.has(node.tagName)) {
+            const formatEl = element.ownerDocument.createElement(node.tagName);
+            if (node.classList.contains("o_inline_code")) {
+                formatEl.classList.add("o_inline_code");
+            }
+            appendInlinePreviewChildren(formatEl, [...node.childNodes]);
+            parent.append(formatEl);
             return;
         }
         appendInlinePreviewChildren(parent, [...node.childNodes]);

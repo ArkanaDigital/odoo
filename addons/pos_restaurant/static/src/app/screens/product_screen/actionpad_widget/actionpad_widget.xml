@@ -31,7 +31,7 @@
                                 <div class="d-flex align-items-center justify-content-between small" t-att-class="{ 'gap-2' : !(categoryChangesData.length > 2) }">
                                     <div class="flex-grow-1"/>
                                     <label class="product-category-label o_line_clamp o_line_clamp_1 px-2"><t t-out="categoryCountLine.name"/></label>
-                                    <label class="rounded px-2 py-0" style="background-color:rgba(0, 0, 0, 0.3);"><t t-out="this.env.utils.formatProductQty(categoryCountLine.count, false)"/></label>
+                                    <label class="rounded px-2 py-0" style="background-color:rgba(0, 0, 0, 0.3);"><t t-out="this.pos.formatProductQty(categoryCountLine.count, false)"/></label>
                                 </div>
                             </t>
                         </t>
@@ -48,9 +48,9 @@
                     <span t-out="this.fireCourseBtnText"></span>
                 </button>
                 <button
-                    class="button w-50 btn btn-secondary btn-lg d-flex flex-row align-items-center justify-content-center"
+                    class="reprint-btn button w-50 btn btn-secondary btn-lg d-flex flex-row align-items-center justify-content-center"
                     t-on-click="() => this.doReprintOrder.call()"
-                    t-elif="!this.ui.isSmall and this.pos.ticketPrinter.hasPreparationPrinters and this.currentOrder.lastPrints.length"
+                    t-elif="!this.pos.isSmallProductScreen and this.pos.ticketPrinter.hasPreparationPrinters and this.currentOrder.prep_order_ids.length"
                     t-att-disabled="this.doReprintOrder.status === 'loading'">
                     Reprint
                 </button>
@@ -92,6 +92,7 @@
                     </button>
                 </t>
                 <button t-if="!this.currentOrder.isEmpty() and this.pos.numpadMode != 'table'"
+                    t-att-disabled="this.pos.accessRight.disableClickPayment"
                     t-on-click="() => this.pos.pay()"
                     class="button pay-order-button pay-order-button-restaurant btn btn-lg w-50"
                     t-attf-class="{{ this.highlightPay ? 'highlight btn-primary' : 'btn-secondary' }}"

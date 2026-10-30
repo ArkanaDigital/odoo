@@ -4,7 +4,7 @@ import { useHover, useMovable } from "@mail/utils/common/hooks";
 import { Component, computed, proxy, signal, useListener } from "@odoo/owl";
 
 import { Action } from "@mail/core/common/action";
-import { browser } from "@web/core/browser/browser";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 import { isMobileOS } from "@web/core/browser/feature_detection";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { useDropdownState } from "@web/core/dropdown/dropdown_hooks";
@@ -28,8 +28,8 @@ export class ChatHub extends Component {
 
     setup() {
         super.setup();
+        this.ancestors = useAncestors();
         this.store = useService("mail.store");
-        this.ui = useService("ui");
         this.busMonitoring = useService("bus.monitoring_service");
         this.bubblesHover = useHover(this.bubblesRef);
         this.moreHover = useHover([this.moreButtonRef, this.hiddenMenuRef], {
@@ -47,7 +47,7 @@ export class ChatHub extends Component {
             right: `${this.chatHub.BUBBLE_OUTER + this.chatHub.BUBBLE_START}px;`,
         });
         this.onResize();
-        useListener(browser, "resize", () => this.onResize());
+        useListener(window, "resize", () => this.onResize());
         useMovable({
             enable: () => this.chatHub.compact || !this.chatHub.opened.length,
             cursor: "grabbing",
@@ -170,7 +170,7 @@ export class ChatHub extends Component {
 }
 
 export const chatHubService = {
-    dependencies: ["bus.monitoring_service", "mail.store", "ui"],
+    dependencies: ["bus.monitoring_service", "mail.store"],
     start() {
         registry.category("main_components").add("mail.ChatHub", { Component: ChatHub });
     },

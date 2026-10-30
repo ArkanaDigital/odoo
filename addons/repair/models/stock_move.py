@@ -77,7 +77,7 @@ class StockMove(models.Model):
             # add the description to related lines if it has a value and belongs to a repair order
             if move.repair_id and move.description_picking_manual:
                 if move.sale_line_id:
-                    move.sale_line_id.name = f"{move.sale_line_id.translated_product_name}\n{move.description_picking}"
+                    move.sale_line_id.name = move.description_picking
 
     def copy_data(self, default=None):
         default = dict(default or {})
@@ -91,10 +91,6 @@ class StockMove(models.Model):
     def _unlink_if_draft_or_cancel(self):
         self.filtered('repair_id')._action_cancel()
         return super()._unlink_if_draft_or_cancel()
-
-    def unlink(self):
-        self._clean_repair_linked_lines()
-        return super().unlink()
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -112,8 +108,7 @@ class StockMove(models.Model):
             move.picking_type_id = move.repair_id.picking_type_id.id
             repair_moves |= move
         no_repair_moves = moves - repair_moves
-        draft_repair_moves = repair_moves.filtered(lambda m: m.state == 'draft' and m.repair_id.state in ('confirmed', 'under_repair'))
-        other_repair_moves = repair_moves - draft_repair_moves
+        draft_repair_moves, other_repair_moves = repair_moves.partitioned(lambda m: m.state == 'draft' and m.repair_id.state == 'confirmed')
         draft_repair_moves._check_company()
         draft_repair_moves._adjust_procure_method(picking_type_code='repair_operation')
         res = draft_repair_moves._action_confirm()
@@ -196,6 +191,7 @@ class StockMove(models.Model):
 
         self.env['sale.order.line'].create(so_line_vals)
 
+    @api.ondelete(at_uninstall=False)
     def _clean_repair_linked_lines(self):
         if self.repair_id.invoice_ids:
             self.filtered(

@@ -4,16 +4,17 @@ import { describe, expect, test } from "@odoo/hoot";
 import { hover, queryOne } from "@odoo/hoot-dom";
 import { advanceTime } from "@odoo/hoot-mock";
 
-import { onRpc, patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { onRpc } from "@web/../tests/web_test_helpers";
+import { patch } from "@web/core/utils/patch";
 import { onceAllImagesLoaded } from "@website/utils/images";
 
-setupInteractionWhiteList(["website.image_shape_hover_effect", "website.clickable_card"]);
+setupInteractionWhiteList(["website.image_shape_hover_effect", "website.clickable_element"]);
 
 describe.current.tags("interaction_dev");
 
 test.tags("desktop");
 test("image_shape_hover_effect changes image on enter & leave", async () => {
-    patchWithCleanup(Image.prototype, {
+    patch(Image.prototype, {
         set onload(fn) {
             super.onload = fn;
             setTimeout(() => super.onload());
@@ -60,7 +61,7 @@ test("image_shape_hover_effect changes image on enter & leave", async () => {
 
 test.tags("desktop");
 test("image_shape_hover_effect is triggered from stretched-link hover", async () => {
-    patchWithCleanup(Image.prototype, {
+    patch(Image.prototype, {
         set onload(fn) {
             super.onload = fn;
             setTimeout(() => super.onload());

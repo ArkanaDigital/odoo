@@ -4,7 +4,6 @@ from odoo import api, fields, models, release
 from odoo.http import request
 from odoo.http.requestlib import DEFAULT_MAX_CONTENT_LENGTH
 from odoo.tools import config
-from odoo.tools.func import deprecated
 from odoo.tools.misc import hmac, str2bool
 
 
@@ -13,7 +12,7 @@ class IrHttp(models.AbstractModel):
 
     bots = [
         "bot", "crawl", "slurp", "spider", "curl", "wget", "facebookexternalhit",
-        "whatsapp", "trendsmapresolver", "pinterest", "instagram",
+        "whatsapp", "trendsmapresolver", "pinterest", "instagram", "xrawler",
         "google-pagerenderer", "preview", "google-inspectiontool", "googleother",
         "meta-external", "meta-webindexer", "chatgpt-user", "claude-user", "perplexity-user",
     ]
@@ -115,6 +114,7 @@ class IrHttp(models.AbstractModel):
             "is_admin": user._is_admin() if session_uid else False,
             "is_public": user._is_public(),
             "is_internal_user": is_internal_user,
+            "is_regular_user": user._is_regular() if session_uid else False,
             "user_context": user_context,
             "db": self.env.cr.dbname,
             "registry_hash": hmac(self.env(su=True), "webclient-cache", self.env.registry.registry_sequence),
@@ -139,6 +139,10 @@ class IrHttp(models.AbstractModel):
             'bundle_params': {
                 'lang': request.session.context['lang'],
             },
+            'translation_hash': self._get_cached_web_translations_hash(
+                self._get_web_translations_modules(),
+                self._get_web_translations_lang(user_context.get('lang')),
+            ),
             'test_mode': config['test_enable'],
             'view_info': self.env['ir.ui.view'].get_view_info(),
             'groups': {
@@ -211,6 +215,7 @@ class IrHttp(models.AbstractModel):
             session_info['bundle_params']['debug'] = request.session.debug
         return session_info
 
-    @deprecated("Deprecated since 19.0, use get_all_currencies on 'res.currency'")
-    def get_currencies(self):
-        return self.env['res.currency'].get_all_currencies()
+    @classmethod
+    def _get_translation_frontend_modules_name(cls) -> list[str]:
+        """ Return a list of module names whose JavaScript translations should be included in the frontend."""
+        return ['web']

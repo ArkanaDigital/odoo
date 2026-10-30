@@ -63,12 +63,10 @@ class TestWebsiteSalePerformanceNoPricelist(WebsiteSaleCommon, UtilPerf, Product
             "account_account_tag": 2,
             "account_tax": 2,
             "account_tax_repartition_line": 2,
-            "ir_attachment": 2,
             "ir_ui_view": 2,
             "product_attribute": 1,
             "product_attribute_value": 3,
             "product_image": 1,
-            "product_pricelist": 1,
             "product_product": 1,
             "product_public_category": 1,
             "product_ribbon": 1,
@@ -77,13 +75,12 @@ class TestWebsiteSalePerformanceNoPricelist(WebsiteSaleCommon, UtilPerf, Product
             "product_template_attribute_line": 2,
             "res_company": 2,
             "res_currency": 1,
-            "res_partner": 2,
+            "res_partner": 1,
             "res_users": 1,
             "website_menu": 1,
             "website_page": 1,
         })
         if self._has_demo_data():
-            res["res_company"] += 1
             if "website_sale_stock" in self.installed_modules:
                 res["product_template"] += 1
                 # Out of Stock Ribbon in demo data
@@ -114,7 +111,6 @@ class TestWebsiteSalePerformanceNoPricelist(WebsiteSaleCommon, UtilPerf, Product
             "product_attribute_value": 2,
             "product_document": 2,
             "product_image": 2,
-            "product_pricelist": 1,
             "product_product": 2,
             "product_public_category": 2,
             "product_ribbon": 1,
@@ -124,17 +120,18 @@ class TestWebsiteSalePerformanceNoPricelist(WebsiteSaleCommon, UtilPerf, Product
             "product_template_attribute_value": 4,
             "res_company": 2,
             "res_currency": 1,
-            "res_partner": 2,
+            "res_partner": 1,
             "res_users": 1,
             "website_menu": 1,
             "website_page": 1,
             "website_sale_extra_field": 1,
         })
-        if self._has_demo_data():
-            res["res_company"] += 1
         if "website_helpdesk" in self.installed_modules:
             # Additional query used to check whether "Helpdesk" menu should be visible
             res["helpdesk_team"] += 1
+        if "website_sale_collect" in self.installed_modules:
+            # Additional query to check the delivery method of the cart for the Click & Collect
+            res["delivery_carrier"] += 1
         return res
 
     def test_product_page_generation(self):
@@ -147,9 +144,7 @@ class TestWebsiteSalePerformanceNoPricelist(WebsiteSaleCommon, UtilPerf, Product
 
     @warmup
     def test_get_combination_info_route(self):
-        no_product_change_query_count = 30
-        if self._has_demo_data():
-            no_product_change_query_count += 1
+        no_product_change_query_count = 31
         if "website_sale_stock" in self.installed_modules:
             no_product_change_query_count += 1
         with self.assertQueryCount(no_product_change_query_count):
@@ -166,9 +161,7 @@ class TestWebsiteSalePerformanceNoPricelist(WebsiteSaleCommon, UtilPerf, Product
 
         # When a new combination matches another product, additional templates and values are sent
         # to the client (tags, images, ...)
-        product_change_query_count = 42
-        if self._has_demo_data():
-            product_change_query_count += 1
+        product_change_query_count = 43
         if "website_sale_stock" in self.installed_modules:
             product_change_query_count += 1
         with self.assertQueryCount(product_change_query_count):
@@ -284,8 +277,8 @@ class TestWebsiteSalePerformanceWithPricelistDepth(TestWebsiteSalePerformanceWit
             Command.create({
                 "base_pricelist_id": cls.pricelist.id,
                 "base": "pricelist",
-                "compute_price": "percentage",
-                "percent_price": 10,
+                "compute_price": "discount",
+                "price_discount": 10,
             })
         ]
 
@@ -336,6 +329,7 @@ class TestWebsiteSalePerformanceWithTrackedProducts(TestWebsiteSalePerformanceNo
 
     def _get_shop_page_queries(self):
         res = super()._get_shop_page_queries()
+        res["product_product"] += 1
         if "website_sale_stock" in self.installed_modules:
             res["stock_warehouse"] += 2
             res["stock_move"] += 2
@@ -343,6 +337,9 @@ class TestWebsiteSalePerformanceWithTrackedProducts(TestWebsiteSalePerformanceNo
         else:
             res["product_product"] += 1
             res["sale_order_line"] += 1
+
+        if "website_sale_collect" in self.installed_modules:
+            res["delivery_carrier"] += 1
 
         if "website_sale_mrp" in self.installed_modules:
             res["mrp_bom"] += 1
@@ -369,9 +366,6 @@ class TestWebsiteSalePerformanceWithTrackedProducts(TestWebsiteSalePerformanceNo
 
         if "website_sale_mrp" in self.installed_modules:
             res["mrp_bom"] += 1
-
-        if "website_sale_collect" in self.installed_modules:
-            res["delivery_carrier"] += 1
 
         if "product_expiry" in self.installed_modules:
             res["stock_quant"] += 1

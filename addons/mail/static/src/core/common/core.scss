@@ -2,7 +2,7 @@ $o-discuss-talkingColor: lighten($success, 10%);
 
 .o-mail-emoji {
     font-size: 121%;
-    line-height: $display-line-height;
+    line-height: var(--o-bs-display-line-height);
 }
 
 .o-bg-black {
@@ -10,7 +10,7 @@ $o-discuss-talkingColor: lighten($success, 10%);
 }
 
 .o-bg-body {
-    background-color: $body-bg !important;
+    background-color: var(--body-bg) !important;
 }
 
 .o-border-opacity-7_5 {
@@ -19,7 +19,7 @@ $o-discuss-talkingColor: lighten($success, 10%);
 
 .o-discuss-badge {
     &, & .o-innerBadge {
-        --o-discuss-badge-bg: #{$o-success}; // sync with --o-navbar-badge-bg
+        --o-discuss-badge-bg: var(--o-success); /* sync with --o-navbar-badge-bg */
         color: white !important;
         background-color: var(--o-discuss-badge-bg) !important;
         align-items: center;
@@ -27,60 +27,117 @@ $o-discuss-talkingColor: lighten($success, 10%);
         padding: 3px 4px;
 
         &.o-muted {
-            --o-discuss-badge-bg: #{$gray-400};
+            --o-discuss-badge-bg: #{var(--mail-discuss-badge-mutedBg, mix($gray-500, $gray-600))};
         }
     }
 
     & .o-innerBadge {
-        min-width: $o-badge-min-width; // same as .badge, without using .badge to keep semantics of a single .badge
+        min-width: var(--o-badge-min-width); /* same as .badge, without using .badge to keep semantics of a single .badge */
     }
 }
 
 .o-discuss-warningBadge {
-    background-color: $warning !important;
+    background-color: var(--warning) !important;
 }
 
 @function o-rounded-bubble() {
-    @return calc((#{$border-radius} + #{$border-radius-lg}) * 3 / 4);
+    @return calc((#{$border-radius} + #{$border-radius-lg}) * 7 / 8);
+}
+
+/* Tint of the messages and chat bubble previews with a bubble color */
+.o-mail-Message-bubble.o-blue,
+.o-mail-Message-bubbleTail.o-blue,
+.o_popover:has(> .o-mail-ChatBubble-preview.o-blue) {
+    --o-bubble-bg: var(--o-mail-bubble-blue-bg);
+    --o-bubble-bg-muted: var(--o-mail-bubble-blue-bg-muted);
+    --o-bubble-border-color: var(--o-mail-bubble-blue-border-color);
+    --o-bubble-color-base: var(--o-mail-bubble-blue-color-base);
+}
+.o-mail-Message-bubble.o-green,
+.o-mail-Message-bubbleTail.o-green,
+.o_popover:has(> .o-mail-ChatBubble-preview.o-green) {
+    --o-bubble-bg: var(--o-mail-bubble-green-bg);
+    --o-bubble-bg-muted: var(--o-mail-bubble-green-bg-muted);
+    --o-bubble-border-color: var(--o-mail-bubble-green-border-color);
+    --o-bubble-color-base: var(--o-mail-bubble-green-color-base);
+}
+.o-mail-Message-bubble.o-orange,
+.o-mail-Message-bubbleTail.o-orange,
+.o_popover:has(> .o-mail-ChatBubble-preview.o-orange) {
+    --o-bubble-bg: var(--o-mail-bubble-orange-bg);
+    --o-bubble-bg-muted: var(--o-mail-bubble-orange-bg-muted);
+    --o-bubble-border-color: var(--o-mail-bubble-orange-border-color);
+    --o-bubble-color-base: var(--o-mail-bubble-orange-color-base);
 }
 
 .o-discuss-dropdownMenu {
     --Dropdown_menu-margin-y: 0;
 
-    &.o-simulateDarkTheme {
-        background-color: $gray-800;
-        border-color: $gray-700 !important;
+    padding: var(--o-bs-dropdown-padding-y) var(--o-bs-dropdown-padding-x);
 
-        * {
-            color: white;
-        }
+    @if $o-webclient-color-scheme != dark {
+        &.o-discussCallTheme {
+            background-color: var(--gray-800);
+            border-color: var(--gray-700) !important;
 
-        select, .form-check-input {
-            border-color: $gray-600;
-        }
+            * {
+                color: white;
+            }
 
-        .form-select {
-            --#{$prefix}form-select-bg-img: #{escape-svg($form-select-indicator-dark)};
-        }
+            .btn, .o-dropdown-item {
+                --gradient: transparent;
+            }
 
-        .form-switch .form-check-input {
-            &:not(:checked):not(:focus) {
-                --#{$prefix}form-switch-bg: #{escape-svg($form-switch-bg-image-dark)};
+            .form-switch .form-check-input {
+                &:checked {
+                    --#{$prefix}form-switch-bg: #{escape-svg($form-switch-bg-image-dark)};
+                }
+            }
+
+            select option {
+                background-color: var(--gray-700);
             }
         }
+    }
 
-        select option {
-            background-color: $gray-700;
+    .popover-arrow {
+        --position-max: calc(100% - var(--o-bs-spacer-4));
+    }
+
+    .dropdown-item {
+        --#{$prefix}dropdown-item-padding-y: var(--o-bs-dropdown-item-padding-y);
+        --#{$prefix}dropdown-item-padding-x: var(--o-bs-dropdown-item-padding-x);
+        --#{$prefix}dropdown-item-border-radius: calc((var(--o-bs-dropdown-border-radius) - var(--o-bs-dropdown-padding-x)));
+        --#{$prefix}gradient: 0;
+
+        font-size: var(--o-bs-dropdown-font-size);
+
+        &:hover {
+            background-color: var(--o-bs-dropdown-link-hover-bg);
         }
     }
+}
 
-    &:not(.o-simulateDarkTheme) {
-        background-color: $o-view-background-color;
-    }
+.o-discuss-ellipsisButton {
+    @include material-icon-base;
 
-    .o_bottom_sheet_sheet:has(&) {
-        background-color: $gray-100;
-        box-shadow: unset !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    padding: 0;
+    border-radius: 50%;
+    --btn-border-color: #{rgba($dark, var(--o-discuss-ellipsisButton-mutedBorderOpacity, .5))};
+    --btn-hover-border-color: var(--dark);
+    --btn-active-border-color: var(--o-action);
+    --btn-hover-color: #{color-contrast($light)};
+    --btn-active-color: #{color-contrast($light)};
+
+    &::before {
+        content: "more_horiz" / ""; /* empty alt text: keeps the ligature out of the accessible name */
+        font-size: map-get($icon-sizes, 'lg'); /* .oi-lg */
+        width: #{$oi-fw-ratio}em; /* .oi-fw */
+        text-align: center;
     }
 }
 
@@ -89,18 +146,18 @@ $o-discuss-talkingColor: lighten($success, 10%);
 }
 
 .o-discuss-separator {
-    opacity: $hr-opacity / 2;
+    opacity: calc(var(--o-bs-hr-opacity) / 2);
 }
 
 .o-discuss-text-body {
-    color: $gray-700 !important;
+    color: var(--gray-700) !important;
 }
 
 .o-discuss-badge, .o-discuss-badgeShape {
     &, & .o-innerBadge {
         display: flex;
-        transform: translate(0, 0) !important; // cancel systray style on badge
-        font-size: .78572 * $font-size-base !important; // roughly 11px, small but readable
+        transform: translate(0, 0) !important; /* cancel systray style on badge */
+        font-size: calc(.78572 * var(--o-bs-font-size-base)) !important; /* roughly 11px, small but readable */
         user-select: none;
     }
 }
@@ -109,8 +166,8 @@ $o-discuss-talkingColor: lighten($success, 10%);
     height: 100dvh;
 }
 
-.o-fw-600 {
-    font-weight: 600;
+.o-inset-0 {
+    inset: 0;
 }
 
 .o-min-dvh-100 {
@@ -137,11 +194,11 @@ $o-mail-spacers-sizes: () !default;
 $o-mail-spacers-sizes: map-merge(
     $o-mail-spacers-sizes,
     (
-        "0_5": map-get($spacers, 1) / 2,
-        "1_5": (map-get($spacers, 1) + map-get($spacers, 2)) / 2,
-        "2_5": (map-get($spacers, 2) + map-get($spacers, 3)) / 2,
-        "3_5": (map-get($spacers, 3) + map-get($spacers, 4)) / 2,
-        "4_5": (map-get($spacers, 4) + map-get($spacers, 5)) / 2,
+        "0_5": calc(var(--o-bs-spacer-1) / 2),
+        "1_5": calc((var(--o-bs-spacer-1) + var(--o-bs-spacer-2)) / 2),
+        "2_5": calc((var(--o-bs-spacer-2) + var(--o-bs-spacer-3)) / 2),
+        "3_5": calc((var(--o-bs-spacer-3) + var(--o-bs-spacer-4)) / 2),
+        "4_5": calc((var(--o-bs-spacer-4) + var(--o-bs-spacer-5)) / 2),
     )
 );
 
@@ -266,16 +323,20 @@ $o-mail-utilities: map-merge(
 }
 
 .o-fs-small {
-    font-size: $o-font-size-base-small !important;
+    font-size: var(--o-font-size-base-small) !important;
 }
 
 .o-scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: $gray-400 transparent;
+    scrollbar-color: var(--gray-400) transparent;
 }
 
 .o-text-white {
     color: #FFF !important;
+}
+
+.o-text-wrap-balance {
+    text-wrap: balance;
 }
 
 .o-xsmaller {
@@ -287,15 +348,15 @@ $o-mail-utilities: map-merge(
 }
 
 .o-yellow {
-    color: $yellow;
+    color: var(--yellow);
 }
 
-@mixin o-mail-call-bordered($opacity) {
-    border: 1px solid rgba($o-action, $opacity) !important;
-    background-color: mix(mix($white, $gray-100, 15%), $o-action, 97.5%) !important;
+.o-mail-callBordered {
+    border: 1px solid color-mix(in srgb, var(--o-action) calc(var(--o-mail-callBordered-opacity, .35) * 100%), transparent) !important;
+    background-color: color-mix(in srgb, color-mix(in srgb, var(--white) 15%, var(--gray-100)) 97.5%, var(--o-action)) !important;
 }
 
-// see `@mixin button-variant`, this is the implementation without requiring `.btn` classname
+/* see `@mixin button-variant`, this is the implementation without requiring `.btn` classname */
 @mixin o-mention-variant(
     $background,
     $outline,
@@ -335,12 +396,12 @@ $o-mail-utilities: map-merge(
 
 a.o_mail_redirect, a.o_channel_redirect, a.o-discuss-mention, a.o_message_redirect_transformed {
     user-select: none;
-    border-radius: $btn-border-radius-sm;
-    padding: 0rem 0.15rem;
-    margin: 0rem 0.025rem;
+    border-radius: var(--o-bs-btn-border-radius-lg);
+    padding: 0rem 0.25rem;
+    margin: 0rem;
     outline: 1px solid;
     outline-offset: -1px;
-    font-weight: $font-weight-bold;
+    font-weight: var(--o-bs-font-weight-bold);
     display: inline-block;
 }
 
@@ -354,25 +415,31 @@ a.o-discuss-mention {
 }
 
 .o-discuss-inCallIcon {
-    @include o-mail-call-bordered(.35);
-    color: $o-action;
+    --o-mail-callBordered-opacity: .35; /* not inherited from a bordered parent */
+    color: var(--o-action);
     aspect-ratio: 1;
 
-
     &.o-muted {
-        border-color: $gray-400 !important;
-        color: $gray-700;
+        border-color: var(--gray-400) !important;
+        color: var(--gray-700);
     }
 }
 
 .o-mail-DiscussSystray {
-    --border-color: #{$o-gray-300} !important; // cancel custom border color of dropdown
+    --border-color: var(--o-gray-300) !important; /* cancel custom border color of dropdown */
 }
 
 .o-mail-systrayFullscreenDropdownMenu {
-    top: $o-navbar-height !important;
-    height: calc(100% - #{$o-navbar-height}); // no bottom-0 otherwise performance issue
+    top: var(--o-navbar-height) !important;
+    height: calc(100% - var(--o-navbar-height)); /* no bottom-0 otherwise performance issue */
     border-radius: 0 !important;
+}
+
+.o-disable-safari-native-long-press {
+    /* Prevent user selection so that this isn't accidentally triggered with long-press. */
+    -webkit-touch-callout: none; /* disable iOS Safari native selection UI */
+    -webkit-user-select: none; /* disable iOS Safari native selection UI */
+    user-select: none;
 }
 
 .o-visible-short-delay {
@@ -386,8 +453,8 @@ a.o-discuss-mention {
     }
 }
 
-// .o-opacity-hoberable class disable the opacity effect (see opacity-100-hover) on
-// device that dont support the hover effect (mainly touch device).
+/* .o-opacity-hoberable class disable the opacity effect (see opacity-100-hover) on
+   device that dont support the hover effect (mainly touch device). */
 @media (hover: none) {
     .o-opacity-hoverable {
         opacity: 100 !important;
@@ -395,7 +462,6 @@ a.o-discuss-mention {
 }
 
 .o-mail-favorite {
-    color: $o-main-favorite-color;
+    color: var(--o-main-favorite-color);
     filter: drop-shadow(1px 1px 0px #000000b0);
 }
-

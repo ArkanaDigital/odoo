@@ -1,4 +1,4 @@
-import { animationFrame, expect, getFixture, test } from "@odoo/hoot";
+import { animationFrame, expect, getFixture, queryOne, test } from "@odoo/hoot";
 import {
     Component,
     onMounted,
@@ -16,7 +16,8 @@ import { usePopover } from "@web/core/popover/popover_hook";
 
 test("close popover when component is unmounted", async () => {
     class Comp extends Component {
-        static template = xml`<div t-att-id="this.props.id">in popover</div>`;
+        static template = xml`<div t-att-id="this.id">in popover</div>`;
+        id = useProps.static("id", t.string());
     }
 
     class CompWithPopover extends Component {
@@ -77,7 +78,6 @@ test("popover opened from another", async () => {
                 <button class="pop-open" t-on-click="(ev) => this.popover.open(ev.target, {})">open popover</button>
             </div>
         `;
-        props = useProps();
         setup() {
             this.popover = usePopover(Comp, {
                 popoverClass: `popover-${++Comp.id}`,
@@ -145,4 +145,34 @@ test("propagate scope to popover", async () => {
     await mountWithCleanup(Parent);
     await animationFrame();
     expect(".o_popover").toHaveText("abc");
+});
+
+test("popover reopened while the previous one closes itself", async () => {
+    class Comp extends Component {
+        static template = xml`<div t-out="this.text"/>`;
+        text = useProps.static("text", t.string());
+    }
+
+    class Parent extends Component {
+        static template = xml`<div><span class="first"/><span class="second"/></div>`;
+
+        setup() {
+            this.popover = usePopover(Comp);
+        }
+    }
+
+    const parent = await mountWithCleanup(Parent);
+    parent.popover.open(queryOne(".first"), { text: "first" });
+    await animationFrame();
+    expect(".o_popover").toHaveText("first");
+
+    queryOne(".first").remove();
+    parent.popover.open(queryOne(".second"), { text: "second" });
+    await animationFrame();
+    expect(".o_popover").toHaveText("second");
+    expect(parent.popover.isOpen).toBe(true);
+
+    parent.popover.close();
+    await animationFrame();
+    expect(".o_popover").toHaveCount(0);
 });

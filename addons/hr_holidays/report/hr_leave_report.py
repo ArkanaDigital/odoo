@@ -52,7 +52,7 @@ class HrLeaveReport(models.Model):
                     allocation.employee_id as employee_id,
                     allocation.name as name,
                     allocation.number_of_days as number_of_days,
-                    allocation.number_of_hours_display as number_of_hours,
+                    allocation.number_of_hours as number_of_hours,
                     v.department_id as department_id,
                     allocation.work_entry_type_id as work_entry_type_id,
                     allocation.state as state,
@@ -81,7 +81,7 @@ class HrLeaveReport(models.Model):
                 from hr_leave as request
                 inner join hr_employee as employee on (request.employee_id = employee.id)
                 LEFT JOIN hr_version v ON v.id = employee.current_version_id
-                where employee.active IS True
+                where employee.active IS True AND request.time_rule_id IS NULL
                 ) leaves
             );
         """)

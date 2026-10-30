@@ -3,6 +3,7 @@ import { _t } from "@web/core/l10n/translation";
 import { user } from "@web/core/user";
 import { sortBy } from "@web/core/utils/arrays";
 import { KeepLast, Race } from "@web/core/utils/concurrency";
+import { getAggregateCurrencyId, getCurrencyAggregateSpecs } from "@web/model/currency_aggregates";
 import { addPropertyFieldDefs, Model } from "@web/model/model";
 import { rankInterval } from "@web/search/utils/dates";
 import { getGroupBy } from "@web/search/utils/group_by";
@@ -90,6 +91,14 @@ export class GraphModel extends Model {
     //--------------------------------------------------------------------------
 
     /**
+     * @returns {boolean} true if the x-axis is grouped by a date or datetime field
+     */
+    hasDateXAxis() {
+        const { fields, groupBy } = this.metaData;
+        return ["date", "datetime"].includes(fields[groupBy[0]?.fieldName]?.type);
+    }
+
+    /**
      * @protected
      * @param {Object} [params={}]
      * @returns {Object}
@@ -110,6 +119,9 @@ export class GraphModel extends Model {
             if (metaData.mode === "line") {
                 metaData.cumulated =
                     "graph_cumulated" in context ? context.graph_cumulated : metaData.cumulated;
+            } else if (metaData.mode === "bar") {
+                metaData.allDates =
+                    "graph_all_dates" in context ? context.graph_all_dates : metaData.allDates;
             }
         }
 
@@ -165,6 +177,9 @@ export class GraphModel extends Model {
         // dataPoints + labels --> datasetsTmp --> datasets
         const datasetsTmp = {};
         for (const dataPt of dataPoints) {
+            if (dataPt.count === 0 && this.metaData.groupBy.length > 1) {
+                continue;
+            }
             const { currencyId, domain, labelIndex, trueLabel, value, identifier, cumulatedStart } =
                 dataPt;
             const datasetLabel = this._getDatasetLabel(dataPt);
@@ -255,6 +270,8 @@ export class GraphModel extends Model {
             processedDataPoints = this.dataPoints.filter(
                 (dataPoint) => dataPoint.value > 0 && dataPoint.count !== 0
             );
+        } else if (this.metaData.allDates && this.hasDateXAxis()) {
+            processedDataPoints = this.dataPoints;
         } else {
             processedDataPoints = this.dataPoints.filter((dataPoint) => dataPoint.count !== 0);
         }
@@ -295,9 +312,10 @@ export class GraphModel extends Model {
         const sequentialSpec = sequentialField && groupBy[0].spec;
         const measures = ["__count"];
         let fieldAggregate = "__count",
-            monetaryAggregates;
+            currencySpec,
+            convertedSpec;
         if (measure !== "__count") {
-            let { aggregator, currency_field, name, type } = fields[measure];
+            let { aggregator, currency_field, type } = fields[measure];
             if (type === "many2one") {
                 aggregator = "count_distinct";
             }
@@ -307,11 +325,9 @@ export class GraphModel extends Model {
                 );
             }
             if (type === "monetary" && currency_field) {
-                monetaryAggregates = [
-                    `${currency_field}:array_agg_distinct`,
-                    `${name}:sum_currency`,
-                ];
-                measures.push(...monetaryAggregates);
+                const currencyAggregates = getCurrencyAggregateSpecs(fields[measure]);
+                [currencySpec, convertedSpec] = currencyAggregates;
+                measures.push(...currencyAggregates);
             }
             fieldAggregate = `${measure}:${aggregator}`;
             measures.push(fieldAggregate);
@@ -420,20 +436,22 @@ export class GraphModel extends Model {
                 cumulatedStart: cumulatedStartValue[groupId] || 0,
             };
             // There is a currency aggregate
-            if (monetaryAggregates && __count) {
-                const currencies = group[monetaryAggregates[0]];
-                dataPoint.currencyId = currencies[0];
-                dataPoint.convertedValue = group[monetaryAggregates[1]];
-                if (currencies.length > 1) {
-                    dataPoint.currencyId = defaultCurrency;
-                    dataPoint.value = dataPoint.convertedValue;
+            if (currencySpec && __count) {
+                const currencies = group[currencySpec];
+                dataPoint.currencyId = getAggregateCurrencyId(fields[measure], currencies);
+                if (convertedSpec) {
+                    dataPoint.convertedValue = group[convertedSpec];
+                    if (currencies.length > 1) {
+                        dataPoint.value = dataPoint.convertedValue;
+                    }
                 }
                 graphCurrencies.add(dataPoint.currencyId);
             }
             dataPoints.push(dataPoint);
         }
         for (const dataPoint of dataPoints) {
-            if (graphCurrencies.size > 1) {
+            // points without a converted value keep their own currency
+            if (graphCurrencies.size > 1 && dataPoint.convertedValue !== undefined) {
                 dataPoint.currencyId = defaultCurrency;
                 dataPoint.value = dataPoint.convertedValue;
             }

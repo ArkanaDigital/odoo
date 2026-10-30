@@ -3,40 +3,53 @@ import { fields, Record } from "@mail/model/export";
 
 import { router } from "@web/core/browser/router";
 
+const PANEL_WIDTH = 400;
 const SIDEBAR_WIDTH = 400;
 
 export class DiscussApp extends Record {
+    setup() {
+        super.setup(...arguments);
+        this.onChange(
+            () => [this.thread],
+            function onChangeThread(thread) {
+                if (!thread && !this.hasRestoredThread) {
+                    // Keep the stored id until the restore reads it.
+                    return;
+                }
+                this.lastActiveId = this.store["mail.thread"].localIdToActiveId(thread?.localId);
+            },
+            { immediate: true }
+        );
+    }
+
     static singleton = true;
 
     INSPECTOR_WIDTH = 300;
-    sidebarState = fields.One("MessagingMenuUIState", {
-        compute() {
-            return {
+    sidebarState = this.computed(
+        () =>
+            this.store.MessagingMenuUIState.get("discuss.sidebar") ??
+            this.store.MessagingMenuUIState.insert({
                 id: "discuss.sidebar",
-                activeTab: this.store?.inPublicPage ? MENU_TABS.CHANNEL : MENU_TABS.CHAT,
-            };
-        },
-    });
+                activeTab: this.store.inPublicPage ? MENU_TABS.CHANNEL : MENU_TABS.CHAT,
+            })
+    );
     isActive = false;
-    isMemberPanelOpenByDefault = fields.Attr(true, { localStorage: true });
-    lastActiveId = fields.Attr(undefined, { localStorage: true });
-    thread = fields.One("mail.thread", {
-        inverse: "discussAppAsThread",
-        /** @this {import("models").DiscussApp} */
-        onUpdate() {
-            this.lastActiveId = this.store["mail.thread"].localIdToActiveId(this.thread?.localId);
-            if (this.thread) {
-                const menu = this.store.messagingMenu;
-                if (this.sidebarState.activeTab?.notEq(menu.bookmarkTab)) {
-                    const fallback = this.store.inPublicPage ? menu.channelTab : menu.chatTab;
-                    this.sidebarState.activeTab =
-                        this.thread.channel?.primaryMessagingMenuTab ?? fallback;
-                }
-            }
-        },
-    });
+    isMemberPanelOpenByDefault = this.localStorage(true);
+    isSidebarCollapsed = this.computed(
+        () => this.isSidebarCollapseEnabled && this.canCollapseSidebar()
+    );
+    isSidebarCollapseEnabled = this.localStorage(false);
+    lastActiveId = this.localStorage(undefined);
+    /** Width shared by the panels on the side of the conversation. */
+    panelWidth = this.localStorage(PANEL_WIDTH);
+    thread = fields.One("mail.thread", { inverse: "discussAppAsThread" });
     hasRestoredThread = false;
-    sidebarWidth = fields.Attr(SIDEBAR_WIDTH, { localStorage: true });
+    sidebarWidth = this.localStorage(SIDEBAR_WIDTH);
+
+    /** Whether the sidebar offers to collapse: its toggle is in the tabs. */
+    canCollapseSidebar() {
+        return Boolean(this.store.messagingMenu?.sortedVisibleTabs.length);
+    }
 
     /**
      * Write the current discuss selection to the URL and action context so it survives

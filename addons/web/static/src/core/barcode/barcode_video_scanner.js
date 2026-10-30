@@ -12,10 +12,11 @@ import {
     onWillUnmount,
     proxy,
     signal,
-    status,
     t,
     useProps,
+    useScope,
 } from "@odoo/owl";
+import { isIOS } from "@web/core/browser/feature_detection";
 import { _t } from "@web/core/l10n/translation";
 import { pick } from "@web/core/utils/objects";
 
@@ -35,6 +36,8 @@ export class BarcodeVideoScanner extends Component {
         delayBetweenScan: t.number().optional(),
     });
     videoPreviewRef = signal.ref();
+
+    scope = useScope();
 
     /**
      * @override
@@ -84,12 +87,22 @@ export class BarcodeVideoScanner extends Component {
                 this.props.onError(new Error(errorMessage));
                 return;
             }
-            const videoEl = this.videoPreviewRef();
+            let videoEl = this.videoPreviewRef();
             if (!videoEl) {
                 this.cleanStreamAndTimeout();
                 const errorMessage = _t("Barcode Video Scanner could not be mounted properly.");
                 this.props.onError(new Error(errorMessage));
                 return;
+            }
+            if (isIOS()) {
+                // Since iOS 27, WebKit doesn't paint a MediaStream in a <video> created by
+                // cloning a <template> (which is how Owl renders blocks): re-import the node
+                // into the main document. See https://bugs.webkit.org/show_bug.cgi?id=320979
+                // TODO: remove once the WebKit fix is shipped.
+                const importedVideoEl = document.importNode(videoEl);
+                videoEl.replaceWith(importedVideoEl);
+                videoEl = importedVideoEl;
+                this.videoPreviewRef.set(videoEl);
             }
             videoEl.srcObject = this.stream;
             const ready = await this.isVideoReady();
@@ -137,7 +150,7 @@ export class BarcodeVideoScanner extends Component {
         // FIXME: even if it shouldn't happened, a timeout could be useful here.
         while (!isVideoElementReady(this.videoPreviewRef())) {
             await delay(10);
-            if (status(this) === "destroyed") {
+            if (this.scope.isDestroyed()) {
                 return false;
             }
         }

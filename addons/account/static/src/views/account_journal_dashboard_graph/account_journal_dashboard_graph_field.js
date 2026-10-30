@@ -1,5 +1,5 @@
 import { cookie } from "@web/core/browser/cookie";
-import { getCustomColor } from "@web/core/colors/colors";
+import { getColor, getCustomColor } from "@web/core/colors/colors";
 import { registry } from "@web/core/registry";
 import {
     JournalDashboardGraphField,
@@ -7,21 +7,20 @@ import {
 } from "@web/views/fields/journal_dashboard_graph/journal_dashboard_graph_field";
 
 const colorScheme = cookie.get("color_scheme");
-const GRAPH_GRID_COLOR = getCustomColor(colorScheme, "#d8dadd", "#3C3E4B");
-const GRAPH_LABEL_COLOR = getCustomColor(colorScheme, "#111827", "#E4E4E4");
+const GRAPH_GRID_COLOR = getCustomColor(colorScheme, "#d8dadd", "#3A3B41");
+const GRAPH_LABEL_COLOR = getCustomColor(colorScheme, "#6c757d", "#ADB5BD");
 
 export class AccountJournalDashboardGraphField extends JournalDashboardGraphField {
     getBarChartConfig() {
-        if (this.data[0].type !== "monthly_paid_unpaid") {
+        if (this.data[0].type !== "monthly_total") {
             return super.getBarChartConfig();
         }
 
-        return this.getMonthlyPaidUnpaidChartConfig();
+        return this.getMonthlyTotalChartConfig();
     }
 
-    getMonthlyPaidUnpaidChartConfig() {
-        const paidColor = "#875A7B";
-        const unpaidColor = "#DEC7D6";
+    getMonthlyTotalChartConfig() {
+        const totalColor = getColor(2, colorScheme, "odoo");
 
         return {
             type: "bar",
@@ -29,17 +28,9 @@ export class AccountJournalDashboardGraphField extends JournalDashboardGraphFiel
                 labels: this.data[0].labels,
                 datasets: [
                     {
-                        backgroundColor: paidColor,
-                        data: this.data[0].paid_values,
-                        label: this.data[0].paid_key,
-                        stack: "invoice_status",
-                        borderWidth: 0,
-                    },
-                    {
-                        backgroundColor: unpaidColor,
-                        data: this.data[0].unpaid_values,
-                        label: this.data[0].unpaid_key,
-                        stack: "invoice_status",
+                        backgroundColor: totalColor,
+                        data: this.data[0].values,
+                        label: this.data[0].key,
                         borderWidth: 0,
                     },
                 ],
@@ -55,12 +46,10 @@ export class AccountJournalDashboardGraphField extends JournalDashboardGraphFiel
                 scales: {
                     y: {
                         display: false,
-                        stacked: true,
                     },
                     x: {
-                        stacked: true,
                         grid: {
-                            color: GRAPH_GRID_COLOR,
+                            display: false,
                         },
                         ticks: {
                             color: GRAPH_LABEL_COLOR,

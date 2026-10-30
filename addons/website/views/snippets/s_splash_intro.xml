@@ -17,14 +17,14 @@
             </div>
         </div>
         <a class="o_scroll_button rounded-circle align-items-center justify-content-center mx-auto mb-4 o_cc o_cc1 o_not_editable" href="#" title="Scroll down to next section">
-            <i class="oi oi-2x" data-icon="keyboard_arrow_down"/>
+            <i class="oi oi-2x" data-icon="keyboard_arrow_down" role="img" aria-hidden="true"/>
         </a>
     </section>
 </template>
 
 <asset id="website.s_splash_intro_000_scss" name="Splash Intro 000 SCSS">
     <bundle>web.assets_frontend</bundle>
-    <path>website/static/src/snippets/s_splash_intro/000.scss</path>
+    <path>website/static/src/snippets/s_splash_intro/000.css</path>
 </asset>
 
 </odoo>

@@ -10,9 +10,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 18.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-17 17:38+0000\n"
-"PO-Revision-Date: 2026-06-20 06:47+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-09-11 17:42+0000\n"
+"PO-Revision-Date: 2026-09-09 14:02+0000\n"
+"Last-Translator: \"Larissa Manderfeld (lman)\" <lman@odoo.com>\n"
 "Language-Team: German <https://translate.odoo.com/projects/odoo-master/"
 "html_editor/de/>\n"
 "Language: de\n"
@@ -20,7 +20,16 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: html_editor
+#: model:ir.module.module,description:base.module_html_editor
+msgid ""
+"\n"
+"Html Editor\n"
+"==========================\n"
+"This addon provides an extensible, maintainable editor.\n"
+msgstr ""
 
 #. module: html_editor
 #. odoo-javascript
@@ -69,6 +78,11 @@ msgstr "4 Spalten"
 #: code:addons/html_editor/static/src/main/star_plugin.js:0
 msgid "5 Stars"
 msgstr "5 Sterne"
+
+#. module: html_editor
+#: model:ir.module.module,summary:base.module_html_editor
+msgid "A Html Editor component and plugin system."
+msgstr ""
 
 #. module: html_editor
 #. odoo-javascript
@@ -329,7 +343,7 @@ msgstr "Basis"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/user_signature_plugin.js:0
 msgid "Basic Block"
-msgstr ""
+msgstr "Basisblock"
 
 #. module: html_editor
 #. odoo-javascript
@@ -347,7 +361,7 @@ msgstr "Fett (Strg + B)"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/media/image_plugin.js:0
 msgid "Break text"
-msgstr ""
+msgstr "Textumbruch"
 
 #. module: html_editor
 #. odoo-javascript
@@ -456,7 +470,7 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/movenode_plugin.xml:0
 msgid "Click to select"
-msgstr ""
+msgstr "Zum Auswählen klicken"
 
 #. module: html_editor
 #. odoo-javascript
@@ -631,6 +645,18 @@ msgstr "Daten"
 
 #. module: html_editor
 #. odoo-javascript
+#: code:addons/html_editor/static/src/others/embedded_components/plugins/date_plugin/date_plugin.js:0
+msgid "Date"
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
+#: code:addons/html_editor/static/src/others/embedded_components/plugins/date_plugin/date_plugin.js:0
+msgid "Date and Time"
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
 #: code:addons/html_editor/static/src/backend/dynamic_field/field_selector_popover.xml:0
 #: code:addons/html_editor/static/src/main/media/image_plugin.js:0
 msgid "Default"
@@ -705,7 +731,7 @@ msgstr "Dokumente"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/movenode_plugin.xml:0
 msgid "Drag to move"
-msgstr ""
+msgstr "Zum Verschieben ziehen"
 
 #. module: html_editor
 #. odoo-python
@@ -737,7 +763,7 @@ msgstr "Feld bearbeiten"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/media/video/video_plugin.js:0
 msgid "Embed %s Video"
-msgstr ""
+msgstr "Video %s einbetten"
 
 #. module: html_editor
 #. odoo-javascript
@@ -755,7 +781,7 @@ msgstr "Youtube-Video einbetten"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/media/video/video_plugin.js:0
 msgid "Embed the %s video in the document."
-msgstr ""
+msgstr "Betten Sie das Video %s in das Dokument ein."
 
 #. module: html_editor
 #. odoo-javascript
@@ -863,13 +889,18 @@ msgstr "Format"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/media/media_dialog/video_selector.xml:0
 msgid "Google Drive"
-msgstr ""
+msgstr "Google Drive"
 
 #. module: html_editor
 #. odoo-javascript
 #: code:addons/html_editor/static/src/components/color_picker/tabs/gradient/color_picker_gradient_tab.js:0
 msgid "Gradient"
 msgstr "Farbverlauf"
+
+#. module: html_editor
+#: model:ir.module.module,shortdesc:base.module_html_editor
+msgid "HTML Editor"
+msgstr ""
 
 #. module: html_editor
 #: model:ir.model,name:html_editor.model_ir_http
@@ -996,6 +1027,12 @@ msgstr "Metadaten des Verlaufs"
 
 #. module: html_editor
 #. odoo-javascript
+#: code:addons/html_editor/static/src/others/embedded_components/plugins/date_plugin/date_plugin.js:0
+msgid "Hour"
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
 #: code:addons/html_editor/static/src/fields/html_field.js:0
 msgid "Html"
 msgstr "HTML"
@@ -1014,7 +1051,7 @@ msgstr "Test des HTML-Editor-Konverters"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/components/color_picker/custom_color_picker/custom_color_picker.xml:0
 msgid "Hue"
-msgstr ""
+msgstr "Färbung"
 
 #. module: html_editor
 #: model:ir.model.fields,field_description:html_editor.field_html_editor_converter_test_sub__id
@@ -1077,7 +1114,7 @@ msgstr "Bilder"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/media/image_plugin.js:0
 msgid "Inline"
-msgstr ""
+msgstr "Inline"
 
 #. module: html_editor
 #. odoo-javascript
@@ -1159,6 +1196,18 @@ msgstr "Ein Banner „Info“ einfügen"
 
 #. module: html_editor
 #. odoo-javascript
+#: code:addons/html_editor/static/src/others/embedded_components/plugins/date_plugin/date_plugin.js:0
+msgid "Insert any date"
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
+#: code:addons/html_editor/static/src/others/embedded_components/plugins/date_plugin/date_plugin.js:0
+msgid "Insert any date and time"
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
 #: code:addons/html_editor/static/src/main/table/table_menu.js:0
 msgid "Insert below"
 msgstr "Unterhalb einfügen"
@@ -1195,15 +1244,27 @@ msgstr "Rechts einfügen"
 
 #. module: html_editor
 #. odoo-javascript
+#: code:addons/html_editor/static/src/others/embedded_components/plugins/date_plugin/date_plugin.js:0
+msgid "Insert the current time"
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
+#: code:addons/html_editor/static/src/others/embedded_components/plugins/date_plugin/date_plugin.js:0
+msgid "Insert today's date"
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
 #: code:addons/html_editor/static/src/main/user_signature_plugin.js:0
 msgid "Insert your email signature"
-msgstr ""
+msgstr "Ihre E-Mail-Signatur einfügen"
 
 #. module: html_editor
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/media/signature_plugin.js:0
 msgid "Insert your handwritten signature"
-msgstr ""
+msgstr "Handschriftliche Unterschrift einfügen"
 
 #. module: html_editor
 #. odoo-javascript
@@ -1222,6 +1283,11 @@ msgstr "Kursiv (Strg + I)"
 #: code:addons/html_editor/static/src/main/align/align_plugin.js:0
 msgid "Justify"
 msgstr "Ausrichten"
+
+#. module: html_editor
+#: model:ir.model.fields.selection,name:html_editor.selection__html_editor_converter_test__selection_str__d
+msgid "La réponse D"
+msgstr ""
 
 #. module: html_editor
 #. odoo-javascript
@@ -1302,15 +1368,9 @@ msgstr "Lädt …"
 
 #. module: html_editor
 #. odoo-javascript
-#: code:addons/html_editor/static/src/main/link/link_popover.js:0
-msgid "Logout"
-msgstr "Abmelden"
-
-#. module: html_editor
-#. odoo-javascript
 #: code:addons/html_editor/static/src/main/media/media_dialog/video_selector.xml:0
 msgid "Loom"
-msgstr ""
+msgstr "Loom"
 
 #. module: html_editor
 #. odoo-javascript
@@ -1322,7 +1382,7 @@ msgstr "Schleife"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/media/media_dialog/video_selector.xml:0
 msgid "M:SS"
-msgstr ""
+msgstr "M:SS"
 
 #. module: html_editor
 #. odoo-javascript
@@ -1345,9 +1405,15 @@ msgstr "Mittelgroße Abschnittsüberschrift"
 
 #. module: html_editor
 #. odoo-javascript
-#: code:addons/html_editor/static/src/main/table/table_menu.js:0
+#: code:addons/html_editor/static/src/main/table/table_plugin.js:0
 msgid "Merge Cells"
 msgstr "Zellen zusammenführen"
+
+#. module: html_editor
+#. odoo-javascript
+#: code:addons/html_editor/static/src/main/table/table_plugin.js:0
+msgid "Merge selected table cells"
+msgstr ""
 
 #. module: html_editor
 #. odoo-javascript
@@ -1485,7 +1551,7 @@ msgstr "Nicht-interne Benutzer können keine großen Dateien hochladen."
 #: code:addons/html_editor/static/src/main/media/image_plugin.js:0
 #: code:addons/html_editor/static/src/main/table/table_border_style_selector.xml:0
 msgid "None"
-msgstr ""
+msgstr "k. A."
 
 #. module: html_editor
 #. odoo-javascript
@@ -1525,9 +1591,15 @@ msgstr "Ok"
 
 #. module: html_editor
 #. odoo-javascript
-#: code:addons/html_editor/static/src/main/table/table_menu.js:0
-msgid "Only rows or cells selection can be merged"
-msgstr "Es können nur ausgewählte Zeilen oder Zellen zusammengeführt werden"
+#: code:addons/html_editor/static/src/backend/dynamic_field/dynamic_field_plugin.js:0
+msgid "Oops! Select a model for this template before editing fields."
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
+#: code:addons/html_editor/static/src/backend/dynamic_field/dynamic_field_plugin.js:0
+msgid "Oops! Select a model for this template before inserting fields."
+msgstr ""
 
 #. module: html_editor
 #. odoo-python
@@ -1558,7 +1630,7 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/html_editor/static/src/components/color_picker/custom_color_picker/custom_color_picker.xml:0
 msgid "Opacity"
-msgstr ""
+msgstr "Trübheit"
 
 #. module: html_editor
 #. odoo-javascript
@@ -1599,7 +1671,7 @@ msgstr "Als URL einfügen"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/components/color_picker/custom_color_picker/custom_color_picker.xml:0
 msgid "Pick a color from the screen"
-msgstr ""
+msgstr "Wählen Sie eine Farbe auf dem Bildschirm aus"
 
 #. module: html_editor
 #. odoo-javascript
@@ -1641,11 +1713,6 @@ msgstr "Qu'est-ce qu'il fout ce maudit pancake, tabernacle ?"
 #: model:ir.model.fields.selection,name:html_editor.selection__html_editor_converter_test__selection_str__a
 msgid "Qu'il n'est pas arrivé à Toronto"
 msgstr "Qu'il n'est pas arrivé à Toronto"
-
-#. module: html_editor
-#: model:ir.model.fields.selection,name:html_editor.selection__html_editor_converter_test__selection_str__b
-msgid "Qu'il était supposé arriver à Toronto"
-msgstr "Qu'il était supposé arriver à Toronto"
 
 #. module: html_editor
 #. odoo-javascript
@@ -1751,7 +1818,7 @@ msgstr "Bild entfernen (LÖSCHEN)"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/core/format_plugin.js:0
 msgid "Remove Format (Ctrl + Space)"
-msgstr ""
+msgstr "Format entfernen (Strg + Leerzeichen)"
 
 #. module: html_editor
 #. odoo-javascript
@@ -1806,7 +1873,7 @@ msgstr "Medien ersetzen"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/components/color_picker/color_picker.xml:0
 msgid "Reset"
-msgstr ""
+msgstr "Zurücksetzen"
 
 #. module: html_editor
 #. odoo-javascript
@@ -1914,13 +1981,13 @@ msgstr "Anzahl Zeilen"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/components/color_picker/custom_color_picker/custom_color_picker.xml:0
 msgid "Saturation and brightness color picker."
-msgstr ""
+msgstr "Farbwähler für Sättigung und Helligkeit."
 
 #. module: html_editor
 #. odoo-javascript
 #: code:addons/html_editor/static/src/components/color_picker/custom_color_picker/custom_color_picker.js:0
 msgid "Saturation: %(saturationLvl)s %. Brightness: %(brightnessLvl)s %"
-msgstr ""
+msgstr "Sättigung: %(saturationLvl)s %. Helligkeit: %(brightnessLvl)s%"
 
 #. module: html_editor
 #. odoo-javascript
@@ -1998,7 +2065,7 @@ msgstr "Schriftgröße auswählen"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/font/font_type_plugin.js:0
 msgid "Select text style"
-msgstr ""
+msgstr "Textstil auswählen"
 
 #. module: html_editor
 #. odoo-javascript
@@ -2016,7 +2083,7 @@ msgstr "Trennlinie"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/media/image_plugin.js:0
 msgid "Set image alignment"
-msgstr ""
+msgstr "Bildausrichtung festlegen"
 
 #. module: html_editor
 #. odoo-javascript
@@ -2072,7 +2139,7 @@ msgstr "Kleine Abschnittsüberschrift"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/components/color_picker/tabs/solid/color_picker_solid_tab.js:0
 msgid "Solid"
-msgstr ""
+msgstr "Voll"
 
 #. module: html_editor
 #. odoo-python
@@ -2162,19 +2229,19 @@ msgstr "Pop-up-Fenster zur Tabellengröße"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/table/table_border_plugin.js:0
 msgid "Table border color"
-msgstr ""
+msgstr "Farbe der Tabellenränder"
 
 #. module: html_editor
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/table/table_border_plugin.js:0
 msgid "Table border style"
-msgstr ""
+msgstr "Stil der Tabellenränder"
 
 #. module: html_editor
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/table/table_border_plugin.js:0
 msgid "Table border width"
-msgstr ""
+msgstr "Breite der Tabellenränder"
 
 #. module: html_editor
 #. odoo-javascript
@@ -2304,6 +2371,12 @@ msgstr ""
 
 #. module: html_editor
 #. odoo-javascript
+#: code:addons/html_editor/static/src/others/embedded_components/plugins/date_plugin/date_plugin.js:0
+msgid "Today"
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
 #: code:addons/html_editor/static/src/main/list/list_plugin.js:0
 msgid "Toggle List"
 msgstr "Liste ein/aus"
@@ -2396,7 +2469,7 @@ msgstr "In Zeile umwandeln"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/media/media_dialog/video_selector.xml:0
 msgid "Twitch"
-msgstr ""
+msgstr "Twitch"
 
 #. module: html_editor
 #. odoo-javascript
@@ -2448,12 +2521,6 @@ msgstr "Vereinheitlicht"
 
 #. module: html_editor
 #. odoo-javascript
-#: code:addons/html_editor/static/src/main/table/table_menu.js:0
-msgid "Unmerge Cells"
-msgstr "Zellzusammenführung aufheben"
-
-#. module: html_editor
-#. odoo-javascript
 #: code:addons/html_editor/static/src/backend/dynamic_field/field_selector_popover.xml:0
 msgid "Update"
 msgstr "Aktualisieren"
@@ -2492,6 +2559,10 @@ msgid ""
 "keys to adapt the saturation. Press the Control or Command key at the same "
 "time to have finer control."
 msgstr ""
+"Verwenden Sie die Aufwärts- und Abwärtspfeiltasten, um die Helligkeit "
+"anzupassen. Verwenden Sie die Links- und Rechtspfeiltasten, um die Sättigung "
+"anzupassen. Drücken Sie gleichzeitig die Strg- oder Befehlstaste, um "
+"genauere Ergebnisse zu erhalten."
 
 #. module: html_editor
 #. odoo-javascript
@@ -2567,7 +2638,7 @@ msgstr "Zeilenumbruch"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/media/image_plugin.js:0
 msgid "Wrap text"
-msgstr ""
+msgstr "Text umbrechen"
 
 #. module: html_editor
 #. odoo-javascript
@@ -2585,7 +2656,7 @@ msgstr "Eine Legende schreiben ..."
 #. odoo-javascript
 #: code:addons/html_editor/static/src/main/media/image_plugin.js:0
 msgid "XL"
-msgstr ""
+msgstr "XL"
 
 #. module: html_editor
 #. odoo-javascript
@@ -2702,7 +2773,7 @@ msgstr "Dokument"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/backend/dynamic_field/dynamic_field_plugin.js:0
 msgid "dynamic"
-msgstr ""
+msgstr "dynamisch"
 
 #. module: html_editor
 #. odoo-javascript
@@ -2720,7 +2791,7 @@ msgstr "Datei"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/components/color_picker/custom_color_picker/custom_color_picker.xml:0
 msgid "hex"
-msgstr ""
+msgstr "hex"
 
 #. module: html_editor
 #. odoo-javascript
@@ -2738,13 +2809,13 @@ msgstr "oder"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/backend/dynamic_field/dynamic_field_plugin.js:0
 msgid "personalize"
-msgstr ""
+msgstr "personalisieren"
 
 #. module: html_editor
 #. odoo-javascript
 #: code:addons/html_editor/static/src/backend/dynamic_field/dynamic_field_plugin.js:0
 msgid "placeholder"
-msgstr ""
+msgstr "Platzhalter"
 
 #. module: html_editor
 #. odoo-javascript
@@ -2769,11 +2840,8 @@ msgstr "Websocket-Nachrichtbearbeitung"
 msgid "x"
 msgstr "x"
 
-#~ msgid "No pictograms found."
-#~ msgstr "Keine Piktogramme gefunden."
-
-#~ msgid "Try searching with other keywords."
-#~ msgstr "Probieren Sie es mit anderen Stichwörtern."
+#~ msgid "Qu'il était supposé arriver à Toronto"
+#~ msgstr "Qu'il était supposé arriver à Toronto"
 
 #~ msgid "Insert your signature"
 #~ msgstr "Ihre Signatur einfügen"

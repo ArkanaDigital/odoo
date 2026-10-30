@@ -1,7 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 {
-    "name": "Payment Provider: Paypal",
+    "name": "Payment Provider: PayPal",
     "version": "2.0",
     "category": "Accounting/Payment Providers",
     "sequence": 350,
@@ -10,14 +10,20 @@
     "depends": ["payment"],
     "data": [
         "views/payment_form_templates.xml",
+        "views/payment_paypal_templates.xml",
         "views/payment_provider_views.xml",
-        "views/payment_transaction_views.xml",
         "data/payment_method_data.xml",
         "data/payment_provider_data.xml",
     ],
     "post_init_hook": "post_init_hook",
     "uninstall_hook": "uninstall_hook",
-    "assets": {"web.assets_frontend": ["payment_paypal/static/src/**/*"]},
+    "assets": {
+        "web.assets_frontend": [
+            "payment_paypal/static/src/interactions/**/*",
+            "payment_paypal/static/src/scss/payment_paypal.css",
+        ],
+        "web.assets_backend": ["payment_paypal/static/src/onboarding/**/*"],
+    },
     "author": "Odoo S.A.",
     "license": "LGPL-3",
 }

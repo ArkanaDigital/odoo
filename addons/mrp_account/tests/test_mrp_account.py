@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 
+from odoo.addons.mrp.tests.common import TestMrpCommon
 from odoo.addons.mrp_account.tests.common import TestBomPriceCommon, TestBomPriceOperationCommon
 from odoo.tests import Form, tagged
 from odoo.tests.common import new_test_user
@@ -9,7 +10,7 @@ from odoo.tools import float_compare, float_round
 from odoo import Command, fields
 
 
-class TestMrpAccount(TestBomPriceCommon):
+class TestMrpAccount(TestBomPriceCommon, TestMrpCommon):
 
     _test_user_groups = (
         'mrp.group_mrp_user',  # subject: manufacturing orders (create/confirm/produce/unbuild)
@@ -213,6 +214,30 @@ class TestMrpAccount(TestBomPriceCommon):
             {'debit':  50.0, 'credit':  0.0},
         ])
 
+    def test_bom_and_mo_overview_extra_cost_with_byproduct(self):
+        """ Test that BoM and MO overviews split the extra cost between the finished
+        product and by-products according to their configured cost shares.
+        """
+        self.bom_2.sudo().write({
+            'type': 'normal',
+            'extra_cost': 100,
+            'byproduct_ids': [Command.create({
+                'product_id': self.screw.id,
+                'cost_share': 20,
+            })],
+        })
+        # Total cost including extra cost is 5725, split 80/20 between the finished product and by-product.
+        bom_data = self.env['report.mrp.report_bom_structure']._get_report_data(self.bom_2.id)['lines']
+        self.assertEqual(bom_data['bom_cost'], 4580)
+        self.assertEqual(bom_data['byproducts'][0]['bom_cost'], 1145)
+
+        mo = self._create_mo(self.bom_2, 1)
+        mo.button_mark_done()
+        mo_data = self.env['report.mrp.report_mo_overview'].get_report_values(mo.id)['data']
+        self.assertEqual(mo_data['summary']['mo_cost'], 4580)
+        self.assertEqual(mo_data['extras']['total_mo_cost'], 5725)
+        self.assertEqual(mo_data['byproducts']['summary']['mo_cost'], 1145)
+
     def test_mo_overview_comp_different_uom(self):
         """ Test that the overview takes into account the uom of the component in the price computation
         """
@@ -266,7 +291,7 @@ class TestMrpAccount(TestBomPriceCommon):
         mo = self._create_mo(self.bom_1, 1)
         mo.button_mark_done()
 
-        report = self.env['stock_account.stock.valuation.report']
+        report = self.env['account.stock.valuation.report']
         report_data_before = report._get_report_data(date=date_before)
 
         cost_before = report_data_before.get('cost_of_production', {}).get('value', 0)
@@ -275,6 +300,61 @@ class TestMrpAccount(TestBomPriceCommon):
         report_data_after = report._get_report_data(date=fields.Datetime.now())
         cost_after = report_data_after.get('cost_of_production', {}).get('value', 0)
         self.assertNotEqual(cost_after, 0)
+
+    def test_merge_then_qty_change_avco_prices_finished_moves(self):
+        """ Same scenario as mrp's test_merge_then_qty_change_no_double_production
+        but with an AVCO product: an order left with two finished moves for its
+        product must allocate its production cost across both moves."""
+        mo, _bom, product, component_1, component_2 = self.generate_mo(qty_final=30, qty_base_1=1, qty_base_2=1)
+        # AVCO so that the production cost values the finished moves.
+        product.categ_id = self.category_avco  # setup master-data
+        self.assertEqual(product.cost_method, 'average')
+        # 1 x component_1 + 1 x component_2 = 17.50 per produced unit.
+        component_1.standard_price = 10
+        component_2.standard_price = 7.5
+
+        productions = mo._split_productions({mo: [10, 10, 10]})
+        sibling_mo = productions[2]
+        productions[:2].action_merge()
+
+        # Create a move to simulate a MTO Manufacturing
+        # so the qty change copies the finished move (-> 2 moves)
+        sibling_mo.move_finished_ids.move_dest_ids = self.env['stock.move'].create({
+            'product_id': product.id,
+            'uom_id': product.uom_id.id,
+            'location_id': sibling_mo.location_dest_id.id,
+            'location_dest_id': self.env.ref('stock.stock_location_customers').id,
+        })
+        self.env['change.production.qty'].create({'mo_id': sibling_mo.id, 'product_qty': 15}).change_prod_qty()
+        sibling_mo.qty_producing = 15
+        sibling_mo._set_qty_producing()
+        sibling_mo.button_mark_done()
+
+        finished_moves = sibling_mo.move_finished_ids.filtered(lambda m: m.product_id == product)
+        self.assertEqual(sibling_mo.state, 'done')
+        self.assertEqual(sum(finished_moves.mapped('quantity')), 15.0)
+        # Both finished moves must carry the same, correct unit valuation.
+        self.assertEqual([move._get_price_unit() for move in finished_moves], [17.50, 17.50])
+
+    def test_finished_product_cannot_be_own_byproduct(self):
+        """ A duplicate stock move for the MO's own finished product on `move_finished_ids`
+        must not crash the MO Overview report: it must still compute a unit cost.
+        """
+        mo = self._create_mo(self.bom_1, 1)
+        mo.button_mark_done()
+        mo.action_toggle_is_locked()
+        self.assertEqual(mo.state, 'done')
+        self.env['stock.move'].create({
+            'product_id': mo.product_id.id,
+            'uom_id': mo.product_id.uom_id.id,
+            'quantity': 1.0,
+            'location_id': mo.production_location_id.id,
+            'location_dest_id': mo.location_dest_id.id,
+            'production_id': mo.id,
+        })
+        self.assertEqual(len(mo.move_finished_ids.filtered(lambda m: m.product_id == mo.product_id)), 2)
+        overview = self.env['report.mrp.report_mo_overview'].get_report_values(mo.id)
+        self.assertEqual(overview['data']['summary']['unit_cost'], 718.75)
 
 
 class TestMrpAccountWorkorder(TestBomPriceOperationCommon):
@@ -317,6 +397,37 @@ class TestMrpAccountWorkorder(TestBomPriceOperationCommon):
         self.assertEqual(production.workorder_ids.mapped('time_ids').mapped('account_move_line_id').mapped('credit'), [
             0.06,
         ])
+
+    def test_reset_to_progress_unlinks_journal_entries(self):
+        """Setting a validated MO back to progress unlinks the posted stock and labour journal entries
+        """
+        self.glass.qty_available = 1
+        mo = self._create_mo(self.bom_1, 1)
+        workorder = mo.workorder_ids
+        workorder.duration = 30.2
+        workorder.time_ids.write({'duration': 30.2})
+        mo.move_raw_ids.picked = True
+        mo.button_mark_done()
+        self.assertEqual(mo.state, 'done')
+
+        # stock journal entries
+        done_moves = (mo.move_raw_ids | mo.move_finished_ids).filtered(lambda m: m.state == 'done')
+        stock_jes = done_moves.account_move_id
+        self.assertTrue(stock_jes, "producing must post stock journal entries")
+        self.assertTrue(all(je.state == 'posted' for je in stock_jes))
+
+        # production journal entries
+        production_je = mo.workorder_ids.time_ids.account_move_line_id.move_id
+        self.assertTrue(production_je, "producing must post a labour journal entry")
+        self.assertEqual(production_je.state, 'posted')
+
+        mo.action_reset_to_progress()
+        # state should be to_close since workorders are already done
+        self.assertEqual(mo.state, 'to_close')
+
+        # stock and labour journal entries are unlinked
+        self.assertFalse(stock_jes.exists(), "stock journal entries should be unlinked on reset")
+        self.assertFalse(production_je.exists(), "labour journal entry should be unlinked on reset")
 
     def test_02_compute_byproduct_price(self):
         """Test BoM cost when byproducts with cost share"""
@@ -373,7 +484,7 @@ class TestMrpAccountWorkorder(TestBomPriceOperationCommon):
         mo_form.qty_producing = mo.product_qty
         mo = mo_form.save()
         now = fields.Datetime.now()
-        workorder = mo.workorder_ids[0]
+        workorder = mo.workorder_ids.filtered('move_raw_ids')[0]
         self.env['mrp.workcenter.productivity'].create({
             'workcenter_id': self.workcenter.id,
             'workorder_id': workorder.id,

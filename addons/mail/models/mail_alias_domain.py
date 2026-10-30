@@ -19,6 +19,7 @@ class MailAliasDomain(models.Model):
 
     name = fields.Char(
         'Name', required=True,
+        copy=True,
         help="Email domain e.g. 'example.com' in 'odoo@example.com'")
     company_ids = fields.One2many(
         'res.company', 'alias_domain_id', string='Companies',
@@ -206,7 +207,7 @@ class MailAliasDomain(models.Model):
         :param email_list: list of normalized emails; normalization / removing
             wrong emails is considered as being caller's job
         """
-        filtered_emails = [e for e in email_list if e and '@' in e]
+        filtered_emails = [e for e in email_list if e and 0 < e.find('@') < len(e) - 1]
         if not filtered_emails:
             return filtered_emails
         all_domains = self.search([])

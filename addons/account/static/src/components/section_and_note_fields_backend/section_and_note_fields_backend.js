@@ -8,7 +8,7 @@ import { ListRenderer, listRendererProps } from "@web/views/list/list_renderer";
 const SHOW_ALL_ITEMS_TOOLTIP = _t("Some lines can be on the next page, display them to unlock actions on section.");
 const DISABLED_MOVE_DOWN_ITEM_TOOLTIP = _t("Some lines of the next section can be on the next page, display them to unlock the action.");
 
-const DISPLAY_TYPES = {
+export const DISPLAY_TYPES = {
     NOTE: "line_note",
     SECTION: "line_section",
     SUBSECTION: "line_subsection",
@@ -87,10 +87,16 @@ export class SectionAndNoteListRenderer extends ListRenderer {
      */
     setup() {
         super.setup();
-        this.titleField = "name";
+        this.productAndDescriptionColumn = "product_and_description";
         this.priceColumns = [...this.props.aggregatedFields, "price_unit"];
-        // invisible fields to force copy when duplicating a section
-        this.copyFields = ["display_type", "collapse_composition", "collapse_prices"];
+        // invisible/readonly fields to force copy when duplicating a section
+        this.copyFields = [
+            "display_type",
+            "collapse_composition",
+            "collapse_prices",
+            "product_id",
+            "product_template_id",
+        ];
         onPatched(() => {
             this.focusToName(this.editedRecord());
         });
@@ -158,22 +164,6 @@ export class SectionAndNoteListRenderer extends ListRenderer {
             [reverseFieldName]: false,
         };
         await record.update(changes);
-    }
-
-    async addRowAfterSection(record, addSubSection) {
-        const canProceed = await this.props.list.leaveEditMode({ canAbandon: false });
-        if (!canProceed) {
-            return;
-        }
-
-        const index =
-            this.props.list.records.indexOf(record) +
-            getSectionRecords(this.props.list, record).length -
-            1;
-        const context = {
-            default_display_type: addSubSection ? DISPLAY_TYPES.SUBSECTION : DISPLAY_TYPES.SECTION,
-        };
-        await this.props.list.addNewRecordAtIndex(index, { context });
     }
 
     async addNoteInSection(record) {
@@ -282,7 +272,7 @@ export class SectionAndNoteListRenderer extends ListRenderer {
 
     focusToName(editRec) {
         if (editRec && editRec.isNew && this.isSectionOrNote(editRec)) {
-            const col = this.columns.find((c) => c.name === this.titleField);
+            const col = this.columns.find((c) => c.name === this.productAndDescriptionColumn);
             this.focusCell(col, null);
         }
     }
@@ -445,11 +435,11 @@ export class SectionAndNoteListRenderer extends ListRenderer {
         const sectionCols = columns.filter(
             (col) =>
                 col.widget === "handle"
-                || col.name === this.titleField
+                || col.name === this.productAndDescriptionColumn
                 || (this.isSection(record) && this.sectionColumns.includes(col.name))
         );
         return sectionCols.map((col) => {
-            if (col.name === this.titleField) {
+            if (col.name === this.productAndDescriptionColumn) {
                 return { ...col, colspan: columns.length - sectionCols.length + 1 };
             } else {
                 return { ...col };
@@ -504,8 +494,8 @@ export class SectionAndNoteListRenderer extends ListRenderer {
      * @override
      * Reset the values of `collapse_` fields of the subsection if it is dragged
      */
-    async sortDrop(dataRowId, dataGroupId, options) {
-        await super.sortDrop(dataRowId, dataGroupId, options);
+    async sortDrop(dataRowId, options) {
+        await super.sortDrop(dataRowId, options);
 
         const record = this.props.list.records.find(r => r.id === dataRowId);
         const parentSection = this.parentSectionMap().get(record);

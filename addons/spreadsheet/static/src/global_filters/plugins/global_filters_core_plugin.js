@@ -1,12 +1,10 @@
 /** @ts-check */
 
 import { CommandResult } from "@spreadsheet/o_spreadsheet/cancelled_reason";
-import {
-    checkFilterDefaultValueIsValid,
-    globalFieldMatchingRegistry,
-} from "@spreadsheet/global_filters/helpers";
+import { checkFilterDefaultValueIsValid } from "@spreadsheet/global_filters/helpers";
 import { escapeRegExp } from "@web/core/utils/strings";
 import { OdooCorePlugin } from "@spreadsheet/plugins";
+import { corePlugins, Registry } from "@odoo/o-spreadsheet";
 
 /**
  * @typedef {import("@spreadsheet").GlobalFilter} GlobalFilter
@@ -20,92 +18,96 @@ export class GlobalFiltersCorePlugin extends OdooCorePlugin {
         "getGlobalFilters",
         "getGlobalFilterDefaultValue",
         "getFieldMatchingForModel",
+        "getGlobalFieldMatchingRegistry",
     ]);
+    static dependencies = [corePlugins.CellPlugin];
+    validators = {
+        ADD_GLOBAL_FILTER: this.checkAddGlobalFilter,
+        EDIT_GLOBAL_FILTER: this.checkEditGlobalFilter,
+        REMOVE_GLOBAL_FILTER: this.checkRemoveGlobalFilter,
+        MOVE_GLOBAL_FILTER: this.checkMoveGlobalFilter,
+    };
+
+    handlers = {
+        ADD_GLOBAL_FILTER: this.onAddGlobalFilter,
+        EDIT_GLOBAL_FILTER: this.onEditGlobalFilter,
+        REMOVE_GLOBAL_FILTER: this.onRemoveGlobalFilter,
+        MOVE_GLOBAL_FILTER: this.onMoveGlobalFilter,
+    };
+
     constructor(config) {
         super(config);
         /** @type {Array.<GlobalFilter>} */
         this.globalFilters = [];
+        this.globalFieldMatchingRegistry = new Registry();
     }
 
-    /**
-     * Check if the given command can be dispatched
-     *
-     * @param {import("@spreadsheet").AllCoreCommand} cmd Command
-     */
-    allowDispatch(cmd) {
-        switch (cmd.type) {
-            case "EDIT_GLOBAL_FILTER":
-                if (!this.getGlobalFilter(cmd.filter.id)) {
-                    return CommandResult.FilterNotFound;
-                } else if (!cmd.filter.label) {
-                    return CommandResult.InvalidFilterLabel;
-                } else if (this._isDuplicatedLabel(cmd.filter.id, cmd.filter.label)) {
-                    return CommandResult.DuplicatedFilterLabel;
-                }
-                if (!checkFilterDefaultValueIsValid(cmd.filter, cmd.filter.defaultValue)) {
-                    return CommandResult.InvalidValueTypeCombination;
-                }
-                break;
-            case "REMOVE_GLOBAL_FILTER":
-                if (!this.getGlobalFilter(cmd.id)) {
-                    return CommandResult.FilterNotFound;
-                }
-                break;
-            case "ADD_GLOBAL_FILTER":
-                if (!cmd.filter.label) {
-                    return CommandResult.InvalidFilterLabel;
-                } else if (this._isDuplicatedLabel(cmd.filter.id, cmd.filter.label)) {
-                    return CommandResult.DuplicatedFilterLabel;
-                }
-                if (!checkFilterDefaultValueIsValid(cmd.filter, cmd.filter.defaultValue)) {
-                    return CommandResult.InvalidValueTypeCombination;
-                }
-                break;
-            case "MOVE_GLOBAL_FILTER": {
-                const index = this.globalFilters.findIndex((filter) => filter.id === cmd.id);
-                if (index === -1) {
-                    return CommandResult.FilterNotFound;
-                }
-                const targetIndex = index + cmd.delta;
-                if (targetIndex < 0 || targetIndex >= this.globalFilters.length) {
-                    return CommandResult.InvalidFilterMove;
-                }
-                break;
-            }
+    checkEditGlobalFilter(cmd) {
+        if (!this.getGlobalFilter(cmd.filter.id)) {
+            return CommandResult.FilterNotFound;
+        } else if (!cmd.filter.label) {
+            return CommandResult.InvalidFilterLabel;
+        } else if (this._isDuplicatedLabel(cmd.filter.id, cmd.filter.label)) {
+            return CommandResult.DuplicatedFilterLabel;
+        }
+        if (!checkFilterDefaultValueIsValid(cmd.filter, cmd.filter.defaultValue)) {
+            return CommandResult.InvalidValueTypeCombination;
         }
         return CommandResult.Success;
     }
 
-    /**
-     * Handle a spreadsheet command
-     *
-     * @param {Object} cmd Command
-     */
-    handle(cmd) {
-        switch (cmd.type) {
-            case "ADD_GLOBAL_FILTER": {
-                const filter = { ...cmd.filter };
-                if (filter.type === "text" && filter.rangesOfAllowedValues?.length) {
-                    filter.rangesOfAllowedValues = filter.rangesOfAllowedValues.map((rangeData) =>
-                        this.getters.getRangeFromRangeData(rangeData)
-                    );
-                }
-                this.history.update("globalFilters", [...this.globalFilters, filter]);
-                break;
-            }
-            case "EDIT_GLOBAL_FILTER": {
-                this._editGlobalFilter(cmd.filter);
-                break;
-            }
-            case "REMOVE_GLOBAL_FILTER": {
-                const filters = this.globalFilters.filter((filter) => filter.id !== cmd.id);
-                this.history.update("globalFilters", filters);
-                break;
-            }
-            case "MOVE_GLOBAL_FILTER":
-                this._onMoveFilter(cmd.id, cmd.delta);
-                break;
+    checkRemoveGlobalFilter(cmd) {
+        if (!this.getGlobalFilter(cmd.id)) {
+            return CommandResult.FilterNotFound;
         }
+        return CommandResult.Success;
+    }
+
+    checkAddGlobalFilter(cmd) {
+        if (!cmd.filter.label) {
+            return CommandResult.InvalidFilterLabel;
+        } else if (this._isDuplicatedLabel(cmd.filter.id, cmd.filter.label)) {
+            return CommandResult.DuplicatedFilterLabel;
+        }
+        if (!checkFilterDefaultValueIsValid(cmd.filter, cmd.filter.defaultValue)) {
+            return CommandResult.InvalidValueTypeCombination;
+        }
+        return CommandResult.Success;
+    }
+
+    checkMoveGlobalFilter(cmd) {
+        const index = this.globalFilters.findIndex((filter) => filter.id === cmd.id);
+        if (index === -1) {
+            return CommandResult.FilterNotFound;
+        }
+        const targetIndex = index + cmd.delta;
+        if (targetIndex < 0 || targetIndex >= this.globalFilters.length) {
+            return CommandResult.InvalidFilterMove;
+        }
+        return CommandResult.Success;
+    }
+
+    onAddGlobalFilter(cmd) {
+        const filter = { ...cmd.filter };
+        if (filter.type === "text" && filter.rangesOfAllowedValues?.length) {
+            filter.rangesOfAllowedValues = filter.rangesOfAllowedValues.map((rangeData) =>
+                this.getters.getRangeFromRangeData(rangeData)
+            );
+        }
+        this.history.update("globalFilters", [...this.globalFilters, filter]);
+    }
+
+    onEditGlobalFilter(cmd) {
+        this._editGlobalFilter(cmd.filter);
+    }
+
+    onRemoveGlobalFilter(cmd) {
+        const filters = this.globalFilters.filter((filter) => filter.id !== cmd.id);
+        this.history.update("globalFilters", filters);
+    }
+
+    onMoveGlobalFilter(cmd) {
+        this._onMoveFilter(cmd.id, cmd.delta);
     }
 
     adaptRanges({ applyChange }) {
@@ -169,6 +171,15 @@ export class GlobalFiltersCorePlugin extends OdooCorePlugin {
     }
 
     /**
+     * Registry of the data sources (pivot, list, chart) that can be matched
+     * with a global filter. It is specific to this model: each data source
+     * plugin registers its own accessors in it.
+     */
+    getGlobalFieldMatchingRegistry() {
+        return this.globalFieldMatchingRegistry;
+    }
+
+    /**
      * Returns the field matching for a given model by copying the matchings of another DataSource that
      * share the same model, including only the chain and type.
      *
@@ -180,17 +191,13 @@ export class GlobalFiltersCorePlugin extends OdooCorePlugin {
             return {};
         }
 
-        for (const matcher of globalFieldMatchingRegistry.getAll()) {
-            for (const dataSourceId of matcher.getIds(this.getters)) {
-                const model = matcher.getModel(this.getters, dataSourceId);
+        for (const matcher of this.globalFieldMatchingRegistry.getAll()) {
+            for (const dataSourceId of matcher.getIds()) {
+                const model = matcher.getModel(dataSourceId);
                 if (model === newModel) {
                     const fieldMatching = {};
                     for (const filter of globalFilters) {
-                        const matchedField = matcher.getFieldMatching(
-                            this.getters,
-                            dataSourceId,
-                            filter.id
-                        );
+                        const matchedField = matcher.getFieldMatching(dataSourceId, filter.id);
                         if (matchedField) {
                             fieldMatching[filter.id] = {
                                 chain: matchedField.chain,
@@ -301,7 +308,7 @@ export class GlobalFiltersCorePlugin extends OdooCorePlugin {
         for (const sheetId of sheetIds) {
             for (const cell of this.getters.getCells(sheetId)) {
                 if (cell.isFormula) {
-                    const originalContent = cell.compiledFormula.toFormulaString(this.getters)
+                    const originalContent = cell.compiledFormula.toFormulaString(this.getters);
                     const newContent = originalContent.replace(
                         new RegExp(`FILTER\\.VALUE\\(\\s*"${currentLabel}"\\s*\\)`, "g"),
                         `FILTER.VALUE("${newLabel}")`

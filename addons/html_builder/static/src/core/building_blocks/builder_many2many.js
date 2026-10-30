@@ -1,5 +1,6 @@
-import { Component, asyncComputed, onWillStart, t, useProps } from "@odoo/owl";
-import { useService } from "@web/core/utils/hooks";
+import { Component, t, useProps } from "@odoo/owl";
+import { useAsyncComputed, useService } from "@web/core/utils/hooks";
+import { useCachedModel } from "../cached_model_utils";
 import {
     basicContainerBuilderComponentProps,
     getAllActionsAndOperations,
@@ -21,45 +22,61 @@ export class BuilderMany2Many extends Component {
         domain: t.array().optional(),
         limit: t.number().optional(),
         displayNameField: t.string().optional("display_name"),
+        message: t.string().optional(),
     });
+
+    fields = useService("field");
+    searchModel = useAsyncComputed(() => this.getSearchModel(this.props));
 
     setup() {
         useBuilderComponent(this.props);
-        this.fields = useService("field");
         const { getAllActions, callOperation } = getAllActionsAndOperations(this.props);
+        this.cachedModel = useCachedModel();
         this.callOperation = callOperation;
         this.applyOperation = this.env.editor.shared.history.makePreviewableAsyncOperation(
             this.callApply.bind(this)
         );
-        this.domState = useDomState((el) => {
-            const getAction = this.env.editor.shared.builderActions.getAction;
-            const actionWithGetValue = getAllActions().find(
-                ({ actionId }) => getAction(actionId).getValue
+        const getAction = this.env.editor.shared.builderActions.getAction;
+        const actionWithGetValue =
+            getAllActions().find(({ actionId }) => getAction(actionId).has("getValue")) ??
+            getAllActions()[0];
+        const { actionId, actionParam } = actionWithGetValue;
+        const getValue = (el) =>
+            getAction(actionId).getValue({ editingElement: el, params: actionParam });
+        this.domState = useDomState(async (el) => {
+            const selectionString = getValue(el);
+            const selection = JSON.parse(selectionString || "[]");
+            const selectedWithMissingName = selection.filter(
+                (e) => !("display_name" in e && "name" in e)
             );
-            const { actionId, actionParam } = actionWithGetValue;
-            const actionValue = getAction(actionId).getValue({
-                editingElement: el,
-                params: actionParam,
-            });
-            return {
-                selection: JSON.parse(actionValue || "[]"),
-            };
+            if (selectedWithMissingName.length) {
+                await this.searchModel.currentPromise();
+                const namedValues = await this.cachedModel.ormRead(
+                    this.searchModel(),
+                    selectedWithMissingName.map((e) => e.id),
+                    ["display_name", "name"]
+                );
+                const nameMap = new Map(namedValues.map((e) => [e.id, e]));
+                for (const e of selectedWithMissingName) {
+                    e.name ||= nameMap.get(e.id).name;
+                    e.display_name ||= nameMap.get(e.id).display_name;
+                }
+            }
+            return { selection };
         });
-        this.searchModel = asyncComputed(() => this.getSearchModel(this.props));
-        onWillStart(() => this.searchModel.currentPromise());
     }
-    async getSearchModel(props) {
-        if (props.m2oField) {
-            const modelData = await this.fields.loadFields(props.model, {
-                fieldNames: [props.m2oField],
+    async getSearchModel({ model, m2oField }) {
+        if (m2oField) {
+            const modelData = await this.fields.loadFields(model, {
+                fieldNames: [m2oField],
             });
-            const searchModel = modelData[props.m2oField].relation;
+            const searchModel = modelData[m2oField].relation;
             if (!searchModel) {
-                throw new Error(`m2oField ${props.m2oField} is not a relation field`);
+                throw new Error(`m2oField ${m2oField} is not a relation field`);
             }
             return searchModel;
         } else {
-            return props.model;
+            return model;
         }
     }
     callApply(applySpecs) {

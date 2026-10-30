@@ -95,20 +95,6 @@
                 <xpath expr="//field[@name='qty_available']" position='attributes'>
                     <attribute name="groups">stock.group_stock_user</attribute>
                 </xpath>
-                <xpath expr="//field[@name='free_qty']" position="replace"/>
-                <xpath expr="//field[@name='virtual_available']" position='attributes'>
-                    <attribute name="groups">stock.group_stock_user</attribute>
-                </xpath>
-                <field name="virtual_available" position="after">
-                    <button
-                        title="View Forecast"
-                        name="action_product_forecast_report"
-                        type="object"
-                        icon="area_chart"
-                        invisible="not is_storable"
-                        groups="stock.group_stock_user"
-                    />
-                </field>
             </field>
         </record>
 
@@ -123,28 +109,11 @@
             <field name="inherit_id" ref="product.product_template_tree_view"/>
             <field name="arch" type="xml">
                 <field name="uom_id" position="before">
-                    <field name="show_on_hand_qty_status_button" column_invisible="True" groups="stock.group_stock_user"/>
                 </field>
                 <xpath expr="//field[@name='qty_available']" position="attributes">
                     <attribute name="invisible">not show_on_hand_qty_status_button</attribute>
                     <attribute name="groups">stock.group_stock_user</attribute>
                 </xpath>
-                <xpath expr="//field[@name='free_qty']" position="replace"/>
-                <xpath expr="//field[@name='virtual_available']" position="attributes">
-                    <attribute name="invisible">not show_on_hand_qty_status_button</attribute>
-                    <attribute name="groups">stock.group_stock_user</attribute>
-                </xpath>
-                <field name="virtual_available" position="after">
-                    <button
-                        title="View Forecast"
-                        name="action_product_tmpl_forecast_report"
-                        type="object"
-                        icon="area_chart"
-                        invisible="not show_on_hand_qty_status_button"
-                        context="{'default_product_tmpl_id': id}"
-                        groups="stock.group_stock_user"
-                    />
-                </field>
                 <field name="default_code" position="after">
                     <field name="responsible_id" widget="many2one_avatar_user" optional="hide" groups="stock.group_stock_user"/>
                 </field>
@@ -204,10 +173,10 @@
                 </xpath>
                 <xpath expr="//div[@name='tracking_and_qty_no_stock']" position="replace">
                     <!-- Replace the single line tacking + qty without stock with 2 individual lines with stock (tracking + tracking method // qty) -->
-                    <field name="tracking" placeholder="None" invisible="type != 'consu'" groups="stock.group_production_lot"/>
+                    <field name="store_by" invisible="type != 'consu'" groups="stock.group_production_lot"/>
                     <!-- Qty line if storable -->
-                    <label for="qty_available" class="oe_inline" invisible="not is_storable or not tracking or not product_variant_id" groups="stock.group_stock_user"/>
-                    <div name="qty_available_with_stock" class="o_row" invisible="not is_storable or not tracking or not product_variant_id" groups="stock.group_stock_user">
+                    <label for="qty_available" class="oe_inline" invisible="not is_storable or not product_variant_id" groups="stock.group_stock_user"/>
+                    <div name="qty_available_with_stock" class="o_row" invisible="not is_storable or not product_variant_id" groups="stock.group_stock_user">
                         <a type="object" name="action_open_quants"
                            invisible="not show_qty_update_button" groups="stock.group_stock_manager">
                             <field name="qty_available" readonly="True"/>
@@ -219,8 +188,6 @@
                         </span>
                     </div>
                 </xpath>
-                <xpath expr="//label[@id='free_qty_no_stock']" position="replace"/>
-                <xpath expr="//div[@name='free_qty_no_stock']" position="replace"/>
                 <xpath expr="//field[@name='is_storable']" position="attributes">
                     <attribute name="groups">!stock.group_production_lot</attribute>
                     <attribute name="widget">boolean_toggle</attribute>
@@ -228,7 +195,6 @@
                     <attribute name="invisible">type != 'consu'</attribute>
                 </xpath>
                 <xpath expr="//group[@name='group_lots_and_weight']" position="before">
-                    <field name="has_available_route_ids" invisible="1"/>
                     <group string="Operations" name="operations" invisible="not (has_available_route_ids or route_from_categ_ids)">
                         <label for="route_ids" invisible="not has_available_route_ids"/>
                         <div invisible="not has_available_route_ids">
@@ -240,9 +206,9 @@
                     </group>
                 </xpath>
                 <xpath expr="//group[@name='group_lots_and_weight']" position="after">
-                    <group string="Traceability" name="traceability" groups="stock.group_production_lot" invisible="tracking not in ['lot', 'serial']">
-                        <label for="serial_prefix_format" string="Custom Lot/Serial"/>
-                        <div class="d-flex">
+                    <group string="Traceability" name="traceability" groups="stock.group_production_lot" invisible="store_by not in ['lot', 'serial']">
+                        <label for="serial_prefix_format" string="Custom Lot/Serial" groups="stock.group_production_lot" invisible="store_by not in ['lot', 'serial']"/>
+                        <div class="d-flex" groups="stock.group_production_lot" invisible="store_by not in ['lot', 'serial']">
                             <field name="serial_prefix_format" style="max-width: 150px;"/>
                             <field name="next_serial" style="max-width: 150px;"/>
                         </div>
@@ -282,9 +248,9 @@
                 <xpath expr="//div[@name='on_hand_qty_kanban']" position="replace">
                     <div groups="stock.group_stock_user" t-if="record.show_on_hand_qty_status_button.raw_value" class="d-flex gap-1 align-items-baseline">
                         <strong>
-                            <field name="qty_available" digits="[16, 0]"/> 
+                            <field name="qty_available" digits="[16, 0]"/>
                         </strong>
-                        <field name="uom_id" groups="uom.group_uom"/> 
+                        <field name="uom_id" groups="uom.group_uom"/>
                         <span class="text-muted">On Hand</span>
                     </div>
                 </xpath>
@@ -344,9 +310,8 @@
                 <data>
                     <div name="button_box" position="inside">
                         <t groups="stock.group_stock_user">
-                            <field name="tracking" invisible="1"/>
-                            <field name="show_on_hand_qty_status_button" invisible="1"/>
-                            <field name="show_forecasted_qty_status_button" invisible="1"/>
+                            <field name="store_by" invisible="1"/> <!-- drives invisible on the "Lot/Serial Numbers" stat button below -->
+                            <field name="show_on_hand_qty_status_button" invisible="1"/> <!-- computed alongside show_forecasted_qty_status_button by the same method; kept in sync in the view -->
                             <button type="object"
                                 name="action_product_forecast_report"
                                 invisible="not show_forecasted_qty_status_button"
@@ -416,7 +381,7 @@
                             </button>
                             <button type="object"
                                 name="action_open_product_lot"
-                                invisible="tracking not in ['lot', 'serial']"
+                                invisible="store_by not in ['lot', 'serial']"
                                 class="oe_stat_button" icon="menu" groups="stock.group_production_lot">
                                 <div class="o_stat_info">
                                     <span class="o_stat_text">Lot/Serial Numbers</span>
@@ -461,9 +426,8 @@
                 <data>
                     <button name="action_open_documents" position="before">
                         <t groups="stock.group_stock_user">
-                            <field name="tracking" invisible="1"/>
-                            <field name="show_on_hand_qty_status_button" invisible="1"/>
-                            <field name="show_forecasted_qty_status_button" invisible="1"/>
+                            <field name="store_by" invisible="1"/> <!-- drives invisible on the "Lot/Serial Numbers" stat button below -->
+                            <field name="show_on_hand_qty_status_button" invisible="1"/> <!-- computed alongside show_forecasted_qty_status_button by the same method; kept in sync in the view -->
                             <button type="object"
                                 name="action_product_tmpl_forecast_report"
                                 invisible="not show_forecasted_qty_status_button"
@@ -539,7 +503,7 @@
                             </button>
                             <button type="object"
                                 name="action_open_product_lot"
-                                invisible="tracking not in ['lot', 'serial']"
+                                invisible="store_by not in ['lot', 'serial']"
                                 class="oe_stat_button" icon="menu" groups="stock.group_production_lot">
                                 <div class="o_stat_info">
                                     <span class="o_stat_text">Lot/Serial Numbers</span>
@@ -585,18 +549,18 @@
             <field name="arch" type="xml">
                 <list sample="1" js_class="stock_report_list_view" duplicate="0" default_order="is_favorite desc, default_code, name, id">
                     <header/> <!-- inherited in other module -->
-                    <field name="id" column_invisible="True"/>
+                    <field name="id" column_invisible="True"/> <!-- used by the buttons' context (default_product_id/search_default_product_id) below -->
                     <field name="display_name" string="Product"/>
                     <field name="categ_id" optional="hide"/>
                     <!-- <button name="%(action_view_inventory_tree)d" type="action" class="btn-link"
                             context="{'search_default_product_id': id, 'default_product_id': id}"> -->
                     <field name="qty_available" string="On Hand"
                            sum="Total On Hand" widget="stock_action_field"
-                           options="{ 'action_name': 'stock.action_view_inventory_tree' }"
+                           options="{ 'action_name': 'stock.action_view_quants', 'mute_empty': true }"
                            context="{ 'search_default_product_id': id, 'default_product_id': id }"/>
-                    <field name="free_qty" string="Free to Use" sum="Total Free to Use"/>
-                    <field name="incoming_qty" optional="show" sum="Total Incoming"/>
-                    <field name="outgoing_qty" optional="show" sum="Total Outgoing"/>
+                    <field name="free_qty" string="Free to Use" sum="Total Free to Use" decoration-muted="free_qty == 0"/>
+                    <field name="incoming_qty" optional="show" sum="Total Incoming" decoration-muted="incoming_qty == 0"/>
+                    <field name="outgoing_qty" optional="show" sum="Total Outgoing" decoration-muted="outgoing_qty == 0"/>
                     <field name="virtual_available" string="Forecasted" optional="hide" sum="Total Forecasted"/>
                     <field name="uom_id" widget="many2one_uom" groups="uom.group_uom" options="{'no_create': True}"/>
                     <button name="%(stock_move_line_action)d" string="History" type="action" class="btn-link"

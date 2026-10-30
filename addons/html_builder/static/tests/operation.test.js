@@ -11,7 +11,8 @@ import { HistoryPlugin } from "@html_editor/core/history_plugin";
 import { animationFrame, beforeEach, describe, expect, test } from "@odoo/hoot";
 import { advanceTime, delay, hover, press, tick } from "@odoo/hoot-dom";
 import { xml } from "@odoo/owl";
-import { contains, getService, patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { contains, getService } from "@web/../tests/web_test_helpers";
+import { patch } from "@web/core/utils/patch";
 
 describe.current.tags("desktop");
 
@@ -121,6 +122,26 @@ test("handle 3 concurrent cancellable operations (without delay)", async () => {
 });
 
 describe("Block editable", () => {
+    test("Loading screen uses the extra preview document when available", () => {
+        const editableDocument = document.implementation.createHTMLDocument();
+        const previewDocument = document.implementation.createHTMLDocument();
+        let extraPreviewDocument = previewDocument;
+        const operation = new Operation(editableDocument, () => extraPreviewDocument);
+
+        let removeLoadingElement = operation.addLoadingElement(false);
+        expect(previewDocument.querySelectorAll(".o_loading_screen")).toHaveCount(1);
+        expect(editableDocument.querySelectorAll(".o_loading_screen")).toHaveCount(0);
+
+        removeLoadingElement();
+        extraPreviewDocument = null;
+        removeLoadingElement = operation.addLoadingElement(false);
+        expect(previewDocument.querySelectorAll(".o_loading_screen")).toHaveCount(0);
+        expect(editableDocument.querySelectorAll(".o_loading_screen")).toHaveCount(1);
+
+        removeLoadingElement();
+        expect(editableDocument.querySelectorAll(".o_loading_screen")).toHaveCount(0);
+    });
+
     test("Doing an operation should block the editable during its execution", async () => {
         const customActionDef = Promise.withResolvers();
         addBuilderAction({
@@ -200,7 +221,7 @@ describe("Block editable", () => {
 
 describe("Async operations", () => {
     beforeEach(() => {
-        patchWithCleanup(HistoryPlugin.prototype, {
+        patch(HistoryPlugin.prototype, {
             makePreviewableAsyncOperation(operation) {
                 const res = super.makePreviewableAsyncOperation(operation);
                 const revert = res.revert;
@@ -246,7 +267,7 @@ describe("Async operations", () => {
 
         await setupHTMLBuilder(`<div class="test-options-target">TEST</div>`);
         await contains(":iframe .test-options-target").click();
-        await contains(".options-container [data-label='Type'] .btn-secondary ").click();
+        await contains(".o_hb_options_container [data-label='Type'] .btn-secondary ").click();
         await hover(".popover [data-action-value='first']");
         await hover(".popover [data-action-value='second']");
         await advanceTime(applyDelay + 50);
@@ -290,7 +311,7 @@ describe("Async operations", () => {
         await setupHTMLBuilder(`<div class="test-options-target">TEST</div>`);
         await contains(":iframe .test-options-target").click();
 
-        await contains(".we-bg-options-container .o_we_color_preview").click();
+        await contains(".o_hb_bg_options_container .o_we_color_preview").click();
         await contains(".o-overlay-item [data-color='#FF0000']").hover();
         await contains(".o-overlay-item [data-color='#0000FF']").hover();
         await advanceTime(applyDelay + 50);
@@ -417,7 +438,7 @@ describe("Operations failing on outdated snippets", () => {
         await contains("[data-action-id='testAction']").click();
         expect(".o_notification .o_notification_bar.bg-warning").toHaveCount(1);
         expect(".o_notification_content").toHaveText(
-            "This snippet is outdated. It might have caused problem during the editing. Please drag the new version from the snippet panel to update it."
+            "This snippet is outdated. It might cause/have caused problems during the editing. Please drag the new version from the snippet panel to update it."
         );
         expect.verifyErrors([]);
 
@@ -470,7 +491,7 @@ describe("Operations failing on outdated snippets", () => {
         await contains("[data-action-id='testAction']").click();
         expect(".o_notification .o_notification_bar.bg-warning").toHaveCount(1);
         expect(".o_notification_content").toHaveText(
-            "This snippet is outdated. It might have caused problem during the editing. Please drag the new version from the snippet panel to update it."
+            "This snippet is outdated. It might cause/have caused problems during the editing. Please drag the new version from the snippet panel to update it."
         );
         expect.verifyErrors([]);
 
@@ -526,7 +547,7 @@ describe("Operations failing on outdated snippets", () => {
         await contains("[data-action-id='testAction']").click();
         expect(".o_notification .o_notification_bar.bg-warning").toHaveCount(1);
         expect(".o_notification_content").toHaveText(
-            "This snippet is outdated. It might have caused problem during the editing. Please drag the new version from the snippet panel to update it."
+            "This snippet is outdated. It might cause/have caused problems during the editing. Please drag the new version from the snippet panel to update it."
         );
         expect.verifyErrors([]);
 
@@ -567,7 +588,7 @@ describe("Operations failing on outdated snippets", () => {
         await contains(":iframe .s_title h1:contains('Old')").click();
         expect(".o_notification .o_notification_bar.bg-warning").toHaveCount(1);
         expect(".o_notification_content").toHaveText(
-            "This snippet is outdated. It might have caused problem during the editing. Please drag the new version from the snippet panel to update it."
+            "This snippet is outdated. It might cause/have caused problems during the editing. Please drag the new version from the snippet panel to update it."
         );
         expect.verifyErrors([]);
     });
@@ -600,7 +621,7 @@ describe("Operations failing on outdated snippets", () => {
         await contains(":iframe .s_title h1:contains('Old')").click();
         expect(".o_notification .o_notification_bar.bg-warning").toHaveCount(1);
         expect(".o_notification_content").toHaveText(
-            "This snippet is outdated. It might have caused problem during the editing. Please drag the new version from the snippet panel to update it."
+            "This snippet is outdated. It might cause/have caused problems during the editing. Please drag the new version from the snippet panel to update it."
         );
         expect.verifyErrors([]);
     });
@@ -643,7 +664,7 @@ describe("Operations failing on outdated snippets", () => {
         await animationFrame();
         expect(".o_notification .o_notification_bar.bg-warning").toHaveCount(1);
         expect(".o_notification_content").toHaveText(
-            "This snippet is outdated. It might have caused problem during the editing. Please drag the new version from the snippet panel to update it."
+            "This snippet is outdated. It might cause/have caused problems during the editing. Please drag the new version from the snippet panel to update it."
         );
 
         // Close the notification and try to interact with an up-to-date snippet
@@ -684,7 +705,96 @@ describe("Operations failing on outdated snippets", () => {
         await contains("[data-action-id='testAction']").click();
         expect(".o_notification .o_notification_bar.bg-warning").toHaveCount(1);
         expect(".o_notification_content").toHaveText(
-            "This snippet is outdated. It might have caused problem during the editing. Please drag the new version from the snippet panel to update it."
+            "This snippet is outdated. It might cause/have caused problems during the editing. Please drag the new version from the snippet panel to update it."
         );
+    });
+});
+
+describe("Multiple blocks", () => {
+    test("Loading screen should disappear after the last block is removed (two blocks with loading effect)", async () => {
+        const { getEditor } = await setupHTMLBuilder(
+            `<div class="test-options-target">TEST</div>`,
+            {
+                loadIframeBundles: true,
+            }
+        );
+        const editor = getEditor();
+
+        const removeFirst = editor.shared.operation.addLoadingElement(true, 0, false);
+        await animationFrame();
+        expect(":iframe .o_loading_screen.o_we_ui_loading").toHaveCount(1);
+
+        const removeSecond = editor.shared.operation.addLoadingElement(true, 0, false);
+        expect(":iframe .o_loading_screen.o_we_ui_loading").toHaveCount(1);
+        await animationFrame();
+
+        removeFirst();
+        await animationFrame();
+        expect(":iframe .o_loading_screen.o_we_ui_loading").toHaveCount(1);
+
+        removeSecond();
+        await animationFrame();
+        expect(":iframe .o_loading_screen").toHaveCount(0);
+    });
+
+    test("Loading screen should disappear after the last block is removed (one block with loading effect and one without)", async () => {
+        const { getEditor } = await setupHTMLBuilder(
+            `<div class="test-options-target">TEST</div>`,
+            {
+                loadIframeBundles: true,
+            }
+        );
+        const editor = getEditor();
+
+        const removeFirst = editor.shared.operation.addLoadingElement(true, 0, false);
+        await animationFrame();
+        expect(":iframe .o_loading_screen.o_we_ui_loading").toHaveCount(1);
+
+        const removeSecond = editor.shared.operation.addLoadingElement(false, 0, false);
+        await animationFrame();
+        expect(":iframe .o_loading_screen.o_we_ui_loading").toHaveCount(1);
+
+        removeFirst();
+        await animationFrame();
+        expect(":iframe .o_loading_screen").toHaveCount(1);
+        expect(":iframe .o_loading_screen.o_we_ui_loading").toHaveCount(0);
+
+        removeSecond();
+        await animationFrame();
+        expect(":iframe .o_loading_screen").toHaveCount(0);
+    });
+
+    test("Multiple blocks with waiting times", async () => {
+        const { getEditor } = await setupHTMLBuilder(
+            `<div class="test-options-target">TEST</div>`,
+            {
+                loadIframeBundles: true,
+            }
+        );
+        const editor = getEditor();
+
+        const removeFirst = editor.shared.operation.addLoadingElement(true, 100, false);
+        await animationFrame();
+        expect(":iframe .o_loading_screen.o_we_ui_loading").toHaveCount(0);
+        expect(":iframe .o_loading_screen").toHaveCount(1);
+
+        const removeSecond = editor.shared.operation.addLoadingElement(true, 500, false);
+        await animationFrame();
+        expect(":iframe .o_loading_screen.o_we_ui_loading").toHaveCount(0);
+        expect(":iframe .o_loading_screen").toHaveCount(1);
+
+        await advanceTime(200);
+        expect(":iframe .o_loading_screen.o_we_ui_loading").toHaveCount(1);
+
+        removeFirst();
+        await animationFrame();
+        expect(":iframe .o_loading_screen.o_we_ui_loading").toHaveCount(0);
+
+        await advanceTime(400);
+        expect(":iframe .o_loading_screen.o_we_ui_loading").toHaveCount(1);
+
+        removeSecond();
+        await animationFrame();
+        expect(":iframe .o_loading_screen").toHaveCount(0);
     });
 });

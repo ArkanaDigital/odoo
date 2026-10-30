@@ -110,7 +110,7 @@ class L10n_Es_Edi_TbaiDocument(models.Model):
             return _("Please specify a tax agency on your company for TicketBAI.")
 
         # Ensure a vat is available.
-        if not self.company_id.vat:
+        if not self.company_id.has_vat:
             return _("Please configure the Tax ID on your company for TicketBAI.")
 
         if self.company_id.l10n_es_tbai_tax_agency == 'bizkaia' and self.company_id._l10n_es_freelancer() and not self.env['ir.config_parameter'].sudo().get_str('l10n_es_edi_tbai.epigrafe'):
@@ -129,18 +129,16 @@ class L10n_Es_Edi_TbaiDocument(models.Model):
             if chain_head_doc and chain_head_doc != self and chain_head_doc.state != 'accepted':
                 return _("TicketBAI: Cannot post invoice while chain head (%s) has not been posted", chain_head_doc.name)
 
-            # Tax configuration check: In case of foreign customer we need the tax scope to be set
-            if values['partner'] and values['partner']._l10n_es_is_foreign() and values['taxes'].filtered(lambda t: not t.tax_scope):
+            if values['partner'] and not values["is_simplified"] and not self._l10n_es_tbai_partner_has_nif(values['partner']) \
+                    and values['taxes'].filtered(lambda t: not t.tax_scope):
                 return _(
                     "In case of a foreign customer, you need to configure the tax scope on taxes:\n%s",
                     "\n".join(values['taxes'].mapped('name'))
                 )
             if values['is_refund']:
                 refunded_doc = values['refunded_doc']
-                refund_reason = values['refund_reason']
                 refunded_doc_invoice_date = values['refunded_doc_invoice_date']
                 refunded_name = values['refunded_name']
-                is_simplified = values['is_simplified']
 
                 if refunded_doc and refunded_doc.state == 'to_send':
                     return _("TicketBAI: Cannot post a reversal document while the source document has not been posted")
@@ -157,12 +155,6 @@ class L10n_Es_Edi_TbaiDocument(models.Model):
                     invoice_sent_before_original = self.search(domain, order="date", limit=1)
                     if invoice_sent_before_original:  # No error if the original invoice was imported from a previous system
                         return _("TicketBAI: Cannot post a reversal document while the source document has not been posted")
-                if not refund_reason:
-                    return _('Refund reason must be specified (TicketBAI)')
-                if is_simplified and refund_reason != 'R5':
-                    return _('Refund reason must be R5 for simplified invoices (TicketBAI)')
-                if not is_simplified and refund_reason == 'R5':
-                    return _('Refund reason cannot be R5 for non-simplified invoices (TicketBAI)')
 
     # -------------------------------------------------------------------------
     # WEB SERVICE CALLS
@@ -403,6 +395,17 @@ class L10n_Es_Edi_TbaiDocument(models.Model):
             'sender': sender,
         }
 
+    @api.model
+    def _l10n_es_tbai_partner_has_nif(self, partner):
+        """ Whether `partner` is a domestic Spanish recipient identified by a real NIF (the
+        <NIF> block, no IDOtro). Any other case -- an intra-EU partner with a NIF-IVA (IDType 02),
+        a foreign partner without one (IDOtro 03-06), or a *Spanish-resident* partner without a
+        NIF (also IDOtro 03-06, e.g. identified by passport) -- must use DesgloseTipoOperacion
+        rather than DesgloseFactura. Shared by `_get_recipient_values` (NIF vs IDOtro/IDType02
+        block) and `_get_sale_values` (DesgloseFactura vs DesgloseTipoOperacion), which must stay
+        in sync. """
+        return not partner._l10n_es_is_foreign() and bool(partner.vat)
+
     def _get_recipient_values(self, partner, is_simplified=False):
         # TicketBAI accept recipient data for simplified invoices,
         # but only if the partner has a VAT number
@@ -413,16 +416,19 @@ class L10n_Es_Edi_TbaiDocument(models.Model):
             'partner_address': ', '.join(filter(None, [partner.street, partner.street2, partner.city])),
             'alt_id_number': partner.vat or 'NO_DISPONIBLE',
         }
+        if self._l10n_es_tbai_partner_has_nif(partner):
+            # Spanish with NIF → block <NIF> (without IDOtro)
+            recipient_values['nif'] = partner.vat[2:] if partner.vat.startswith('ES') else partner.vat
 
-        if not partner._l10n_es_is_foreign() and partner.vat:
-            recipient_values['nif'] = split_vat(partner.vat, default_country_code='ES')[1]
-
-        elif partner.country_id and 'EU' in partner.country_id.country_group_codes:
+        elif partner.vat and partner.country_id and 'EU' in partner.country_id.country_group_codes:
+            # Intra-communitary with NIF-IVA → IDType 02 (no CodigoPais)
             recipient_values['alt_id_type'] = '02'
+            recipient_values['alt_id_number'] = partner.vat
 
         else:
-            recipient_values['alt_id_type'] = '04' if partner.vat else '06'
+            # No NIF (national or intra-EU): IDOtro document required. CodigoPais mandatory.
             recipient_values['alt_id_country'] = partner.country_id.code if partner.country_id else None
+            recipient_values['alt_id_type'], recipient_values['alt_id_number'] = partner._l10n_es_get_additional_identifier_type()
 
         return {'recipient': recipient_values}
 
@@ -444,7 +450,7 @@ class L10n_Es_Edi_TbaiDocument(models.Model):
     def _get_sale_values(self, values):
         sale_values = {
             'chain_prev_document': self.company_id._get_l10n_es_tbai_last_chained_document(),
-            **self._get_regime_code_value(values['taxes'], values['is_simplified']),
+            **self._get_regime_code_value(values['regime_code']),
             **self._get_refunded_values(values),
         }
         # Regime key override for Canarias/Ceuta/Melilla and no_sujeto_loc
@@ -452,15 +458,15 @@ class L10n_Es_Edi_TbaiDocument(models.Model):
             if any(t.l10n_es_type == 'no_sujeto_loc' for t in values['taxes']):
                 sale_values.update({'regime_key': ['08']})
 
-        if not values['partner'] or not values['partner']._l10n_es_is_foreign() or values["is_simplified"]:
+        if not values['partner'] or values["is_simplified"] or self._l10n_es_tbai_partner_has_nif(values['partner']):
             sale_values.update(**self._get_importe_desglose_es_partner(values['base_lines'], values['is_refund']))
         else:
             sale_values.update(**self._get_importe_desglose_foreign_partner(values['base_lines'], values['is_refund']))
 
         return sale_values
 
-    def _get_regime_code_value(self, taxes, is_simplified):
-        return {'regime_key': [taxes._l10n_es_get_regime_code()]}
+    def _get_regime_code_value(self, regime_code):
+        return {'regime_key': [regime_code]}
 
     @api.model
     def _add_base_lines_tax_amounts(self, base_lines, company, tax_lines=None):
@@ -537,7 +543,7 @@ class L10n_Es_Edi_TbaiDocument(models.Model):
                     .get('DetalleIVA')
                 if detalle_iva:
                     detalle_iva[-1]['CuotaRecargoEquivalencia'] = sign * float_round(values['tax_amount'], 2)
-                    detalle_iva[-1]['TipoRecargoEquivalencia'] = sign * grouping_key['applied_tax_amount']
+                    detalle_iva[-1]['TipoRecargoEquivalencia'] = grouping_key['applied_tax_amount']
             elif l10n_es_type == 'no_sujeto':
                 no_sujeta = sujeta_no_sujeta.setdefault('NoSujeta', {})
                 no_sujeta.setdefault('ImportePorArticulos7_14_Otros', 0.0)

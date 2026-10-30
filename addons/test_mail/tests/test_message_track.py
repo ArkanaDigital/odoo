@@ -7,10 +7,11 @@ from markupsafe import Markup
 
 from odoo import fields
 from odoo.addons.mail.tests.common import MailCommon
+from odoo.exceptions import AccessError
 from odoo.addons.mail.models.mail_track_mixin import MailTrackMixin
 from odoo.addons.test_mail.data.test_mail_data import MAIL_TEMPLATE
 from odoo.tests import Form, tagged, users
-from odoo.tools import mute_logger
+from odoo.tools import formatLang, mute_logger
 from odoo.tools.mail import formataddr
 
 
@@ -48,6 +49,7 @@ class TestTrackingAPI(TestTrackingCommon):
 
     @users('employee')
     def test_mail_track_mixin(self):
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         original_track_finalize = MailTrackMixin._track_finalize
 
         with patch.object(MailTrackMixin, '_track_finalize',
@@ -139,6 +141,7 @@ class TestTrackingAPI(TestTrackingCommon):
 
     @users('employee')
     def test_tracking_create(self):
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         records = self.test_tracking_records.with_env(self.env)
         for record in records:
             record_su = record.sudo()  # to check for tracking values directly
@@ -148,6 +151,7 @@ class TestTrackingAPI(TestTrackingCommon):
 
     @users('employee')
     def test_tracking_custom(self):
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         ticket_customer_field = self.env['ir.model.fields']._get('mail.test.ticket', 'customer_id')
         test_tracking_records = self.test_tracking_records.with_env(self.env)
         test_tracking_records.currency_id = self.env.company.currency_id.id
@@ -220,6 +224,7 @@ class TestTrackingAPI(TestTrackingCommon):
     @users('employee')
     def test_tracking_default_subtype(self):
         """ Update some tracked fields not linked to some subtype -> message with onchange """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         customer = self.env['res.partner'].create({'name': 'Customer', 'email': 'cust@example.com'})
         test_record = self.test_ticket_record.with_env(self.env)
         test_record.message_subscribe(
@@ -290,6 +295,7 @@ class TestTrackingAPI(TestTrackingCommon):
     @users('employee')
     def test_tracking_records_on_parent(self):
         """ Test tracking of a record on another record. """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         parent_record = self.test_ticket_record.with_env(self.env)
         tracked_records = self.test_tracking_records[:2].with_env(self.env)
         parent_record._track_record(tracked_records, ['char_field', 'datetime_field'], body='Manual Tracking')
@@ -404,6 +410,7 @@ class TestTrackingAPI(TestTrackingCommon):
 
     @users('employee')
     def test_tracking_tweak_author(self):
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         record = self.test_tracking_records.with_env(self.env)[0]
         with self.mock_mail_gateway(), self.mock_mail_app():
             record._track_set_log_author(self.partner_admin)
@@ -423,6 +430,7 @@ class TestTrackingAPI(TestTrackingCommon):
 
     @users('employee')
     def test_tracking_tweak_default_message(self):
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         """Check that the default tracking log message defined on the model is used
         and that setting a log message overrides it. See `_track_log_get_default_body`"""
         record = self.env['mail.test.track'].create({
@@ -479,6 +487,7 @@ class TestTrackingAPI(TestTrackingCommon):
 
     @users('employee')
     def test_tracking_update(self):
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         test_record = self.test_tracking_records[0].with_env(self.env)
         original_messages = test_record.message_ids
         test_record.write({'name': 'Tracking or not'})
@@ -529,6 +538,7 @@ class TestTrackingTemplate(TestTrackingCommon):
     def test_message_track_template(self):
         """ Update some tracked fields linked to some template -> message with onchange on
         each updated record. """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         test_records = self.test_ticket_records.with_env(self.env)
         test_records.write({'mail_template': self.env.ref('test_mail.mail_test_ticket_tracking_tpl').id})
         self.flush_tracking()
@@ -705,6 +715,7 @@ class TestTrackingTemplate(TestTrackingCommon):
     def test_message_track_template_message_type_subtype(self):
         """ Check that the right message_type / subtype_id are applied when tempalates
         are posting based on tracking. """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         test_record = self.test_ticket_record.with_env(self.env)
         test_record.message_subscribe(
             partner_ids=[self.user_admin.partner_id.id],
@@ -840,6 +851,7 @@ class TestTrackingInternals(TestTrackingCommon):
         cls.properties_record_monetary.properties = {'property_amount': 500.0}
 
     def test_field_label_translation(self):
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         self.env['res.lang']._activate_lang('gu_IN')
         mail_test_ticket_id = self.env['ir.model']._get_id('mail.test.ticket')
         address_field = self.env['ir.model.fields'].create({
@@ -867,6 +879,7 @@ class TestTrackingInternals(TestTrackingCommon):
     def test_mail_track_2many(self):
         """ Check result of tracking one2many and many2many fields. Current
         usage is to aggregate names into value_char fields. """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         # Create a record with an initially invalid selection value
         test_tags = self.env['mail.test.track.all.m2m'].create([
             {'name': 'Tag1',},
@@ -935,6 +948,7 @@ class TestTrackingInternals(TestTrackingCommon):
 
     @users('employee')
     def test_mail_track_all_no2many(self):
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         test_record = self.env['mail.test.track.all'].create({
             'company_id': self.env.company.id,
         })
@@ -1004,6 +1018,7 @@ class TestTrackingInternals(TestTrackingCommon):
     @users('employee')
     def test_mail_track_compute(self):
         """ Test tracking of computed fields """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         # no tracking at creation
         compute_record = self.env['mail.test.track.compute'].create({})
         self.flush_tracking()
@@ -1075,6 +1090,7 @@ class TestTrackingInternals(TestTrackingCommon):
     @users('employee')
     def test_mail_track_datetime_tz(self):
         """Datetime trackings are displayed in the user timezone, with its offset."""
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         self.env.user.tz = 'Europe/Brussels'
         self.env['res.lang'].sudo()._activate_lang('fr_BE')
         self.env['res.lang'].sudo()._activate_lang('vi_VN')
@@ -1137,6 +1153,7 @@ class TestTrackingInternals(TestTrackingCommon):
     def test_mail_track_properties(self):
         """Test that the properties can be tracked"""
 
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         properties_record_1 = self.properties_record_1.with_env(self.env)
         with self.mock_mail_gateway(), self.mock_mail_app():
             properties_record_1.properties = {
@@ -1219,6 +1236,7 @@ class TestTrackingInternals(TestTrackingCommon):
     @users('employee')
     def test_mail_track_selection_invalid(self):
         """ Check that initial invalid selection values are allowed when tracking """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         # Create a record with an initially invalid selection value
         invalid_value = 'I love writing tests!'
         record = self.env['mail.test.track.selection'].create({
@@ -1252,6 +1270,7 @@ class TestTrackingInternals(TestTrackingCommon):
     def test_track_control_precommit_data(self):
         """ Cover _track_discard and other methods controlling precommit
         data. """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         track_records = self.test_tracking_records.with_env(self.env)
         track_records._track_discard()
         track_records._track_set_log_message('Forced until finalize')
@@ -1328,8 +1347,54 @@ class TestTrackingInternals(TestTrackingCommon):
                 ],
             })
 
+    @users('employee')
+    def test_track_prepare_lang_fallback(self):
+        """ _track_prepare must read tracked field values under the same
+        fallback language _track_finalize will use. Otherwise a translated
+        tracked field's initial value (read under whatever lang happened to
+        be in the write's context, defaulting to en_US if absent) and its end
+        value (read after _fallback_lang() forces the acting user's own lang)
+        can be compared across two different languages, generating a
+        tracking entry for a field whose stored content never changed in any
+        language. """
+        self.env['res.lang'].sudo()._activate_lang('fr_FR')
+        self.user_employee.lang = 'fr_FR'
+
+        mail_test_ticket_id = self.env['ir.model']._get_id('mail.test.ticket')
+        lang_field = self.env['ir.model.fields'].sudo().create({
+            'model_id': mail_test_ticket_id,
+            'name': 'x_lang_track',
+            'ttype': 'char',
+            'tracking': True,
+            'translate': 'standard',
+        })
+        self.addCleanup(lambda: lang_field.exists() and lang_field.unlink())
+        record = self.record.with_env(self.env)
+
+        # set translations
+        record.with_context(lang='en_US').x_lang_track = 'Hello'
+        record.with_context(lang='fr_FR').x_lang_track = 'Bonjour'
+        self.flush_tracking()
+
+        with self.mock_mail_gateway(), self.mock_mail_app():
+            # Simple write with same value (shouldn't result in a tracking)
+            record.with_context(lang=False).write({'x_lang_track': 'Hello'})
+            self.flush_tracking()
+
+        tracking_details = ', '.join(
+            f"{tv.field_id.name}: {tv.old_value_char!r}"
+            f"-> {tv.new_value_char!r}"
+            for msg in self._new_msgs for tv in msg.tracking_value_ids
+        )
+        self.assertFalse(
+            self._new_msgs,
+             f"different languages, wrongly read as a change. Got: {tracking_details}",
+        )
+        lang_field.unlink()
+
     def test_track_groups(self):
         """ Test field groups and filtering when using standard helpers """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         # say that 'email_from' is accessible to erp_managers only
         field = self.record._fields['email_from']
         self.addCleanup(setattr, field, 'groups', field.groups)
@@ -1388,11 +1453,61 @@ class TestTrackingInternals(TestTrackingCommon):
                 'html_field', {'string': 'HTML', 'type': 'html'},
             )
 
+    def test_tracking_value_mixed_commands(self):
+        existing_message = self.env['mail.message'].create({
+            'body': '<p>Existing tracking</p>',
+            'message_type': 'comment',
+            'tracking_value_ids': [(0, 0, {
+                'new_value_char': 'Original',
+                'old_value_char': False,
+            })],
+        })
+        existing_tracking = existing_message.tracking_value_ids
+
+        message = self.env['mail.message'].create({
+            'body': '<p>Mixed tracking commands</p>',
+            'message_type': 'comment',
+            'tracking_value_ids': [
+                (0, 0, {
+                    'new_value_char': 'Created',
+                    'old_value_char': False,
+                }),
+                (1, existing_tracking.id, {'new_value_char': 'Updated'}),
+            ],
+        })
+
+        self.assertEqual(len(message.tracking_value_ids), 1)
+        self.assertEqual(existing_tracking.new_value_char, 'Updated')
+
+    @users('employee')
+    def test_tracking_value_command_access(self):
+        message = self.env['mail.message'].create({
+            'body': '<p>New tracking</p>',
+            'message_type': 'comment',
+            'tracking_value_ids': [(0, 0, {
+                'new_value_char': 'Created',
+                'old_value_char': False,
+            })],
+        })
+        self.assertEqual(len(message.sudo().tracking_value_ids), 1)
+        existing_tracking = message.sudo().tracking_value_ids
+
+        with self.assertRaises(AccessError):
+            self.env['mail.message'].create({
+                'body': '<p>Update tracking</p>',
+                'message_type': 'comment',
+                'tracking_value_ids': [
+                    (1, existing_tracking.id, {'new_value_char': 'Updated'}),
+                ],
+            })
+        self.assertEqual(existing_tracking.new_value_char, 'Created')
+
     @users('employee')
     def test_track_multi_models(self):
         """ Some models track value coming from another model e.g. when having
         a sub model (lines) on which some value should be tracked on a parent
         model. Test there is no model mismatch. """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         main_track = self.env['mail.test.track.all'].create({
             'name': 'Multi Models Tracking',
             'char_field': 'char_value',
@@ -1423,7 +1538,7 @@ class TestTrackingInternals(TestTrackingCommon):
                     'field_label': 'CustomInt',
                     'new_value_integer': self.env.uid,
                     'old_value_integer': False,
-                    'new_value': self.env.uid,
+                    'new_value': formatLang(self.env, self.env.uid, rounding_unit='units'),
                     'old_value': '0',
                 },
                 {
@@ -1516,6 +1631,7 @@ class TestTrackingInternals(TestTrackingCommon):
     @users('employee')
     def test_unlinked_model(self):
         """ Fields from obsolete models with tracking values can be unlinked without error. """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         record = self.record.with_env(self.env)
         record.write({'email_from': 'new_value'})  # create a tracking value
         self.flush_tracking()
@@ -1539,6 +1655,7 @@ class TestTrackingInternals(TestTrackingCommon):
     @users('employee')
     def test_unlinked_field(self):
         """ Check that removing a field removes its tracking values. """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
         record = self.record.with_env(self.env)
         record.write({'email_from': 'new_value'})  # create a tracking value
 
@@ -1602,3 +1719,40 @@ class TestTrackingInternals(TestTrackingCommon):
                 }),
             ],
         })
+
+    @users('employee')
+    def test_mail_track_float_falsy_separator(self):
+        """ Make sure Falsy float are formatted properly with the correct separators """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
+        lang = self.env['res.lang'].sudo().search([('code', '=', 'en_US')])
+        # Random decimal separator for testing
+        lang.write({'decimal_point': '|'})
+        test_record = self.env['mail.test.track.all'].with_context(lang='en_US').create({
+            'float_field': 1.0,
+        })
+        self.flush_tracking()
+        test_record.float_field = 0.0
+        self.flush_tracking()
+        self.assertMessageFields(
+            test_record.message_ids[0], {'tracking_values': [
+                ('float_field', 'float', 1.0, False),
+            ]}
+        )
+
+    @users('employee')
+    def test_mail_track_monetary_no_currency(self):
+        """ Make sure monetary fields are tracked properly even without a currency set """
+        self.env = self.env(context={**self.env.context, 'lang': 'en_US'})
+        test_record = self.env['mail.test.track.all'].create({
+            'monetary_field': 1.0,
+            'company_id': False,
+        })
+        self.flush_tracking()
+        test_record.monetary_field = 2.0
+        self.flush_tracking()
+        with mute_logger('odoo.addons.mail.tests.common'):
+            self.assertMessageFields(
+                test_record.message_ids[0], {'tracking_values': [
+                    ('monetary_field', 'monetary', 1.0, 2.0, {'currency': self.env['res.currency']}),
+                ]}
+            )

@@ -158,10 +158,9 @@ class StockForecasted_Product_Product(models.AbstractModel):
         res = {}
 
         warehouse = self._get_warehouse()
-        wh_location_ids = [loc['id'] for loc in self.env['stock.location'].search_read(
+        wh_location_ids = self.env['stock.location'].search(
             [('id', 'child_of', warehouse.view_location_id.id)],
-            ['id'],
-        )]
+        ).ids
         # any quantities in this location will be considered free stock, others are free stock in transit
         wh_stock_location = warehouse.lot_stock_id
 
@@ -231,7 +230,7 @@ class StockForecasted_Product_Product(models.AbstractModel):
         return line
 
     def _get_report_moves_fields(self):
-        return ['id', 'date']
+        return ['id', 'date', 'move_orig_ids']
 
     def _get_quant_domain(self, location_ids, products):
         return [('location_id', 'in', location_ids), ('quantity', '>', 0), ('product_id', 'in', products.ids)]

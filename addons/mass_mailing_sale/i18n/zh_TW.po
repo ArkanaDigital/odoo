@@ -6,14 +6,14 @@
 # Wil Odoo, 2025
 #
 # "Dylan Kiss (dyki)" <dyki@odoo.com>, 2025.
-# Weblate <noreply-mt-weblate@weblate.org>, 2026.
+# "Tony Ng (ngto)" <ngto@odoo.com>, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server saas~18.3\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-03 17:37+0000\n"
-"PO-Revision-Date: 2026-06-22 00:22+0000\n"
-"Last-Translator: Weblate <noreply-mt-weblate@weblate.org>\n"
+"POT-Creation-Date: 2026-09-04 17:45+0000\n"
+"PO-Revision-Date: 2026-09-09 14:11+0000\n"
+"Last-Translator: \"Tony Ng (ngto)\" <ngto@odoo.com>\n"
 "Language-Team: Chinese (Traditional Han script) <https://translate.odoo.com/"
 "projects/odoo-master/mass_mailing_sale/zh_Hant/>\n"
 "Language: zh_TW\n"
@@ -21,61 +21,34 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: mass_mailing_sale
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_aside
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_card
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_columns
-msgid ""
-"<font style=\"color: rgb(108, 117, 125)\">Click on this block, then select "
-"products using the panel on the right.</font>"
+#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.mailing_mailing_view_form
+msgid "<span class=\"o_stat_text\">Revenues</span>"
 msgstr ""
 
 #. module: mass_mailing_sale
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_aside
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_card
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_columns
-msgid "<i class=\"fa fa-cart\"/> Buy Now"
+#: model:ir.module.module,summary:base.module_mass_mailing_sale
+msgid "Add sale order UTM info on mass mailing"
 msgstr ""
 
 #. module: mass_mailing_sale
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_columns
-msgid ""
-"<strong>$20</strong>\n"
-"                                        <span class=\"h4-fs\">\n"
-"                                            <s>\n"
-"                                                <font style=\"color: "
-"rgb(108, 117, 125)\">$25</font>\n"
-"                                            </s>\n"
-"                                        </span>"
-msgstr ""
-
-#. module: mass_mailing_sale
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_aside
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_card
-msgid ""
-"<strong>$20</strong>\n"
-"                            <span class=\"h4-fs\">\n"
-"                                <s>\n"
-"                                    <font style=\"color: rgb(108, 117, "
-"125)\">$25</font>\n"
-"                                </s>\n"
-"                            </span>"
-msgstr ""
-
-#. module: mass_mailing_sale
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.email_designer_snippets
-#, fuzzy
+#. odoo-javascript
+#: code:addons/mass_mailing_sale/static/src/snippets/snippet_categories.xml:0
 msgid "Auto-filled from Product"
 msgstr "根據產品資料自動填寫"
 
 #. module: mass_mailing_sale
 #. odoo-javascript
 #: code:addons/mass_mailing_sale/static/src/builder/options/product_snapshot_fragments.xml:0
-#, fuzzy
 msgid "Buy Now"
-msgstr "購買"
+msgstr ""
+
+#. module: mass_mailing_sale
+#: model:ir.model.fields,field_description:mass_mailing_sale.field_mailing_mailing__currency_id
+msgid "Currency"
+msgstr ""
 
 #. module: mass_mailing_sale
 #: model:ir.model.fields,field_description:mass_mailing_sale.field_mailing_mailing__display_name
@@ -83,12 +56,6 @@ msgstr "購買"
 #: model:ir.model.fields,field_description:mass_mailing_sale.field_utm_campaign__display_name
 msgid "Display Name"
 msgstr "顯示名稱"
-
-#. module: mass_mailing_sale
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_card
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_columns
-msgid "Example Image"
-msgstr ""
 
 #. module: mass_mailing_sale
 #: model:ir.model.fields,field_description:mass_mailing_sale.field_mailing_mailing__id
@@ -101,11 +68,6 @@ msgstr "識別號"
 #. odoo-python
 #: code:addons/mass_mailing_sale/models/mailing_mailing.py:0
 msgid "INVOICED"
-msgstr "已開立發票"
-
-#. module: mass_mailing_sale
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.mailing_mailing_view_form
-msgid "Invoiced"
 msgstr "已開立發票"
 
 #. module: mass_mailing_sale
@@ -125,6 +87,11 @@ msgid "Mass Mailing"
 msgstr "群發郵件"
 
 #. module: mass_mailing_sale
+#: model:ir.module.module,shortdesc:base.module_mass_mailing_sale
+msgid "Mass mailing on sale orders"
+msgstr ""
+
+#. module: mass_mailing_sale
 #. odoo-python
 #: code:addons/mass_mailing_sale/models/mailing_mailing.py:0
 msgid "No Quotations yet!"
@@ -139,45 +106,20 @@ msgstr "尚未有收入。"
 #. module: mass_mailing_sale
 #. odoo-javascript
 #: code:addons/mass_mailing_sale/static/src/builder/options/product_snapshot_fragments.xml:0
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_aside
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_card
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_columns
-#, fuzzy
 msgid "Price information"
-msgstr "價格資訊"
+msgstr ""
 
 #. module: mass_mailing_sale
 #. odoo-javascript
 #: code:addons/mass_mailing_sale/static/src/builder/options/product_snapshot_snippet_info.js:0
-#, fuzzy
 msgid "Product"
-msgstr "商品"
-
-#. module: mass_mailing_sale
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.email_designer_snippets
-#, fuzzy
-msgid "Product Aside"
-msgstr "旁附產品資料"
-
-#. module: mass_mailing_sale
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.email_designer_snippets
-#, fuzzy
-msgid "Product Card"
-msgstr "產品卡片"
+msgstr "產品"
 
 #. module: mass_mailing_sale
 #. odoo-javascript
 #: code:addons/mass_mailing_sale/static/src/builder/options/product_snapshot_fragments.xml:0
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_columns
-#, fuzzy
 msgid "Product information"
-msgstr "產品資訊"
-
-#. module: mass_mailing_sale
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.email_designer_snippets
-#, fuzzy
-msgid "Products List"
-msgstr "產品清單"
+msgstr ""
 
 #. module: mass_mailing_sale
 #. odoo-python
@@ -202,7 +144,8 @@ msgstr "報價單"
 msgid ""
 "Quotations will appear here once your customers add products to their Carts "
 "or when your sales reps assign this mailing."
-msgstr "當您的客戶將產品新增至購物車，或您的銷售代表指派此郵件時，報價單將顯示在此。"
+msgstr ""
+"當您的客戶將產品新增至購物車，或您的銷售代表指派此郵件時，報價單將顯示在此。"
 
 #. module: mass_mailing_sale
 #: model:ir.model.fields.selection,name:mass_mailing_sale.selection__utm_campaign__ab_testing_winner_selection__sale_invoiced_amount
@@ -227,13 +170,6 @@ msgid "Sales Order"
 msgstr "銷售訂單"
 
 #. module: mass_mailing_sale
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_aside
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_card
-#: model_terms:ir.ui.view,arch_db:mass_mailing_sale.s_product_columns
-msgid "Select the products you want to display!"
-msgstr ""
-
-#. module: mass_mailing_sale
 #: model:ir.model.fields,help:mass_mailing_sale.field_utm_campaign__ab_testing_winner_selection
 msgid "Selection to determine the winner mailing that will be sent."
 msgstr "確定將會發送的優勝者郵件的選擇。"
@@ -242,6 +178,11 @@ msgstr "確定將會發送的優勝者郵件的選擇。"
 #: model:ir.model,name:mass_mailing_sale.model_utm_campaign
 msgid "UTM Campaign"
 msgstr "UTM 行銷活動"
+
+#. module: mass_mailing_sale
+#: model:ir.module.module,description:base.module_mass_mailing_sale
+msgid "UTM and mass mailing on sale orders"
+msgstr ""
 
 #. module: mass_mailing_sale
 #: model:ir.model.fields,field_description:mass_mailing_sale.field_utm_campaign__ab_testing_winner_selection

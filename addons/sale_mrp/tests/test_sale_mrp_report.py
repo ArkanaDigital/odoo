@@ -70,21 +70,18 @@ class TestSaleMrpInvoices(TestSaleCommon):
         html = self.env['ir.actions.report']._render_qweb_html(
             'account.report_invoice_with_payments', invoice.ids)[0]
         text = html2plaintext(html.decode())
-        self.assertRegex(text, r'Product By Lot\n1.00\s+Units\nLOT0001', "There should be a line that specifies 1 x LOT0001")
+        self.assertRegex(text, r'Product By Lot\n1\s+Units\nLOT0001', "There should be a line that specifies 1 x LOT0001")
 
     def test_report_forecast_for_mto_procure_method(self):
         """
         Check that mto moves are not reported as taking from stock in the forecast report
         """
-        mto_route = self.env.ref('stock.route_warehouse0_mto')
+        mto_route = self.warehouse.mto_pull_id.route_id
         mto_route.active = True
-        manufacturing_route = self.env.ref('mrp.route_warehouse0_manufacture')
-        routes = mto_route + manufacturing_route
-        routes.product_selectable = True
         product = self.env['product.product'].create({
             'name': 'SuperProduct',
             'is_storable': True,
-            'route_ids': routes,
+            'route_ids': [Command.set([mto_route.id])],
         })
 
         product.bom_ids = [Command.create({

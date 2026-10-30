@@ -100,8 +100,8 @@ class TestSaleToInvoice(TestSaleCommon):
         self._check_order_search(self.sale_order, [("invoice_ids", "=", False)], self.sale_order)
         # Let's do an invoice for a deposit of 100
         downpayment = self.InvoiceWizard.create({
-            "advance_payment_method": "fixed",
-            "fixed_amount": 50,
+            "advance_payment_method": "downpayment",
+            "amount": 50,
         })
         # Create two $50 invoices
         downpayment.create_invoices()
@@ -174,8 +174,8 @@ class TestSaleToInvoice(TestSaleCommon):
         self._check_order_search(self.sale_order, [("invoice_ids", "=", False)], self.sale_order)
         # Let's do an invoice for a deposit of 10%
         downpayment = self.InvoiceWizard.create({
-            "advance_payment_method": "percentage",
-            "amount": 10,
+            "advance_payment_method": "downpayment",
+            "percentage": 0.10,
         })
         downpayment.create_invoices()
         self._check_order_search(
@@ -220,7 +220,7 @@ class TestSaleToInvoice(TestSaleCommon):
             self
             .env["sale.advance.payment.inv"]
             .with_context(context)
-            .create({"advance_payment_method": "fixed", "fixed_amount": 50})
+            .create({"advance_payment_method": "downpayment", "amount": 50})
         )
         downpayment.create_invoices()
         # Let's do the invoice for the remaining amount
@@ -266,8 +266,8 @@ class TestSaleToInvoice(TestSaleCommon):
         # Let's do an invoice for a down payment of 50
         self.env["sale.advance.payment.inv"].with_context(context).create({
             "sale_order_ids": [Command.set(sale_order.ids)],
-            "advance_payment_method": "fixed",
-            "fixed_amount": 50,
+            "advance_payment_method": "downpayment",
+            "amount": 50,
         }).create_invoices()
         dp_line = sale_order.order_line.filtered(
             lambda sol: sol.is_downpayment and not sol.display_type
@@ -313,11 +313,11 @@ class TestSaleToInvoice(TestSaleCommon):
             self
             .env["sale.advance.payment.inv"]
             .with_context(context)
-            .create({"advance_payment_method": "fixed", "fixed_amount": 50})
+            .create({"advance_payment_method": "downpayment", "amount": 50})
         )
         # Create invoice
         downpayment.create_invoices()
-        self.assertEqual(downpayment.amount, 0.0, "The down payment amount should be 0.0")
+        self.assertEqual(downpayment.percentage, 0.0, "The down payment percentage should be 0.0")
 
     def test_downpayment_percentage_tax_icl(self):
         """Test invoice with a percentage downpayment and an included tax.
@@ -327,7 +327,10 @@ class TestSaleToInvoice(TestSaleCommon):
         # Confirm the SO
         self.sale_order.action_confirm()
         # Let's do an invoice for a deposit of 100
-        payment = self.InvoiceWizard.create({"advance_payment_method": "percentage", "amount": 50})
+        payment = self.InvoiceWizard.create({
+            "advance_payment_method": "downpayment",
+            "percentage": 0.50,
+        })
         payment.create_invoices()
 
         self.assertEqual(
@@ -370,8 +373,8 @@ class TestSaleToInvoice(TestSaleCommon):
 
         # Create an invoice for a Down payment of 100
         self.InvoiceWizard.create({
-            "advance_payment_method": "fixed",
-            "fixed_amount": 100,
+            "advance_payment_method": "downpayment",
+            "amount": 100,
         }).create_invoices()
 
         # Ensure the downpayment line on the sale order is correctly set to 100
@@ -409,28 +412,44 @@ class TestSaleToInvoice(TestSaleCommon):
             "The downpayment line amount should be equal to the sum of the invoice and credit note amount",
         )
 
+        payment = self.env['sale.advance.payment.inv'].with_context(self.context).create({})
+        payment.create_invoices()
+        invoice = max(self.sale_order.invoice_ids)
+        invoice_downpayment_line = invoice.invoice_line_ids.filtered('is_downpayment')
+        self.assertEqual(len(invoice_downpayment_line), 1,
+                         "The downpayment line should exist in the final invoice.")
+        self.assertEqual(invoice_downpayment_line.quantity, -1,
+                         "The downpayment line qty should be -1 for the final invoice.")
+        self.assertEqual(invoice_downpayment_line.price_unit, downpayment_line.price_unit,
+                         "The downpayment line price unit should match the price unit on the sale order.")
+
     def test_downpayment_reference_after_reverse_and_create_invoice(self):
         """Test that the down payment line shows the re-issued invoice reference
         after a "Reverse and Create Invoice" on the down payment invoice."""
         self.sale_order.action_confirm()
 
-        payment = self.env["sale.advance.payment.inv"].with_context(self.context).create({
-            "advance_payment_method": "fixed",
-            "fixed_amount": 100,
-        })
+        payment = (
+            self
+            .env["sale.advance.payment.inv"]
+            .with_context(self.context)
+            .create({"advance_payment_method": "downpayment", "amount": 100})
+        )
         payment.create_invoices()
         downpayment_line = self.sale_order.order_line.filtered(
-            lambda l: l.is_downpayment and not l.display_type)
+            lambda l: l.is_downpayment and not l.display_type
+        )
         downpayment_invoice = downpayment_line.invoice_lines.move_id
         downpayment_invoice.action_post()
 
-        move_reversal = self.env["account.move.reversal"].with_context(
-            active_model="account.move",
-            active_ids=downpayment_invoice.ids,
-        ).create({
-            "date": downpayment_invoice.date,
-            "journal_id": downpayment_invoice.journal_id.id,
-        })
+        move_reversal = (
+            self
+            .env["account.move.reversal"]
+            .with_context(active_model="account.move", active_ids=downpayment_invoice.ids)
+            .create({
+                "date": downpayment_invoice.date,
+                "journal_id": downpayment_invoice.journal_id.id,
+            })
+        )
         new_invoice = self.env["account.move"].browse(move_reversal.modify_moves()["res_id"])
         new_invoice.action_post()
 
@@ -873,7 +892,7 @@ class TestSaleToInvoice(TestSaleCommon):
             invoice.invoice_line_ids,
             [
                 {
-                    "name": "Meal Menu x 3",
+                    "label": "Meal Menu x 3",
                     "display_type": "line_section",
                     "product_id": False,
                     "quantity": 3,
@@ -881,7 +900,7 @@ class TestSaleToInvoice(TestSaleCommon):
                     "sequence": 0,
                 },
                 {
-                    "name": "Horse-meat burger",
+                    "label": "Horse-meat burger",
                     "display_type": "product",
                     "product_id": product_a.id,
                     "quantity": 3,
@@ -889,7 +908,7 @@ class TestSaleToInvoice(TestSaleCommon):
                     "sequence": 1,
                 },
                 {
-                    "name": "French fries",
+                    "label": "French fries",
                     "display_type": "product",
                     "product_id": product_b.id,
                     "quantity": 3,
@@ -991,7 +1010,7 @@ class TestSaleToInvoice(TestSaleCommon):
             self
             .env["sale.advance.payment.inv"]
             .with_context(no_journal_ctxt)
-            .create({"advance_payment_method": "percentage", "amount": 50})
+            .create({"advance_payment_method": "downpayment", "percentage": 0.50})
         )
         payment.create_invoices()
         self.assertEqual(
@@ -1005,7 +1024,7 @@ class TestSaleToInvoice(TestSaleCommon):
             self
             .env["sale.advance.payment.inv"]
             .with_context(context_for_downpayment)
-            .create({"advance_payment_method": "fixed", "fixed_amount": 50})
+            .create({"advance_payment_method": "downpayment", "amount": 50})
         )
         downpayment.create_invoices()
         self.assertEqual(
@@ -1208,7 +1227,7 @@ class TestSaleToInvoice(TestSaleCommon):
         """
         self.sale_order.order_line.product_uom_qty = 2.0
         # TODO?: validate invoice and register payments
-        self.sale_order.order_line.read(["name", "price_unit", "product_uom_qty", "price_total"])
+        self.sale_order.order_line.fetch(["name", "price_unit", "product_uom_qty", "price_total"])
 
         self.assertEqual(self.sale_order.amount_total, 1240.0, "Sale: total amount is wrong")
         self.sale_order.order_line._compute_product_updatable()
@@ -1387,7 +1406,8 @@ class TestSaleToInvoice(TestSaleCommon):
         line.qty_delivered = 15
         self.assertEqual(line.qty_invoiced, 10)
         self.assertEqual(line.untaxed_amount_invoiced, 300)
-        self.assertEqual(sale_order.amount_to_invoice, 150)
+        # 10 of the 20 ordered units are invoiced, whatever was delivered.
+        self.assertEqual(sale_order.amount_to_invoice, 300)
 
     def test_salesperson_in_invoice_followers(self):
         """Test if the salesperson is in the followers list of invoice created from SO."""
@@ -1573,20 +1593,12 @@ class TestSaleToInvoice(TestSaleCommon):
 
         self.assertEqual(so.amount_to_invoice, 180.0, "The amount to invoice should be 180.0")
 
-    def test_invoice_line_name_has_product_name(self):
-        """Testing that when invoicing a sales order, the invoice line name ALWAYS contains the
-        product name."""
+    def test_invoice_line_copies_description(self):
+        """Testing that when invoicing a sales order, the invoice line name copies the description."""
         so = self.sale_order
 
-        # Use only invoicable on order products
-        so.order_line[1].product_id = so.order_line[0].product_id
-        so.order_line[3].product_id = so.order_line[2].product_id
-
         # Adapt the SOL names to test the different cases
-        so.order_line[0].name = "just a description"
-        so.order_line[1].name = so.order_line[1].product_id.display_name
-        so.order_line[2].name = f"{so.order_line[2].product_id.display_name} with more description"
-        so.order_line[3].name = "product"
+        so.order_line[0].name = "A description"
 
         # Invoice the sale order
         so.action_confirm()
@@ -1595,23 +1607,8 @@ class TestSaleToInvoice(TestSaleCommon):
         # Check the invoice line names
         self.assertEqual(
             inv.invoice_line_ids[0].name,
-            f"{so.order_line[0].product_id.display_name}\n{so.order_line[0].name}",
-            "When the description doesn't contain the product name, it should be added to the invoice line name",
-        )
-        self.assertEqual(
-            inv.invoice_line_ids[1].name,
-            f"{so.order_line[1].name}",
-            "When the description is the product name, the invoice line name should only be the description",
-        )
-        self.assertEqual(
-            inv.invoice_line_ids[2].name,
-            f"{so.order_line[2].name}",
-            "When description contains the product name, the invoice line name should only be the description",
-        )
-        self.assertEqual(
-            inv.invoice_line_ids[3].name,
-            f"{so.order_line[3].product_id.display_name}\n{so.order_line[3].name}",
-            "When the product name contains the description, the invoice line name should contain the product name and the description",
+            so.order_line[0].name,
+            "Description should be added to the invoice line name",
         )
 
     def test_credit_note_automatic_matching(self):
@@ -1739,7 +1736,7 @@ class TestSaleToInvoice(TestSaleCommon):
                 "active_id": sale_order.id,
                 "default_journal_id": self.company_data["default_journal_sale"].id,
             })
-            .create({"advance_payment_method": "percentage", "amount": 10})
+            .create({"advance_payment_method": "downpayment", "amount": 10})
         )
         action_values = wizard.create_invoices()
 
@@ -1769,14 +1766,14 @@ class TestSaleToInvoice(TestSaleCommon):
 
             # Let's do 2 invoices for a deposit of 50 each
             downpayment = self.env["sale.advance.payment.inv"].create({
-                "advance_payment_method": "fixed",
-                "fixed_amount": 50,
+                "advance_payment_method": "downpayment",
+                "amount": 50,
                 "sale_order_ids": sale_order,
             })
             downpayment.create_invoices()
             downpayment2 = self.env["sale.advance.payment.inv"].create({
-                "advance_payment_method": "fixed",
-                "fixed_amount": 50,
+                "advance_payment_method": "downpayment",
+                "amount": 50,
                 "sale_order_ids": sale_order,
             })
             downpayment2.create_invoices()

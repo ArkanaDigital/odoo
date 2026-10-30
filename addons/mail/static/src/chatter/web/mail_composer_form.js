@@ -1,12 +1,16 @@
-import { useSubEnv } from "@web/owl2/utils";
 import { formView } from "@web/views/form/form_view";
 import { registry } from "@web/core/registry";
-import { EventBus, t, useOnChange, useProps } from "@odoo/owl";
+import { EventBus, providePlugins, t, useOnChange, usePlugin, useProps } from "@odoo/owl";
+import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { formControllerProps } from "@web/views/form/form_controller";
 import { useCustomDropzone } from "@web/core/dropzone/dropzone_hook";
-import { useService } from "@web/core/utils/hooks";
+import { _t } from "@web/core/l10n/translation";
+import { useBus, useService } from "@web/core/utils/hooks";
+import { ORM } from "@web/core/orm_plugin";
 import { useX2ManyCrud } from "@web/views/fields/relational_utils";
 import { MailAttachmentDropzone } from "@mail/core/common/mail_attachment_dropzone";
+import { FullComposerBusPlugin } from "@mail/core/web/full_composer_bus_plugin";
+import { useMailComposerAttachmentsUploader } from "@mail/core/web/mail_composer_attachment_hook";
 
 export class MailComposerFormController extends formView.Controller {
     props = useProps({
@@ -16,8 +20,49 @@ export class MailComposerFormController extends formView.Controller {
     setup() {
         super.setup();
         this.env.dialogData.model = this.props.resModel;
-        useSubEnv({
-            fullComposerBus: this.props.fullComposerBus,
+        providePlugins([FullComposerBusPlugin], { bus: this.props.fullComposerBus });
+        this.cannedResponseIds = new Set();
+        useBus(this.props.fullComposerBus, "INSERT_CANNED_RESPONSE", (ev) =>
+            this.cannedResponseIds.add(ev.detail.cannedResponse.id)
+        );
+        if (this.props.context.default_message_id) {
+            this.dialogService = useService("dialog");
+            this.stopEditingConfirmation();
+        }
+    }
+
+    async beforeExecuteActionButton(clickParams) {
+        if (clickParams.name === "action_send_mail") {
+            clickParams.buttonContext = {
+                ...clickParams.buttonContext,
+                canned_response_ids: [...this.cannedResponseIds],
+            };
+        }
+        return super.beforeExecuteActionButton(...arguments);
+    }
+
+    stopEditingConfirmation() {
+        const dialogData = this.env.dialogData;
+        const close = dialogData.close;
+        dialogData.close = async (params) => {
+            if (params?.dismiss && !(await this.askStopEditingConfirmation())) {
+                return;
+            }
+            return close(params);
+        };
+    }
+
+    /** @returns {Promise<boolean>} whether the message edition should be stopped */
+    askStopEditingConfirmation() {
+        return new Promise((resolve) => {
+            this.dialogService.add(ConfirmationDialog, {
+                body: _t("Leaving will stop editing this message."),
+                cancel: () => resolve(false),
+                cancelLabel: _t("Keep editing"),
+                confirm: () => resolve(true),
+                confirmLabel: _t("Stop editing"),
+                title: _t("Stop editing"),
+            });
         });
     }
 }
@@ -25,7 +70,7 @@ export class MailComposerFormController extends formView.Controller {
 export class MailComposerFormRenderer extends formView.Renderer {
     setup() {
         super.setup();
-        this.orm = useService("orm");
+        this.orm = usePlugin(ORM);
         // Autofocus the visible editor in edition mode.
         useOnChange(
             () => [this.props.record.isInEdition, this.rootRef(), this.props.record.resId],
@@ -45,11 +90,15 @@ export class MailComposerFormRenderer extends formView.Renderer {
         );
 
         const getActiveMailThreads = () => {
-            const resIds =
-                this.props.record.resModel === "mail.scheduled.message"
-                    ? [this.props.record.data.res_id.resId]
-                    : JSON.parse(this.props.record.data.res_ids);
-
+            let resIds;
+            if (this.props.record.resModel === "mail.scheduled.message") {
+                resIds = [this.props.record.data.res_id.resId];
+            } else {
+                // composer does not store res_ids past a certain limit, assume active_ids is used
+                resIds = this.props.record.data.res_ids
+                    ? JSON.parse(this.props.record.data.res_ids)
+                    : this.props.record.context.active_ids;
+            }
             return resIds.map((resId) => {
                 const thread = this.mailStore["mail.thread"].insert({
                     model: this.props.record.data.model,
@@ -63,26 +112,30 @@ export class MailComposerFormRenderer extends formView.Renderer {
         this.attachmentUploadService = useService("mail.attachment_upload");
         this.operations = useX2ManyCrud(() => this.props.record.data["attachment_ids"], true);
 
+        const doUpload = useMailComposerAttachmentsUploader();
         useCustomDropzone(this.rootRef, MailAttachmentDropzone, {
             /** @param {Event} event */
             onDrop: async (event) => {
-                for (const thread of getActiveMailThreads()) {
-                    // Use an isolated composer object instead of thread.composer to
-                    // avoid pushing into the main thread's composer.attachments list,
-                    // which is observed by the chatter.
-                    const composer =
-                        this.props.record.resModel === "mail.scheduled.message"
-                            ? { attachments: [] }
-                            : thread.composer;
-                    for (const file of event.dataTransfer.files) {
-                        const attachment = await this.attachmentUploadService.upload(
-                            thread,
-                            composer,
-                            file
-                        );
-                        await this.operations.saveRecord([attachment.id]);
+                const uploadFiles = async () => {
+                    for (const thread of getActiveMailThreads()) {
+                        // Use an isolated composer object instead of thread.composer to
+                        // avoid pushing into the main thread's composer.attachments list,
+                        // which is observed by the chatter.
+                        const composer =
+                            this.props.record.resModel === "mail.scheduled.message"
+                                ? { attachments: [] }
+                                : thread.composer;
+                        for (const file of event.dataTransfer.files) {
+                            const attachment = await this.attachmentUploadService.upload(
+                                thread,
+                                composer,
+                                file
+                            );
+                            await this.operations.saveRecord([attachment.id]);
+                        }
                     }
-                }
+                };
+                await doUpload(uploadFiles());
             },
         });
 

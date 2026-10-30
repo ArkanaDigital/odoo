@@ -1,5 +1,4 @@
 import { registry } from "@web/core/registry";
-import { constructFullProductName, constructAttributeString } from "@point_of_sale/utils";
 import { parseFloat } from "@web/views/fields/parsers";
 import { formatFloat } from "@web/core/utils/numbers";
 import { _t } from "@web/core/l10n/translation";
@@ -30,8 +29,47 @@ export class PosOrderline extends PosOrderlineAccounting {
         };
     }
 
+    constructAttributeString() {
+        let attributeString = "";
+
+        if (this.attribute_value_ids.length > 0) {
+            for (const value of this.attribute_value_ids) {
+                if (value.is_custom) {
+                    const customValue = this.custom_attribute_value_ids.find(
+                        (cus) =>
+                            cus.custom_product_template_attribute_value_id?.id == parseInt(value.id)
+                    );
+                    if (customValue) {
+                        attributeString += `${value.attribute_id.name}: ${value.name}: ${customValue.custom_value}, `;
+                    }
+                } else {
+                    attributeString += `${value.name}, `;
+                }
+            }
+
+            attributeString = attributeString.slice(0, -2);
+        } else if (this.product_id.product_template_variant_value_ids.length > 0) {
+            attributeString = this.product_id.product_template_variant_value_ids
+                .map((attr) => attr.name)
+                .join(", ");
+        }
+
+        return attributeString;
+    }
+
+    constructFullProductName(opts = {}) {
+        const { attributes = true } = opts;
+        if (!attributes) {
+            return this.product_id.name;
+        }
+        const attributeString = this.constructAttributeString();
+        return attributeString
+            ? `${this.product_id.name} (${attributeString})`
+            : `${this.product_id.name}`;
+    }
+
     setFullProductName() {
-        this.full_product_name = constructFullProductName(this);
+        this.full_product_name = this.constructFullProductName();
     }
 
     setOptions(options) {
@@ -61,10 +99,6 @@ export class PosOrderline extends PosOrderlineAccounting {
         }
 
         this.setUnitPrice(this.price_unit);
-    }
-
-    get preparationKey() {
-        return this.uuid;
     }
 
     get quantityStr() {
@@ -136,12 +170,18 @@ export class PosOrderline extends PosOrderlineAccounting {
                 )?.custom_value || "";
 
             if (attrValue.attribute_id.display_type === "multi") {
-                if (!acc[attrValue.attribute_id.id]) {
-                    acc[attrValue.attribute_id.id] = { selected: [], custom_value: customValue };
+                if (!acc[attrValue.attribute_line_id.id]) {
+                    acc[attrValue.attribute_line_id.id] = {
+                        selected: [],
+                        custom_value: customValue,
+                    };
                 }
-                acc[attrValue.attribute_id.id].selected.push(attrValue);
+                acc[attrValue.attribute_line_id.id].selected.push(attrValue);
             } else {
-                acc[attrValue.attribute_id.id] = { selected: attrValue, custom_value: customValue };
+                acc[attrValue.attribute_line_id.id] = {
+                    selected: attrValue,
+                    custom_value: customValue,
+                };
             }
             return acc;
         }, {});
@@ -283,27 +323,45 @@ export class PosOrderline extends PosOrderlineAccounting {
         this.setQuantity(this.getQuantity() + orderline.getQuantity());
     }
 
-    setUnitPrice(price) {
-        const ProductPrice = this.models["decimal.precision"].find(
+    get unitPricePrecision() {
+        const productPrice = this.models["decimal.precision"].find(
             (dp) => dp.name === "Product Price"
         );
+        if (
+            this.extra_tax_data?.price_unit !== undefined &&
+            this.currency.precision < productPrice.precision
+        ) {
+            return this.currency;
+        }
+        return productPrice;
+    }
+
+    setUnitPrice(price) {
         const parsed_price = !isNaN(price)
             ? price
             : isNaN(parseFloat(price))
             ? 0
             : parseFloat("" + price);
-        this.price_unit = ProductPrice.round(parsed_price || 0);
+        this.price_unit = this.unitPricePrecision.round(parsed_price || 0);
     }
 
     displayDiscountPolicy() {
         // Sales dropped `discount_policy`, and we only show discount if applied pricelist rule
-        // is a percentage discount. However we don't have that information in pos
+        // is a plain discount. However we don't have that information in pos
         // so this is heuristic used to imitate the same behavior.
         if (
             this.order_id.pricelist_id &&
-            this.order_id.pricelist_id.item_ids
-                .map((rule) => rule.compute_price)
-                .includes("percentage")
+            this.order_id.pricelist_id.item_ids.some(
+                (rule) =>
+                    rule.compute_price === "discount" &&
+                    rule.price_discount > 0 &&
+                    !(
+                        rule.price_round ||
+                        rule.price_surcharge ||
+                        rule.price_min_margin ||
+                        rule.price_max_margin
+                    )
+            )
         ) {
             return "without_discount";
         }
@@ -403,8 +461,8 @@ export class PosOrderline extends PosOrderlineAccounting {
     }
     get orderDisplayProductName() {
         return {
-            name: this.product_id?.name,
-            attributeString: constructAttributeString(this),
+            name: this.constructFullProductName({ attributes: false }),
+            attributeString: this.constructAttributeString(),
         };
     }
     isSelected() {

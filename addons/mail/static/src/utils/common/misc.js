@@ -1,5 +1,3 @@
-import { effect, untrack } from "@odoo/owl";
-
 import { AssetsLoadingError, getBundle } from "@web/core/assets";
 import { memoize } from "@web/core/utils/functions";
 
@@ -23,14 +21,6 @@ export function assignGetter(obj, data) {
         ])
     );
     Object.defineProperties(obj, properties);
-}
-
-export function assignIn(obj, data, keys = Object.keys(data)) {
-    for (const key of keys) {
-        if (key in data) {
-            obj[key] = data[key];
-        }
-    }
     return obj;
 }
 
@@ -92,7 +82,7 @@ export function closeStream(stream) {
  *  greater than date2, and 0 if they are equal.
  */
 export function compareDatetime(date1, date2) {
-    if (date1?.ts === date2?.ts) {
+    if (date1?.valueOf() === date2?.valueOf()) {
         return 0;
     }
     if (!date1) {
@@ -101,7 +91,8 @@ export function compareDatetime(date1, date2) {
     if (!date2) {
         return 1;
     }
-    return date1.ts - date2.ts;
+    // an invalid date has no millis, and a NaN comparator makes the sort unstable
+    return date1.valueOf() - date2.valueOf() || 0;
 }
 
 /**
@@ -199,22 +190,6 @@ export const hasHardwareAcceleration = memoize(() => {
     }
     return true;
 });
-
-/**
- * @param {() => void} effectFn
- * @returns {() => void} A function to dispose the effect then invoke last returned cleanup function
- */
-export function effectWithCleanup(effectFn) {
-    let cleanup;
-    const disposeFn = effect(() => {
-        untrack(() => cleanup?.());
-        cleanup = effectFn();
-    });
-    return () => {
-        disposeFn();
-        untrack(() => cleanup?.());
-    };
-}
 
 /**
  * @param {HTMLElement} targetNode

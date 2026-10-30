@@ -152,6 +152,7 @@ class ModuleNode:
         self.id: int = 0                            # id
         self.state: STATES = 'uninstalled'          # state
         self.demo: bool = False                     # demo
+        self.test_data: bool = False                # test_data
         self.installed_version: str | None = None   # latest_version (attention: Incorrect field names !! in ir_module.py)
 
         # info for upgrade
@@ -236,23 +237,12 @@ class ModuleGraph:
         for name in names:
             module = self._modules[name] = ModuleNode(name, self)
             if not module.manifest.get('installable'):
-                if name in self._imported_modules:
-                    self._remove(name, log_dependents=False)
-                else:
-                    _logger.warning('module %s: not installable, skipped', name)
-                    self._remove(name)
+                _logger.warning('module %s: not installable, skipped', name)
+                self._remove(name)
 
         self._update_depends(names)
         self._update_depth(names)
         self._update_from_database(names)
-
-    @functools.cached_property
-    def _imported_modules(self) -> OrderedSet[str]:
-        result = ['studio_customization']
-        if column_exists(self._cr, 'ir_module_module', 'imported'):
-            self._cr.execute('SELECT name FROM ir_module_module WHERE imported')
-            result += [m[0] for m in self._cr.fetchall()]
-        return OrderedSet(result)
 
     def _update_depends(self, names: Iterable[str]) -> None:
         for name in names:
@@ -282,13 +272,20 @@ class ModuleGraph:
         if not names:
             return
         # update modules with values from the database (if exist)
-        query = '''
-            SELECT name, id, state, demo, latest_version AS installed_version
-            FROM ir_module_module
-            WHERE name IN %s
-        '''
+        if column_exists(self._cr, 'ir_module_module', 'test_data'):
+            query = '''
+                SELECT name, id, state, demo, test_data, latest_version AS installed_version
+                FROM ir_module_module
+                WHERE name IN %s
+            '''
+        else:
+            query = '''
+                SELECT name, id, state, demo, FALSE AS test_data, latest_version AS installed_version
+                FROM ir_module_module
+                WHERE name IN %s
+            '''
         self._cr.execute(query, [names])
-        for name, id_, state, demo, installed_version in self._cr.fetchall():
+        for name, id_, state, demo, test_data, installed_version in self._cr.fetchall():
             if state == 'uninstallable':
                 _logger.warning('module %s: not installable, skipped', name)
                 self._remove(name)
@@ -304,14 +301,14 @@ class ModuleGraph:
             module.id = id_
             module.state = state
             module.demo = demo
+            module.test_data = test_data
             module.installed_version = installed_version
             module.load_version = installed_version
             module.load_state = state
 
-    def _remove(self, name: str, log_dependents: bool = True) -> None:
+    def _remove(self, name: str) -> None:
         module = self._modules.pop(name)
         for another, another_module in list(self._modules.items()):
             if module in another_module.depends and another_module.name in self._modules:
-                if log_dependents:
-                    _logger.info('module %s: its direct/indirect dependency is skipped, skipped', another)
+                _logger.info('module %s: its direct/indirect dependency is skipped, skipped', another)
                 self._remove(another)

@@ -9,7 +9,7 @@ import { DocumentationLink } from "@web/views/widgets/documentation_link/documen
 class WebsiteDashboard extends Component {
     static template = "website.WebsiteDashboardMain";
     static components = { Layout, DocumentationLink };
-    static props = ["*"];
+
     setup() {
         super.setup();
         this.keepLast = new KeepLast();

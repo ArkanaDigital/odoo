@@ -95,7 +95,6 @@ This module provides the core of the Odoo Web Client.
 
             'base/static/src/css/modules.css',
 
-            'web/static/src/core/utils/transitions.scss',
             'web/static/src/model/**/*',
             'web/static/src/search/**/*',
             'web/static/src/webclient/icons.scss', # variables required in list_controller.scss
@@ -112,17 +111,17 @@ This module provides the core of the Odoo Web Client.
             'web/static/src/webclient/actions/reports/*.js',
             'web/static/src/webclient/actions/reports/*.xml',
 
-            'web/static/src/scss/ace.scss',
-            'web/static/src/scss/base_document_layout.scss',
+            'web/static/src/scss/ace.css',
+            'web/static/src/scss/base_document_layout.css',
 
-            'base/static/src/scss/res_partner.scss',
-            'base/static/src/scss/res_users.scss',
+            'base/static/src/scss/res_partner.css',
+            'base/static/src/scss/res_users.css',
 
             # Form style should be computed before
             'web/static/src/views/form/button_box/*.scss',
 
             # Don't include dark mode files in light mode
-            ('remove', 'web/static/src/**/*.dark.scss'),
+            ('remove', 'web/static/src/**/*.dark.css'),
         ],
         'web.assets_backend_lazy': [
             ('include', 'web._assets_helpers'),
@@ -174,14 +173,15 @@ This module provides the core of the Odoo Web Client.
             'web/static/src/libs/luxon.js',
 
             ('include', 'web._assets_bootstrap_frontend'),
+            'web/static/src/scss/css_variables.scss',
 
             ('include', 'web.icons_fonts'),
             'web/static/src/webclient/navbar/navbar.scss',
             'web/static/src/scss/animation.scss',
-            'web/static/src/scss/base_frontend.scss',
+            'web/static/src/scss/base_frontend.css',
             'web/static/src/scss/mimetypes.scss',
             'web/static/src/scss/ui.scss',
-            'web/static/src/views/fields/signature/signature_field.scss',
+            'web/static/src/views/fields/signature/signature_field.css',
 
             ('include', 'web.assets_frontend_minimal'),
 
@@ -219,12 +219,12 @@ This module provides the core of the Odoo Web Client.
             'web/static/src/libs/bootstrap.js',
 
             'web/static/src/env.js',
-            'web/static/src/core/utils/transitions.scss',  # included early because used by other files
             'web/static/src/core/**/*',  # Note that 'web/static/src/core/utils/ui.js' is included in assets_frontend_minimal already
             ('remove', 'web/static/src/core/commands/**/*'),
             ('remove', 'web/static/src/core/debug/debug_menu.js'),
-            ('remove', 'web/static/src/core/file_viewer/file_viewer.dark.scss'),
+            ('remove', 'web/static/src/core/**/*.dark.scss'),
             ('remove', 'web/static/src/core/emoji_picker/emoji_data.js'),
+            'web/static/src/css/**/*',
             'web/static/src/core/commands/default_providers.js',
             'web/static/src/core/commands/command_palette.js',
             'web/static/src/public/**/*.js',
@@ -234,6 +234,11 @@ This module provides the core of the Odoo Web Client.
         'web.assets_frontend_lazy': [
             ('include', 'web.assets_frontend'),
             # Remove assets_frontend_minimal
+            ('remove', 'web/static/src/polyfills/object.js'),
+            ('remove', 'web/static/src/polyfills/array.js'),
+            ('remove', 'web/static/src/polyfills/promise.js'),
+            ('remove', 'web/static/src/polyfills/set.js'),
+            ('remove', 'web/static/src/polyfills/map.js'),
             ('remove', 'web/static/src/module_loader.js'),
             ('remove', 'web/static/src/session.js'),
             ('remove', 'web/static/src/core/browser/cookie.js'),
@@ -334,6 +339,7 @@ This module provides the core of the Odoo Web Client.
         "web.assets_web_dark": [
             ('include', 'web.assets_web'),
             'web/static/src/**/*.dark.scss',
+            'web/static/src/**/*.dark.css',
         ],
 
         # ---------------------------------------------------------------------
@@ -360,9 +366,10 @@ This module provides the core of the Odoo Web Client.
             # core
             'web/static/src/env.js',
             'web/static/src/session.js',
-            'web/static/src/core/utils/transitions.scss',
             'web/static/src/core/**/*',
+            ('remove', 'web/static/src/core/**/*.dark.scss'),
             ('remove', 'web/static/src/core/emoji_picker/emoji_data.js'), # always lazy-loaded
+            'web/static/src/css/**/*',
         ],
         'web._assets_primary_variables': [
             'web/static/src/scss/primary_variables.scss',
@@ -392,6 +399,7 @@ This module provides the core of the Odoo Web Client.
             ('include', 'web._assets_bootstrap'),
             ('after', 'web/static/src/scss/utilities_custom.scss', 'web/static/src/scss/utilities_custom_backend.scss'),
             'web/static/src/scss/bootstrap_review_backend.scss',
+            'web/static/src/scss/css_variables.scss',
         ],
         'web._assets_bootstrap_frontend': [
             ('include', 'web._assets_bootstrap'),
@@ -518,13 +526,9 @@ This module provides the core of the Odoo Web Client.
             '/web/static/lib/chartjs-adapter-luxon/chartjs-adapter-luxon.js',
         ],
         "web.fullcalendar_lib" : [
-            '/web/static/lib/fullcalendar/core/index.global.js',
-            '/web/static/lib/fullcalendar/core/locales-all.global.js',
-            '/web/static/lib/fullcalendar/interaction/index.global.js',
-            '/web/static/lib/fullcalendar/daygrid/index.global.js',
-            '/web/static/lib/fullcalendar/luxon3/index.global.js',
-            '/web/static/lib/fullcalendar/timegrid/index.global.js',
-            '/web/static/lib/fullcalendar/list/index.global.js',
+            '/web/static/lib/fullcalendar/skeleton.css',
+            '/web/static/lib/fullcalendar/fullcalendar.global.js',
+            '/web/static/lib/fullcalendar/locales-all.global.js',
         ],
         # Icons bundles: material_symbols, odoo_ui_icons and both combined. Only the
         # combination should probably be used. But it is split to allow MS
@@ -532,6 +536,10 @@ This module provides the core of the Odoo Web Client.
         'web.material_symbols_outlined': [
             '/web/static/src/libs/materialsymbols/material_symbols_outlined_subset.woff2',
             '/web/static/src/libs/materialsymbols/material_symbols_outlined.css',
+        ],
+        'web.material_symbols_rounded': [
+            '/web/static/src/libs/materialsymbols/material_symbols_rounded_subset.woff2',
+            '/web/static/src/libs/materialsymbols/material_symbols_rounded.css',
         ],
         'web.material_symbols_sharp': [
             '/web/static/src/libs/materialsymbols/material_symbols_sharp_subset.woff2',
@@ -543,6 +551,7 @@ This module provides the core of the Odoo Web Client.
         ],
         'web.icons_fonts': [
             ('include', 'web.material_symbols_outlined'),
+            ('include', 'web.material_symbols_rounded'),
             ('include', 'web.material_symbols_sharp'),
             ('include', 'web.odoo_ui_icons'),
             'web/static/src/webclient/icons_mappings/**',

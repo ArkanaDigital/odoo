@@ -32,7 +32,9 @@ class WebsitePage(models.Model):
         'website.published.multi.mixin',
         'website.searchable.mixin',
         'website.page_options.mixin',
+        'website.trackable.mixin',
     ]
+    _website_track_field = 'page_id'
     _description = 'Page'
     _order = 'website_id'
 
@@ -42,6 +44,7 @@ class WebsitePage(models.Model):
     name = fields.Char(
         string="Page Name",
         compute='_compute_name', inverse='_inverse_name', store=True,
+        copy=True,
         translate=True,
     )
     url = fields.Char('Page URL', required=True, translate=True, copy=lambda self: self.env['website'].get_unique_path(self.url))
@@ -367,6 +370,13 @@ class WebsitePage(models.Model):
             'view_id': self.env.ref('website.view_view_form_extend').id,
         }
 
+    def open_website_url(self):
+        default_website = self.env.ref('base.default_website', raise_if_not_found=False)
+        current_website = self.env.website or self.env.website.browse(self.env.context.get('host_id'))
+        if current_website == default_website == self.website_id:
+            return self.env['website'].get_client_action(self.website_url, False, self.website_id.id)
+        return super().open_website_url()
+
     # website cache
 
     @api.model
@@ -388,15 +398,6 @@ class WebsitePage(models.Model):
         """
         return True
 
-    def _get_extra_tracking_values(self, **kwargs):
-        extra_tracking_values = super()._get_extra_tracking_values(**kwargs)
-        if (
-            kwargs.get('res_model') == self._name
-            and (res_id := kwargs.get('res_id'))
-        ):
-            extra_tracking_values['page_id'] = res_id
-        return extra_tracking_values
-
     @api.model
     def _post_process_response_from_cache(self, request, response) -> None:
         """ A hook called after a response is retrieved from the cache. This
@@ -407,6 +408,9 @@ class WebsitePage(models.Model):
         html = response.response[0]
         html = re.sub(r'csrf_token: "[^"]+"', f'csrf_token: {csrf_token!r}', html)
         html = re.sub(r'name="csrf_token" value="[^"]+"', f'name="csrf_token" value={csrf_token!r}', html)
+        # the page may have been cached while the translations hash wasn't
+        translation_hash = self.env['ir.http']._get_cached_frontend_translations_hash(request.lang.code)
+        html = re.sub(r'"translation_hash": "[^"]*"', f'"translation_hash": "{translation_hash}"', html)
         response.response = [html]
 
         # used for _register_website_track

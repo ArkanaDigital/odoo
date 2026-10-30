@@ -436,14 +436,16 @@ registry.category("web_tour.tours").add("test_order_invoice_search", {
             PaymentScreen.clickInvoiceButton(),
             PaymentScreen.clickValidate(),
             FeedbackScreen.isShown(),
+            Chrome.waitForOrdersSync(),
             Chrome.clickOrders(),
             TicketScreen.selectFilter("Paid"),
             TicketScreen.search("Invoice Number", "00001"),
             TicketScreen.nthRowContains(1, "001", false),
             Chrome.clickMenuOption("Close Register"),
+            Chrome.closeRegisterPopupIsShown(),
             {
                 content: `Select button close register`,
-                trigger: `button:contains(close register)`,
+                trigger: `.modal .modal-footer .btn:contains(close register)`,
                 run: "click",
                 expectUnloadPage: true,
             },
@@ -474,5 +476,27 @@ registry.category("web_tour.tours").add("test_not_available_pricelist_not_set_on
             PaymentScreen.clickPaymentMethod("Bank"),
             PaymentScreen.clickValidate(),
             FeedbackScreen.isShown(),
+        ].flat(),
+});
+
+registry.category("web_tour.tours").add("test_ticket_screen_search_suggestions", {
+    steps: () =>
+        [
+            Chrome.startPoS(),
+            Dialog.confirm("Open Register"),
+            ProductScreen.clickDisplayedProduct("Desk Pad"),
+            Chrome.clickOrders(),
+            {
+                content: "wait for the loading overlay to be gone before probing what is on top",
+                trigger: "body:not(:has(.pos-loader))",
+            },
+            {
+                content: "type a search term to display the search field suggestions",
+                trigger: ".pos-search-bar input",
+                run: "edit 001",
+            },
+            TicketScreen.suggestionIsOnTop("Receipt Number"),
+            TicketScreen.suggestionIsOnTop("Date"),
+            TicketScreen.suggestionIsOnTop("Customer"),
         ].flat(),
 });

@@ -406,10 +406,17 @@ class TestPoSCommon(AccountTestInvoicingCommon):
         # sometimes company_currency is different from USD, so handle appropriately.
         cls.other_currency = cls.setup_other_currency("EUR", rounding=0.001)
 
+        cls._enable_pricelists()
         cls.currency_pricelist = cls.env['product.pricelist'].create({
             'name': 'Public Pricelist',
             'currency_id': cls.company_currency.id,
         })
+        # drop stray payment methods not tied to a config (e.g. leftover delivery-provider ones)
+        cls.env['pos.payment.method'].search([
+            ('company_id', '=', cls.company.id),
+            ('config_ids', '=', False),
+        ]).unlink()
+
         # Set Point of Sale configurations
         # basic_config
         #   - derived from 'point_of_sale.pos_config_main' with added journal_id and credit payment method.

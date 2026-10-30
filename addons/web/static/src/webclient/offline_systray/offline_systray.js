@@ -60,7 +60,7 @@ class OfflineSystray extends Component {
                     ]);
                 }
             }
-            if (value.method === "unlink") {
+            if (value.method === "unlink" || value.method === "web_unlink") {
                 item.status = STATUS.DELETED;
             }
             if (value.method === "action_archive") {
@@ -110,9 +110,9 @@ class OfflineSystray extends Component {
             if (this.uiService.isSmall) {
                 return "";
             }
-            return "text-bg-secondary";
+            return "text-bg-300";
         }
-        return "text-bg-secondary";
+        return "text-bg-300";
     }
 
     get labelIcon() {

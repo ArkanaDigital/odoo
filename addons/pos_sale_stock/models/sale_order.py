@@ -14,17 +14,25 @@ class SaleOrder(models.Model):
 class SaleOrderLine(models.Model):
     _inherit = 'sale.order.line'
 
-    @api.depends('pos_order_line_ids.order_id.picking_ids', 'pos_order_line_ids.order_id.picking_ids.state', 'pos_order_line_ids.refund_orderline_ids.order_id.picking_ids.state')
+    @api.depends('pos_order_line_ids.qty_delivered', 'pos_order_line_ids.order_id.picking_ids', 'pos_order_line_ids.order_id.picking_ids.state', 'pos_order_line_ids.refund_orderline_ids.order_id.picking_ids.state')
     def _compute_qty_delivered(self):
         super()._compute_qty_delivered()
 
     def _prepare_qty_delivered(self):
         delivered_qties = super()._prepare_qty_delivered()
 
+        def _get_pos_line_qty(pos_line):
+            # Refunds return the goods through incoming pickings, which `qty_delivered` ignores.
+            return pos_line.qty_delivered if pos_line.qty > 0 else pos_line.qty
+
         def _get_pos_delivered_qty(sale_line, pos_lines):
-            if all(picking.state == "done" for picking in pos_lines.order_id.picking_ids):
+            pickings = pos_lines.order_id.picking_ids
+            if pickings and all(picking.state == "done" for picking in pickings):
                 # Sum converted quantities from POS to sale order UoM
-                return sum(self._convert_qty(sale_line, pos_line.qty, "p2s") for pos_line in pos_lines)
+                return sum(
+                    self._convert_qty(sale_line, _get_pos_line_qty(pos_line), "p2s")
+                    for pos_line in pos_lines
+                )
             return 0
 
         def line_filter(line):
@@ -40,6 +48,15 @@ class SaleOrderLine(models.Model):
             if refund_qty != 0:
                 delivered_qties[sale_line] += refund_qty
         return delivered_qties
+
+    def _get_qty_procurement(self, previous_product_uom_qty=False):
+        # The quantities settled in PoS are delivered by the PoS pickings: they must not be procured again by the SO.
+        qty = super()._get_qty_procurement(previous_product_uom_qty)
+        if self.is_downpayment:
+            return qty
+        pos_lines = self.sudo().pos_order_line_ids.filtered(lambda order_line: order_line.order_id.state not in ['cancel', 'draft'])
+        refund_lines = pos_lines.refund_orderline_ids.filtered(lambda order_line: order_line.order_id.state not in ['cancel', 'draft'])
+        return qty + sum(self._convert_qty(self, pos_line.qty, 'p2s') for pos_line in pos_lines | refund_lines)
 
     def _get_read_converted_extra_items(self, sale_line):
         extra_items = super()._get_read_converted_extra_items(sale_line)

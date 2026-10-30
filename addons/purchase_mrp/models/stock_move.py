@@ -38,13 +38,13 @@ class StockMove(models.Model):
 
     def _get_value_from_bill(self, aml):
         value = super()._get_value_from_bill(aml)
-        if self.bom_line_id.bom_id.type == "phantom":
+        if self.bom_line_id.bom_id.type == "phantom" and self.purchase_line_id.product_id != self.product_id:
             value *= (self.cost_share / 100)
         return value
 
     def _get_quantity_from_bill(self, aml, quantity):
         self.ensure_one()
-        if self.bom_line_id.bom_id.type == "phantom":
+        if self.bom_line_id.bom_id.type == "phantom" and self.purchase_line_id.product_id != self.product_id:
             return aml.product_uom_id._compute_quantity(quantity, self.product_id.uom_id)
         return super()._get_quantity_from_bill(aml, quantity)
 
@@ -59,11 +59,3 @@ class StockMove(models.Model):
         if not self.env.context.get('merge_extra'):
             res['cost_share'] = sum(self.mapped('cost_share'))
         return res
-
-    def _get_qty_received_without_self(self):
-        line = self.purchase_line_id
-        if line and line.qty_received_method == 'stock_moves' and line.state != 'cancel' and any(move.product_id != line.product_id for move in line.move_ids):
-            kit_bom = self.env['mrp.bom']._bom_find(line.product_id, company_id=line.company_id.id, bom_type='phantom').get(line.product_id)
-            if kit_bom:
-                return line._compute_kit_quantities_from_moves(line.move_ids - self, kit_bom)
-        return super()._get_qty_received_without_self()

@@ -11,11 +11,11 @@ This module adapts the behavior of the PoS when the pos_hr and pos_restaurant ar
     'depends': ['pos_hr', 'pos_restaurant'],
     'auto_install': True,
     'assets': {
-        'point_of_sale._assets_pos': [
-            'pos_hr_restaurant/static/src/**/*',
-        ],
         'web.assets_tests': [
-            'pos_hr_restaurant/static/tests/**/*',
+            'pos_hr_restaurant/static/tests/tours/**/*',
+        ],
+        'web.assets_unit_tests': [
+            'pos_hr_restaurant/static/tests/unit/**/*',
         ],
     },
     'author': 'Odoo S.A.',

@@ -9,6 +9,15 @@ class PosOrderLine(models.Model):
 
     pack_lot_ids = fields.One2many('pos.pack.operation.lot', 'pos_order_line_id', string='Lot/serial Number')
 
+    def _get_qty_to_move(self):
+        """Return the quantity that this line must actually move in stock.
+
+        This can be lower than the ordered quantity when part of it was already delivered through
+        another document, e.g. the delivery of a settled sale order. See `pos_sale_stock`.
+        """
+        self.ensure_one()
+        return self.qty
+
     def write(self, vals):
         if vals.get('pack_lot_line_ids'):
             for pl in vals.get('pack_lot_ids'):
@@ -100,13 +109,16 @@ class PosOrderLine(models.Model):
             if line.product_id.type != 'consu':
                 continue
 
+            product_qty = line._get_qty_to_move()
+            if line.product_id.uom_id.is_zero(product_qty):
+                continue
+
             reference_ids = line.order_id.stock_reference_ids
             if not reference_ids:
                 reference_ids = self.env['stock.reference'].create(line._prepare_reference_vals())
                 line.order_id.stock_reference_ids = [Command.set(reference_ids.ids)]
 
             values = line._prepare_procurement_values()
-            product_qty = line.qty
 
             procurement_uom = line.product_id.uom_id
             procurements.append(self.env['stock.rule'].Procurement(
@@ -164,7 +176,7 @@ class PosOrderLine(models.Model):
         moves = self._get_stock_moves_to_consider(stock_moves, product) if stock_moves else None
         if moves and self._is_product_storable_fifo_avco():
             product_cost = self._get_product_cost_with_moves(moves)
-            if cost_currency.is_zero(product_cost) and self.order_id.shipping_date:
+            if cost_currency.is_zero(product_cost) and not sum(m._get_valued_qty() for m in moves):
                 if self.refunded_orderline_id:
                     product_cost = self.refunded_orderline_id.total_cost / self.refunded_orderline_id.qty
                 else:

@@ -87,10 +87,6 @@ class AccountPaymentMethod(models.Model):
         """
         return []
 
-    def unlink(self):
-        self.env['account.payment.method.line'].search([('payment_method_id', 'in', self.ids)]).unlink()
-        return super().unlink()
-
 
 class AccountPaymentMethodLine(models.Model):
     _name = 'account.payment.method.line'
@@ -107,6 +103,7 @@ class AccountPaymentMethodLine(models.Model):
         domain="[('payment_type', '=?', payment_type), ('id', 'in', available_payment_method_ids)]",
         required=True,
         index=True,
+        ondelete='cascade',
     )
     payment_account_id = fields.Many2one(
         comodel_name='account.account',
@@ -136,7 +133,9 @@ class AccountPaymentMethodLine(models.Model):
         for method in self:
             if self.env.context.get('hide_payment_journal_id'):
                 return super()._compute_display_name()
-            method.display_name = f"{method.name} ({method.journal_id.name})"
+            # sudo: account.journal - the journal name is part of the payment
+            # method name, which is readable by every internal user.
+            method.display_name = f"{method.name} ({method.sudo().journal_id.name})"
 
     @api.depends('payment_method_id.name')
     def _compute_name(self):

@@ -9,9 +9,10 @@ present in a separate module as it contains models used only to perform
 tests independently to functional aspects of other models. """,
     'depends': [
         'mail',
+        'mail_tracking_sms',
         'sms',
         'sms_twilio',
-        'test_orm',
+        'test_base',
     ],
     'data': [
         'security/ir.access.csv',

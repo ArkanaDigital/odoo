@@ -12,7 +12,7 @@ import { omit } from "@web/core/utils/objects";
 import { createElement, parseXML } from "@web/core/utils/xml";
 import { useModel } from "@web/model/model";
 import { addFieldDependencies, extractFieldsFromArchInfo } from "@web/model/relational_model/utils";
-import { render, useEnv, useSubEnv } from "@web/owl2/utils";
+import { render, useSubEnv } from "@web/owl2/utils";
 import { useSetupAction } from "@web/search/action_hook";
 import { STATIC_ACTIONS_GROUP_NUMBER } from "@web/search/action_menus/action_menus";
 import { Layout } from "@web/search/layout";
@@ -42,7 +42,6 @@ import {
     onMounted,
     onPatched,
     onWillDestroy,
-    onWillUnmount,
     proxy,
     signal,
     t,
@@ -115,16 +114,6 @@ export async function loadSubViews(fieldNodes, fields, context, resModel, viewSe
     }
 }
 
-export function useFormViewInDialog() {
-    const env = useEnv();
-    onMounted(() => {
-        env.bus.trigger("FORM-CONTROLLER:FORM-IN-DIALOG:ADD");
-    });
-
-    onWillUnmount(() => {
-        env.bus.trigger("FORM-CONTROLLER:FORM-IN-DIALOG:REMOVE");
-    });
-}
 // -----------------------------------------------------------------------------
 
 export const formControllerProps = {
@@ -144,6 +133,7 @@ export const formControllerProps = {
     onDiscard: t.function().optional(),
     onSave: t.function().optional(() => () => {}),
     offlineId: t.string().optional(),
+    createRecord: t.function().optional(() => () => {}),
     updateActionState: t.function().optional(() => () => {}),
 };
 
@@ -183,10 +173,6 @@ export class FormController extends Component {
         if (this.env.inDialog) {
             this.display.controlPanel = false;
         }
-
-        this.formInDialog = 0;
-        useBus(this.env.bus, "FORM-CONTROLLER:FORM-IN-DIALOG:ADD", () => this.formInDialog++);
-        useBus(this.env.bus, "FORM-CONTROLLER:FORM-IN-DIALOG:REMOVE", () => this.formInDialog--);
 
         this.disableSaveOnVisibilityChange = false;
 
@@ -293,6 +279,7 @@ export class FormController extends Component {
                 modelState: this.model.exportState(),
                 resId: this.model.root.resId,
             }),
+            getGlobalState: () => this.getGlobalState(),
         });
         useDebugCategory("form", { component: this });
 
@@ -346,10 +333,6 @@ export class FormController extends Component {
                     focusPrimaryButton();
                 }
             });
-        }
-
-        if (this.env.inDialog) {
-            useFormViewInDialog();
         }
 
         this.deleteRecordsWithConfirmation = useDeleteRecords(this.model);
@@ -548,7 +531,20 @@ export class FormController extends Component {
     }
 
     async beforeVisibilityChange() {
-        if (document.visibilityState === "hidden" && this.formInDialog === 0) {
+        const root = this.model.root;
+        const isEditingX2Many = Object.keys(root.activeFields).some((fieldName) => {
+            const field = root.fields[fieldName];
+            return (
+                ["one2many", "many2many"].includes(field.type) &&
+                !field.relatedPropertyField &&
+                root.data[fieldName].editedRecord
+            );
+        });
+        if (
+            document.visibilityState === "hidden" &&
+            !this.dialogService.hasOpenDialogs &&
+            !isEditingX2Many
+        ) {
             // calling isDirty forces all fields to commit their changes
             const isDirty = await this.model.root.isDirty();
             if (isDirty && !this.disableSaveOnVisibilityChange) {
@@ -560,13 +556,15 @@ export class FormController extends Component {
                 });
                 if (!saved) {
                     this.disableSaveOnVisibilityChange = true;
+                } else {
+                    this.env.config.setDisplayName(this.displayName());
                 }
             }
         }
     }
 
     async beforeLeave({ forceLeave } = {}) {
-        if (forceLeave) {
+        if (forceLeave || this.skipSaveOnLeave) {
             return true;
         }
         const isDirty = await this.model.root.isDirty();
@@ -587,6 +585,13 @@ export class FormController extends Component {
             ev.preventDefault();
             ev.returnValue = "Unsaved changes";
         }
+    }
+
+    /**
+     * State to keep when leaving the action, given back as `globalState` prop when coming back.
+     */
+    getGlobalState() {
+        return {};
     }
 
     getStaticActionMenuItems() {
@@ -704,6 +709,7 @@ export class FormController extends Component {
             confirm: async () => {
                 await this.model.root.delete();
                 if (!this.model.root.resId) {
+                    this.skipSaveOnLeave = true;
                     this.env.config.historyBack();
                 }
             },
@@ -736,7 +742,10 @@ export class FormController extends Component {
 
     async afterExecuteActionButton(clickParams) {}
 
-    async create() {
+    async create(_ev, newWindow) {
+        if (newWindow) {
+            return this.props.createRecord(newWindow);
+        }
         const dirty = await this.model.root.isDirty();
         const onError = (error, options) => this.onSaveError(error, options, true);
         const canProceed = !dirty || (await this.model.root.save({ onError }));

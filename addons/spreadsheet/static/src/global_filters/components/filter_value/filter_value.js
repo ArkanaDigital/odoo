@@ -3,8 +3,8 @@
 import { MultiRecordSelector } from "@web/core/record_selectors/multi_record_selector";
 import { DateFilterValue } from "../date_filter_value/date_filter_value";
 
-import { Component, onWillStart } from "@odoo/owl";
-import { components } from "@odoo/o-spreadsheet";
+import { Component, onWillStart, t, useProps, providePlugins } from "@odoo/owl";
+import { components, owlPlugins } from "@odoo/o-spreadsheet";
 import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
 import { Domain } from "@web/core/domain";
@@ -20,6 +20,7 @@ import {
 } from "@spreadsheet/global_filters/helpers";
 
 const { ValidationMessages, NumberInput } = components;
+const { ModelPlugin } = owlPlugins;
 
 export class FilterValue extends Component {
     static template = "spreadsheet.FilterValue";
@@ -31,17 +32,18 @@ export class FilterValue extends Component {
         ValidationMessages,
         NumberInput,
     };
-    static props = {
-        filter: Object,
-        model: Object,
-        setGlobalFilterValue: Function,
-        globalFilterValue: { optional: true },
-        showTitle: { type: Boolean, optional: true },
-        showClear: { type: Boolean, optional: true },
-        rangesOfAllowedValues: { type: Array, optional: true },
-    };
+    props = useProps({
+        filter: t.object(),
+        model: t.object(),
+        setGlobalFilterValue: t.function(),
+        globalFilterValue: t.any().optional(),
+        showTitle: t.boolean().optional(),
+        showClear: t.boolean().optional(),
+        rangesOfAllowedValues: t.array().optional(),
+    });
 
     setup() {
+        providePlugins([ModelPlugin], { model: this.props.model });
         this.getters = this.props.model.getters;
         this.fieldService = useService("field");
         this.isValid = false;
@@ -166,14 +168,6 @@ export class FilterValue extends Component {
             ),
         };
         this.props.setGlobalFilterValue(id, newFilterValue);
-    }
-
-    onBooleanInput(id, value) {
-        if (Array.isArray(value) && value.length === 0) {
-            this.clear(id);
-            return;
-        }
-        this.props.setGlobalFilterValue(id, value);
     }
 
     onSelectionInput(id, value) {

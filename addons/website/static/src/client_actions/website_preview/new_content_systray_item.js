@@ -1,4 +1,4 @@
-import { Component, onMounted, xml, proxy } from "@odoo/owl";
+import { Component, onMounted, xml, proxy, useProps, t } from "@odoo/owl";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { useDropdownState } from "@web/core/dropdown/dropdown_hooks";
@@ -21,10 +21,10 @@ export const MODULE_STATUS = {
 export class NewContentSystrayItem extends Component {
     static template = "website.NewContentSystrayItem";
     static components = { Dropdown, DropdownItem };
-    static props = {
-        onNewPage: Function,
-        newInstalledModule: { type: String, optional: true },
-    };
+    props = useProps({
+        onNewPage: t.function(),
+        newInstalledModule: t.string().optional(),
+    });
 
     setup() {
         this.orm = useService("orm");
@@ -265,7 +265,7 @@ export class NewContentSystrayItem extends Component {
                 this.state.newContentElements = this.state.newContentElements.map((el) => {
                     if (el.moduleXmlId === element.moduleXmlId) {
                         el.status = MODULE_STATUS.INSTALLING;
-                        el.icon = xml`<i class="oi oi-spin" data-icon="autorenew"/>`;
+                        el.icon = xml`<i class="oi oi-spin" data-icon="autorenew" role="img" aria-hidden="true"/>`;
                         el.title = sprintf(this.newContentText.installPleaseWait, name);
                     }
                     return el;
@@ -281,7 +281,7 @@ export class NewContentSystrayItem extends Component {
                     this.state.newContentElements = this.state.newContentElements.map((el) => {
                         if (el.moduleXmlId === element.moduleXmlId) {
                             el.status = MODULE_STATUS.FAILED_TO_INSTALL;
-                            el.icon = xml`<i class="oi" data-icon="warning"/>`;
+                            el.icon = xml`<i class="oi" data-icon="warning" role="img" aria-hidden="true"/>`;
                             el.title = sprintf(this.newContentText.failed, name);
                         }
                         return el;

@@ -2,7 +2,7 @@ import { registry } from "@web/core/registry";
 import { Interaction } from "@web/public/interaction";
 
 import { isBrowserSafari } from "@web/core/browser/feature_detection";
-import { browser } from "@web/core/browser/browser";
+import { location } from "@web/core/browser/browser";
 import { verifyHttpsUrl } from "@website/utils/misc";
 
 export class SearchBarResults extends Interaction {
@@ -36,10 +36,10 @@ export class SearchBarResults extends Interaction {
             }),
         },
         _window: {
-            "t-on-resize": () => {}, // Re-apply _root:t-att-style.
+            "t-on-resize.passive": () => {}, // Re-apply _root:t-att-style.
         },
         _scrollingParent: {
-            "t-on-scroll": () => {}, // Re-apply _root:t-att-style.
+            "t-on-scroll.passive": () => {}, // Re-apply _root:t-att-style.
         },
         ".dropdown-item": {
             "t-on-mousedown": this.onMousedown,
@@ -141,7 +141,7 @@ export class SearchBarResults extends Interaction {
      * @param {PointerEvent} ev
      */
     onExtraLinkClick(ev) {
-        browser.location.href = verifyHttpsUrl(ev.currentTarget.dataset.target);
+        location.href = verifyHttpsUrl(ev.currentTarget.dataset.target);
     }
 }
 

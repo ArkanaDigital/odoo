@@ -9,17 +9,26 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server saas~18.4\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-17 17:37+0000\n"
-"PO-Revision-Date: 2026-06-19 11:19+0000\n"
+"POT-Creation-Date: 2026-09-04 17:44+0000\n"
+"PO-Revision-Date: 2026-08-31 16:11+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Korean <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Korean <https://translate.odoo.com/projects/odoo-s19-4/"
 "account_peppol/ko/>\n"
 "Language: ko\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: account_peppol
+#: model:ir.module.module,description:base.module_account_peppol
+msgid ""
+"\n"
+"- Register as a Peppol participant\n"
+"- Send and receive documents via Peppol network in Peppol BIS Billing 3.0 "
+"format\n"
+msgstr ""
 
 #. module: account_peppol
 #. odoo-python
@@ -284,6 +293,14 @@ msgstr ""
 "    </tr>\n"
 "</table>\n"
 "            "
+
+#. module: account_peppol
+#. odoo-python
+#: code:addons/account_peppol/models/account_edi_proxy_user.py:0
+msgid ""
+"A Peppol response declaring you %(status)s this document could not be sent "
+"to the Peppol Access Point."
+msgstr ""
 
 #. module: account_peppol
 #. odoo-python
@@ -979,8 +996,7 @@ msgstr ""
 
 #. module: account_peppol
 #. odoo-python
-#: code:addons/account_peppol/models/account_move_send.py:0
-#: code:addons/account_peppol/wizard/peppol_registration.py:0
+#: code:addons/account_peppol/models/res_config_settings.py:0
 msgid "France - E-Invoicing (Approved Platform)"
 msgstr ""
 
@@ -995,6 +1011,12 @@ msgstr "Odoo에서 무료"
 #: code:addons/account_peppol/static/src/components/peppol_info/peppol_info.xml:0
 msgid "Fully automated"
 msgstr "완전 자동화"
+
+#. module: account_peppol
+#. odoo-python
+#: code:addons/account_peppol/models/res_config_settings.py:0
+msgid "Go to module"
+msgstr ""
 
 #. module: account_peppol
 #. odoo-javascript
@@ -1276,6 +1298,7 @@ msgstr "수신 대기 중"
 
 #. module: account_peppol
 #: model:ir.model.fields.selection,name:account_peppol.selection__account_edi_proxy_client_user__proxy_type__peppol
+#: model:ir.module.module,shortdesc:base.module_account_peppol
 msgid "Peppol"
 msgstr "Peppol"
 
@@ -1310,6 +1333,12 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:account_peppol.res_config_settings_view_form
 msgid "Peppol Contact Email"
 msgstr "Peppol 연락처 이메일"
+
+#. module: account_peppol
+#. odoo-python
+#: code:addons/account_peppol/models/res_config_settings.py:0
+msgid "Peppol Disconnected"
+msgstr ""
 
 #. module: account_peppol
 #. odoo-javascript
@@ -1399,6 +1428,11 @@ msgstr "Peppol 참여 역할"
 #: model:ir.model.fields,field_description:account_peppol.field_res_config_settings__account_peppol_purchase_journal_id
 msgid "Peppol Purchase Journal"
 msgstr "Peppol 구매 전표"
+
+#. module: account_peppol
+#: model:ir.model.fields,field_description:account_peppol.field_res_config_settings__peppol_purchase_journal_required
+msgid "Peppol Purchase Journal Required"
+msgstr ""
 
 #. module: account_peppol
 #: model_terms:ir.ui.view,arch_db:account_peppol.account_peppol_view_account_invoice_filter
@@ -2218,6 +2252,11 @@ msgid "This invoice has also been"
 msgstr "또한 이 청구서는"
 
 #. module: account_peppol
+#: model:ir.module.module,summary:base.module_account_peppol
+msgid "This module is used to send/receive documents with Peppol"
+msgstr ""
+
+#. module: account_peppol
 #: model:ir.model.fields,help:account_peppol.field_peppol_registration__phone_number
 #: model:ir.model.fields,help:account_peppol.field_res_company__account_peppol_phone_number
 #: model:ir.model.fields,help:account_peppol.field_res_config_settings__account_peppol_phone_number
@@ -2250,8 +2289,18 @@ msgstr ""
 
 #. module: account_peppol
 #. odoo-python
-#: code:addons/account_peppol/wizard/peppol_registration.py:0
-msgid "To use the Approved Platform for French E-Invoicing install the module"
+#: code:addons/account_peppol/models/res_config_settings.py:0
+msgid ""
+"To use the Approved Platform for French E-Invoicing install the module '%s'."
+msgstr ""
+
+#. module: account_peppol
+#. odoo-python
+#: code:addons/account_peppol/models/res_config_settings.py:0
+msgid ""
+"To use the Approved Platform for French E-Invoicing install the module "
+"'%s'.\n"
+"The module was not found. Please update the app list first."
 msgstr ""
 
 #. module: account_peppol
@@ -2294,6 +2343,12 @@ msgid "Unknown Peppol Error: %s"
 msgstr "알 수 없는 Peppol 오류: %s"
 
 #. module: account_peppol
+#. odoo-python
+#: code:addons/account_peppol/models/res_config_settings.py:0
+msgid "Update App List"
+msgstr ""
+
+#. module: account_peppol
 #: model:ir.model.fields,field_description:account_peppol.field_peppol_registration__use_parent_connection
 msgid "Use Parent Connection"
 msgstr "상위 연결 사용"
@@ -2313,11 +2368,6 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:account_peppol.res_partner_form_account_peppol
 msgid "Verify"
 msgstr "확인하기:"
-
-#. module: account_peppol
-#: model:ir.actions.server,name:account_peppol.partner_action_verify_peppol
-msgid "Verify Peppol"
-msgstr "Peppol 확인"
 
 #. module: account_peppol
 #: model_terms:ir.ui.view,arch_db:account_peppol.res_partner_form_account_peppol
@@ -2613,44 +2663,33 @@ msgstr "청구서 전송, 다만 이 건은"
 msgid "uses"
 msgstr "사용"
 
-#~ msgid "<b>Authentify with itsme</b>"
-#~ msgstr "<b>itsme로 인증하기</b>"
+msgid " (no access)"
+msgstr " (접근 권한 없음)"
 
-#~ msgid "Activate Electronic Invoicing"
-#~ msgstr "전자 인보이스 활성화"
+msgid ""
+"Code used to identify the Endpoint for BIS Billing 3.0 and its derivatives.\n"
+"             List available at https://docs.peppol.eu/poacc/billing/3.0/"
+"codelist/eas/"
+msgstr ""
+"BIS Billing 3.0 및 관련 변수에 대해 엔드포인트 식별에 사용하는 코드입니다.\n"
+"             다음에서 확인하실 수 있습니다.  https://docs.peppol.eu/poacc/"
+"billing/3.0/codelist/eas/"
 
-#~ msgid "Itsme"
-#~ msgstr "Itsme"
+msgid "EDI user should be of type Peppol"
+msgstr "EDI 사용자 유형은 Peppol이어야 합니다."
 
-#~ msgid " (no access)"
-#~ msgstr " (접근 권한 없음)"
+msgid "Please fill in the EAS code and the Participant ID code."
+msgstr "EAS 코드와 참가자 ID 코드를 입력하세요."
 
-#~ msgid ""
-#~ "Code used to identify the Endpoint for BIS Billing 3.0 and its "
-#~ "derivatives.\n"
-#~ "             List available at https://docs.peppol.eu/poacc/billing/3.0/"
-#~ "codelist/eas/"
-#~ msgstr ""
-#~ "BIS Billing 3.0 및 관련 변수에 대해 엔드포인트 식별에 사용하는 코드입니"
-#~ "다.\n"
-#~ "             다음에서 확인하실 수 있습니다.  https://docs.peppol.eu/poacc/"
-#~ "billing/3.0/codelist/eas/"
+msgid "The Peppol endpoint identification number is not correct."
+msgstr "Peppol 엔드포인트 식별 번호가 올바르지 않습니다."
 
-#~ msgid "EDI user should be of type Peppol"
-#~ msgstr "EDI 사용자 유형은 Peppol이어야 합니다."
+msgid ""
+"Unique identifier used by the BIS Billing 3.0 and its derivatives, also "
+"known as 'Endpoint ID'."
+msgstr ""
+"BIS Billing 3.0 및 관련 변수에서 사용하는 고유 식별 기호로 '엔드 포인트 ID' "
+"라고도 합니다."
 
-#~ msgid "Please fill in the EAS code and the Participant ID code."
-#~ msgstr "EAS 코드와 참가자 ID 코드를 입력하세요."
-
-#~ msgid "The Peppol endpoint identification number is not correct."
-#~ msgstr "Peppol 엔드포인트 식별 번호가 올바르지 않습니다."
-
-#~ msgid ""
-#~ "Unique identifier used by the BIS Billing 3.0 and its derivatives, also "
-#~ "known as 'Endpoint ID'."
-#~ msgstr ""
-#~ "BIS Billing 3.0 및 관련 변수에서 사용하는 고유 식별 기호로 '엔드 포인트 "
-#~ "ID' 라고도 합니다."
-
-#~ msgid "UBL 2.0"
-#~ msgstr "UBL 2.0"
+msgid "UBL 2.0"
+msgstr "UBL 2.0"

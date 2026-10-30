@@ -1,50 +1,59 @@
-.options-container {
-    background-color: $o-we-bg-lighter;
+.o_hb_options_container {
+    background-color: var(--o-we-bg-lighter);
 
-    .options-container-header {
-        --o-hb-btn-has-icon-paddingX: #{map-get($spacers, 1)};
+    .o_hb_options_container_header {
+        --o-hb-btn-has-icon-paddingX: var(--o-hb-spacer-1);
 
-        background-color: $o-we-bg-light;
+        background-color: var(--o-we-bg-light);
 
-        .o-hb-image-size-info {
+        .o_hb_image_size_info {
             margin-left: 8px;
         }
     }
 
-    &:where(:not(:first-of-type)) .options-container-header {
-        box-shadow: inset 0 1px 0 $o-we-bg-lighter;
+    &:where(:not(:first-of-type)) .o_hb_options_container_header {
+        box-shadow: inset 0 1px 0 var(--o-we-bg-lighter);
     }
 
-    .options-container-label {
-        min-width: 0; // Ensure text-overflow works in flex layouts
-        color: $o-we-fg-light;
-        font-size: $o-we-font-size-lg;
+    .o_hb_options_container_label {
+        min-width: 0; /* Ensure text-overflow works in flex layouts */
+        color: var(--o-we-fg-light);
+        font-size: var(--o-we-font-size-lg);
 
-        &-actionable {
+        &_actionable {
             &:hover, &:focus {
-                color: $o-we-fg-lighter;
+                color: var(--o-we-fg-lighter);
                 background-color: unset;
             }
+        }
+
+        .o_hb_option_container_toggler {
+            font-size: 1.2em;
+        }
+
+        + * .oi {
+            line-height: revert;
         }
     }
 
     @include o-input-number-no-arrows();
 
-    .o-hb-image-size-info {
-        background-color: $o-we-bg-darker;
+    .o_hb_image_size_info {
+        background-color: var(--o-we-bg-darker);
     }
 
-    .hb-row-content .o-hb-image-size-info {
+    .o_hb_row_content .o_hb_image_size_info {
         font-size: 0.9em;
     }
 }
 
-.o_theme_tab:has(.o-options-container-highlight) {
-    .options-container:not(.o-options-container-highlight) {
+.o_theme_tab:has(.o_hb_options_container_highlight) {
+    .o_hb_options_container:not(.o_hb_options_container_highlight) {
         position: relative;
         &::before {
             content: "";
-            @include o-position-absolute(0, 0, 0, 0);
+            position: absolute;
+            inset: 0;
             z-index: 10;
             opacity: 0;
             animation: options-container-highlight-grey 2s ease;

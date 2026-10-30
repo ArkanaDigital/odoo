@@ -20,9 +20,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0beta\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-17 17:37+0000\n"
-"PO-Revision-Date: 2026-06-20 08:25+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-08-28 17:41+0000\n"
+"PO-Revision-Date: 2026-09-09 14:00+0000\n"
+"Last-Translator: Saara Hakanen <sahak@odoo.com>\n"
 "Language-Team: Finnish <https://translate.odoo.com/projects/odoo-master/"
 "auth_signup/fi/>\n"
 "Language: fi\n"
@@ -30,7 +30,15 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: auth_signup
+#: model:ir.module.module,description:base.module_auth_signup
+msgid ""
+"\n"
+"Allow users to sign up and reset their password\n"
+"===============================================\n"
+msgstr ""
 
 #. module: auth_signup
 #: model_terms:ir.ui.view,arch_db:auth_signup.reset_password_email
@@ -41,6 +49,10 @@ msgid ""
 "        You may change your password by following this link which will "
 "remain valid during"
 msgstr ""
+",<br/><br/>\n"
+"        Tähän sähköpostiosoitteeseen liitetyn tilin salasanaa on pyydetty "
+"nollattavaksi.\n"
+"        Voit vaihtaa salasanasi seuraamalla tätä linkkiä, joka on voimassa"
 
 #. module: auth_signup
 #: model:mail.template,body_html:auth_signup.mail_template_user_signup_account_created
@@ -150,10 +162,27 @@ msgstr ""
 #: model:mail.template,body_html:auth_signup.set_password_email
 msgid ""
 "<t>\n"
-"Dear <t t-out=\"object.name or ''\">Marc Demo</t>,<br/><br/>\n"
-"You have been invited by <t t-out=\"object.create_uid.name or ''\">OdooBot</"
-"t> of <t t-out=\"object.company_id.name or ''\">YourCompany</t> to connect "
-"on Odoo.\n"
+"<t t-set=\"company_name\" t-value=\"object.company_id.name or ''\"/>\n"
+"<t t-set=\"website_url\" t-value=\"object.get_base_url()\"/>\n"
+"Hi <t t-out=\"object.name or ''\">Marc Demo</t>,<br/><br/>\n"
+"<em>This link is valid for <t t-"
+"out=\"(object.env['ir.config_parameter'].sudo().get_int('auth_signup.signup.validity.hours') "
+"or 144)//24\">link_validity_days</t> days </em><br/>\n"
+"<b><t t-out=\"company_name\"/></b> uses <a href=\"https://odoo.com\" t-attf-"
+"style=\"color: {{object.company_id.email_secondary_color or '#875A7B'}};"
+"\">Odoo</a>\n"
+"to run its business. You have been invited by <b><t t-"
+"out=\"object.create_uid.name or ''\">OdooBot</t></b> to connect.\n"
+"<br/><br/>\n"
+"Once accepted, you can reconnect through: <br/>\n"
+"<ul>\n"
+"    <li>Login: <a t-attf-href=\"/web/login?login={{ object.email }}\" "
+"target=\"_blank\" t-out=\"object.email or ''\">mark.brown23@example.com</a></"
+"li>\n"
+"    <li>Link: <a t-att-href=\"website_url\" t-out=\"website_url or "
+"''\">http://yourcompany.odoo.com</a></li>\n"
+"</ul>\n"
+"<br/>\n"
 "<div style=\"margin: 16px 0px 16px 0px;\">\n"
 "    <a t-att-href=\"object.partner_id._get_signup_url()\" t-attf-"
 "style=\"background-color: {{object.company_id.email_secondary_color or "
@@ -163,63 +192,11 @@ msgid ""
 "        Accept invitation\n"
 "    </a>\n"
 "</div>\n"
-"<b>  This link will remain valid during <t t-"
-"out=\"(object.env['ir.config_parameter'].sudo().get_int('auth_signup.signup.validity.hours') "
-"or 144)//24\"/> days </b> <br/>\n"
-"<t t-set=\"website_url\" t-value=\"object.get_base_url()\"/>\n"
-"Your Odoo domain is: <b><a t-att-href=\"website_url\" t-out=\"website_url or "
-"''\">http://yourcompany.odoo.com</a></b><br/>\n"
-"Your sign in email is: <b><a t-attf-href=\"/web/login?"
-"login={{ object.email }}\" target=\"_blank\" t-out=\"object.email or "
-"''\">mark.brown23@example.com</a></b><br/><br/>\n"
-"Never heard of Odoo? It’s an all-in-one business software loved by 12+ "
-"million users. It will considerably improve your experience at work and "
-"increase your productivity.\n"
-"<br/><br/>\n"
-"Have a look at the <a href=\"https://www.odoo.com/page/tour?"
-"utm_source=db&amp;utm_medium=auth\" t-attf-style=\"color: "
-"{{object.company_id.email_secondary_color or '#875A7B'}};\">Odoo Tour</a> to "
-"discover the tool.\n"
-"<br/><br/>\n"
-"Enjoy Odoo!<br/>\n"
-"--<br/>The <t t-out=\"object.company_id.name or ''\">YourCompany</t> Team\n"
-"            </t>"
+"<br/>\n"
+"Enjoy Odoo!<br/><br/>\n"
+"--<br/>The <t t-out=\"company_name\"/> Team</t>\n"
+"            "
 msgstr ""
-"<t>\n"
-"Hyvä <t t-out=\"object.name or ''\">Marc Demo</t>,<br/><br/>\n"
-"<t t-out=\"object.create_uid.name or ''\">Odoo-botti</t> yrityksestä <t t-"
-"out=\"object.company_id.name or ''\">YrityksesiNimi</t> on kutsunut sinut "
-"Odooseen.\n"
-"<div style=\"margin: 16px 0px 16px 0px;\">\n"
-"    <a t-att-href=\"object.partner_id._get_signup_url()\" t-attf-"
-"style=\"background-color: {{object.company_id.email_secondary_color or "
-"'#875A7B'}}; padding: 8px 16px 8px 16px; text-decoration: none; color: "
-"{{object.company_id.email_primary_color or '#FFFFFF'}}; border-radius: 5px; "
-"font-size:13px;\">\n"
-"        Hyväksy kutsu\n"
-"    </a>\n"
-"</div>\n"
-"<b>  Tämä linkki on voimassa <t t-"
-"out=\"(object.env['ir.config_parameter'].sudo().get_int('auth_signup.signup.validity.hours') "
-"or 144)//24\"/> päivän ajan </b> <br/>\n"
-"<t t-set=\"website_url\" t-value=\"object.get_base_url()\"/>\n"
-"Odoo-domainisi on: <b><a t-att-href=\"website_url\" t-out=\"website_url or "
-"''\">http://yrityksesi.odoo.com</a></b><br/>\n"
-"Kirjautumissähköpostisi on: <b><a t-attf-href=\"/web/login?"
-"login={{ object.email }}\" target=\"_blank\" t-out=\"object.email or "
-"''\">mark.brown23@esimerkki.com</a></b><br/><br/>\n"
-"Etkö ole vielä kuullut Odoosta? Se on yli 12 miljoonan käyttäjän rakastama "
-"kaikenkattava yritysohjelmisto, joka tulee parantamaan työkokemustasi sekä "
-"tehokkuuttasi huomattavasti.\n"
-"<br/><br/>\n"
-"Katso <a href=\"https://www.odoo.com/page/tour?"
-"utm_source=db&amp;utm_medium=auth\" t-attf-style=\"color: "
-"{{object.company_id.email_secondary_color or '#875A7B'}};\">Odoo Tour</a> "
-"tutustuaksesi työkaluun.\n"
-"<br/><br/>\n"
-"Nauti Odoosta!<br/>\n"
-"--<br/><t t-out=\"object.company_id.name or ''\">YrityksesiNimi</t> -tiimi\n"
-"            </t>"
 
 #. module: auth_signup
 #: model:mail.template,body_html:auth_signup.mail_template_data_unregistered_users
@@ -290,7 +267,8 @@ msgstr "Takaisin kirjautumiseen"
 #: code:addons/auth_signup/models/res_users.py:0
 msgid "Cannot send email: user %s has no email address."
 msgstr ""
-"Sähköpostia ei voida lähettää: käyttäjällä %s ei ole sähköpostiosoitetta."
+"Sähköpostin lähettäminen ei onnistu: käyttäjällä %s ei ole "
+"sähköpostiosoitetta."
 
 #. module: auth_signup
 #: model_terms:ir.ui.view,arch_db:auth_signup.reset_password_email
@@ -321,7 +299,7 @@ msgstr "Yhteystiedot"
 #. odoo-javascript
 #: code:addons/auth_signup/static/src/components/signup.xml:0
 msgid "Copy Reset Password Link"
-msgstr ""
+msgstr "Kopioi salasanan nollauslinkki"
 
 #. module: auth_signup
 #. odoo-python
@@ -414,12 +392,21 @@ msgid ""
 "If you do not expect this, you can safely ignore this email.<br/><br/>\n"
 "        Thanks,"
 msgstr ""
+"Jos et odota tätä, voit huoletta jättää tämän sähköpostin "
+"huomioimattatta.<br/><br/>\n"
+"        Kiitos,"
+
+#. module: auth_signup
+#: model:ir.model.fields.selection,name:auth_signup.selection__res_users__state__inactive
+msgid "Inactive"
+msgstr ""
 
 #. module: auth_signup
 #. odoo-python
 #: code:addons/auth_signup/controllers/main.py:0
 msgid "Invalid email; please enter a valid email address."
 msgstr ""
+"Virheellinen sähköposti; ole hyvä ja syötä kelvollinen sähköpostiosoite."
 
 #. module: auth_signup
 #. odoo-python
@@ -430,7 +417,7 @@ msgstr "Virheellinen rekisteröitymistunnus"
 #. module: auth_signup
 #: model:ir.model.fields.selection,name:auth_signup.selection__res_users__state__new
 msgid "Invited"
-msgstr ""
+msgstr "Kutsuttu"
 
 #. module: auth_signup
 #: model_terms:ir.ui.view,arch_db:auth_signup.signup
@@ -446,7 +433,7 @@ msgstr "Salli asiakkaidesi kirjautua sisään ja nähdä asiakirjansa"
 #. odoo-javascript
 #: code:addons/auth_signup/static/src/components/signup.js:0
 msgid "Link copied to clipboard!"
-msgstr ""
+msgstr "Linkki kopioitu leikepöydälle!"
 
 #. module: auth_signup
 #: model_terms:ir.ui.view,arch_db:auth_signup.reset_password_email
@@ -485,7 +472,7 @@ msgstr "Kutsuttaessa"
 #. odoo-python
 #: code:addons/auth_signup/models/res_users.py:0
 msgid "Only administrators can generate reset password link."
-msgstr ""
+msgstr "Vain ylläpitäjät voivat luoda salasanan nollauslinkin."
 
 #. module: auth_signup
 #: model_terms:ir.ui.view,arch_db:auth_signup.fields
@@ -536,7 +523,7 @@ msgstr "Vaihda salasana"
 #. module: auth_signup
 #: model_terms:ir.ui.view,arch_db:auth_signup.res_users_view_form
 msgid "Send Password Reset"
-msgstr ""
+msgstr "Lähetä salasanan nollaus"
 
 #. module: auth_signup
 #: model:ir.actions.server,name:auth_signup.action_send_password_reset_instructions
@@ -599,6 +586,11 @@ msgstr "Liity"
 #: model_terms:ir.ui.view,arch_db:auth_signup.signup
 msgid "Sign up"
 msgstr "Rekisteröidy"
+
+#. module: auth_signup
+#: model:ir.module.module,shortdesc:base.module_auth_signup
+msgid "Signup"
+msgstr ""
 
 #. module: auth_signup
 #: model:ir.model.fields,field_description:auth_signup.field_res_partner__signup_type
@@ -670,9 +662,9 @@ msgid ""
 "list view and click on 'Portal Access Management' option in the dropdown "
 "menu *Action*."
 msgstr ""
-"Lähettääksesi kutsuja B2B-tilassa, avaa yhteystieto tai valitse useita "
-"listanäkymässä, ja klikkaa \"Portaalin käyttöoikeuksien hallinta\" "
-"-vaihtoehtoa \"Toiminto\"-pudotusvalikosta."
+"Lähetä kutsuja B2B-tilassa avaamalla yhteystieto tai valitsemalla useita "
+"listanäkymässä. Klikkaa pudotusvalikossa \"Portaalin käyttöoikeuksien "
+"hallinta\"."
 
 #. module: auth_signup
 #: model:ir.model,name:auth_signup.model_res_users
@@ -688,7 +680,7 @@ msgstr "Käyttäjät: Huomautus rekisteröitymättömistä käyttäjistä"
 #. odoo-python
 #: code:addons/auth_signup/models/res_users.py:0
 msgid "Welcome to Odoo"
-msgstr ""
+msgstr "Tervetuloa Odooseen"
 
 #. module: auth_signup
 #: model:mail.template,subject:auth_signup.mail_template_user_signup_account_created
@@ -705,14 +697,14 @@ msgstr "Toimintoa ei voi suorittaa arkistoidulle käyttäjälle."
 #. odoo-python
 #: code:addons/auth_signup/models/res_users.py:0
 msgid "You cannot perform this action on your own user."
-msgstr ""
+msgstr "Et voi suorittaa tätä toimintoa omalle käyttäjällesi."
 
 #. module: auth_signup
 #. odoo-python
 #: code:addons/auth_signup/controllers/main.py:0
 #: code:addons/auth_signup/models/res_users.py:0
 msgid "Your Account"
-msgstr ""
+msgstr "Oma tilisi"
 
 #. module: auth_signup
 #: model:mail.template,subject:auth_signup.portal_set_password_email

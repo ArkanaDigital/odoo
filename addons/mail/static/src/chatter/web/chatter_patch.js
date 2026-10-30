@@ -14,9 +14,8 @@ import { FollowerList } from "@mail/core/web/follower_list";
 import { groupAttachments } from "@mail/utils/common/attachments";
 import { assignGetter, isDragSourceExternalFile } from "@mail/utils/common/misc";
 
-import { status, t, untrack, useEffect, useOnChange, useProps } from "@odoo/owl";
+import { t, untrack, useEffect, useOnChange, useProps, useScope } from "@odoo/owl";
 
-import { browser } from "@web/core/browser/browser";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { useDropdownState } from "@web/core/dropdown/dropdown_hooks";
 import { useCustomDropzone } from "@web/core/dropzone/dropzone_hook";
@@ -27,6 +26,7 @@ import { useService } from "@web/core/utils/hooks";
 import { patch } from "@web/core/utils/patch";
 import { Record } from "@web/model/relational_model/record";
 import { FileUploader } from "@web/views/fields/file_handler";
+import { isMobileOS } from "@web/core/browser/feature_detection";
 
 const CHATTER_PANEL = Object.freeze({
     ATTACHMENT: "ATTACHMENT",
@@ -51,17 +51,15 @@ Object.assign(Chatter.components, {
 
 /**
  * @type {import("@mail/chatter/web_portal_project/chatter").Chatter }
- * @typedef {Object} Props
- * @property {function} [close]
  */
 const chatterPatch = {
     setup() {
         super.setup(...arguments);
+        this.scope = useScope();
         // bind once so the references stay stable across renders
         this.onActivityChanged = this.onActivityChanged.bind(this);
         this.reloadParentView = this.reloadParentView.bind(this);
         this.webChatterProps = useProps({
-            close: t.function([]).optional(),
             has_activities: t.boolean().optional(true),
             hasAttachmentPreview: t.boolean().optional(false),
             hasParentReloadOnActivityChanged: t.boolean().optional(false),
@@ -70,7 +68,6 @@ const chatterPatch = {
             hasParentReloadOnMessagePosted: t.boolean().optional(false),
             isAttachmentBoxVisibleInitially: t.boolean().optional(false),
             isChatterAside: t.boolean().optional(false),
-            isInFormSheetBg: t.boolean().optional(true),
             record: t.instanceOf(Record).optional(),
             saveRecord: t.function([]).optional(),
         });
@@ -78,7 +75,6 @@ const chatterPatch = {
         // window from the messaging menu), fall back to the one carried by the action
         // context.
         this.highlightMessage ??= this.webChatterProps.record?.context?.highlight_message_id;
-        this.orm = useService("orm");
         this.keepLastSuggestedRecipientsUpdate = new KeepLast();
         useEffect(() => {
             const record = this.webChatterProps.record;
@@ -110,6 +106,7 @@ const chatterPatch = {
         this.loadingAttachmentTimeout = null;
         /** @type {Map<string, Function>} */
         this.uploadHandlers = new Map();
+        this.isMobileOS = isMobileOS();
         useCustomDropzone(
             this.rootRef,
             MailAttachmentDropzone,
@@ -140,7 +137,7 @@ const chatterPatch = {
                 },
             },
             () =>
-                (!this.store.meetingViewOpened || this.env.inMeetingView) &&
+                (!this.store.meetingViewOpened || this.ancestors.inMeetingView) &&
                 (this.thread()?.isTransient || this.thread()?.canPostMessage) &&
                 !this.thread()?.messageInEdition?.composer?.isEditComposerVisible
         );
@@ -150,9 +147,9 @@ const chatterPatch = {
                 if (!thread) {
                     return;
                 }
-                browser.clearTimeout(this.loadingAttachmentTimeout);
+                window.clearTimeout(this.loadingAttachmentTimeout);
                 if (thread.isLoadingAttachments) {
-                    this.loadingAttachmentTimeout = browser.setTimeout(
+                    this.loadingAttachmentTimeout = window.setTimeout(
                         () => (this.state.showAttachmentLoading = true),
                         DELAY_FOR_SPINNER
                     );
@@ -166,7 +163,7 @@ const chatterPatch = {
                         this.state.activePanel = CHATTER_PANEL.ATTACHMENT;
                     }
                 }
-                return () => browser.clearTimeout(this.loadingAttachmentTimeout);
+                return () => window.clearTimeout(this.loadingAttachmentTimeout);
             }
         );
         useOnChange(
@@ -202,7 +199,7 @@ const chatterPatch = {
                 email = value;
             }
         }
-        if ((!partnerIds.length && !email) || mode !== "message" || status(this) === "destroyed") {
+        if ((!partnerIds.length && !email) || mode !== "message" || this.scope.isDestroyed()) {
             return;
         }
         const recipients = await this.keepLastSuggestedRecipientsUpdate.add(
@@ -213,7 +210,7 @@ const chatterPatch = {
                 main_email: email,
             })
         );
-        if (status(this) === "destroyed" && !this.state.thread) {
+        if (this.scope.isDestroyed() && !this.state.thread) {
             return;
         }
         this.state.thread.suggestedRecipients = recipients.map((result) => ({
@@ -270,10 +267,10 @@ const chatterPatch = {
         return _t("Delete %(count)s files", { count });
     },
 
-    get subEnv() {
-        const res = super.subEnv;
-        assignGetter(res.inChatter, { aside: () => this.webChatterProps.isChatterAside });
-        Object.assign(res.inChatter, { toggleComposer: this.toggleComposer.bind(this) });
+    get chatterAncestor() {
+        const res = super.chatterAncestor;
+        assignGetter(res, { aside: () => this.webChatterProps.isChatterAside });
+        Object.assign(res, { toggleComposer: this.toggleComposer.bind(this) });
         return res;
     },
 
@@ -281,9 +278,6 @@ const chatterPatch = {
         return _t("Show Followers");
     },
 
-    get followingText() {
-        return _t("Following");
-    },
     get hasPinnedMessages() {
         return (
             this.state.thread?.has_pinned_messages || this.state.thread?.pinnedMessages?.length > 0
@@ -463,10 +457,6 @@ const chatterPatch = {
         this.reloadParentView();
     },
 
-    onSuggestedRecipientAdded(thread) {
-        this.load(thread, ["suggestedRecipients"]);
-    },
-
     /** @param {import("models").Thread} thread */
     onUploaded({ thread } = {}) {
         const threadLocalId = thread.localId;
@@ -495,7 +485,12 @@ const chatterPatch = {
     },
 
     async reloadParentView() {
-        await this.webChatterProps.saveRecord?.();
+        if (this.scope.isDestroyed()) {
+            return;
+        }
+        if (this.webChatterProps.saveRecord && !(await this.webChatterProps.saveRecord())) {
+            return;
+        }
         if (this.webChatterProps.record) {
             await this.webChatterProps.record.load();
         }
@@ -560,6 +555,14 @@ const chatterPatch = {
         if (this.hasParentReloadOnAttachmentsChanged) {
             this.reloadParentView();
         }
+    },
+
+    get showsAttachmentPopout() {
+        return (
+            !this.isMobileOS &&
+            this.webChatterProps.hasAttachmentPreview &&
+            Boolean(this.state.thread.attachmentsInWebClientView.length)
+        );
     },
 
     popoutAttachment() {

@@ -1,5 +1,5 @@
 import { HtmlUpgradeManager } from "@html_editor/html_migrations/html_upgrade_manager";
-import { mountComponent } from "@html_editor/others/embedded_component_utils";
+import { useRootComponents } from "@html_editor/others/embedded_component_utils";
 import { TableOfContentManager } from "@html_editor/others/embedded_components/core/table_of_content/table_of_content_manager";
 import { fillHtmlTransferData } from "@html_editor/utils/clipboard";
 import { fixInvalidHTML, instanceofMarkup } from "@html_editor/utils/sanitize";
@@ -7,32 +7,31 @@ import {
     Component,
     markup,
     onMounted,
+    onPatched,
     onWillStart,
     onWillUnmount,
     proxy,
     signal,
-    status,
     t,
-    untrack,
-    useApp,
     useEffect,
     useProps,
 } from "@odoo/owl";
 import { getBundle } from "@web/core/assets";
-import { browser } from "@web/core/browser/browser";
+import { location } from "@web/core/browser/browser";
 import { memoize } from "@web/core/utils/functions";
-import { useLayoutEffect } from "@web/owl2/utils";
+import { TABLE_WRAPPER_SELECTOR, wrapTableInScrollContainer } from "@html_editor/utils/table";
 
 export class HtmlViewer extends Component {
     static template = "html_editor.HtmlViewer";
 
-    app = useApp();
     iframeRef = signal.ref();
     readonlyElementRef = signal.ref();
     props = useProps({
         config: t.object(),
         migrateHTML: t.boolean().optional(true),
     });
+
+    rootComponents = useRootComponents();
 
     setup() {
         this._cleanups = [];
@@ -71,12 +70,10 @@ export class HtmlViewer extends Component {
                 iframe.after(iframe);
             });
         } else {
-            useLayoutEffect(
-                () => {
-                    this.processReadonlyContent(this.readonlyElementRef());
-                },
-                () => [this.props.config.value.toString(), untrack(this.readonlyElementRef)]
-            );
+            // onPatched re-applies only the idempotent attributes; the copy listener is
+            // attached once (onMounted) so it does not pile up on every patch.
+            onMounted(() => this.processReadonlyContent(this.readonlyElementRef()));
+            onPatched(() => this.applyReadonlyAttributes(this.readonlyElementRef()));
         }
 
         if (this.props.config.cssAssetId) {
@@ -94,14 +91,17 @@ export class HtmlViewer extends Component {
                 }
                 return result;
             });
-            useLayoutEffect(
-                () => {
-                    if (this.readonlyElementRef()) {
-                        this.mountComponents();
-                    }
-                },
-                () => [this.props.config.value.toString(), untrack(this.readonlyElementRef)]
-            );
+            let mountedValue;
+            const mountEmbedded = () => {
+                const value = this.state.value.toString();
+                if (!this.readonlyElementRef() || value === mountedValue) {
+                    return;
+                }
+                mountedValue = value;
+                this.mountComponents();
+            };
+            onMounted(mountEmbedded);
+            onPatched(mountEmbedded);
             this.tocManager = new TableOfContentManager(this.readonlyElementRef);
         }
     }
@@ -141,10 +141,28 @@ export class HtmlViewer extends Component {
         return newVal;
     }
 
-    processReadonlyContent(container) {
+    applyReadonlyAttributes(container) {
         this.retargetLinks(container);
         this.applyAccessibilityAttributes(container);
+    }
+
+    processReadonlyContent(container) {
+        this.applyReadonlyAttributes(container);
+        this.wrapTables(container);
         this.addDomListener(container, "copy", this.onCopy);
+    }
+
+    /**
+     * The wrapper is not saved, so the viewer adds it like the editor does.
+     *
+     * @param {HTMLElement} container
+     */
+    wrapTables(container) {
+        for (const table of container.querySelectorAll(".o_table")) {
+            if (!table.closest(TABLE_WRAPPER_SELECTOR)) {
+                wrapTableInScrollContainer(table);
+            }
+        }
     }
 
     /**
@@ -181,7 +199,7 @@ export class HtmlViewer extends Component {
         const isInsideIframe = container.ownerDocument !== document;
         const retargetSelector = isInsideIframe
             ? "a"
-            : `a:not([href^="${browser.location.origin}"]):not([href^="/"])`;
+            : `a:not([href^="${location.origin}"]):not([href^="/"])`;
 
         for (const link of container.querySelectorAll(retargetSelector)) {
             this.retargetLink(link);
@@ -297,13 +315,7 @@ export class HtmlViewer extends Component {
             env,
             props,
         });
-        const { root, mountPromise } = mountComponent(this.app, Component, host, props, env, {
-            onBeforeComplete: () => {
-                if (status(this) === "destroyed") {
-                    return false;
-                }
-            },
-        });
+        const { root, mountPromise } = this.rootComponents.mount(Component, host, props, env);
         // Don't show mounting errors as they will happen often when the host
         // is disconnected from the DOM because of a patch
         mountPromise.catch();

@@ -8,12 +8,13 @@ import { memoize, uniqueId } from '@web/core/utils/functions';
 import { KeepLast } from '@web/core/utils/concurrency';
 import { setElementContent, createElementWithContent } from '@web/core/utils/html';
 import { insertThousandsSep, formatFloat } from '@web/core/utils/numbers';
-import { renderToElement, renderToFragment } from '@web/core/utils/render';
+import { renderToFragment } from '@web/core/utils/render';
 import { isEmail } from '@web/core/utils/strings';
 import { throttleForAnimation } from '@web/core/utils/timing';
-import { htmlEscape, markup } from '@odoo/owl';
+import { markup, usePlugin } from '@odoo/owl';
 import wSaleUtils from '@website_sale/js/website_sale_utils';
 import { ProductImageViewer } from '@website_sale/js/components/website_sale_image_viewer';
+import { BootstrapInstance } from '@web/core/utils/bootstrap_plugin';
 
 export class ProductPage extends Interaction {
     static selector = '.o_wsale_product_page';
@@ -37,10 +38,10 @@ export class ProductPage extends Interaction {
             "t-on-mouseleave": this.onMouseLeavePackagingButton,
             "t-on-click": this.onMouseLeavePackagingButton,
         },
-        "#product_stock_notification_message": {
+        "#stock_notification_button": {
             "t-on-click": this.onClickProductStockNotificationMessage.bind(this),
         },
-        "#product_stock_notification_form_submit_button": {
+        "#stock_notification_submit_button": {
             "t-on-click": this.onClickSubmitProductStockNotificationForm.bind(this),
         },
         "button[name='add_to_cart']": {
@@ -53,6 +54,10 @@ export class ProductPage extends Interaction {
             "t-on-click": this.onClickSubmitWishlistStockNotificationForm.bind(this),
         },
     };
+
+    setup() {
+        this.bootstrap = usePlugin(BootstrapInstance);
+    }
 
     start() {
         this._applySearchParams();
@@ -367,8 +372,8 @@ export class ProductPage extends Interaction {
         // ready).
         if (images && !isEditorEnabled && newImages) {
             this.services["public.interactions"].stopInteractions(images);
-            images.insertAdjacentHTML('beforebegin', markup(newImages));
-            images.remove();
+            const tempDiv = createElementWithContent('div', newImages);
+            images.replaceWith(...tempDiv.children);
 
             // Re-query the latest images.
             images = productContainer.querySelector(this._getProductImageContainerSelector());
@@ -379,7 +384,7 @@ export class ProductPage extends Interaction {
                 .setAttribute('content', shareImageSrc);
 
             if (images.id === 'o-carousel-product') {
-                window.Carousel.getOrCreateInstance(images).to(0);
+                this.bootstrap.getOrCreateInstance(window.Carousel, images).to(0);
             }
             this._startZoom();
         }
@@ -470,16 +475,18 @@ export class ProductPage extends Interaction {
             'product_template_id': productTemplateId,
             'combination': combination,
         }));
-        if (combinationInfo.product_tags) {
-            combinationInfo.product_tags = markup(combinationInfo.product_tags);
+        const htmlKeys = [
+            'product_tags',
+            'out_of_stock_message',
+            'documents',
+            'carousel',
+            'packaging_selector',
+        ];
+        for (const key of htmlKeys) {
+            if (combinationInfo[key]) {
+                combinationInfo[key] = markup(combinationInfo[key]);
+            }
         }
-        if (combinationInfo.out_of_stock_message) {
-            combinationInfo.out_of_stock_message = markup(combinationInfo.out_of_stock_message);
-        }
-        if (combinationInfo.documents) {
-            combinationInfo.documents = markup(combinationInfo.documents);
-        }
-        combinationInfo.packaging_selector = markup(combinationInfo.packaging_selector);
 
         this._onChangeCombination(ev, parent, combinationInfo, attributeValueImages);
         this._checkExclusions(parent, combination);
@@ -661,7 +668,8 @@ export class ProductPage extends Interaction {
      */
     _disableInput(parent, attributeValueId, excludedBy, attributeNames, productName) {
         const input = parent.querySelector(
-            `option[value="${attributeValueId}"], input[value="${attributeValueId}"]`
+            `select.js_variant_change option[value="${attributeValueId}"],
+            input.js_variant_change[value="${attributeValueId}"]`
         );
         input.classList.add('css_not_available')
         input.closest('label')?.classList?.add('css_not_available');
@@ -706,7 +714,7 @@ export class ProductPage extends Interaction {
         const pricePerUom = parent.querySelector('.o_product_price_unit')
             ?.querySelector('.oe_currency_value');
         if (pricePerUom) {
-            const hasPrice = isCombinationPossible && combination.base_unit_price !== 0;
+            const hasPrice = this._hasUomPrice(combination);
             pricePerUom.closest('.o_product_price_unit').classList.toggle('d-none', !hasPrice);
             if (hasPrice) {
                 pricePerUom.textContent = this._priceToStr(combination.base_unit_price, precision);
@@ -740,6 +748,9 @@ export class ProductPage extends Interaction {
 
         const preventSale = combination.prevent_sale;
         const hidePrice = combination.hide_price;
+        const notifyMeButton = parent.querySelector("#stock_notification_button");
+        const stockNotificationEl = parent.querySelector("#stock_notification_wrapper");
+        const outOfStockWrapper = parent.querySelector("#out_of_stock_buttons_wrapper");
         productPrice?.classList.toggle('d-inline-block', !hidePrice);
         productPrice?.classList.toggle('d-none', hidePrice);
         boxedPriceWrapper?.classList.toggle('d-flex', !hidePrice);
@@ -750,6 +761,8 @@ export class ProductPage extends Interaction {
         addToCart?.classList.toggle('d-none', preventSale);
         contactUsButton?.classList?.toggle('d-none', !preventSale);
         contactUsButton?.classList?.toggle('d-flex', preventSale);
+        stockNotificationEl?.classList?.replace("d-flex", "d-none")
+        outOfStockWrapper?.classList.replace("d-flex", "d-none");
 
         if (contactUsButton) {
             const link = contactUsButton.querySelector('a');
@@ -758,6 +771,10 @@ export class ProductPage extends Interaction {
                 linkUrl.searchParams.set('subject', combination.display_name);
                 link.href = linkUrl.toString();
             }
+        }
+
+        if (notifyMeButton) {
+            notifyMeButton.disabled=false;
         }
 
         const price = parent.querySelector('.oe_price')?.querySelector('.oe_currency_value');
@@ -786,7 +803,9 @@ export class ProductPage extends Interaction {
             }
         });
 
-        this._updateMinimumQuantity(parent, combination);
+        if (parent.querySelector('input[name="add_qty"]')) {
+            this._updateMinimumQuantity(parent, combination);
+        }
         this._toggleDisable(parent, isCombinationPossible && this.el.dataset.hasAvailableUoms);
 
         // Only update the images, tags and packaging selector if the product has changed.
@@ -794,15 +813,15 @@ export class ProductPage extends Interaction {
             this._updateProductImages(parent.closest('#product_detail_main'), combination.carousel);
             this._updateDocumentsSection(parent.closest('#product_detail_main'), combination.documents);
             const productTags = parent.querySelector('.o_product_tags');
-            productTags?.insertAdjacentHTML('beforebegin', htmlEscape(combination.product_tags));
-            productTags?.remove();
+            if (productTags) {
+                const newProductTags = createElementWithContent('div', combination.product_tags);
+                productTags.replaceWith(...newProductTags.children);
+            }
 
             const packagingSelector = parent.querySelector('[name="packaging_selector"]');
             if (packagingSelector) {
-                packagingSelector.insertAdjacentHTML(
-                    'beforebegin', htmlEscape(combination.packaging_selector)
-                );
-                packagingSelector.remove();
+                const newPackagingSelector = createElementWithContent('div', combination.packaging_selector);
+                packagingSelector.replaceWith(...newPackagingSelector.children);
             }
             // Toggle variant section visibility when UOM availability changes (edge case:
             // template has no attributes, only some variants have UOMs).
@@ -833,9 +852,9 @@ export class ProductPage extends Interaction {
 
         const addQtyInput = parent.querySelector('input[name="add_qty"]');
         const qty = parseFloat(addQtyInput?.value) || 1;
-        const ctaWrapper = parent.querySelector('#o_wsale_cta_wrapper');
-        ctaWrapper.classList.replace('d-none', 'd-flex');
-        ctaWrapper.classList.remove('out_of_stock');
+        if (this._showOutOfStock(combination)) {
+            this._toggleOutOfStockButtons(parent, combination, true);
+        }
 
         if (!combination.allow_out_of_stock_order) {
             const unavailableQty = await this.waitFor(this._getUnavailableQty(combination));
@@ -853,8 +872,7 @@ export class ProductPage extends Interaction {
                 }
             }
             if (combination.free_qty < 1 && this._showOutOfStock(combination)) {
-                ctaWrapper.classList.replace('d-flex', 'd-none');
-                ctaWrapper.classList.add('out_of_stock');
+                this._toggleOutOfStockButtons(parent, combination, false);
             }
         }
 
@@ -866,8 +884,7 @@ export class ProductPage extends Interaction {
                 }
             }
             if (combination.max_combo_quantity < 1 && this._showOutOfStock(combination)) {
-                ctaWrapper.classList.replace('d-flex', 'd-none');
-                ctaWrapper.classList.add('out_of_stock');
+                this._toggleOutOfStockButtons(parent, combination, false);
             }
         }
 
@@ -881,9 +898,9 @@ export class ProductPage extends Interaction {
             }
         }
 
-        document.querySelector('.oe_website_sale')
-            .querySelector('#product_stock_availability')
-            ?.remove();
+        this.el.querySelectorAll(
+            '.availability_message_' + combination.product_template
+        ).forEach(el => el.remove());
         if (combination.out_of_stock_message) {
             const outOfStockMessage = document.createElement('div');
             setElementContent(outOfStockMessage, combination.out_of_stock_message);
@@ -892,19 +909,20 @@ export class ProductPage extends Interaction {
         this.el.querySelector('div.availability_messages').append(renderToFragment(
             'website_sale.product_availability', combination
         ));
-        if (!this._showOutOfStock(combination)) {
-            this.el.querySelector('#stock_notification_div')?.classList.add('d-none')
-        } else if (this.el.querySelector('.o_add_wishlist_dyn')) {
-            const messageEl = this.el.querySelector('div.availability_messages');
-            if (messageEl && !this.el.querySelector('#stock_wishlist_message')) {
-                this.services['public.interactions'].stopInteractions(messageEl);
-                messageEl.append(
-                    renderToElement('website_sale.product_availability_wishlist', combination)
-                    || ''
-                );
-                this.services['public.interactions'].startInteractions(messageEl);
-            }
-        }
+    }
+
+    _toggleOutOfStockButtons(parent, combination, in_stock) {
+        const addToCartWrap = parent.querySelector("#add_to_cart_wrap");
+        const outOfStockWrapper = parent.querySelector("#out_of_stock_buttons_wrapper");
+        const notifyMeButton = parent.querySelector("#stock_notification_button");
+        const subscribedButton = parent.querySelector("#stock_notification_subscribed_button");
+
+        addToCartWrap.classList.toggle("d-inline-flex", in_stock);
+        addToCartWrap.classList.toggle("d-none", !in_stock);
+        outOfStockWrapper?.classList.toggle("d-flex", !in_stock);
+        outOfStockWrapper?.classList.toggle("d-none", in_stock);
+        notifyMeButton?.classList.toggle("d-none", combination.has_stock_notification);
+        subscribedButton?.classList.toggle("d-none", !combination.has_stock_notification);
     }
 
     async _getUnavailableQty(combination) {
@@ -936,6 +954,10 @@ export class ProductPage extends Interaction {
 
             el.dataset.packagingPrice = price;
         });
+    }
+
+    _hasUomPrice(combination) {
+        return !!combination.is_combination_possible && combination.base_unit_price !== 0;
     }
 
     /**
@@ -985,8 +1007,14 @@ export class ProductPage extends Interaction {
         const partnerEmail = document.querySelector('#wsale_user_email').value;
         const emailInputEl = document.querySelector('#stock_notification_input');
 
-        emailInputEl.value = partnerEmail;
-        this._handleClickStockNotificationMessage(ev);
+        if (partnerEmail) {
+            emailInputEl.value = partnerEmail;
+            this.onClickSubmitProductStockNotificationForm(ev);
+        } else {
+            const notifyMeButton = document.querySelector("#stock_notification_button");
+            notifyMeButton.disabled=true;
+            this._handleClickStockNotificationMessage(ev);
+        }
     }
 
     onClickSubmitProductStockNotificationForm(ev) {
@@ -995,14 +1023,17 @@ export class ProductPage extends Interaction {
     }
 
     _handleClickStockNotificationMessage(ev) {
-        ev.currentTarget.classList.add('d-none');
-        ev.currentTarget.parentElement.querySelector('#stock_notification_form').classList.remove('d-none');
+        const ctaSection = ev.currentTarget.closest("#o_wsale_product_cta_section");
+        ctaSection
+            .querySelector("#stock_notification_wrapper")
+            .classList.replace("d-none", "d-flex");
     }
 
     async _handleClickSubmitStockNotificationForm(ev, productId) {
-        const stockNotificationEl = ev.currentTarget.closest('#stock_notification_div');
-        const formEl = stockNotificationEl.querySelector('#stock_notification_form');
-        const email = stockNotificationEl.querySelector('#stock_notification_input').value.trim();
+        const ctaSection = ev.currentTarget.closest("#o_wsale_product_cta_section");
+        const stockNotificationEl = ctaSection.querySelector("#stock_notification_wrapper");
+        const notifyEl = ctaSection.querySelector("#stock_notification_button");
+        const email = stockNotificationEl.querySelector("#stock_notification_input").value.trim();
 
         if (!isEmail(email)) {
             return this._displayErrorMessage(_t('Invalid email'), stockNotificationEl);
@@ -1019,24 +1050,16 @@ export class ProductPage extends Interaction {
             }
             throw error;
         }
-        const message = stockNotificationEl.querySelector('#stock_notification_success_message');
-        message.classList.remove('d-none');
-        formEl.classList.add('d-none');
+        const message = ctaSection.querySelector("#stock_notification_subscribed_button");
+        stockNotificationEl.classList.replace("d-flex", "d-none");
+        message.classList.remove("d-none");
+        notifyEl.classList.add("d-none");
     }
 
     _displayErrorMessage(message, stockNotificationEl) {
         const incorrectIconEl = stockNotificationEl.querySelector('#stock_notification_input_incorrect');
         incorrectIconEl.classList.remove('d-none');
-
-        const errorMessageEl = stockNotificationEl.querySelector('#stock_notification_error_message');
-        if (errorMessageEl) {
-            errorMessageEl.textContent = message;
-        } else {
-            const span = document.createElement('span');
-            span.id = 'stock_notification_error_message';
-            span.textContent = message;
-            incorrectIconEl.appendChild(span);
-        }
+        incorrectIconEl.textContent = message;
     }
 
     onClickWishlistStockNotificationMessage(ev) {

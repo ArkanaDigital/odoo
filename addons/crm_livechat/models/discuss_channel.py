@@ -4,7 +4,6 @@ from markupsafe import Markup
 from odoo.addons.mail.tools.discuss import Store
 
 from odoo import api, fields, models, _
-from odoo.tools import html2plaintext
 
 
 class DiscussChannel(models.Model):
@@ -44,24 +43,27 @@ class DiscussChannel(models.Model):
             msg = Markup(
                 '<div class="o_mail_notification" data-oe-type="create-lead">%s</div>',
             ) % self.env._("created a new lead: %s", lead._get_html_link())
-            self.message_post(body=msg, subtype_xmlid="mail.mt_comment")
+            self.message_post(body=msg, message_type='notification')
 
     def _convert_visitor_to_lead(self, partner, key):
         """ Create a lead from channel /lead command
         :param partner: internal user partner (operator) that created the lead;
         :param key: operator input in chat ('/lead Lead about Product')
         """
-        return self.env['crm.lead'].create({
-            "origin_channel_id": self.id,
-            'name': html2plaintext(key[5:]),
-            'partner_id': self.livechat_customer_partner_ids[0].id if self.livechat_customer_partner_ids else False,
-            'user_id': False,
-            'team_id': False,
-            'description': self._get_channel_history(),
-            'referred': partner.name,
-            'source_id': self.env['utm.mixin']._utm_ref('utm.utm_source_livechat').id,
-            'medium_id': self.env['utm.mixin']._utm_ref('utm.utm_medium_website').id,
-        })
+        return self.env["crm.lead"].create(self._prepare_lead_create_values(partner, key))
+
+    def _prepare_lead_create_values(self, partner, key):
+        customer = self.livechat_customer_partner_ids[:1]
+        if not customer and "whatsapp_partner_id" in self._fields:
+            customer = self.whatsapp_partner_id
+        values = super()._prepare_lead_create_values(partner, key)
+        values["origin_channel_id"] = self.id
+        values["partner_id"] = customer.id
+        values["description"] = self._get_channel_history()
+        if self.channel_type == "livechat":
+            values["source_id"] = self.env["utm.mixin"]._utm_ref("utm.utm_source_livechat").id
+            values["medium_id"] = self.env["utm.mixin"]._utm_ref("utm.utm_medium_website").id
+        return values
 
     def _store_livechat_extra_fields(self, res: Store.FieldList):
         super()._store_livechat_extra_fields(res)

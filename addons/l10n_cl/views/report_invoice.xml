@@ -89,11 +89,12 @@
                 <span t-out="o.partner_id.commercial_partner_id.name or o.partner_id.name"/>
                 <br/>
 
-                <t t-if="o.partner_id.vat and o.partner_id.l10n_latam_identification_type_id">
+                <t t-set="cl_doc_vals" t-value="o.partner_id._get_preferred_legal_entity_identifier_vals()"/>
+                <t t-if="cl_doc_vals">
                     <strong>
-                        <t t-out="o.partner_id.l10n_latam_identification_type_id.name or o.company_id.account_fiscal_country_id.vat_label" id="inv_tax_id_label"/>:
+                        <t t-out="cl_doc_vals.get('label') or o.company_id.account_fiscal_country_id.vat_label" id="inv_tax_id_label"/>:
                     </strong>
-                    <span t-out="o.partner_id.vat"/>
+                    <span t-out="cl_doc_vals['value']"/>
                     <br/>
                 </t>
                 <strong>Address:</strong>
@@ -202,7 +203,7 @@
             </div>
         </xpath>
 
-        <xpath expr="//span[@t-field='line.name']" position="replace">
+        <xpath expr="//span[@t-field='line.label']" position="replace">
             <t t-set="all_taxes" t-value="'all_taxes'"/>
             <t t-if="'second_currency' in line_amounts" t-set="line_second_currency_round" t-value="line_amounts['second_currency']['round_currency']"/>
             <span t-out="line_amounts['line_description']" t-options="{'widget': 'text'}"/>

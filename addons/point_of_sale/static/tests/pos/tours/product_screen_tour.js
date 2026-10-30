@@ -14,8 +14,6 @@ import * as Numpad from "@point_of_sale/../tests/generic_helpers/numpad_util";
 import * as OfflineUtil from "@point_of_sale/../tests/generic_helpers/offline_util";
 import * as TicketScreen from "@point_of_sale/../tests/pos/tours/utils/ticket_screen_util";
 import * as combo from "@point_of_sale/../tests/pos/tours/utils/combo_popup_util";
-import * as Utils from "@point_of_sale/../tests/pos/tours/utils/common";
-import * as BackendUtils from "@point_of_sale/../tests/pos/tours/utils/backend_utils";
 import * as FeedbackScreen from "@point_of_sale/../tests/pos/tours/utils/feedback_screen_util";
 import { delay } from "@web/core/utils/concurrency";
 
@@ -27,6 +25,7 @@ registry.category("web_tour.tours").add("ProductScreenTour", {
             Chrome.startPoS(),
             Dialog.confirm("Open Register"),
             OfflineUtil.setOfflineMode(),
+            Dialog.cancel(), // Offline mode after opening register will trigger the offline popup since the device try to sync
             inLeftSide([
                 ...ProductScreen.clickControlButtonMore(),
                 // check that cancel order button is disabled if there is no orderline in the order
@@ -297,7 +296,7 @@ registry.category("web_tour.tours").add("CheckProductInformation", {
 
             // Check that the product form is shown.
             Chrome.clickMenuButton(),
-            Chrome.clickMenuDropdownOption("Create Product"),
+            Chrome.clickMenuDialogOption("Create Product"),
             Dialog.is({ title: "New Product" }),
             Dialog.cancel(),
 
@@ -404,12 +403,12 @@ registry.category("web_tour.tours").add("CustomerPopupTour", {
             Chrome.startPoS(),
             Dialog.confirm("Open Register"),
             ProductScreen.clickPartnerButton(),
-            negateStep(PartnerList.checkCustomerShown("Z partner to search")),
+            PartnerList.checkCustomerNotShown("Z partner to search"),
             PartnerList.searchCustomerValue("Z partner to search", true),
             ProductScreen.clickCustomer("Z partner to search"),
             Dialog.isNot(),
             ProductScreen.clickPartnerButton(),
-            negateStep(PartnerList.checkCustomerShown("Z partner to scroll")),
+            PartnerList.checkCustomerNotShown("Z partner to scroll"),
             PartnerList.scrollBottom(),
             ProductScreen.clickCustomer("Z partner to scroll"),
         ].flat(),
@@ -565,11 +564,23 @@ registry.category("web_tour.tours").add("test_product_long_press", {
             },
             {
                 content: "Check that VAT label is present in the product details popup",
-                trigger: ".section-financials .vat-label:contains('Tax')",
+                trigger: ".section-financials .vat-label:contains('Child Tax 1')",
+            },
+            {
+                content: "Check that VAT label is present in the product details popup",
+                trigger: ".section-financials .vat-label:contains('Child Tax 2')",
             },
             {
                 content: "Check that VAT value is correct in the product details popup",
-                trigger: ".section-financials .vat-value:contains('$ 15.00 (Parent Tax)')",
+                trigger: ".section-financials .vat-value:contains('$ 10.00')",
+            },
+            {
+                content: "Check that VAT value is correct in the product details popup",
+                trigger: ".section-financials .vat-value:contains('$ 5.00')",
+            },
+            {
+                content: "Check that the price incl. tax sums up the price and both taxes",
+                trigger: ".section-financials .price-incl-tax:contains('$ 115.00')",
             },
             Chrome.endTour(),
         ].flat(),
@@ -617,7 +628,7 @@ registry.category("web_tour.tours").add("test_barcode_search_attributes_preset",
         ].flat(),
 });
 
-registry.category("web_tour.tours").add("test_archived_product_removed_and_order_is_refunded", {
+registry.category("web_tour.tours").add("test_archived_product_removed_and_order_is_refunded_1", {
     steps: () =>
         [
             Chrome.startPoS(),
@@ -627,39 +638,21 @@ registry.category("web_tour.tours").add("test_archived_product_removed_and_order
             PaymentScreen.clickPaymentMethod("Bank"),
             PaymentScreen.clickValidate(),
             FeedbackScreen.isShown(),
-            Chrome.clickMenuOption("Close Register"),
-            {
-                trigger: ".modal .modal-footer .btn:contains(close register)",
-                run: "click",
-                expectUnloadPage: true,
-            },
-            {
-                content: `Select button backend`,
-                trigger: `button:contains(backend)`,
-                run: "click",
-                expectUnloadPage: true,
-            },
-            {
-                trigger: "body",
-                expectUnloadPage: true,
-            },
-            BackendUtils.openProductForm("A Test Product"),
-            {
-                trigger: `[data-icon="more_vert"]`,
-                run: "click",
-            },
-            {
-                trigger: ".dropdown-item:contains('Archive')",
-                run: "click",
-            },
-            Utils.selectButton("Archive"),
-            BackendUtils.openShopSession("Shop"),
+            Chrome.endTour(),
+        ].flat(),
+});
+
+registry.category("web_tour.tours").add("test_archived_product_removed_and_order_is_refunded_2", {
+    steps: () =>
+        [
+            Chrome.startPoS(),
             Dialog.confirm("Open Register"),
             ProductScreen.productIsDisplayed("A Test Product").map(negateStep),
             // Refund.
             Chrome.clickOrders(),
             TicketScreen.selectFilter("Paid"),
-            TicketScreen.selectOrder("0001"),
+            Chrome.waitRequest(),
+            TicketScreen.selectOrder("001"),
             TicketScreen.confirmRefund(),
             PaymentScreen.clickPaymentMethod("Bank"),
             PaymentScreen.clickValidate(),
@@ -758,6 +751,7 @@ registry
                 ProductScreen.clickDisplayedProduct("Desk Organizer"),
                 ProductScreen.clickFastPaymentButton("Bank"),
                 FeedbackScreen.isShown(),
+                FeedbackScreen.clickScreen(),
                 Dialog.confirm(),
                 FeedbackScreen.clickNextOrder(),
                 ProductScreen.isShown(),
@@ -943,6 +937,35 @@ registry.category("web_tour.tours").add("test_barcode_scan_preselect_always_vari
                 "Blue, Small"
             ),
 
+            Chrome.endTour(),
+        ].flat(),
+});
+
+registry.category("web_tour.tours").add("test_search_more_skips_archived_variant", {
+    steps: () =>
+        [
+            Chrome.startPoS(),
+            Dialog.confirm("Open Register"),
+            ProductScreen.searchProduct("SHIRT-XL-ARCHIVED"),
+            {
+                content: "Click on 'Search more'",
+                trigger: ".search-more-button button",
+                run: "click",
+            },
+            {
+                content: "Search more did not load the archived variant",
+                trigger:
+                    ".o_notification:contains('No other products found'), .product-list .product-name:contains('Archived Variant Shirt')",
+                run: () => {
+                    const archived = posmodel.models["product.product"].find(
+                        (p) => p.default_code === "SHIRT-XL-ARCHIVED"
+                    );
+                    if (archived) {
+                        throw new Error("The archived variant was loaded by 'Search more'");
+                    }
+                },
+            },
+            ProductScreen.orderIsEmpty(),
             Chrome.endTour(),
         ].flat(),
 });

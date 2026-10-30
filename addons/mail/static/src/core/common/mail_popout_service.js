@@ -1,9 +1,9 @@
 import { OverlayPlugin } from "@web/core/overlay/overlay_plugin";
-import { Component, types, useApp, usePlugin, useProps, xml } from "@odoo/owl";
-import { browser } from "@web/core/browser/browser";
+import { Component, types, usePlugin, useProps, xml } from "@odoo/owl";
 import { useOwnDebugContext } from "@web/core/debug/debug_context";
 import { OverlayContainer } from "@web/core/overlay/overlay_container";
 import { registry } from "@web/core/registry";
+import { useRootCreator } from "@web/core/utils/hooks";
 
 const DEFAULT_ID = Symbol("default");
 
@@ -23,6 +23,8 @@ class OverlayWrapper extends Component {
     }
 }
 
+export const POLL_CLOSE_WINDOW_TIMEOUT = 1000;
+
 export const mailPopoutService = {
     /**
      * To be overridden to add specific assets to call PiP.
@@ -32,6 +34,8 @@ export const mailPopoutService = {
 
     dependencies: ["hotkey"],
     start(env, { hotkey }) {
+        const createRoot = useRootCreator();
+
         /**
          * @type {Map<any, {
          *  externalWindow: Window | null;
@@ -81,7 +85,7 @@ export const mailPopoutService = {
         async function pollClosedWindow(id) {
             while (popouts.get(id)?.externalWindow) {
                 const popout = popouts.get(id);
-                await new Promise((r) => setTimeout(r, 1000));
+                await new Promise((r) => setTimeout(r, POLL_CLOSE_WINDOW_TIMEOUT));
                 if (popout.externalWindow?.closed) {
                     const hooks = popout.hooks;
                     hooks?.afterPopoutClosed?.();
@@ -126,7 +130,7 @@ export const mailPopoutService = {
                         height,
                     });
                 } else {
-                    externalWindow = browser.open(
+                    externalWindow = window.open(
                         "about:blank",
                         "_blank",
                         `popup=yes,width=${width},height=${height}`
@@ -145,7 +149,7 @@ export const mailPopoutService = {
                 pipWindow: externalWindow,
                 rootId: id,
             });
-            popout.root = app.createRoot(OverlayWrapper, {
+            popout.root = createRoot(OverlayWrapper, {
                 env: rootEnv,
                 props: { component, componentProps: props },
             });
@@ -164,7 +168,12 @@ export const mailPopoutService = {
             if (!externalWindow || externalWindow.closed) {
                 const hooks = popout.hooks;
                 hooks?.beforePopout?.();
-                externalWindow = browser.open("about:blank", "_blank", "popup=yes");
+                externalWindow = window.open("about:blank", "_blank", "popup=yes");
+                if (!externalWindow) {
+                    // The browser can refuse to open the popup (e.g. popup blocker).
+                    hooks?.afterPopoutClosed?.();
+                    return null;
+                }
                 window.addEventListener("beforeunload", () => {
                     if (externalWindow && !externalWindow.closed) {
                         externalWindow.close();
@@ -174,7 +183,7 @@ export const mailPopoutService = {
                 pollClosedWindow(id);
             }
             reset(id);
-            popout.root = app.createRoot(component, { props });
+            popout.root = createRoot(component, { props });
             popout.root.mount(externalWindow.document.body);
             return externalWindow;
         }
@@ -258,8 +267,6 @@ export const mailPopoutService = {
                 },
             };
         }
-
-        const app = useApp();
 
         return Object.assign(createManager(), { createManager, resetAll });
     },

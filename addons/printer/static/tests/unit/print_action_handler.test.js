@@ -1,9 +1,14 @@
-import { beforeEach, describe, expect, test } from "@odoo/hoot";
-import { allowTranslations, patchWithCleanup } from "@web/../tests/web_test_helpers";
-import { printJobs, } from "@printer/print_action_handler";
+import { beforeEach, describe, expect, mockFetch, test } from "@odoo/hoot";
+import { printJobs } from "@printer/print_action_handler";
+import { allowTranslations, makeTestApp, mockService, runTestScope } from "@web/../tests/web_test_helpers";
+import { NotificationPlugin } from "@web/core/notifications/notification_plugin";
 import { registry } from "@web/core/registry";
+import { patch } from "@web/core/utils/patch";
+import { ActionPlugin } from "@web/webclient/actions/action_plugin";
 
 describe.current.tags("headless");
+
+const actionReportHandlerRegistry = registry.category("ir.actions.report handlers");
 
 const notificationsReceived = [];
 const actionsExecuted = [];
@@ -14,7 +19,6 @@ beforeEach(() => {
 });
 
 const mockReportId = 42;
-
 
 const makeEposPrinter = (overrides = {}) => ({
     type: "epos",
@@ -40,44 +44,50 @@ const makeZplJob = (overrides = {}) => ({
     ...overrides,
 });
 
-const makeMockServices = () => ({
-    notification: {
-        add: (title, opts) => {
+function mockActionPlugin() {
+    patch(ActionPlugin, {
+        doAction: async (a) => actionsExecuted.push(a),
+    });
+}
+
+function mockNotificationPlugin() {
+    patch(NotificationPlugin.prototype, {
+        add(title, opts) {
             notificationsReceived.push({ title, opts });
             return () => {};
         },
-    },
-});
+    });
+}
 
+/**
+ * @param {object | null} [settings=null]
+ */
+function mockReportPrintersCacheService(settings = null) {
+    mockService("report_printers_cache", {
+        getPrinterSettingsForReport: async () => settings,
+    });
+}
 
-const getHandler = () =>
-    registry.category("ir.actions.report handlers").get("print_action_handler");
-
-const makeMockEnv = (printerSettings = null) => ({
-    services: {
-        ...makeMockServices(),
-        report_printers_cache: {
-            getPrinterSettingsForReport: async () => printerSettings,
-        },
-        action: {
-            doAction: async (a) => actionsExecuted.push(a),
-        },
-    },
-});
+async function runPrintActionHandler(action, options = {}) {
+    const printActionHandler = actionReportHandlerRegistry.get("print_action_handler");
+    return runTestScope(printActionHandler, action, options);
+}
 
 describe("printJobs", () => {
+    beforeEach(async () => {
+        mockNotificationPlugin();
+        await makeTestApp();
+    });
+
     test("sends an epos job to the correct endpoint and resolves", async () => {
         const fetchCalls = [];
-        patchWithCleanup(window, {
-            fetch: async (url, params) => {
-                fetchCalls.push({ url, params });
-                return { text: async () => `<response success="true" code=""/>`, ok: true };
-            },
+        mockFetch((input, init) => {
+            fetchCalls.push({ url: input, params: init });
+            return `<response success="true" code=""/>`;
         });
 
         const printer = makeEposPrinter();
-        const services = makeMockServices();
-        await printJobs(printer, [makeEposJob()], services);
+        await runTestScope(printJobs, printer, [makeEposJob()]);
 
         expect(fetchCalls).toHaveLength(1);
         expect(fetchCalls[0].url).toMatch(/epos\/service\.cgi/);
@@ -86,16 +96,13 @@ describe("printJobs", () => {
 
     test("sends a zpl job to /pstprnt in no-cors mode", async () => {
         const fetchCalls = [];
-        patchWithCleanup(window, {
-            fetch: async (url, params) => {
-                fetchCalls.push({ url, params });
-                return {};
-            },
+        mockFetch((input, init) => {
+            fetchCalls.push({ url: input, params: init });
+            return null;
         });
 
         const printer = makeZplPrinter();
-        const services = makeMockServices();
-        await printJobs(printer, [makeZplJob()], services);
+        await runTestScope(printJobs, printer, [makeZplJob()]);
 
         expect(fetchCalls).toHaveLength(1);
         expect(fetchCalls[0].url).toBe(`http://${printer.ip_address}/pstprnt`);
@@ -105,16 +112,13 @@ describe("printJobs", () => {
 
     test("skips jobs whose type does not match the printer", async () => {
         const fetchCalls = [];
-        patchWithCleanup(window, {
-            fetch: async (url) => {
-                fetchCalls.push(url);
-                return {};
-            },
+        mockFetch((input) => {
+            fetchCalls.push(input);
+            return null;
         });
 
         const printer = makeZplPrinter();
-        const services = makeMockServices();
-        await printJobs(printer, [makeEposJob()], services);
+        await runTestScope(printJobs, printer, [makeEposJob()]);
 
         expect(fetchCalls).toHaveLength(0);
         expect(notificationsReceived).toHaveLength(0);
@@ -122,13 +126,10 @@ describe("printJobs", () => {
 
     test("shows a danger notification when epos returns a non-success response", async () => {
         allowTranslations();
-        patchWithCleanup(window, {
-            fetch: async () => ({ text: async () => `<response success="false" code="ERROR_GENERAL"/>` }),
-        });
+        mockFetch(() => `<response success="false" code="ERROR_GENERAL"/>`);
 
         const printer = makeEposPrinter();
-        const services = makeMockServices();
-        await printJobs(printer, [makeEposJob()], services);
+        await runTestScope(printJobs, printer, [makeEposJob()]);
 
         expect(notificationsReceived).toHaveLength(1);
         expect(notificationsReceived[0].opts.type).toBe("danger");
@@ -136,13 +137,12 @@ describe("printJobs", () => {
 
     test("shows a danger notification when fetch throws", async () => {
         allowTranslations();
-        patchWithCleanup(window, {
-            fetch: async () => { throw new Error("network error"); },
+        mockFetch(() => {
+            throw new Error("network error");
         });
 
         const printer = makeEposPrinter();
-        const services = makeMockServices();
-        await printJobs(printer, [makeEposJob()], services);
+        await runTestScope(printJobs, printer, [makeEposJob()]);
 
         expect(notificationsReceived).toHaveLength(1);
         expect(notificationsReceived[0].opts.type).toBe("danger");
@@ -150,18 +150,15 @@ describe("printJobs", () => {
 
     test("retries on ERROR_WAIT_EJECT before succeeding", async () => {
         let callCount = 0;
-        patchWithCleanup(window, {
-            fetch: async () => {
-                callCount++;
-                const success = callCount > 1;
-                const code = success ? "" : "ERROR_WAIT_EJECT";
-                return { text: async () => `<response success="${success}" code="${code}"/>` };
-            },
+        mockFetch(() => {
+            callCount++;
+            const success = callCount > 1;
+            const code = success ? "" : "ERROR_WAIT_EJECT";
+            return `<response success="${success}" code="${code}"/>`;
         });
 
         const printer = makeEposPrinter();
-        const services = makeMockServices();
-        await printJobs(printer, [makeEposJob()], services);
+        await runTestScope(printJobs, printer, [makeEposJob()]);
 
         expect(callCount).toBeGreaterThan(1);
         expect(notificationsReceived).toHaveLength(0);
@@ -169,22 +166,18 @@ describe("printJobs", () => {
 
     test("processes multiple jobs of matching type in sequence", async () => {
         const fetchCalls = [];
-        patchWithCleanup(window, {
-            fetch: async (url) => {
-                fetchCalls.push(url);
-                return { text: async () => `<response success="true" code=""/>` };
-            },
+        mockFetch((input) => {
+            fetchCalls.push(input);
+            return `<response success="true" code=""/>`;
         });
 
         const printer = makeEposPrinter();
-        const services = makeMockServices();
-        await printJobs(printer, [makeEposJob(), makeEposJob()], services);
+        await runTestScope(printJobs, printer, [makeEposJob(), makeEposJob()]);
 
         expect(fetchCalls).toHaveLength(2);
         expect(notificationsReceived).toHaveLength(0);
     });
 });
-
 
 describe("printActionHandler", () => {
     const makeAction = (overrides = {}) => ({
@@ -198,47 +191,51 @@ describe("printActionHandler", () => {
         ...overrides,
     });
 
+    beforeEach(async () => {
+        mockNotificationPlugin();
+        mockActionPlugin();
+        await makeTestApp();
+    });
+
     test("returns false when there are no jobs", async () => {
-        const env = makeMockEnv();
+        mockReportPrintersCacheService();
         const action = makeAction({ context: { report_id: mockReportId, jobs: [] } });
-        const result = await getHandler()(action, {}, env);
+        const result = await runPrintActionHandler(action);
 
         expect(result).not.toBe(true);
     });
 
     test("returns false when jobs is undefined", async () => {
-        const env = makeMockEnv();
+        mockReportPrintersCacheService();
         const action = makeAction({ context: { report_id: mockReportId } });
-        const result = await getHandler()(action, {}, env);
+        const result = await runPrintActionHandler(action);
 
         expect(result).not.toBe(true);
     });
 
     test("returns false when getPrinterSettingsForReport returns no selectedPrinters", async () => {
-        const env = makeMockEnv({ skipDialog: true }); // selectedPrinters absent
-        const result = await getHandler()(makeAction(), {}, env);
+        mockReportPrintersCacheService({ skipDialog: true }); // selectedPrinters absent
+        const result = await runPrintActionHandler(makeAction());
 
         expect(result).not.toBe(true);
     });
 
     test("returns false when getPrinterSettingsForReport returns null", async () => {
-        const env = makeMockEnv(null);
-        const result = await getHandler()(makeAction(), {}, env);
+        mockReportPrintersCacheService();
+        const result = await runPrintActionHandler(makeAction());
 
         expect(result).not.toBe(true);
     });
 
     test("returns true and calls onClose after a successful print", async () => {
-        patchWithCleanup(window, {
-            fetch: async () => ({ text: async () => `<response success="true" code=""/>` }),
-        });
+        mockFetch(() => `<response success="true" code=""/>`);
 
-        const env = makeMockEnv({
+        mockReportPrintersCacheService({
             selectedPrinters: [makeEposPrinter()],
         });
         const closed = [];
 
-        const result = await getHandler()(makeAction(), { onClose: () => closed.push(true) }, env);
+        const result = await runPrintActionHandler(makeAction(), { onClose: () => closed.push(true) });
 
         expect(result).toBe(true);
         expect(closed).toHaveLength(1);
@@ -246,18 +243,19 @@ describe("printActionHandler", () => {
 
     test("prints to every selected printer", async () => {
         const fetchCalls = [];
-        patchWithCleanup(window, {
-            fetch: async (url) => {
-                fetchCalls.push(url);
-                return { text: async () => `<response success="true" code=""/>` };
-            },
+        mockFetch((input) => {
+            fetchCalls.push(input);
+            return `<response success="true" code=""/>`;
         });
 
-        const env = makeMockEnv({
-            selectedPrinters: [makeEposPrinter({ ip_address: "1.1.1.1" }), makeEposPrinter({ ip_address: "2.2.2.2" })],
+        mockReportPrintersCacheService({
+            selectedPrinters: [
+                makeEposPrinter({ ip_address: "1.1.1.1" }),
+                makeEposPrinter({ ip_address: "2.2.2.2" }),
+            ],
         });
 
-        await getHandler()(makeAction(), {}, env);
+        await runPrintActionHandler(makeAction());
 
         const hosts = fetchCalls.map((u) => new URL(u).hostname);
         expect(hosts).toInclude("1.1.1.1");

@@ -655,20 +655,19 @@ test("column progressbars on archiving records update counter", async () => {
         message: "the counter progressbars should be correctly displayed",
     });
 
-    // archive all records of the second columns
+    // archive all records of the second columns except one
     await keyDown("alt");
     await animationFrame();
     await contains(".o_kanban_group:nth-of-type(2) .o_kanban_record:nth-of-type(1)").click();
     await keyUp("alt");
     await contains(".o_kanban_group:nth-of-type(2) .o_kanban_record:nth-of-type(2)").click();
-    await contains(".o_kanban_group:nth-of-type(2) .o_kanban_record:nth-of-type(3)").click();
     await contains(".o_cp_action_menus button").click();
     await contains(".o_menu_item:contains(Archive)").click();
     await contains(".modal-footer .btn-primary").click();
 
-    expect(getKanbanCounters()).toEqual(["-4", "0"]);
+    expect(getKanbanCounters()).toEqual(["-4", "17"]);
     expect(queryAll(".progress-bar.o_bar_has_records", { root: getKanbanColumn(1) })).toHaveCount(
-        0,
+        1,
         {
             message: "the counter progressbars should have been correctly updated",
         }
@@ -1210,6 +1209,33 @@ test("progress bar with monetary aggregate and multi currencies", async () => {
     );
 });
 
+test("progress bar with a monetary aggregate in the company currency", async () => {
+    Partner._fields.salary = fields.Monetary({
+        aggregator: "sum_currency",
+        currency_field: "currency_id",
+    });
+    Partner._records[1].currency_id = 2;
+    Partner._records[3].currency_id = 2;
+    await mountView({
+        type: "kanban",
+        resModel: "partner",
+        arch: `
+            <kanban>
+                <progressbar field="foo" colors='{"yop": "success", "gnap": "warning", "blip": "danger"}' sum_field="salary"/>
+                <field name="currency_id"/>
+                <templates>
+                    <t t-name="card">
+                        <field name="foo"/>
+                        <field name="salary"/>
+                    </t>
+                </templates>
+            </kanban>`,
+        groupBy: ["product_id"],
+    });
+
+    expect(".o_kanban_counter:last .o_animated_number").toHaveText("$ 3,722");
+});
+
 test("progress bar with monetary aggregate and multi currencies: quick create record", async () => {
     Partner._views["form,some_view_ref"] = `
         <form>
@@ -1406,8 +1432,7 @@ test("progress bar with aggregates: Archive all in a column", async () => {
     expect(getKanbanCounters()).toEqual(["268", "15"]);
     def.resolve();
     await animationFrame();
-    expect(getKanbanColumnTooltips(1)).toEqual([]);
-    expect(getKanbanCounters()).toEqual(["268", "0"]);
+    expect(getKanbanCounters()).toEqual(["268"]);
 });
 
 test.tags("desktop");
@@ -1818,7 +1843,8 @@ test("filtered column is reloaded when dragging out its last record", async () =
     expect(getKanbanRecordTexts(0)).toEqual(["4blip", "1yop"]);
     expect(getKanbanColumnTooltips(1)).toEqual(["1 blip", "1 Other"]);
     expect(getKanbanRecordTexts(1)).toEqual(["2blip", "3gnap"]);
-    expect.verifySteps(["web_save", "read_progress_bar", "web_search_read", "web_resequence"]);
+    // the column reload goes through the model mutex, which the move holds until the end
+    expect.verifySteps(["web_save", "read_progress_bar", "web_resequence", "web_search_read"]);
 });
 
 test.tags("desktop");

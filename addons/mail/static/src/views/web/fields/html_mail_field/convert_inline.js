@@ -541,8 +541,13 @@ export function classToStyle(element, cssRules) {
         // Flexbox
         for (const styleName of node.style) {
             if (styleName.includes("flex") || `${node.style[styleName]}`.includes("flex")) {
+                // inline-flex falls back to inline-block so inline elements (e.g. buttons) keep their box
+                const fallback =
+                    styleName === "display" && node.style[styleName] === "inline-flex"
+                        ? "inline-block"
+                        : "";
                 writes.push(() => {
-                    node.style[styleName] = "";
+                    node.style[styleName] = fallback;
                 });
             }
         }
@@ -676,45 +681,6 @@ export function classToStyle(element, cssRules) {
                 const computedStyle = getComputedStyle(node);
                 for (const prop of propsToConvert) {
                     node.style.setProperty(prop, computedStyle[prop]);
-                }
-            }
-        });
-
-        const matchedBlacklistRules = nodeRules?.filter((rule) =>
-            CONVERT_INLINE_BLACKLIST_CLASSES.some(
-                (cls) => rule.selector.includes(cls) && node.classList.contains(cls)
-            )
-        );
-
-        const blacklistedStyles = {};
-        for (const rule of matchedBlacklistRules) {
-            for (const [key, value] of Object.entries(rule.style)) {
-                if (
-                    !blacklistedStyles[key] ||
-                    !blacklistedStyles[key].includes("important") ||
-                    value.includes("important")
-                ) {
-                    blacklistedStyles[key] = value;
-                }
-            }
-        }
-
-        for (const [key, value] of Object.entries(blacklistedStyles)) {
-            if (value && value.endsWith("important")) {
-                blacklistedStyles[key] = value.replace(/\s*!important\s*$/, "");
-            }
-        }
-
-        // Find styles to remove if they are from a blacklisted class and match
-        // existing styles.
-        const stylesToRemove = Object.fromEntries(
-            Object.entries(css).filter(([key, value]) => blacklistedStyles[key] === value)
-        );
-        // Remove style from blacklisted classes.
-        writes.push(() => {
-            for (const [key] of Object.entries(stylesToRemove)) {
-                if (node.style[key]) {
-                    node.style.removeProperty(key);
                 }
             }
         });
@@ -958,6 +924,17 @@ export async function toInline(element, cssRules) {
         const images = element.querySelectorAll("img");
         for (const image of images) {
             if (image.style[attributeName] !== "auto") {
+                if (
+                    attributeName === "width" &&
+                    !image.naturalWidth &&
+                    getComputedStyle(image).display === "block"
+                ) {
+                    // The image hasn't loaded yet (naturalWidth is 0). Its
+                    // src is populated server-side later (qweb compiled).
+                    // A block level img with no intrinsic size falls back to its
+                    // container's width which will stretch the image.
+                    continue;
+                }
                 const value =
                     image.getAttribute(attributeName) ||
                     (attributeName === "height" && image.offsetHeight) ||
@@ -974,6 +951,11 @@ export async function toInline(element, cssRules) {
         if (centeredImage.parentElement.children.length === 1) {
             centeredImage.parentElement.style.setProperty("text-align", "center");
         }
+    }
+
+    // Fix mx-auto, ms-auto image display.
+    for (const centeredImage of element.querySelectorAll("img.mx-auto, img.ms-auto")) {
+        centeredImage.style.setProperty("display", "block");
     }
 
     // Remove contenteditable attributes
@@ -1068,14 +1050,9 @@ function fontToImg(element) {
     for (const font of element.querySelectorAll(".oi")) {
         const beforeStyle = getComputedStyle(font, "::before");
         const content = beforeStyle["content"].trim().replace(/['"]/g, "");
-        let icon = content;
-        let fill = 0;
-        if (font.matches("[data-icon^='oi_']")) {
-            icon = content.codePointAt(0);
-        } else {
-            icon = content.replace(/_f$/, "");
-            fill = isIconFilled(beforeStyle, content) ? 1 : 0;
-        }
+        const icon = content.replace(/_f$/, "");
+        const fill = isIconFilled(beforeStyle, content) ? 1 : 0;
+
         if (icon) {
             const color =
                 convertCSSColorToPILRgba(_getStylePropertyValue(font, "color")) || "000000ff";
@@ -1865,7 +1842,18 @@ function _getMatchedCSSRules(node, cssRules) {
         node.msMatchesSelector ||
         node.oMatchesSelector;
 
-    const styles = cssRules.map((rule) => removeBlacklistedStyles(rule, node)).filter(Boolean);
+    const styles = cssRules
+        .map((rule) => {
+            if (matchesBlacklistedClass(rule, node)) {
+                const declaredStyle = {};
+                for (const styleName of rule.rawRule.style || []) {
+                    declaredStyle[styleName] = rule.style?.[styleName] || "";
+                }
+                return [declaredStyle, true];
+            }
+            return [removeBlacklistedStyles(rule, node), false];
+        })
+        .filter(([style]) => style);
 
     // Add inline styles at the highest specificity.
     if (node.style.length) {
@@ -1873,11 +1861,12 @@ function _getMatchedCSSRules(node, cssRules) {
         for (const styleName of node.style) {
             inlineStyles[styleName] = node.style[styleName];
         }
-        styles.push(inlineStyles);
+        styles.push([inlineStyles, false]);
     }
 
     const processedStyle = {};
-    for (const style of styles) {
+    const wonByBlacklistedClass = new Set();
+    for (const [style, isFromBlacklistedClass] of styles) {
         for (const [key, value] of Object.entries(style)) {
             if (
                 !processedStyle[key] ||
@@ -1885,8 +1874,17 @@ function _getMatchedCSSRules(node, cssRules) {
                 value.includes("important")
             ) {
                 processedStyle[key] = value;
+                if (isFromBlacklistedClass) {
+                    wonByBlacklistedClass.add(key);
+                } else {
+                    wonByBlacklistedClass.delete(key);
+                }
             }
         }
+    }
+
+    for (const key of wonByBlacklistedClass) {
+        delete processedStyle[key];
     }
 
     for (const [key, value] of Object.entries(processedStyle)) {
@@ -1913,6 +1911,9 @@ function _getMatchedCSSRules(node, cssRules) {
             continue;
         }
         for (const styleName of GROUPED_STYLES[groupName]) {
+            if (wonByBlacklistedClass.has(styleName)) {
+                continue;
+            }
             const styleValue = computedStyle.getPropertyValue(styleName);
             if (styleValue && typeof styleValue === "string" && styleValue.length) {
                 processedStyle[styleName] = styleValue;
@@ -1996,7 +1997,12 @@ function _getMatchedCSSRules(node, cssRules) {
     // flexboxes are not supported in Windows Outlook
     for (const styleName in processedStyle) {
         if (styleName.includes("flex") || `${processedStyle[styleName]}`.includes("flex")) {
-            delete processedStyle[styleName];
+            if (styleName === "display" && processedStyle[styleName] === "inline-flex") {
+                // inline-flex falls back to inline-block so inline elements (e.g. buttons) keep their box
+                processedStyle[styleName] = "inline-block";
+            } else {
+                delete processedStyle[styleName];
+            }
         }
     }
 
@@ -2106,6 +2112,12 @@ function _wrap(element, wrapperTag, wrapperClass, wrapperStyle) {
     element.parentElement.insertBefore(wrapper, element);
     wrapper.append(element);
     return wrapper;
+}
+
+function matchesBlacklistedClass(rule, node) {
+    return CONVERT_INLINE_BLACKLIST_CLASSES.some(
+        (cls) => rule.selector.includes(cls) && node.classList.contains(cls)
+    );
 }
 
 function isBlacklistedStyle(node, selector, key) {

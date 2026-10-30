@@ -1,15 +1,17 @@
 import { Plugin } from "@html_editor/plugin";
 import { baseContainerGlobalSelector } from "@html_editor/utils/base_container";
 import { isBlock } from "@html_editor/utils/blocks";
-import { removeClass, removeStyle } from "@html_editor/utils/dom";
+import { removeClass, removeStyle, unwrapContents } from "@html_editor/utils/dom";
 import {
     getDeepestPosition,
+    isContentEditable,
     isProtected,
     isProtecting,
     isEmptyBlock,
     nextLeaf,
     previousLeaf,
     isTableCell,
+    getTableColgroup,
 } from "@html_editor/utils/dom_info";
 import {
     ancestors,
@@ -23,12 +25,23 @@ import { parseHTML } from "@html_editor/utils/html";
 import { DIRECTIONS, leftPos, rightPos, nodeSize } from "@html_editor/utils/position";
 import { withSequence } from "@html_editor/utils/resource";
 import { findInSelection } from "@html_editor/utils/selection";
-import { getColumnIndex, getRowIndex, getTableCells } from "@html_editor/utils/table";
+import {
+    TABLE_WRAPPER_SELECTOR,
+    getColumnIndex,
+    getRowIndex,
+    getTableCells,
+    getSelectedCellsMergeInfo,
+    getTableRoot,
+    getTableWrapper,
+    isTableWrapper,
+    wrapTableInScrollContainer,
+} from "@html_editor/utils/table";
 import { isBrowserFirefox } from "@web/core/browser/feature_detection";
 import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
 import { isHtmlContentSupported } from "@html_editor/core/selection_plugin";
 import { BG_CLASSES_REGEX } from "@html_editor/utils/color";
 import { rgbaToHex } from "@web/core/utils/colors";
+import { _t } from "@web/core/l10n/translation";
 
 export const BORDER_SENSITIVITY = 5;
 const LONG_PRESS_DELAY = 200;
@@ -47,6 +60,7 @@ function isUnremovableTableComponent(node, root) {
 
 /**
  * @typedef { Object } TableShared
+ * @property { TablePlugin['insertTable'] } insertTable
  * @property { TablePlugin['addColumn'] } addColumn
  * @property { TablePlugin['addRow'] } addRow
  * @property { TablePlugin['turnIntoHeader'] } turnIntoHeader
@@ -82,6 +96,10 @@ export class TablePlugin extends Plugin {
         "split",
         "color",
     ];
+    static defaultConfig = {
+        allowScrollableTables: true,
+        saveScrollableTables: false,
+    };
     static shared = [
         "insertTable",
         "addColumn",
@@ -99,6 +117,7 @@ export class TablePlugin extends Plugin {
         "unmergeSelectedCell",
         "buildTableGrid",
     ];
+    toolbarNamespace = "table";
     /** @type {import("plugins").EditorResources} */
     resources = {
         user_commands: [
@@ -108,6 +127,26 @@ export class TablePlugin extends Plugin {
                     this.insertTable(params);
                 },
                 isAvailable: isHtmlContentSupported,
+            },
+            {
+                id: "mergeTableCells",
+                title: _t("Merge Cells"),
+                description: _t("Merge selected table cells"),
+                icon: "cell_merge",
+                run: this.toggleMergeCellCommand.bind(this),
+                isAvailable: () => this.isMergeCellsAvailable() || this.isUnmergeCellsAvailable(),
+            },
+        ],
+        toolbar_items: [
+            {
+                id: "mergeCells",
+                groupId: "table_cell_merge",
+                commandId: "mergeTableCells",
+                description: () =>
+                    this.isUnmergeCellsAvailable()
+                        ? _t("Unmerge selected table cell")
+                        : _t("Merge selected table cells"),
+                isActive: () => this.isUnmergeCellsAvailable(),
             },
         ],
         table_menu_commands: [
@@ -123,21 +162,23 @@ export class TablePlugin extends Plugin {
                 clearColumnContent: this.clearColumnContent.bind(this),
                 clearRowContent: this.clearRowContent.bind(this),
                 toggleAlternatingRows: this.toggleAlternatingRows.bind(this),
-                mergeSelectedCells: this.mergeSelectedCells.bind(this),
-                unmergeSelectedCell: this.unmergeSelectedCell.bind(this),
                 buildTableGrid: this.buildTableGrid.bind(this),
             },
         ],
-        toolbar_groups: withSequence(25, { id: "table" }),
+        toolbar_groups: [
+            withSequence(28, { id: "table_cell_merge", namespaces: ["expanded", "table"] }),
+        ],
 
         /** Providers */
         toolbar_namespace_providers: [
             withSequence(
                 90,
                 (targetedNodes, editableSelection) =>
-                    closestElement(editableSelection.anchorNode, ".o_selected_td") && "compact"
+                    closestElement(editableSelection.anchorNode, ".o_selected_td") &&
+                    this.toolbarNamespace
             ),
         ],
+        expandable_toolbar_namespaces_providers: "table",
         color_target_providers: (node) => closestElement(node, ".o_selected_td"),
         overlay_selection_target_rect_providers: this.getTableSelectionRangeRect.bind(this),
         selected_background_color_providers: withSequence(
@@ -171,14 +212,25 @@ export class TablePlugin extends Plugin {
         on_will_split_block_handlers: this.resetTableSelection.bind(this),
 
         /** Processors */
-        before_insert_processors: this.normalizeTableStructure.bind(this),
-        clean_for_save_processors: (root) => {
+        clean_for_save_processors: (root, { preserveSelection = false } = {}) => {
+            if (!this.config.saveScrollableTables) {
+                // Wrappers are only needed while editing.
+                this.unwrapTables(root, { preserveSelection });
+            }
             this.deselectTable(root);
             return root;
         },
+        html_compatibility_processors: this.adaptTables.bind(this),
         normalize_processors: this.normalizeTable.bind(this),
         clipboard_content_processors: this.processContentForClipboard.bind(this),
+        paste_odoo_editor_html_processors: (fragment) => {
+            if (!this.config.allowScrollableTables) {
+                this.unwrapTables(fragment);
+            }
+            return fragment;
+        },
         resize_target_processors: this.processTableResizeTargets.bind(this),
+        resize_width_reset_processors: this.processTableWidthReset.bind(this),
         targeted_nodes_processors: this.adjustTargetedNodes.bind(this),
         on_history_commit_undone_handlers: () => {
             delete this.tableGridMap;
@@ -212,20 +264,25 @@ export class TablePlugin extends Plugin {
             }
         },
         is_selection_blocker_predicates: (node) => {
-            if (node.nodeName === "TABLE") {
+            if (node.nodeName === "TABLE" || isTableWrapper(node)) {
                 return true;
             }
         },
         can_contain_selection_placeholder_predicates: (container) => {
-            if (container.nodeName === "TABLE") {
+            if (container.nodeName === "TABLE" || isTableWrapper(container)) {
                 return false;
             } else if (["TD", "TH"].includes(container.nodeName) && container.closest(".o_table")) {
                 return true;
             }
         },
+        is_no_inline_root_predicates: (node) => {
+            if (isTableWrapper(node)) {
+                return true;
+            }
+        },
 
         /** Selectors */
-        move_node_whitelist_selectors: "table",
+        move_node_whitelist_selectors: `${TABLE_WRAPPER_SELECTOR}, :not(${TABLE_WRAPPER_SELECTOR}) > table`,
     };
 
     setup() {
@@ -258,13 +315,65 @@ export class TablePlugin extends Plugin {
             }
         });
         this.onMousemove = this.onMousemove.bind(this);
-
-        this.normalizeTableStructure(this.editable);
     }
 
-    processTableResizeTargets(item, neighbor, position) {
+    /**
+     * Wraps the table in a scroll container so a wide table scrolls on its own.
+     * Nested, non-editable and protected tables are skipped.
+     *
+     * @param {HTMLTableElement} table
+     */
+    wrapTable(table) {
+        if (
+            !this.config.allowScrollableTables ||
+            getTableWrapper(table) ||
+            closestElement(table, isTableCell) ||
+            !isContentEditable(table) ||
+            isProtected(table) ||
+            isProtecting(table)
+        ) {
+            return;
+        }
+        const cursors = this.dependencies.selection.preserveSelection();
+        wrapTableInScrollContainer(table);
+        cursors.restore();
+    }
+
+    /**
+     * Inserted content goes through `adaptTables` while still detached,
+     * where `isContentEditable` is always false and its tables are not
+     * wrapped: wrap them once they are in the editable.
+     *
+     * @param {HTMLElement | DocumentFragment} root
+     * @returns {HTMLElement | DocumentFragment}
+     */
+    normalizeTable(root) {
+        for (const table of root.querySelectorAll("table")) {
+            this.wrapTable(table);
+        }
+        return root;
+    }
+
+    /**
+     * Removes the scroll containers of the tables in the given root.
+     *
+     * @param {HTMLElement | DocumentFragment} root
+     * @param {Object} [options]
+     * @param {boolean} [options.preserveSelection=false]
+     */
+    unwrapTables(root, { preserveSelection = false } = {}) {
+        const cursors = preserveSelection && this.dependencies.selection.preserveSelection();
+        for (const wrapper of root.querySelectorAll(TABLE_WRAPPER_SELECTOR)) {
+            unwrapContents(wrapper);
+        }
+        if (cursors) {
+            cursors.restore();
+        }
+    }
+
+    processTableResizeTargets(item, neighbor, position, defaultMinSize) {
         if (!isTableCell(item)) {
-            return [item, neighbor];
+            return [item, neighbor, defaultMinSize, defaultMinSize];
         }
         const table = closestElement(item, "table");
         const tableGrid = this.buildTableGrid(table);
@@ -273,7 +382,7 @@ export class TablePlugin extends Plugin {
         const columnIndex =
             position === "middle" ? row.findLastIndex((c) => c === item) : row.indexOf(item);
         const adjacentColumnIndex = row.indexOf(neighbor);
-        let colgroup = table.querySelector("colgroup");
+        let colgroup = getTableColgroup(table);
         if (!colgroup) {
             colgroup = this.document.createElement("colgroup");
             for (const cell of tableGrid[0]) {
@@ -284,7 +393,70 @@ export class TablePlugin extends Plugin {
             table.insertBefore(colgroup, table.firstChild);
         }
         const columns = colgroup.children;
-        return [columns[columnIndex], columns[adjacentColumnIndex]];
+
+        const getNestedTableMinSize = (colIndex) => {
+            const visited = new Set();
+            return tableGrid.reduce((minSize, r) => {
+                const cell = r[colIndex];
+                if (!cell || visited.has(cell) || cell.colSpan > 1) {
+                    return minSize;
+                }
+                visited.add(cell);
+                const cellStyle = getComputedStyle(cell);
+                for (const nestedTable of cell.querySelectorAll(":scope > table")) {
+                    if (!nestedTable.style.width) {
+                        continue;
+                    }
+                    const nestedTableStyle = getComputedStyle(nestedTable);
+                    const width =
+                        nestedTable.getBoundingClientRect().width +
+                        parseFloat(cellStyle.paddingLeft) +
+                        parseFloat(cellStyle.paddingRight) +
+                        parseFloat(nestedTableStyle.marginLeft) +
+                        parseFloat(nestedTableStyle.marginRight);
+                    minSize = Math.max(minSize, width);
+                }
+                return minSize;
+            }, defaultMinSize);
+        };
+
+        return [
+            columns[columnIndex],
+            columns[adjacentColumnIndex],
+            getNestedTableMinSize(columnIndex),
+            adjacentColumnIndex >= 0 ? getNestedTableMinSize(adjacentColumnIndex) : defaultMinSize,
+        ];
+    }
+
+    processTableWidthReset(targetElement, elementsToAdjust, { layoutContainer } = {}) {
+        const table = layoutContainer || closestElement(targetElement, "table");
+        const colgroup = getTableColgroup(table);
+        if (!colgroup) {
+            return;
+        }
+        const colElements = [...colgroup.children];
+        const tableGrid = this.buildTableGrid(table);
+        const affectedCols = [targetElement, ...elementsToAdjust];
+        const affectedColIndices = affectedCols.map((col) => colElements.indexOf(col));
+        const visited = new Set();
+        for (const rowGrid of tableGrid) {
+            for (const colIndex of affectedColIndices) {
+                const cell = rowGrid[colIndex];
+                if (!cell || visited.has(cell)) {
+                    continue;
+                }
+                visited.add(cell);
+                const nestedTables = cell.querySelectorAll("table");
+                for (const nestedTable of nestedTables) {
+                    if (nestedTable.style.width) {
+                        this.shared.resetSize(nestedTable, {
+                            proxyElementSelector: "colgroup",
+                            heightElementsSelector: "tr",
+                        });
+                    }
+                }
+            }
+        }
     }
 
     handlePasteTableIntoExistingTable(selection, clipboardRoot) {
@@ -293,6 +465,7 @@ export class TablePlugin extends Plugin {
         if (clipboardRoot.childNodes.length !== 1 || sourceTable?.nodeName !== "TABLE") {
             return false;
         }
+        this.fillMissingCells(sourceTable);
 
         // Source table size.
         const sourceRows = sourceTable.rows;
@@ -414,36 +587,105 @@ export class TablePlugin extends Plugin {
     }
 
     /**
-     * Inherits table-level colors to all child tds to make it
-     * easier to add/remove style on tables.
+     * Adapts the tables contained in `root` to the structure the table
+     * operations rely on:
+     * - the cells missing from ragged rows are filled in, so that every
+     *   table forms a complete grid.
+     * - every table has a `<tbody>`, `<thead>` elements being merged or
+     *   converted into it.
+     * - the inline widths of the first row's cells are moved to the `<col>`
+     *   elements of a `<colgroup>`.
+     * - table-level colors are inherited by all child tds, to make it easier
+     *   to add/remove style on tables.
      *
-     * @param {Element} root
+     * @param {HTMLElement | DocumentFragment} root
+     * @returns {HTMLElement | DocumentFragment}
      */
-    normalizeTable(root) {
-        const tables = root.querySelectorAll("table");
-        for (const table of tables) {
-            const firstRow = table.rows[0];
-            let colgroup;
-            for (const cell of firstRow?.children || []) {
-                const width = cell.style.width;
-                if (!width) {
-                    continue;
+    adaptTables(root) {
+        for (const table of root.querySelectorAll("table")) {
+            this.fillMissingCells(table);
+            let tbody = table.tBodies[0];
+            const thead = table.tHead;
+
+            if (thead) {
+                const thChildren = thead.querySelectorAll("th");
+                thChildren.forEach((th) => th.classList.add("o_table_header"));
+
+                if (tbody) {
+                    // If a <tbody> already exists, move all rows from
+                    // <thead> into the start of <tbody>.
+                    tbody.prepend(...thead.rows);
+                    thead.remove();
+                } else {
+                    // Otherwise, replace the <thead> with <tbody>
+                    tbody = this.dependencies.dom.setTagName(thead, "TBODY");
                 }
-                if (!colgroup) {
-                    colgroup = this.document.createElement("colgroup");
-                }
-                // Apply width to col
-                const col = this.document.createElement("col");
-                col.style.width = width;
-                colgroup.appendChild(col);
-                // Remove the inline width from the cell
-                cell.style.removeProperty("width");
-            }
-            if (colgroup) {
-                table.prepend(colgroup);
             }
 
-            // --- Normalize table colors ---
+            if (!tbody) {
+                tbody = table.ownerDocument.createElement("tbody");
+                const row = tbody.insertRow();
+                row.insertCell().append(this.dependencies.baseContainer.createBaseContainer());
+                table.append(tbody);
+            }
+
+            // --- Normalize colgroup ---
+            // Only one colgroup allowed, drop any extras.
+            table.querySelectorAll(":scope > colgroup ~ colgroup").forEach((el) => el.remove());
+            const cells = [...(table.rows[0]?.cells ?? [])];
+            let colgroup = table.querySelector(":scope > colgroup");
+            const hasInlineWidth = cells.some((cell) => cell.style.width);
+            if (colgroup || hasInlineWidth) {
+                if (!colgroup) {
+                    colgroup = this.document.createElement("colgroup");
+                    table.prepend(colgroup);
+                }
+                const colCount = cells.reduce((count, cell) => count + cell.colSpan, 0);
+                while (colgroup.children.length < colCount) {
+                    colgroup.append(this.document.createElement("col"));
+                }
+                if (hasInlineWidth) {
+                    const cols = colgroup.children;
+                    let index = 0;
+
+                    for (const cell of cells) {
+                        const width = cell.style.width;
+                        const end = index + cell.colSpan;
+                        if (width) {
+                            let knownWidth = 0;
+                            const unresolvedCols = [];
+                            for (let i = index; i < end; i++) {
+                                const colWidth = cols[i].style.width;
+                                if (colWidth) {
+                                    knownWidth += parseFloat(colWidth) || 0;
+                                } else {
+                                    unresolvedCols.push(cols[i]);
+                                }
+                            }
+
+                            if (cell.colSpan === 1 && unresolvedCols.length) {
+                                // Copied as is to keep the widths that can't be split,
+                                // such as calc() ones.
+                                unresolvedCols[0].style.width = width;
+                            } else if (unresolvedCols.length) {
+                                const widthPerColumn =
+                                    (parseFloat(width) - knownWidth) / unresolvedCols.length;
+                                // A width that isn't positive means that the cols already
+                                // cover the cell's width, so they win over it.
+                                if (widthPerColumn > 0) {
+                                    const unit = width.replace(/^[\d.]+/, "");
+                                    for (const col of unresolvedCols) {
+                                        col.style.width = `${widthPerColumn}${unit}`;
+                                    }
+                                }
+                            }
+                            cell.style.removeProperty("width");
+                        }
+                        index = end;
+                    }
+                }
+            }
+
             const tableColor = table.style.color;
             const tableBgColor = table.style.backgroundColor;
 
@@ -504,7 +746,7 @@ export class TablePlugin extends Plugin {
 
             // Temporarily set widths so proportions are respected.
             let totalWidth = 0;
-            const colgroup = table.querySelector("colgroup");
+            const colgroup = getTableColgroup(table);
             if (tableWidth && colgroup) {
                 for (const col of colgroup.children) {
                     const width = parseFloat(col.style.width);
@@ -658,7 +900,7 @@ export class TablePlugin extends Plugin {
      */
     removeColumn(cell) {
         const table = closestElement(cell, "table");
-        const colgroup = table.querySelector("colgroup");
+        const colgroup = getTableColgroup(table);
         const tableGrid = this.buildTableGrid(table);
         const rowIndex = getRowIndex(cell);
         const cells = [...closestElement(cell, "tr").querySelectorAll("th, td")];
@@ -764,7 +1006,7 @@ export class TablePlugin extends Plugin {
                 index += moveStep;
             }
         });
-        const colgroup = table.querySelector("colgroup");
+        const colgroup = getTableColgroup(table);
         if (colgroup) {
             const cols = colgroup.children;
             insertBefore
@@ -852,9 +1094,94 @@ export class TablePlugin extends Plugin {
             return;
         }
         const baseContainer = this.dependencies.baseContainer.createBaseContainer();
-        table.before(baseContainer);
-        table.remove();
+        // Remove the wrapper along with the table, if it has one.
+        const tableRoot = getTableRoot(table);
+        tableRoot.before(baseContainer);
+        tableRoot.remove();
         this.dependencies.selection.setCursorStart(baseContainer);
+    }
+
+    /**
+     * Checks if merge is available for the current selection
+     * @returns {boolean}
+     */
+    isMergeCellsAvailable() {
+        const selectedTds = this.document.querySelectorAll(".o_selected_td");
+        if (selectedTds.length < 2) {
+            return false;
+        }
+        const firstTd = selectedTds[0];
+        const table = closestElement(firstTd, "table");
+        if (!table) {
+            return false;
+        }
+        const grid = this.buildTableGrid(table);
+        const { canMerge, cells, spanType } = getSelectedCellsMergeInfo(
+            this.document,
+            grid,
+            firstTd
+        );
+
+        if (canMerge) {
+            this.canMergeCells = canMerge;
+            this.cellsToMerge = cells;
+            this.mergeSpanType = spanType;
+        } else {
+            this.canMergeCells = null;
+            this.cellsToMerge = null;
+            this.mergeSpanType = null;
+        }
+        return canMerge;
+    }
+
+    /**
+     * Checks if unmerge is available for the current selection
+     * @returns {boolean}
+     */
+    isUnmergeCellsAvailable() {
+        const selectedTds = this.document.querySelectorAll(".o_selected_td");
+        // We only show the unmerge option, e.g. activated merge button, when
+        // only the merged cell is selected.
+        if (selectedTds.length !== 1) {
+            return false;
+        }
+        const firstTd = selectedTds[0];
+        const table = closestElement(firstTd, "table");
+        if (!table) {
+            return false;
+        }
+        const grid = this.buildTableGrid(table);
+        const { canUnmerge } = getSelectedCellsMergeInfo(this.document, grid, firstTd);
+        return canUnmerge;
+    }
+
+    toggleMergeCellCommand() {
+        if (this.isUnmergeCellsAvailable()) {
+            this.unmergeCellsCommand();
+        } else {
+            this.mergeCellsCommand();
+        }
+    }
+
+    /**
+     * Command handler for merging table cells
+     */
+    mergeCellsCommand() {
+        if (this?.canMergeCells && this?.mergeSpanType) {
+            this.mergeSelectedCells(this.cellsToMerge, this.mergeSpanType);
+            this.canMergeCells = null;
+            this.cellsToMerge = null;
+            this.mergeSpanType = null;
+            this.dependencies.history.commit();
+        }
+    }
+
+    /**
+     * Command handler for unmerging table cells
+     */
+    unmergeCellsCommand() {
+        this.unmergeSelectedCell();
+        this.dependencies.history.commit();
     }
 
     /**
@@ -1013,11 +1340,11 @@ export class TablePlugin extends Plugin {
         // Expand range to fully include tables.
         const firstTable = fullySelectedTables[0];
         if (firstTable.contains(startContainer)) {
-            [startContainer, startOffset] = leftPos(firstTable);
+            [startContainer, startOffset] = leftPos(getTableRoot(firstTable));
         }
         const lastTable = fullySelectedTables.at(-1);
         if (lastTable.contains(endContainer)) {
-            [endContainer, endOffset] = rightPos(lastTable);
+            [endContainer, endOffset] = rightPos(getTableRoot(lastTable));
         }
         range = { startContainer, startOffset, endContainer, endOffset };
 
@@ -1178,9 +1505,9 @@ export class TablePlugin extends Plugin {
                     ["ArrowRight", "ArrowDown"].includes(ev.key) && direction === DIRECTIONS.LEFT;
                 let targetNode;
                 if (deselectingBackward) {
-                    targetNode = endTable.previousElementSibling;
+                    targetNode = getTableRoot(endTable).previousElementSibling;
                 } else if (deselectingForward) {
-                    targetNode = endTable.nextElementSibling;
+                    targetNode = getTableRoot(endTable).nextElementSibling;
                 }
                 if (targetNode) {
                     ev.preventDefault();
@@ -1638,8 +1965,8 @@ export class TablePlugin extends Plugin {
         const rowOffset = currentRowIndex + (isArrowUp ? -1 : currentCell.rowSpan);
         let targetNode = tableGrid[rowOffset]?.[currentColIndex];
         const siblingElement = isArrowUp
-            ? currentTable.previousElementSibling
-            : currentTable.nextElementSibling;
+            ? getTableRoot(currentTable).previousElementSibling
+            : getTableRoot(currentTable).nextElementSibling;
         if (!targetNode && siblingElement) {
             // If no target cell is available, navigate to sibling element
             targetNode = siblingElement;
@@ -1705,6 +2032,17 @@ export class TablePlugin extends Plugin {
         for (const td of tdsToSelect) {
             td.classList.toggle("o_selected_td", true);
             this.processThrough("deselect_custom_selected_nodes_processors", td);
+        }
+        // Force a non-collapsed selection when selecting a single cell to avoid
+        // having a collapsed selection that is actually selecting something.
+        if (tdsToSelect.size === 1 && selection.isCollapsed) {
+            const [cell] = tdsToSelect.values();
+            this.dependencies.selection.setSelection({
+                anchorNode: cell,
+                anchorOffset: 0,
+                focusNode: cell,
+                focusOffset: nodeSize(cell),
+            });
         }
     }
 
@@ -1807,45 +2145,6 @@ export class TablePlugin extends Plugin {
     }
 
     /**
-     * Normalize the structure of all tables contained in `container`.
-     *
-     * Ensures every table has a `<tbody>` and merges or converts `<thead>`
-     * elements when necessary. Table operations rely on the presence of a
-     * `<tbody>`, so every table must contain one.
-     *
-     * @param {HTMLElement | DocumentFragment} container
-     * @returns {HTMLElement | DocumentFragment}
-     */
-    normalizeTableStructure(container) {
-        container.querySelectorAll("table").forEach((table) => {
-            let tbody = table.tBodies[0];
-            const thead = table.tHead;
-
-            if (thead) {
-                const thChildren = thead.querySelectorAll("th");
-                thChildren.forEach((th) => th.classList.add("o_table_header"));
-
-                if (tbody) {
-                    // If a <tbody> already exists, move all rows from
-                    // <thead> into the start of <tbody>.
-                    tbody.prepend(...thead.rows);
-                    thead.remove();
-                } else {
-                    // Otherwise, replace the <thead> with <tbody>
-                    tbody = this.dependencies.dom.setTagName(thead, "TBODY");
-                }
-            }
-
-            if (!tbody) {
-                tbody = table.ownerDocument.createElement("tbody");
-                tbody.innerHTML = `<tr><td><div class="o-paragraph"><br></div></td></tr>`;
-                table.append(tbody);
-            }
-        });
-        return container;
-    }
-
-    /**
      * @param {DocumentFragment} clonedContents
      * @param {import("@html_editor/core/selection_plugin").EditorSelection} selection
      */
@@ -1881,16 +2180,18 @@ export class TablePlugin extends Plugin {
             // just its rows.
             clonedContents = tableClone;
         }
-        const startTable = closestElement(selection.startContainer, "table");
-        if (clonedContents.firstChild.nodeName === "TABLE" && startTable) {
+        const isTableRoot = (node) => node?.nodeName === "TABLE" || isTableWrapper(node);
+
+        const startTableRoot = getTableRoot(selection.startContainer);
+        if (isTableRoot(clonedContents.firstChild) && startTableRoot) {
             // Make sure the full leading table is copied.
-            clonedContents.firstChild.after(startTable.cloneNode(true));
+            clonedContents.firstChild.after(startTableRoot.cloneNode(true));
             clonedContents.firstChild.remove();
         }
-        const endTable = closestElement(selection.endContainer, "table");
-        if (clonedContents.lastChild.nodeName === "TABLE" && endTable) {
+        const endTableRoot = getTableRoot(selection.endContainer);
+        if (isTableRoot(clonedContents.lastChild) && endTableRoot) {
             // Make sure the full trailing table is copied.
-            clonedContents.lastChild.before(endTable.cloneNode(true));
+            clonedContents.lastChild.before(endTableRoot.cloneNode(true));
             clonedContents.lastChild.remove();
         }
         this.deselectTable(clonedContents);
@@ -1944,5 +2245,42 @@ export class TablePlugin extends Plugin {
         }
         this.tableGridMap.set(table, grid);
         return grid;
+    }
+
+    /**
+     * Adds the cells missing from the rows of a ragged table.
+     *
+     * @param {HTMLTableElement} table
+     */
+    fillMissingCells(table) {
+        const rows = [...table.rows];
+        if (!rows.length) {
+            return;
+        }
+        const grid = this.buildTableGrid(table);
+        const width = Math.max(...grid.map((gridRow) => gridRow.length));
+        let hasMissingCells = false;
+        for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+            const row = rows[rowIndex];
+            const isHeaderRow =
+                row.cells.length > 0 && [...row.cells].every((cell) => cell.nodeName === "TH");
+            for (let colIndex = 0; colIndex < width; colIndex++) {
+                if (grid[rowIndex][colIndex]) {
+                    continue;
+                }
+                const newCell = this.document.createElement(isHeaderRow ? "th" : "td");
+                if (isHeaderRow) {
+                    newCell.classList.add("o_table_header");
+                }
+                newCell.append(this.dependencies.baseContainer.createBaseContainer());
+                // The cells lost by a partial copy are the leading ones of
+                // the first row, and the trailing ones of any other.
+                row.insertBefore(newCell, rowIndex === 0 ? row.firstChild : null);
+                hasMissingCells = true;
+            }
+        }
+        if (hasMissingCells) {
+            this.tableGridMap.delete(table);
+        }
     }
 }

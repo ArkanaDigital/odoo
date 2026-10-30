@@ -1,5 +1,5 @@
 import { CommandResult } from "../../o_spreadsheet/cancelled_reason";
-import { helpers, CompiledFormula, registries } from "@odoo/o-spreadsheet";
+import { helpers, CompiledFormula, registries, corePlugins } from "@odoo/o-spreadsheet";
 import { OdooCorePlugin } from "@spreadsheet/plugins";
 
 const { getMaxObjectId, deepEquals, deepCopy, getCanonicalSymbolName } = helpers;
@@ -74,6 +74,25 @@ export class ListCorePlugin extends OdooCorePlugin {
         "getListCompiledColumnFormula",
         "getListCompiledColumnDependencies",
     ]);
+    static dependencies = [corePlugins.SheetPlugin, corePlugins.NamedRangesPlugin];
+    validators = {
+        INSERT_ODOO_LIST: this.checkInsertOdooList,
+        DUPLICATE_ODOO_LIST: this.checkDuplicateOdooList,
+        RENAME_ODOO_LIST: this.checkRenameOdooList,
+        UPDATE_ODOO_LIST: this.checkUpdateOdooList,
+        UPDATE_ODOO_LIST_DOMAIN: this.checkUpdateOdooListDomain,
+    };
+
+    handlers = {
+        INSERT_ODOO_LIST: this.onInsertOdooList,
+        DUPLICATE_ODOO_LIST: this.onDuplicateOdooList,
+        RE_INSERT_ODOO_LIST: this.onReInsertOdooList,
+        RENAME_ODOO_LIST: this.onRenameOdooList,
+        REMOVE_ODOO_LIST: this.onRemoveOdooList,
+        UPDATE_ODOO_LIST_DOMAIN: this.onUpdateOdooListDomain,
+        UPDATE_ODOO_LIST: this.onUpdateOdooList,
+    };
+
     constructor(config) {
         super(config);
 
@@ -84,101 +103,94 @@ export class ListCorePlugin extends OdooCorePlugin {
         this.compiledColumnFormulas = {};
     }
 
-    /**
-     * @param {AllCoreCommand} cmd
-     *
-     * @returns {string | string[]}
-     */
-    allowDispatch(cmd) {
-        switch (cmd.type) {
-            case "INSERT_ODOO_LIST":
-                if (cmd.listId !== this.nextId.toString()) {
-                    return CommandResult.InvalidNextId;
-                }
-                if (this.lists[cmd.listId]) {
-                    return CommandResult.ListIdDuplicated;
-                }
-                return this._checkDefinition(cmd.definition);
-            case "DUPLICATE_ODOO_LIST":
-                if (!this.lists[cmd.listId]) {
-                    return CommandResult.ListIdNotFound;
-                }
-                if (cmd.newListId !== this.nextId.toString()) {
-                    return CommandResult.InvalidNextId;
-                }
-                break;
-            case "RENAME_ODOO_LIST":
-                if (!(cmd.listId in this.lists)) {
-                    return CommandResult.ListIdNotFound;
-                }
-                if (cmd.name === "") {
-                    return CommandResult.EmptyName;
-                }
-                break;
-            case "UPDATE_ODOO_LIST":
-                if (!(cmd.listId in this.lists)) {
-                    return CommandResult.ListIdNotFound;
-                }
-                if (deepEquals(this.lists[cmd.listId], cmd.list)) {
-                    return CommandResult.ListDefinitionUnchanged;
-                }
-                return this._checkDefinition(cmd.list);
-            case "UPDATE_ODOO_LIST_DOMAIN":
-                if (!(cmd.listId in this.lists)) {
-                    return CommandResult.ListIdNotFound;
-                }
-                break;
+    checkInsertOdooList(cmd) {
+        if (cmd.listId !== this.nextId.toString()) {
+            return CommandResult.InvalidNextId;
+        }
+        if (this.lists[cmd.listId]) {
+            return CommandResult.ListIdDuplicated;
+        }
+        return this._checkDefinition(cmd.definition);
+    }
+
+    checkDuplicateOdooList(cmd) {
+        if (!this.lists[cmd.listId]) {
+            return CommandResult.ListIdNotFound;
+        }
+        if (cmd.newListId !== this.nextId.toString()) {
+            return CommandResult.InvalidNextId;
         }
         return CommandResult.Success;
     }
 
-    /**
-     * @param {AllCoreCommand} cmd
-     *
-     */
-    handle(cmd) {
-        switch (cmd.type) {
-            case "INSERT_ODOO_LIST": {
-                const { sheetId, col, row, definition, listId, linesNumber, mode } = cmd;
-                const anchor = [col, row];
-                this._addList(listId, definition);
-                const columns = this.lists[listId].columns;
-                this._insertList(sheetId, anchor, listId, linesNumber, columns, mode);
-                break;
-            }
-            case "DUPLICATE_ODOO_LIST": {
-                const { listId, newListId, duplicatedListName } = cmd;
-                const duplicatedList = deepCopy(this.lists[listId]);
-                duplicatedList.name = duplicatedListName ?? duplicatedList.name + " (copy)";
-                this._addList(newListId, duplicatedList);
-                break;
-            }
-            case "RE_INSERT_ODOO_LIST": {
-                const { sheetId, col, row, listId, linesNumber, columns, mode } = cmd;
-                const anchor = [col, row];
-                this._insertList(sheetId, anchor, listId, linesNumber, columns, mode);
-                break;
-            }
-            case "RENAME_ODOO_LIST": {
-                this.history.update("lists", cmd.listId, "name", cmd.name);
-                break;
-            }
-            case "REMOVE_ODOO_LIST": {
-                const lists = { ...this.lists };
-                delete lists[cmd.listId];
-                this.history.update("lists", lists);
-                break;
-            }
-            case "UPDATE_ODOO_LIST_DOMAIN": {
-                this.history.update("lists", cmd.listId, "domain", cmd.domain);
-                break;
-            }
-            case "UPDATE_ODOO_LIST": {
-                this.history.update("lists", cmd.listId, cmd.list);
-                this._compileCalculatedColumns(cmd.listId, cmd.list);
-                break;
-            }
+    checkRenameOdooList(cmd) {
+        if (!(cmd.listId in this.lists)) {
+            return CommandResult.ListIdNotFound;
         }
+        if (cmd.name === "") {
+            return CommandResult.EmptyName;
+        }
+        return CommandResult.Success;
+    }
+
+    checkUpdateOdooList(cmd) {
+        if (!(cmd.listId in this.lists)) {
+            return CommandResult.ListIdNotFound;
+        }
+        if (deepEquals(this.lists[cmd.listId], cmd.list)) {
+            return CommandResult.ListDefinitionUnchanged;
+        }
+        return this._checkDefinition(cmd.list);
+    }
+
+    checkUpdateOdooListDomain(cmd) {
+        if (!(cmd.listId in this.lists)) {
+            return CommandResult.ListIdNotFound;
+        }
+        return CommandResult.Success;
+    }
+
+    onInsertOdooList(cmd) {
+        const { sheetId, col, row, definition, listId, linesNumber, mode } = cmd;
+        const anchor = [col, row];
+        this._addList(listId, definition);
+        const columns = this.lists[listId].columns;
+        this._insertList(sheetId, anchor, listId, linesNumber, columns, mode);
+    }
+
+    onDuplicateOdooList(cmd) {
+        const { listId, newListId, duplicatedListName } = cmd;
+        const duplicatedList = deepCopy(this.lists[listId]);
+        duplicatedList.name = duplicatedListName ?? duplicatedList.name + " (copy)";
+        this._addList(newListId, duplicatedList);
+    }
+
+    onReInsertOdooList(cmd) {
+        const { sheetId, col, row, listId, linesNumber, columns, mode } = cmd;
+        const anchor = [col, row];
+        this._insertList(sheetId, anchor, listId, linesNumber, columns, mode);
+    }
+
+    onRenameOdooList(cmd) {
+        this.history.update("lists", cmd.listId, "name", cmd.name);
+    }
+
+    onRemoveOdooList(cmd) {
+        const lists = { ...this.lists };
+        delete lists[cmd.listId];
+        this.history.update("lists", lists);
+        const compiledColumnFormulas = { ...this.compiledColumnFormulas };
+        delete compiledColumnFormulas[cmd.listId];
+        this.history.update("compiledColumnFormulas", compiledColumnFormulas);
+    }
+
+    onUpdateOdooListDomain(cmd) {
+        this.history.update("lists", cmd.listId, "domain", cmd.domain);
+    }
+
+    onUpdateOdooList(cmd) {
+        this.history.update("lists", cmd.listId, cmd.list);
+        this._compileCalculatedColumns(cmd.listId, cmd.list);
     }
 
     adaptRanges(adapters) {
@@ -292,6 +304,7 @@ export class ListCorePlugin extends OdooCorePlugin {
 
     _compileCalculatedColumns(listId, definition) {
         const computedColumns = definition.columns.filter((col) => col.computedBy);
+        this.history.update("compiledColumnFormulas", listId, {});
         for (const column of computedColumns) {
             const compiledFormula = CompiledFormula.Compile(
                 column.computedBy.formula,

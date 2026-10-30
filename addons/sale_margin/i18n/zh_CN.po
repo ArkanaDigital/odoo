@@ -11,9 +11,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server saas~14.4\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-03 17:40+0000\n"
-"PO-Revision-Date: 2026-06-20 05:39+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-09-11 17:43+0000\n"
+"PO-Revision-Date: 2026-09-09 13:54+0000\n"
+"Last-Translator: \"Chloe Wang (chwa)\" <chwa@odoo.com>\n"
 "Language-Team: Chinese (Simplified Han script) <https://translate.odoo.com/"
 "projects/odoo-master/sale_margin/zh_Hans/>\n"
 "Language: zh_CN\n"
@@ -21,7 +21,18 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: sale_margin
+#: model:ir.module.module,description:base.module_sale_margin
+msgid ""
+"\n"
+"This module adds the 'Margin' on sales order.\n"
+"=============================================\n"
+"\n"
+"This gives the profitability by calculating the difference between the Unit\n"
+"Price and Cost Price.\n"
+msgstr ""
 
 #. module: sale_margin
 #: model_terms:ir.ui.view,arch_db:sale_margin.sale_report_projected_margins_list
@@ -44,7 +55,7 @@ msgstr "显示名称"
 #. module: sale_margin
 #: model:ir.model.fields,field_description:sale_margin.field_sale_report__purchase_price
 msgid "Expected Cost"
-msgstr ""
+msgstr "预计成本"
 
 #. module: sale_margin
 #: model:ir.actions.act_window,name:sale_margin.action_order_report_projected_margins
@@ -73,7 +84,7 @@ msgstr "已开票"
 #. module: sale_margin
 #: model_terms:ir.ui.view,arch_db:sale_margin.sale_report_projected_margins_list
 msgid "Invoiced Qty"
-msgstr ""
+msgstr "开票数量"
 
 #. module: sale_margin
 #: model:ir.model.fields,field_description:sale_margin.field_sale_order__margin
@@ -96,9 +107,14 @@ msgid "Margin (%)"
 msgstr "毛利率（%）"
 
 #. module: sale_margin
+#: model:ir.module.module,shortdesc:base.module_sale_margin
+msgid "Margins in Sales Orders"
+msgstr ""
+
+#. module: sale_margin
 #: model_terms:ir.actions.act_window,help:sale_margin.action_order_report_projected_margins
 msgid "No data to display"
-msgstr ""
+msgstr "无可显示数据"
 
 #. module: sale_margin
 #: model_terms:ir.ui.view,arch_db:sale_margin.sale_report_projected_margins_list
@@ -112,8 +128,10 @@ msgstr ""
 
 #. module: sale_margin
 #: model_terms:ir.ui.view,arch_db:sale_margin.sale_report_projected_margins_list
+#: model_terms:ir.ui.view,arch_db:sale_margin.sale_report_view_projected_margins_graph
+#: model_terms:ir.ui.view,arch_db:sale_margin.sale_report_view_projected_margins_pivot
 msgid "Sales Analysis"
-msgstr ""
+msgstr "销售分析"
 
 #. module: sale_margin
 #: model:ir.model,name:sale_margin.model_sale_report
@@ -158,7 +176,7 @@ msgstr ""
 #. module: sale_margin
 #: model_terms:ir.ui.view,arch_db:sale_margin.sale_report_projected_margins_list
 msgid "Total Delivered Qty"
-msgstr ""
+msgstr "已交付总数量"
 
 #. module: sale_margin
 #: model_terms:ir.ui.view,arch_db:sale_margin.sale_report_projected_margins_list
@@ -178,7 +196,7 @@ msgstr ""
 #. module: sale_margin
 #: model_terms:ir.ui.view,arch_db:sale_margin.sale_report_projected_margins_list
 msgid "Total Sold"
-msgstr ""
+msgstr "总销量"
 
 #. module: sale_margin
 #: model_terms:ir.ui.view,arch_db:sale_margin.sale_report_projected_margins_list

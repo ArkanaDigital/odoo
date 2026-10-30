@@ -38,7 +38,11 @@ class DiscussChannelMember(models.Model):
         members = super().create(vals_list)
         guest = self.env["mail.guest"]._get_guest_from_context()
         for member in members.filtered(
-            lambda m: m.channel_id.channel_type == "livechat" and not m.livechat_member_type
+            lambda m: (
+                m.channel_id.channel_type == "livechat"
+                and not m.channel_id.livechat_end_dt
+                and not m.livechat_member_type
+            ),
         ):
             # After login, the guest cookie is still available, allowing us to
             # reconcile the user with their previous guest member.
@@ -87,8 +91,6 @@ class DiscussChannelMember(models.Model):
             member.agent_expertise_ids = member.livechat_member_history_ids.agent_expertise_ids
 
     def _create_or_update_history(self, values_by_member):
-        if self.channel_id.livechat_end_dt:
-            return
         members_without_history = self.filtered(lambda m: not m.livechat_member_history_ids)
         history_domain = Domain.OR(
             [
@@ -208,3 +210,14 @@ class DiscussChannelMember(models.Model):
         if self.channel_id.channel_type == "livechat" and self.partner_id.user_livechat_username:
             return self.partner_id.user_livechat_username
         return super()._get_html_link_title()
+
+    @api.ondelete(at_uninstall=False)
+    def _unlink_update_livechat_end_dt(self):
+        # sudo: discuss.channel - last operator left the conversation, state must be updated.
+        for channel, members in self.grouped("channel_id").items():
+            if (
+                channel.channel_type == "livechat"
+                and not channel.livechat_end_dt
+                and channel.member_count - len(members) == 1
+            ):
+                channel.sudo().livechat_end_dt = fields.Datetime.now()

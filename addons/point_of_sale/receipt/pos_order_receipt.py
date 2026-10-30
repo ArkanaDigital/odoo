@@ -2,16 +2,41 @@
 import base64
 import io
 import json
+import logging
 import math
-from datetime import datetime
 from io import BytesIO
 
 import qrcode
+from markupsafe import Markup
 from PIL import Image
 
-from odoo import _, api, models, modules
+from odoo import _, api, fields, models, modules
 from odoo.tools.image import image_data_uri
-from odoo.tools.misc import format_datetime
+from odoo.tools.misc import format_datetime, format_time
+
+_logger = logging.getLogger(__name__)
+
+DOCTYPE = Markup('<!DOCTYPE html>\n')
+PAPER_SIZE_STYLES = {
+    '58': {'width': 360, 'font_size': 22},
+    '80': {'width': 512, 'font_size': 22},
+    'tm_u22_76': {'width': 200, 'font_size': 12},
+    'tm_u22_70': {'width': 180, 'font_size': 12},
+    'tm_u22_58': {'width': 150, 'font_size': 12},
+    'tm_u33_76': {'width': 400, 'font_size': 22},
+    'tm_u33_70': {'width': 380, 'font_size': 22},
+    'tm_p60_60': {'width': 375, 'font_size': 22},
+    'tm_l100_40': {'width': 240, 'font_size': 14},
+}
+LINE_HEIGHT_RATIO = 1.4
+TEMPLATE_FONT_SIZE = 22
+TEXT_CLASS_RATIOS = {
+    'text-small': 0.8,
+    'text-normal': 1.0,
+    'text-large': 1.4,
+    'text-huge': 2.0,
+    'text-insane': 2.3,
+}
 
 
 def _get_str_notes(note):
@@ -37,6 +62,25 @@ class PosOrderReceipt(models.AbstractModel):
     _name = 'pos.order.receipt'
     _description = 'Point of Sale Order Receipt Generator'
 
+    def _order_receipt_tz(self):
+        """Receipts must use the shop timezone, since the rendering user (self ordering user, public user, OdooBot, ...) can be in a different tz"""
+        self.ensure_one()
+        return self.company_id.sudo().tz or self.env.context.get('tz') or self.env.user.tz or 'UTC'
+
+    def _order_receipt_preset_datetime(self):
+        """Mirror of the JS presetDateTime getter: show only the hour if pickup is same day as order."""
+        self.ensure_one()
+        if not self.preset_time:
+            return False
+
+        receipt_tz = self._order_receipt_tz()
+        in_shop_tz = self.with_context(tz=receipt_tz)
+        preset_day = fields.Datetime.context_timestamp(in_shop_tz, self.preset_time).date()
+        order_day = fields.Datetime.context_timestamp(in_shop_tz, self.date_order).date() if self.date_order else False
+        if preset_day == order_day:
+            return format_time(self.env, self.preset_time, tz=receipt_tz, time_format='short')
+        return format_datetime(self.env, self.preset_time, tz=receipt_tz)
+
     @api.model
     def _order_receipt_format_currency(self, amount, currency=None):
         if currency:
@@ -49,8 +93,11 @@ class PosOrderReceipt(models.AbstractModel):
         preset_fields = self.env['pos.preset']._load_pos_data_fields(self.config_id)
         order_fields = self.env['pos.order']._load_pos_data_fields(self.config_id)
         config_fields = self.env['pos.config']._load_pos_data_fields(self.config_id)
+        order_data = self.read(order_fields, load=False)[0]
+        foreign_currency = self.payment_ids and self.payment_ids[0].foreign_currency_id
+        order_data['amount_return_currency'] = 0 if not foreign_currency else order_data['amount_return'] * foreign_currency.rate
         return {
-            'order': self.read(order_fields, load=False)[0],
+            'order': order_data,
             'config': self.config_id.read(config_fields, load=False)[0],
             'company': self.company_id.read(company_fields, load=False)[0],
             'partner': self.partner_id.read(partner_fields, load=False)[0] if self.partner_id else False,
@@ -59,16 +106,17 @@ class PosOrderReceipt(models.AbstractModel):
 
     def _get_common_extra_data(self):
         company = self.company_id
+        receipt_tz = self._order_receipt_tz()
         return {
             'vat_label': company.country_id.vat_label or _("Tax ID"),
-            'preset_datetime': format_datetime(self.env, self.preset_time) if self.preset_time else False,
+            'preset_datetime': format_datetime(self.env, self.preset_time, tz=receipt_tz) if self.preset_time else False,
             'partner_vat_label': self.partner_id.country_id.vat_label if self.partner_id.country_id else _("Tax ID"),
             'self_invoicing_url': f"{self.env.company.get_base_url()}/pos/ticket",
             'prices': self._order_receipt_generate_taxe_data(),
             'cashier_name': self._order_receipt_generate_cashier_name(),
             'company_state_name': company.state_id.name if company.state_id else False,
             'company_country_name': company.country_id.name if company.country_id else False,
-            'formated_date_order': format_datetime(self.env, self.date_order),
+            'formated_date_order': format_datetime(self.env, self.date_order, tz=receipt_tz),
         }
 
     def _order_receipt_generate_taxe_data(self):
@@ -99,7 +147,7 @@ class PosOrderReceipt(models.AbstractModel):
             data = line.read(payment_fields, load=False)[0]
             data['payment_method_data'] = {'name': line.payment_method_id.name}
             currency = line.foreign_currency_id or self.currency_id
-            data['amount'] = self._order_receipt_format_currency(data['amount'], currency)
+            data['amount'] = self._order_receipt_format_currency(data['amount_currency'] or data['amount'], currency)
             payments.append(data)
 
         return payments
@@ -114,14 +162,16 @@ class PosOrderReceipt(models.AbstractModel):
         service_fee_product = preset_id.service_fee_product_id if preset_id else None
 
         lines = []
-        for line in self.lines:
+        for line in self._get_receipt_lines():
             data = line.read(lines_fields, load=False)[0]
             display_price_incl = line.order_id.config_id.iface_tax_included == 'total'
 
             data['qty'] = int(line.qty) if float(line.qty).is_integer() else line.qty
-            data['product_data'] = product_by_id[data['product_id']]
+            data['product_data'] = {**product_by_id[data['product_id']]}
+            data['product_data']['display_name'] = line.full_product_name or data['product_data']['display_name']
             data['product_uom_name'] = line.product_id.uom_id.name
-            data['price_subtotal_incl'] = self._order_receipt_format_currency(data['price_subtotal_incl'])
+            display_price = data['price_subtotal_incl'] if display_price_incl else data['price_subtotal']
+            data['price_subtotal_incl'] = self._order_receipt_format_currency(display_price)
             data['no_discount_price'] = self._order_receipt_format_currency(line._get_price_no_discount(self.config_id))
 
             # Compute line unit price
@@ -219,19 +269,82 @@ class PosOrderReceipt(models.AbstractModel):
             },
         }
 
-    def order_receipt_generate_html(self, basic_receipt=False):
+    def order_receipt_generate_html(self, basic_receipt=False, printer_style=False):
         last_order = self.env['pos.order'].search([], order='id desc', limit=1)
         report_name = 'point_of_sale.pos_order_receipt'
-        return last_order.env['ir.qweb']._render(report_name, values=self.order_receipt_generate_data(basic_receipt))
+        html = last_order.env['ir.qweb']._render(report_name, values=self.order_receipt_generate_data(basic_receipt))
+        if printer_style:
+            html = html.replace(Markup('</head>'), printer_style + Markup('</head>'))
+        return DOCTYPE + html
 
-    def order_receipt_generate_image(self, basic_receipt=False, width=500, height=0):
-        content = self.order_receipt_generate_html(basic_receipt)
+    def order_receipt_generate_image(self, basic_receipt=False, width=500, height=0, printer_style=False):
+        content = self.order_receipt_generate_html(basic_receipt, printer_style)
         return self.env['ir.actions.report']._run_image_engine(
             'wkhtmltopdf',
             [content],
             width,
             height,
         )[0]
+
+    def _order_receipt_paper_style(self, paper_size):
+        return PAPER_SIZE_STYLES.get(paper_size) or PAPER_SIZE_STYLES['80']
+
+    def _order_receipt_paper_style_css(self, paper_size):
+        """Mirror method of the JS setIframeSizeFromPrinter in pos_ticket_printer_service.js
+        Return the style making the receipt fit the given paper size.
+
+        The receipt template is designed for 80mm paper, smaller printers need
+        their own width and font sizes.
+        """
+        style = self._order_receipt_paper_style(paper_size)
+        font_size = style['font_size']
+        rules = [f"#pos-receipt {{ width: {style['width']}px !important; font-size: {font_size}px !important; }}"]
+        if font_size != TEMPLATE_FONT_SIZE:
+            for text_class, ratio in TEXT_CLASS_RATIOS.items():
+                size = font_size * ratio
+                rules.append(
+                    f"#pos-receipt .{text_class} {{ font-size: {size}px !important; "
+                    f"line-height: {size * LINE_HEIGHT_RATIO}px !important; }}"
+                )
+        return Markup("<style>%s</style>") % "\n".join(rules)
+
+    def _order_receipt_generate_paper_image(self, paper_size='80'):
+        """Render this receipt as an image fitting the given paper size."""
+        return self.order_receipt_generate_image(
+            width=self._order_receipt_paper_style(paper_size)['width'],
+            printer_style=self._order_receipt_paper_style_css(paper_size),
+        )
+
+    def _order_receipt_generate_for_format(self, receipt_format, paper_size='80'):
+        """Render this receipt in the format a printer expects.
+
+        See ``_get_backend_receipt_format`` on ``pos.printer`` for the formats.
+        """
+        self.ensure_one()
+        if receipt_format == 'image':
+            return self._order_receipt_generate_base64_image(paper_size)
+        return self._order_receipt_generate_epos(paper_size)
+
+    def _order_receipt_generate_epos(self, paper_size='80'):
+        """Render this receipt as an ePOS document, ready to be sent to an Epson printer."""
+        self.ensure_one()
+        image = self._order_receipt_generate_paper_image(paper_size)
+        if not image and not modules.module.current_test:
+            _logger.warning("Could not render the receipt image of order %s.", self.id)
+            return False
+        return self._image_to_epos_raster_xml(image)
+
+    def _order_receipt_generate_base64_image(self, paper_size='80'):
+        """Render this receipt as a base64 image, ready to be sent to an IoT box."""
+        self.ensure_one()
+        image = self._order_receipt_generate_paper_image(paper_size)
+        if not image:
+            # Wkhtmltoimage doesn't work in tests, see _run_wkhtmltoimage in ir.actions.report
+            if not modules.module.current_test:
+                _logger.warning("Could not render the receipt image of order %s.", self.id)
+                return False
+            image = b'test receipt'
+        return base64.b64encode(image).decode()
 
     # Order changes receipt generation
     def _generate_preparation_changes_by_printer(self):
@@ -317,15 +430,36 @@ class PosOrderReceipt(models.AbstractModel):
     def _prepare_preparation_grouped_data(self, changes):
         data_changes = changes.get("data") or []
         if data_changes and any(c.get("group") for c in data_changes):
+            combo_parents = {c["uuid"]: c for c in data_changes if c.get("combo_line_ids")}
+            child_parent_uuids = {
+                c["combo_parent_uuid"]
+                for c in data_changes
+                if c.get("combo_parent_uuid")
+            }
+
             grouped_data = {}
             for c in data_changes:
+                if c.get("combo_line_ids") and c.get("uuid") in child_parent_uuids:
+                    continue
                 group = c.get("group") or {}
                 name = group.get("name", "")
-                index = group.get("index", -1)
+                index = group.get("index", float("inf"))
                 if name not in grouped_data:
                     grouped_data[name] = {"name": name, "index": index, "data": []}
                 grouped_data[name]["data"].append(c)
-            changes["grouped_data"] = sorted(
+
+            for group in grouped_data.values():
+                seen_parents = set()
+                new_data = []
+                for line in group["data"]:
+                    parent_uuid = line.get("combo_parent_uuid")
+                    if parent_uuid and parent_uuid not in seen_parents and parent_uuid in combo_parents:
+                        seen_parents.add(parent_uuid)
+                        new_data.append(dict(combo_parents[parent_uuid]))
+                    new_data.append(line)
+                group["data"] = new_data
+
+            changes["groupedData"] = sorted(
                 grouped_data.values(), key=lambda g: g["index"]
             )
         return changes
@@ -431,6 +565,7 @@ class PosOrderReceipt(models.AbstractModel):
             receipts_data = self._split_receipts_per_product(receipts_data)
 
         receipts = []
+        receipt_tz = self._order_receipt_tz()
         for change in receipts_data:
             receipts.append({
                 **self._get_common_record_data(),
@@ -440,11 +575,11 @@ class PosOrderReceipt(models.AbstractModel):
                     'prefix': _("Order"),
                     'order_label': self.floating_order_name,
                     "reprint": False,
-                    "time": datetime.now().strftime("%H:%M"),
+                    "time": format_datetime(self.env, fields.Datetime.now(), tz=receipt_tz, dt_format='HH:mm'),
                     "internal_note": _get_str_notes(change.get("internal_note")) or False,
                     "general_customer_note": _get_str_notes(change.get("general_customer_note")) or False,
                     "employee_name": self.user_id.name,  # PoS HR not needed, this will only be used by self order.
-                    "preset_time": self.preset_time.strftime("%H:%M") if self.preset_time else False,
+                    "preset_time": self._order_receipt_preset_datetime(),
                 },
                 "conditions": {
                     "module_pos_restaurant": self.config_id.module_pos_restaurant,
@@ -462,13 +597,15 @@ class PosOrderReceipt(models.AbstractModel):
         group = False
         if is_restaurant and line.course_id:
             group = {"name": line.course_id.name, "index": line.course_id.index}
+        elif self.config_id.iface_group_by_categ:
+            group = self._get_line_category_group(line)
 
         return {
             "uuid": line.uuid,
             "basic_name": product.name if is_restaurant else product.display_name,
             "product_id": product.id,
             "attribute_value_names": attributes.mapped("name"),
-            "quantity": quantity,
+            "quantity": int(quantity) if float(quantity).is_integer() else quantity,
             "note": _get_str_notes(line.note),
             "customer_note": _get_str_notes(line.customer_note),
             "pos_categ_id": first_categ.id,
@@ -478,6 +615,45 @@ class PosOrderReceipt(models.AbstractModel):
             "combo_parent_uuid": line.combo_parent_id.uuid,
             "uom_is_base_unit": line.product_id.uom_id.id == self.env.ref('uom.product_uom_unit').id
         }
+
+    def _get_line_category_group(self, line):
+        categs = line.product_id.pos_categ_ids
+        if not categs and line.combo_parent_id:
+            categs = line.combo_parent_id.product_id.pos_categ_ids
+        if categs:
+            best_categ = min(categs, key=lambda c: (c.sequence or 0, c.id))
+            return {
+                "name": best_categ.name,
+                "index": best_categ.sequence or 0,
+                "categ_id": best_categ.id,
+            }
+        return False
+
+    def _get_receipt_lines(self):
+        if not self.config_id.iface_group_by_categ:
+            return self.lines
+        service_fee_product_id = self.preset_id.service_fee_product_id.id if self.preset_id and self.preset_id.service_fee else False
+
+        def get_line_sort_key(line):
+            target = line.combo_parent_id or line
+            group = self._get_line_category_group(target)
+            if group:
+                return (group["index"], group.get("categ_id", 0))
+            if target.combo_line_ids:
+                keys = []
+                for child in target.combo_line_ids:
+                    child_group = self._get_line_category_group(child)
+                    if child_group:
+                        keys.append((child_group["index"], child_group.get("categ_id", 0)))
+                if keys:
+                    return min(keys)
+            return (float("inf"), float("inf"))
+
+        return self.lines.sorted(key=lambda l: (
+            l.product_id.id == service_fee_product_id,
+            get_line_sort_key(l),
+            l.id,
+        ))
 
     # Preparation ticket generation
     def _order_change_receipts_generate_html(self):
@@ -504,7 +680,7 @@ class PosOrderReceipt(models.AbstractModel):
                 500,
                 0,
             )
-            rasterified = [self._order_change_receipts_generate_raster(image) for image in images]
+            rasterified = [self._image_to_epos_raster_xml(image) for image in images]
             receipts[printer] = rasterified
         return receipts
 
@@ -554,7 +730,7 @@ class PosOrderReceipt(models.AbstractModel):
 
         return "".join(map(str, raster_data)), padded_width, height
 
-    def _order_change_receipts_generate_raster(self, image_bytes):
+    def _image_to_epos_raster_xml(self, image_bytes: bytes):
         # Wkhtmltoimage doesn't works in tests see def _run_wkhtmltoimage in ir.actions.report
         if modules.module.current_test:
             raster_str = "10101010"
@@ -580,3 +756,7 @@ class PosOrderReceipt(models.AbstractModel):
             f'</s:Body>'
             f'</s:Envelope>'
         )
+
+    def _order_receipt_generate_raster(self, basic_receipt=False):
+        image_bytes = self.order_receipt_generate_image(basic_receipt)
+        return self._image_to_epos_raster_xml(image_bytes)

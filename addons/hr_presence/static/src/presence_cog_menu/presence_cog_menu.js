@@ -1,16 +1,21 @@
+import { Component, onWillStart, t, useProps } from "@odoo/owl";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { registry } from "@web/core/registry";
-import { Component, onWillStart } from "@odoo/owl";
-import { getActionRecords, getPresenceActionItems } from "../views/hooks";
 import { useService } from "@web/core/utils/hooks";
+import { useEnv } from "@web/owl2/utils";
+import { getActionRecords, getPresenceActionItems } from "../views/hooks";
 
 const cogMenuRegistry = registry.category("cogMenu");
 
 export class PresenceCogMenu extends Component {
     static template = "hr_presence.PresenceCogMenu";
     static components = { Dropdown, DropdownItem };
-    static props = { record: { type: Object, optional: true }, resId: { type: [Number, String], optional: true } };
+
+    props = useProps({
+        record: t.object().optional(),
+        resId: t.or([t.number(), t.string()]).optional(),
+    });
 
     setup() {
         super.setup();
@@ -57,7 +62,10 @@ cogMenuRegistry.add(
     {
         Component: PresenceCogMenu,
         groupNumber: 40,
-        isDisplayed: ({ searchModel }) => { return searchModel.resModel === "hr.employee" },
+        isDisplayed() {
+            const env = useEnv();
+            return env.searchModel.resModel === "hr.employee";
+        },
     },
     { sequence: 1 }
 );

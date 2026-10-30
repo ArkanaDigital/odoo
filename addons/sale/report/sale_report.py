@@ -3,7 +3,7 @@
 from odoo import api, fields, models
 from odoo.fields import Domain
 from odoo.models import TableSQL
-from odoo.tools import SQL
+from odoo.tools import SQL, clean_context
 
 from odoo.addons.sale.models.sale_order import SALE_ORDER_STATE
 
@@ -23,8 +23,11 @@ class SaleReport(models.Model):
     def _selection_target_model(self):
         return [
             (model.model, model.name)
-            for model in self.env["ir.model"].sudo().search([])
-            if not self.env[model.model].is_transient()
+            for model
+            in self.env['ir.model'].sudo().search_fetch(
+                [('transient', '=', False)], ['model', 'name']
+            )
+            if model.model in self.env
         ]
 
     # sale.order fields
@@ -109,7 +112,7 @@ class SaleReport(models.Model):
 
     weight = fields.Float(string="Gross Weight", readonly=True)
     volume = fields.Float(string="Volume", readonly=True)
-    price_unit = fields.Float(string="Unit Price", aggregator="avg", readonly=True)
+    price_unit = fields.Monetary(string="Unit Price", aggregator="avg", readonly=True)
     discount = fields.Float(string="Discount %", readonly=True, aggregator="avg")
     discount_amount = fields.Monetary(string="Discount Amount", readonly=True)
 
@@ -175,7 +178,7 @@ class SaleReport(models.Model):
             'weight': SQL("SUM(%s * %s * %s)", table.product_id.weight, table.product_uom_qty, uom_ratio),
             'volume': SQL("SUM(%s * %s * %s)", table.product_id.volume, table.product_uom_qty, uom_ratio),
             'discount': table.discount,
-            'discount_amount': SQL("SUM(%s * %s * %s * %s)", table.price_unit, table.product_uom_qty, table.discount, rate),
+            'discount_amount': SQL("SUM(%s * %s * %s / 100.0 * %s)", table.price_unit, table.product_uom_qty, table.discount, rate),
             'currency_id': SQL("%s", self.env.company.currency_id.id),
             'order_reference': SQL("concat('sale.order', ',', %s)", table.order_id),
         }
@@ -203,12 +206,15 @@ class SaleReport(models.Model):
     def _case_value_or_one(self, value):
         return SQL("CASE COALESCE(%(value)s, 0) WHEN 0 THEN 1.0 ELSE %(value)s END", value=value)
 
+    def _get_order_reference(self):
+        """Resolve the order from the line id, without reading the view."""
+        self.ensure_one()
+        line = self.env["sale.order.line"].browse(self.id)
+        line.fetch(["order_id"])
+        return line.order_id
+
     @api.readonly
     def action_open_order(self):
-        self.ensure_one()
-        return {
-            "res_model": self.order_reference._name,
-            "type": "ir.actions.act_window",
-            "views": [[False, "form"]],
-            "res_id": self.order_reference.id,
-        }
+
+        order = self._get_order_reference()
+        return order._get_records_action(context=clean_context(self.env.context))

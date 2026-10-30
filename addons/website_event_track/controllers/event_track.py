@@ -55,7 +55,7 @@ class EventTrackController(http.Controller):
     @http.route([
         '''/event/<model("event.event"):event>/track''',
         '''/event/<model("event.event"):event>/track/tag/<model("event.track.tag"):tag>'''
-    ], type='http', auth="public", website=True, sitemap=False, readonly=True)
+    ], type='http', auth="public", website=True, sitemap=False, replica=True)
     def event_tracks(self, event, tag=None, **searches):
         """ Main route
 
@@ -131,8 +131,7 @@ class EventTrackController(http.Controller):
             tracks_sudo = tracks_sudo.filtered(lambda track: track.is_reminder_on)
 
         # organize categories for display: announced, live, soon and day-based
-        tracks_announced = tracks_sudo.filtered(lambda track: not track.date)
-        tracks_wdate = tracks_sudo - tracks_announced
+        tracks_announced, tracks_wdate = tracks_sudo.partitioned(lambda track: not track.date)
         date_begin_tz_all = list(set(
             dt.date()
             for dt in self._get_dt_in_event_tz(tracks_wdate.mapped('date'), event)
@@ -358,7 +357,7 @@ class EventTrackController(http.Controller):
     # ------------------------------------------------------------
 
     @http.route('''/event/<model("event.event", "[('website_track', '=', True)]"):event>/track/<model("event.track", "[('event_id', '=', event.id)]"):track>''',
-                type='http', auth="public", website=True, sitemap=True, readonly=True)
+                type='http', auth="public", website=True, sitemap=True, replica=True)
     def event_track_page(self, event, track, **options):
         track = self._fetch_track(track.id, allow_sudo=False)
 

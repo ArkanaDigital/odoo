@@ -11,7 +11,7 @@ import { animationFrame } from "@odoo/hoot-mock";
 import { contains } from "@web/../tests/web_test_helpers";
 import { base64Img, setupEditor } from "./_helpers/editor";
 import { getContent, moveSelectionOutsideEditor } from "./_helpers/selection";
-import { undo } from "./_helpers/user_actions";
+import { redo, undo } from "./_helpers/user_actions";
 import { expectElementCount } from "./_helpers/ui_expectations";
 import { getMimetype } from "@html_editor/utils/image";
 
@@ -72,6 +72,32 @@ test("image should show actual width if set to default size", async () => {
     );
 });
 
+test("should show the current image size as active when opening the dropdown", async () => {
+    await setupEditor(`
+        <img class="img-fluid test-image" src="${base64Img}" style="width: 37%;">
+    `);
+    await click("img.test-image");
+    await waitFor(".o-we-toolbar");
+    const sizeToggle = ".o-we-toolbar .dropdown-toggle[title='Resize image']";
+
+    await click(sizeToggle);
+    await animationFrame();
+    // A custom width matches none of the preset sizes.
+    expect(".image_size_selector .dropdown-item.active").toHaveCount(0);
+    await click(".image_size_selector .dropdown-item:contains('50%')");
+    await animationFrame();
+
+    await click(sizeToggle);
+    await animationFrame();
+    expect(".image_size_selector .dropdown-item.active").toHaveText("50%");
+    await click(".image_size_selector .dropdown-item:contains('Default')");
+    await animationFrame();
+
+    await click(sizeToggle);
+    await animationFrame();
+    expect(".image_size_selector .dropdown-item.active").toHaveText("Default");
+});
+
 test("Can undo the image sizing", async () => {
     const { editor } = await setupEditor(`
         <img class="img-fluid test-image" src="${base64Img}">
@@ -86,6 +112,31 @@ test("Can undo the image sizing", async () => {
 
     undo(editor);
     expect(queryOne("img").style.width).toBe("");
+});
+
+test("The image size shown in the toolbar updates with undo and redo", async () => {
+    const { editor } = await setupEditor(`
+        <img class="img-fluid test-image" src="${base64Img}">
+    `);
+    await click("img.test-image");
+    await waitFor(".o-we-toolbar");
+    const sizeToggle = ".o-we-toolbar .dropdown-toggle[title='Resize image']";
+
+    await click(".o-we-toolbar [name='image_actions'] .dropdown-toggle");
+    await animationFrame();
+    await click(".image_size_selector .dropdown-item:contains('100%')");
+    await animationFrame();
+    expect(queryOne(sizeToggle)).toHaveText("100%");
+
+    undo(editor);
+    await animationFrame();
+    expect(queryOne("img").style.width).toBe("");
+    expect(queryOne(sizeToggle)).toHaveText(queryOne("img").getBoundingClientRect().width + "px");
+
+    redo(editor);
+    await animationFrame();
+    expect(queryOne("img").style.width).toBe("100%");
+    expect(queryOne(sizeToggle)).toHaveText("100%");
 });
 
 test("Can change the padding of an image", async () => {
@@ -127,6 +178,25 @@ test("Can change the padding of an image", async () => {
     await click(".o-dropdown--menu span:contains('None')");
     await animationFrame();
     expect("img").not.toHaveClass("p-5");
+});
+
+test("should show the current image padding as active when opening the dropdown", async () => {
+    await setupEditor(`
+        <img class="img-fluid test-image" src="${base64Img}">
+    `);
+    await click("img.test-image");
+    await waitFor(".o-we-toolbar");
+
+    await click(".o-we-toolbar .dropdown-toggle[title='Set image padding']");
+    await animationFrame();
+    expect(".o-dropdown--menu .dropdown-item.active").toHaveText("None");
+    await click(".o-dropdown--menu span:contains('Medium')");
+    await animationFrame();
+
+    await click(".o-we-toolbar .dropdown-toggle[title='Set image padding']");
+    await animationFrame();
+    expect("img").toHaveClass("p-2");
+    expect(".o-dropdown--menu .dropdown-item.active").toHaveText("Medium");
 });
 
 test("Can undo the image padding", async () => {

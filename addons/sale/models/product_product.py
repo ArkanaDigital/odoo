@@ -12,9 +12,6 @@ class ProductProduct(models.Model):
 
     sales_count = fields.Float(compute="_compute_sales_count", string="Sold", digits="Product Unit")
 
-    product_catalog_product_is_in_sale_order = fields.Boolean(
-        compute="_compute_product_is_in_sale_order", search="_search_product_is_in_sale_order"
-    )
     previously_bought_by_customer = fields.Boolean(
         search="_search_previously_bought_by_customer", store=False
     )
@@ -46,32 +43,45 @@ class ProductProduct(models.Model):
 
     @api.depends_context("to_date")
     def _compute_forecasted_without_stock(self):
-        """Substract sales lines not delivered from forecasted tally."""
+        """Subtract uninvoiced sales lines from forecasted tally."""
         res = super()._compute_forecasted_without_stock()
+        to_date = self.env.context.get("to_date")
         domain = Domain.AND([
             Domain("order_id.state", "=", "sale"),
             Domain("product_id", "in", self.ids),
             Domain("company_id", "in", self.env.companies.ids),
         ])
-        if self.env.context.get("to_date"):
+        if to_date:
+            to_date = fields.Datetime.to_datetime(to_date)
             domain = Domain.AND([
                 domain,
-                [("order_id.commitment_date", "<=", self.env.context.get("to_date").date())],
+                Domain("order_id.commitment_date", "<=", to_date.date()),
             ])
-        order_lines = (
-            self
-            .env["sale.order.line"]
-            .sudo()
-            ._read_group(
-                domain,
-                ["product_id", "product_uom_id"],
-                ["product_uom_qty:sum", "qty_delivered:sum"],
+        order_line_model = self.env["sale.order.line"].sudo()
+        if to_date and to_date.date() < fields.Date.context_today(self):
+            order_lines = order_line_model.search(domain).with_context(
+                accrual_entry_date=to_date.date()
             )
+            for line in order_lines:
+                uninvoiced_qty = line.product_uom_qty - line.qty_invoiced_at_date
+                to_invoice = line.product_uom_id._compute_quantity(
+                    uninvoiced_qty, line.product_id.uom_id, round=False
+                )
+                res[line.product_id.id]["outgoing_qty"] += to_invoice
+                res[line.product_id.id]["virtual_available"] -= to_invoice
+            return res
+
+        order_lines = order_line_model._read_group(
+            domain,
+            ["product_id", "product_uom_id"],
+            ["product_uom_qty:sum", "qty_invoiced:sum"],
         )
-        for product, line_uom, qty_sold, qty_delivered in order_lines:
-            to_deliver = (qty_sold - qty_delivered) * line_uom.factor / product.uom_id.factor
-            res[product.id]["outgoing_qty"] += to_deliver
-            res[product.id]["virtual_available"] -= to_deliver
+        for product, line_uom, qty_sold, qty_invoiced in order_lines:
+            to_invoice = line_uom._compute_quantity(
+                (qty_sold or 0.0) - (qty_invoiced or 0.0), product.uom_id, round=False
+            )
+            res[product.id]["outgoing_qty"] += to_invoice
+            res[product.id]["virtual_available"] -= to_invoice
         return res
 
     @api.onchange("type")
@@ -81,38 +91,12 @@ class ProductProduct(models.Model):
                 "warning": {
                     "title": self.env._("Warning"),
                     "message": self.env._(
-                        "You cannot change the product's type because it is already used in sales"
-                        " orders."
+                        "You should not change the product type because this product is already"
+                        " used in sales orders. Changing it may affect how the related order lines"
+                        " are delivered."
                     ),
                 }
             }
-
-    @api.depends_context("order_id")
-    def _compute_product_is_in_sale_order(self):
-        order_id = self.env.context.get("order_id")
-        if not order_id:
-            self.product_catalog_product_is_in_sale_order = False
-            return
-
-        read_group_data = self.env["sale.order.line"]._read_group(
-            domain=[("order_id", "=", order_id)], groupby=["product_id"], aggregates=["__count"]
-        )
-        data = {product.id: count for product, count in read_group_data}
-        for product in self:
-            product.product_catalog_product_is_in_sale_order = bool(data.get(product.id, 0))
-
-    def _search_product_is_in_sale_order(self, operator, value):  # noqa: ARG002
-        if operator != "in":
-            return NotImplemented
-        product_ids = (
-            self
-            .env["sale.order.line"]
-            .search_fetch(
-                [("order_id", "in", [self.env.context.get("order_id", "")])], ["product_id"]
-            )
-            .product_id.ids
-        )
-        return [("id", "in", product_ids)]
 
     def _search_previously_bought_by_customer(self, operator, value):  # noqa: ARG002
         if operator != "in":

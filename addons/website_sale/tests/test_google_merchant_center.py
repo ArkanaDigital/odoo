@@ -14,12 +14,13 @@ from odoo.addons.website_sale.tests.common_gmc import WebsiteSaleGMCCommon
 @tagged("post_install", "-at_install")
 class TestWebsiteSaleGMC(WebsiteSaleGMCCommon, HttpCase):
     _test_user_groups = (
-        'base.group_user',
-        'product.group_product_manager',
-        'website.group_website_designer',  # product.feed / product.image / website / product.public.category
+        "base.group_user",
+        "product.group_product_manager",
+        # product.feed / product.image / website / product.public.category
+        "website.group_website_designer",
     )
 
-    _test_user_name = 'Test Product Manager'
+    _test_user_name = "Test Product Manager"
 
     def test_gmc_xml_accessible_if_gmc_setting_enabled(self):
         response = self.url_open(self.gmc_feed.url)
@@ -155,12 +156,12 @@ class TestWebsiteSaleGMC(WebsiteSaleGMCCommon, HttpCase):
             item_ids=[
                 Command.create({
                     "product_tmpl_id": self.product_template_sofa.id,
-                    "compute_price": "percentage",
-                    "percent_price": 10.0,
+                    "compute_price": "discount",
+                    "price_discount": 10.0,
                     "date_start": datetime.now() - timedelta(1),
                     "date_end": datetime.now() + timedelta(1),
                 }),
-                Command.create({"compute_price": "percentage", "percent_price": 0.0}),
+                Command.create({"compute_price": "discount", "price_discount": 0.0}),
             ],
         )
 
@@ -203,14 +204,54 @@ class TestWebsiteSaleGMC(WebsiteSaleGMCCommon, HttpCase):
     def test_gmc_items_additional_images_limit_to_10(self):
         image = self._create_image("blue")
         self.blue_sofa.write({
-            "product_variant_image_ids": [
-                Command.create({"name": f"image {i}", "image_1920": image}) for i in range(12)
+            "product_template_image_ids": [
+                Command.create({
+                    "name": f"image {i}",
+                    "image_1920": image,
+                    "attribute_value_ids": [
+                        Command.set(self.blue_sofa.product_template_attribute_value_ids.ids)
+                    ],
+                })
+                for i in range(12)
             ]
         })
 
         self.update_items()
 
         self.assertEqual(10, len(self.blue_sofa_item["additional_image_link"]))
+
+    def test_gmc_items_additional_images_exclude_videos(self):
+        image = self._create_image("blue")
+        self.blue_sofa.product_template_image_ids = [
+            Command.create({"name": "image 0", "image_1920": image}),
+            Command.create({"name": "image 1", "image_1920": image}),
+            Command.create({
+                "name": "video",
+                "video_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                "image_1920": image,  # Thumbnail
+            }),
+        ]
+
+        self.update_items()
+
+        self.assertEqual(2, len(self.blue_sofa_item["additional_image_link"]))
+
+    def test_gmc_items_additional_images_does_not_load_images_bytes(self):
+        self.blue_sofa.product_template_image_ids = [
+            Command.create({"name": "image", "image_1920": self._create_image("blue")})
+        ]
+        self.blue_sofa.product_template_image_ids.invalidate_model()
+
+        self.update_items()
+
+        self.assertListEqual(
+            [
+                bool(self.env["product.image"]._fields[field]._get_cache(self.env))
+                for field in ("image_1920", "image_1024", "image_512", "image_256", "image_128")
+            ],
+            [False] * 5,
+            msg="Should't load any image in memory",
+        )
 
     def test_gmc_items_identifier_exists_iff_barcode_exists(self):
         self.red_sofa.barcode = "0232344532564"
@@ -282,6 +323,19 @@ class TestWebsiteSaleGMC(WebsiteSaleGMCCommon, HttpCase):
         # no other variant
         self.assertNotIn("item_group_id", self.items[product_one_variant])
 
+    def test_gmc_feed_excludes_products_from_other_companies(self):
+        """The feed should only contain products available on the website's company, even though
+        the controller serves it in sudo, bypassing the multi-company record rules."""
+        other_company = self.env["res.company"].sudo().create({"name": "Other Company"})
+        other_company_product = self._create_product(
+            name="Other Company Product", company_id=other_company.id
+        )
+
+        feed_products = self.gmc_feed.sudo()._get_feed_products()
+
+        self.assertIn(self.blanket, feed_products)
+        self.assertNotIn(other_company_product, feed_products)
+
     def test_gmc_items_bundle_if_is_combo_product(self):
         self.update_items()
 
@@ -339,8 +393,8 @@ class TestWebsiteSaleGMC(WebsiteSaleGMCCommon, HttpCase):
         self.assertNotIn("unit_pricing_measure", self.items[six_pack])
 
         # enable "Product Reference Price" setting
-        self.env = self.env(user=self.env.ref('base.user_root'))  # FIXME: remove this line
-        self.env.user.group_ids |= self.env.ref("product.group_show_uom_price")
+        self.env = self.env(user=self.env.ref("base.user_root"))  # FIXME: remove this line
+        self.website.show_product_reference_price = True
         self.update_items()
 
         self.assertEqual("6.0l", self.items[six_pack]["unit_pricing_measure"], "$12 / 6l")

@@ -20,6 +20,8 @@ const IMAGE_PADDING = [
     { name: _t("XL"), value: 5 },
 ];
 
+const IMAGE_PADDING_CLASS_REGEX = /^p-[0-9]$/;
+
 const IMAGE_SIZE = [
     { name: _t("Default"), value: "" },
     { name: _t("100%"), value: "100%" },
@@ -63,7 +65,7 @@ export class ImagePlugin extends Plugin {
             {
                 id: "previewImage",
                 description: _t("Preview image"),
-                icon: "fullscreen",
+                icon: "zoom_in",
                 run: this.previewImage.bind(this),
                 isAvailable: isHtmlContentSupported,
             },
@@ -112,6 +114,7 @@ export class ImagePlugin extends Plugin {
                 props: {
                     name: "image_padding",
                     icon: "padding",
+                    getDisplay: () => this.imagePadding,
                     items: IMAGE_PADDING,
                     focusEditable: () => this.dependencies.selection.focusEditable(),
                     onSelected: (item) => {
@@ -130,7 +133,7 @@ export class ImagePlugin extends Plugin {
                     getDisplay: () => this.imageSize,
                     items: IMAGE_SIZE,
                     focusEditable: () => this.dependencies.selection.focusEditable(),
-                    icon: "expand_content",
+                    icon: "resize",
                     onSelected: (item) => {
                         this.resizeImage({ size: item.value });
                         this.updateImageParams();
@@ -143,6 +146,7 @@ export class ImagePlugin extends Plugin {
                 id: "image_preview",
                 groupId: "image_actions",
                 commandId: "previewImage",
+                opensUi: true,
             },
             {
                 id: "image_delete",
@@ -153,11 +157,19 @@ export class ImagePlugin extends Plugin {
 
         /** Handlers */
         on_selectionchange_handlers: withSequence(READ, this.updateImageParams.bind(this)),
-        on_undone_handlers: this.updateImageParams.bind(this),
-        on_redone_handlers: this.updateImageParams.bind(this),
+        on_history_commit_undone_handlers: this.updateImageParams.bind(this),
+        on_history_commit_redone_handlers: this.updateImageParams.bind(this),
         should_show_hint_predicates: (node) => {
             if (isElementOverlappingAnyFloatingImage(closestBlock(node))) {
                 return false;
+            }
+        },
+
+        /** Predicates */
+        is_selectable_on_click_predicates: (el) => {
+            // Clicking an image selects it rather than putting a cursor next to it.
+            if (el.nodeName === "IMG") {
+                return true;
             }
         },
 
@@ -166,7 +178,8 @@ export class ImagePlugin extends Plugin {
     };
 
     setup() {
-        this.imageSize = proxy({ displayName: "Default" });
+        this.imageSize = proxy({ displayName: "Default", value: "" });
+        this.imagePadding = proxy({ value: 0 });
         this.addDomListener(this.editable, "pointerdown", (e) => {
             const selection = this.dependencies.selection.getEditableSelection();
             if (selection.isCollapsed && e.target.tagName === "IMG") {
@@ -174,11 +187,6 @@ export class ImagePlugin extends Plugin {
             }
         });
         this.imageAlignment = proxy({ displayIcon: "format_image_inline_left" });
-        this.addDomListener(this.editable, "click", (e) => {
-            if (e.target.tagName === "IMG") {
-                this.setSelectionAroundImage(e.target);
-            }
-        });
         this.fileViewer = this.services.fileViewer();
     }
 
@@ -186,19 +194,35 @@ export class ImagePlugin extends Plugin {
         super.destroy();
     }
 
-    get imageSizeName() {
-        const targetedImg = this.getTargetedImage();
+    /**
+     * @param {HTMLImageElement} [targetedImg]
+     */
+    getImageSize(targetedImg) {
         if (!targetedImg) {
-            return "Default";
+            return { displayName: "Default", value: "" };
         }
-        return targetedImg.style.width || `${targetedImg.width}px`;
+        return {
+            displayName: targetedImg.style.width || `${targetedImg.width}px`,
+            value: targetedImg.style.width,
+        };
     }
 
     /**
+     * @param {HTMLImageElement} [targetedImg]
+     * @returns {number} padding size of the `p-N` class, 0 if none
+     */
+    getImagePadding(targetedImg) {
+        const paddingClass = [...(targetedImg?.classList || [])].find((c) =>
+            IMAGE_PADDING_CLASS_REGEX.test(c)
+        );
+        return paddingClass ? Number(paddingClass.slice(-1)) : 0;
+    }
+
+    /**
+     * @param {HTMLImageElement} [targetedImg]
      * @returns {string} icon class
      */
-    get imageAlignmentIcon() {
-        const targetedImg = this.getTargetedImage();
+    getImageAlignmentIcon(targetedImg) {
         if (targetedImg) {
             for (const { value, icon } of IMAGE_ALIGNMENT) {
                 if (value && targetedImg.classList.contains(value)) {
@@ -228,11 +252,12 @@ export class ImagePlugin extends Plugin {
             return;
         }
         for (const classString of targetedImg.classList) {
-            if (classString.match(/^p-[0-9]$/)) {
+            if (IMAGE_PADDING_CLASS_REGEX.test(classString)) {
                 targetedImg.classList.remove(classString);
             }
         }
         targetedImg.classList.add(`p-${size}`);
+        this.imagePadding.value = size;
         this.dependencies.history.commit();
     }
     resizeImage({ size } = {}) {
@@ -263,6 +288,7 @@ export class ImagePlugin extends Plugin {
             downloadUrl: targetedImg.src,
         };
         this.document.getSelection().collapseToEnd();
+        this.document.activeElement.blur();
         this.fileViewer.open(fileModel);
     }
 
@@ -285,18 +311,6 @@ export class ImagePlugin extends Plugin {
     getTargetedImage() {
         const targetedNodes = this.dependencies.selection.getTargetedNodes();
         return targetedNodes.find((node) => node.tagName === "IMG");
-    }
-
-    hasImageSize(size) {
-        const targetedImg = this.getTargetedImage();
-        return targetedImg?.style?.width === size;
-    }
-
-    isSelectionShaped(shape) {
-        const targetedNodes = this.dependencies.selection
-            .getTargetedNodes()
-            .filter((n) => n.tagName === "IMG" && n.classList.contains(shape));
-        return targetedNodes.length > 0;
     }
 
     /**
@@ -323,8 +337,10 @@ export class ImagePlugin extends Plugin {
     }
 
     updateImageParams() {
-        this.imageSize.displayName = this.imageSizeName;
-        this.imageAlignment.displayIcon = this.imageAlignmentIcon;
+        const targetedImg = this.getTargetedImage();
+        Object.assign(this.imageSize, this.getImageSize(targetedImg));
+        this.imagePadding.value = this.getImagePadding(targetedImg);
+        this.imageAlignment.displayIcon = this.getImageAlignmentIcon(targetedImg);
     }
 
     setSelectionAroundImage(img) {

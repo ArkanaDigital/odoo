@@ -1,6 +1,8 @@
 import {
+    actionPanel,
     click,
     contains,
+    hover,
     insertText,
     openDiscuss,
     start,
@@ -71,7 +73,7 @@ test("invite button should be present on livechat", async () => {
     });
     await start();
     await openDiscuss(channelId);
-    await contains(".o-livechat-ChannelInfoList"); // wait for auto-open of this panel
+    await contains(actionPanel("Information")); // wait for auto-open of this panel
     await click("button[title='Members']");
     await contains("button[title='Add People']");
 });
@@ -122,7 +124,7 @@ test("Conversation description works in livechat", async () => {
     });
     await start();
     await openDiscuss(channelId);
-    await contains(".o-mail-Composer-input:focus");
+    await contains(".o-mail-Composer-html:focus");
     await contains(
         "input.o-mail-DiscussContent-threadDescription:value(Yup, that customer again...)"
     );
@@ -146,6 +148,7 @@ test("reply to message composer should disappear when livechat conversation ends
     });
     await start();
     await openDiscuss(channelId);
+    await hover(".o-mail-Message:has(:text('Hello, I need help!'))");
     await click(".o-mail-Message:has(:text('Hello, I need help!')) [title='Expand']");
     await click(".o-dropdown-item:text('Reply')");
     await contains(".o-mail-Composer:has(:text('Replying to Visitor'))");

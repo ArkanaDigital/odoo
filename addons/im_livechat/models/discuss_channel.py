@@ -1,6 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import json
+from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 from markupsafe import Markup
@@ -13,9 +14,7 @@ from odoo.tools.mimetypes import get_extension
 from odoo.tools.sql import SQL
 from odoo.tools.translate import LazyTranslate
 
-from odoo.addons.base.models.avatar_mixin import generate_text_avatar_svg
 from odoo.addons.base.models.ir_qweb_fields import nl2br
-from odoo.addons.mail.models.discuss.discuss_channel import avatar_initials
 from odoo.addons.mail.tools.discuss import Store
 
 _lt = LazyTranslate(__name__)
@@ -564,16 +563,19 @@ class DiscussChannel(models.Model):
     @api.autovacuum
     def _gc_empty_livechat_sessions(self):
         hours = 1  # never remove empty session created within the last hour
-        self.env.cr.execute("""
+        self.env.cr.execute(SQL("""
             SELECT id as id
             FROM discuss_channel C
             WHERE NOT EXISTS (
                 SELECT 1
                 FROM mail_message M
-                WHERE M.res_id = C.id AND m.model = 'discuss.channel'
+                WHERE %s
             ) AND C.channel_type = 'livechat' AND livechat_channel_id IS NOT NULL AND
                 COALESCE(write_date, create_date, (now() at time zone 'UTC'))::timestamp
-                < ((now() at time zone 'UTC') - interval %s)""", ("%s hours" % hours,))
+                < ((now() at time zone 'UTC') - interval %s)""",
+            self._get_message_sql(SQL("M"), SQL("C.id")),
+            "%s hours" % hours,
+        ))
         empty_channel_ids = [item['id'] for item in self.env.cr.dictfetchall()]
         self.browse(empty_channel_ids).unlink()
 
@@ -583,7 +585,7 @@ class DiscussChannel(models.Model):
         stale_sessions = self.search([
             ("channel_type", "=", "livechat"),
             ("livechat_end_dt", "=", False),
-            ("last_interest_dt", "<=", "-1d"),
+            ("last_interest_dt", "<=", fields.Datetime.now() - timedelta(days=1)),
             ("livechat_agent_partner_ids", "=", False),
         ])
         stale_sessions.livechat_end_dt = fields.Datetime.now()
@@ -689,14 +691,14 @@ class DiscussChannel(models.Model):
                 attachment.generate_access_token()[0],
                 attachment.name,
             )
-        file_extension = get_extension(attachment.display_name)
+        file_extension = get_extension(attachment.display_name or '')
         attachment_data = {
             "id": attachment.id,
             "access_token": attachment.generate_access_token()[0],
             "checksum": attachment.checksum,
             "extension": file_extension.lstrip("."),
             "mimetype": attachment.mimetype,
-            "filename": attachment.display_name,
+            "filename": attachment.display_name or _('File'),
             "url": attachment.url,
         }
         return Markup(
@@ -708,7 +710,6 @@ class DiscussChannel(models.Model):
         Converting message body back to plaintext for correct data formatting in HTML field.
         """
         self.ensure_one()
-        parts = []
         previous_message_author = None
         message_domain = Domain("message_type", "!=", "notification")
         # sudo - chatbot.message: visitors can access messages on chats they have access to
@@ -718,30 +719,55 @@ class DiscussChannel(models.Model):
         filtered_messages = (
             self.message_ids.sudo() - self.message_ids.sudo()._filter_empty()
         ).filtered_domain(message_domain)
+        parts = []
         for message in filtered_messages.sorted("id"):
-            # sudo - res.partner: accessing livechat username or name is allowed to visitor
             message_author = message.author_id.sudo() or message.author_guest_id
-            if previous_message_author != message_author:
-                if parts:
-                    parts.append(Markup("<br/>"))
-                parts.append(
-                    Markup("<strong>%s:</strong><br/>")
-                    % (
-                        (message_author.user_livechat_username if message_author._name == "res.partner" else None)
-                        or message_author.name
-                    ),
-                )
-            if not tools.is_html_empty(message.body):
-                parts.append(Markup("%s<br/>") % html2plaintext(message.body))
+            if previous_message_author != message_author and parts:
+                parts.append(Markup(""))
+
+            parts.extend(self._get_channel_history_format_message(message, message.body, message_author, previous_message_author))
+            if not tools.is_html_empty(message.body) or message.attachment_ids:
                 previous_message_author = message_author
-            for attachment in message.attachment_ids:
-                previous_message_author = message_author
-                # sudo - ir.attachment: public user can read attachment metadata
-                parts.append(Markup("%s<br/>") % self._attachment_to_html(attachment.sudo()))
-        return Markup("").join(parts)
+
+        return Markup("<br/>").join(parts)
+
+    def _get_channel_history_format_message(self, message, message_body, message_author, previous_message_author):
+        # sudo - res.partner: accessing livechat username or name is allowed to visitor
+        parts = []
+        if previous_message_author != message_author:
+            parts.append(
+                Markup("<strong>%s:</strong>")
+                % self._get_channel_history_format_author(message_author),
+            )
+        if not tools.is_html_empty(message_body):
+            parts.append(html2plaintext(message_body))
+
+        for attachment in message.attachment_ids:
+            # sudo - ir.attachment: public user can read attachment metadata
+            parts.append(self._attachment_to_html(attachment.sudo()))
+        return parts
+
+    def _get_channel_history_format_author(self, message_author):
+        self.ensure_one()
+        return (
+            username
+            if message_author._name == "res.partner" and (username := message_author.user_livechat_username)
+            else message_author.name
+        )
 
     def _store_livechat_extra_fields(self, res: Store.FieldList):
-        pass
+        answered_domain = Domain("user_script_answer_id", "!=", False) | Domain("user_raw_answer", "!=", False)
+        # sudo - chatbot.message: can access chatbot answers of accessible channels.
+        chatbot_messages = self.env["chatbot.message"].sudo().search_fetch(
+            Domain("discuss_channel_id", "in", self.ids) & answered_domain,
+            ["discuss_channel_id", "script_step_id", "user_script_answer_id", "user_raw_answer"],
+        )
+        messages_by_channel = chatbot_messages.grouped("discuss_channel_id")
+        res.many(
+            "chatbot_message_ids",
+            "_store_chatbot_message_fields",
+            value=lambda channel: messages_by_channel.get(channel, self.env["chatbot.message"]),
+        )
 
     def _apply_livechat_feedback(self, rate, reason=None):
         """Post customer feedback and apply its rating to the live chat session.
@@ -859,22 +885,6 @@ class DiscussChannel(models.Model):
                 channel.sudo().livechat_status = "in_progress"
         return all_new_members
 
-    def _generate_avatar(self):
-        """Defer to the correspondent's own avatar when that partner has a real
-        uploaded photo, otherwise show the channel name initial (like the base
-        implementation for the other conversation kinds).
-        """
-        if self.channel_type == "livechat":
-            self_is_visitor = self.self_member_id.livechat_member_type == "visitor"
-            # sudo: discuss.channel - the correspondent's avatar is shown to both sides
-            correspondent = self.sudo().channel_member_ids.filtered(
-                lambda member: (member.livechat_member_type == "visitor") != self_is_visitor
-            ).partner_id[:1]
-            if correspondent.image_128:
-                return False
-            return generate_text_avatar_svg(avatar_initials(self.display_name)[:1], str(self.id))
-        return super()._generate_avatar()
-
     def _get_member_join_notification(self, member):
         if self.channel_type == "livechat":
             if member.is_self:
@@ -982,19 +992,6 @@ class DiscussChannel(models.Model):
     def _types_allowing_unfollow(self):
         return super()._types_allowing_unfollow() + ["livechat"]
 
-    def _action_unfollow(self, partner=None, guest=None, post_leave_message=True):
-        super()._action_unfollow(partner, guest, post_leave_message)
-        # sudo - discuss.channel: user just left but we need to close the live
-        # chat if the last operator left.
-        channel_sudo = self.sudo()
-        if (
-            channel_sudo.channel_type == "livechat"
-            and not channel_sudo.livechat_end_dt
-            and channel_sudo.member_count == 1
-        ):
-            # sudo: discuss.channel - last operator left the conversation, state must be updated.
-            channel_sudo.livechat_end_dt = fields.Datetime.now()
-
     def livechat_join_channel_needing_help(self):
         """Join a live chat for which help was requested.
 
@@ -1045,7 +1042,7 @@ class DiscussChannel(models.Model):
             # sudo - discuss.channel: let the chat bot proceed to the forward step (change channel operator, add human operator
             # as member, remove bot from channel, rename channel and finally broadcast the channel to the new operator).
             channel_sudo = self.sudo()
-            bot_partner_id = channel_sudo.channel_member_ids.filtered(lambda m: m.livechat_member_type == "bot").partner_id
+            bot_member = channel_sudo.channel_member_ids.filtered(lambda m: m.livechat_member_type == "bot")
 
             # next, add the human_operator to the channel and post a "Operator invited to the channel" notification
             create_member_params = {'livechat_member_type': 'agent'}
@@ -1054,11 +1051,11 @@ class DiscussChannel(models.Model):
                 channel_sudo.livechat_expertise_ids |= chatbot_script_step.operator_expertise_ids
             channel_sudo._add_members(
                 create_member_params=create_member_params,
-                inviting_partner=bot_partner_id,
+                inviting_partner=bot_member.partner_id,
                 users=human_operator,
                 skip_chatbot_current_step_reset=True,
             )
-            channel_sudo._action_unfollow(partner=bot_partner_id, post_leave_message=False)
+            bot_member.exists().unlink()
 
             # finally, rename the channel to include the operator's name
             channel_sudo._update_forwarded_channel_data(
@@ -1143,3 +1140,8 @@ class DiscussChannel(models.Model):
                 "isLast": True,
             },
         )
+
+    @api.model
+    def _process_extra_channel_params(self, **kwargs):
+        # non_persisted_channel_params, persisted_channel_params
+        return {}, {}

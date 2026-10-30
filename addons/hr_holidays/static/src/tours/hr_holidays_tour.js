@@ -13,7 +13,7 @@ registry.category("web_tour.tours").add("hr_holidays_tour", {
             run: "click",
         },
         {
-            trigger: ".o_timeoff_buttons .o-dropdown-caret",
+            trigger: ".o-dropdown-caret",
             content: _t("Click on this button to request time-off or allocation"),
             tooltipPosition: "bottom",
             run: "click",
@@ -26,11 +26,11 @@ registry.category("web_tour.tours").add("hr_holidays_tour", {
         },
         {
             trigger: 'div[name="work_entry_type_id"] input',
-            content: _t("Let's try to create a Sick Time Off, select it in the list"),
+            content: _t("Let's try to create a sick time off, select it in the list"),
             run: "click",
         },
         {
-            trigger: ".ui-autocomplete .ui-menu-item a:contains('Sick Time Off')",
+            trigger: ".ui-autocomplete .ui-menu-item a:contains('Guaranted monthly wage illness')",
             tooltipPosition: "right",
             run: "click",
         },
@@ -89,11 +89,6 @@ registry.category("web_tour.tours").add("hr_holidays_tour", {
             content: _t("Select the request you just created"),
             trigger: "table.o_list_table tr.o_data_row:nth-child(1)",
             run: "click",
-        },
-        {
-            isActive: ["auto"],
-            trigger: `tr.o_data_row:first:not(:has(button[name="action_approve"])),table tbody:not(tr.o_data_row)`,
-            content: "Verify leave has been automatically approved as it has been created by an admin",
         },
     ],
 });

@@ -1,4 +1,4 @@
-import { Component, onWillStart, proxy, signal } from "@odoo/owl";
+import { Component, onWillStart, proxy, signal, useProps } from "@odoo/owl";
 import { useDropzone } from "@web/core/dropzone/dropzone_hook";
 import { FileInput } from "@web/core/file_input/file_input";
 import { _t } from "@web/core/l10n/translation";
@@ -8,7 +8,7 @@ import { useService } from "@web/core/utils/hooks";
 import { localization } from "@web/core/l10n/localization";
 import { Layout } from "@web/search/layout";
 import { DocumentationLink } from "@web/views/widgets/documentation_link/documentation_link";
-import { standardActionServiceProps } from "@web/webclient/actions/action_service";
+import { standardActionServiceProps } from "@web/webclient/actions/action_plugin";
 import { ImportDataContent } from "../import_data_content/import_data_content";
 import { ImportDataProgress } from "../import_data_progress/import_data_progress";
 import { ImportDataSidepanel } from "../import_data_sidepanel/import_data_sidepanel";
@@ -24,7 +24,7 @@ export class ImportAction extends Component {
         Layout,
         DocumentationLink,
     };
-    static props = { ...standardActionServiceProps };
+    props = useProps(standardActionServiceProps);
     static path = "import";
     static displayName = _t("Import");
 

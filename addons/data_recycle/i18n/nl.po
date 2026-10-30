@@ -8,9 +8,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server saas~18.2\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-15 17:35+0000\n"
-"PO-Revision-Date: 2026-06-21 21:02+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-08-28 17:41+0000\n"
+"PO-Revision-Date: 2026-09-09 14:06+0000\n"
+"Last-Translator: Bren Driesen <brdri@odoo.com>\n"
 "Language-Team: Dutch <https://translate.odoo.com/projects/odoo-master/"
 "data_recycle/nl/>\n"
 "Language: nl\n"
@@ -18,7 +18,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: data_recycle
 #: model_terms:ir.ui.view,arch_db:data_recycle.notification
@@ -54,17 +54,17 @@ msgstr "Archiveren"
 #. module: data_recycle
 #: model_terms:ir.ui.view,arch_db:data_recycle.view_data_recycle_record_list
 msgid "Archive Suggestion"
-msgstr ""
+msgstr "Suggestie archiveren"
 
 #. module: data_recycle
 #: model_terms:ir.ui.view,arch_db:data_recycle.view_data_recycle_record_list
 msgid "Archive Suggestions"
-msgstr ""
+msgstr "Suggesties archiveren"
 
 #. module: data_recycle
 #: model_terms:ir.ui.view,arch_db:data_recycle.view_data_recycle_record_search
 msgid "Archived"
-msgstr ""
+msgstr "Gearchiveerd"
 
 #. module: data_recycle
 #: model:ir.model.fields.selection,name:data_recycle.selection__data_recycle_model__recycle_mode__automatic
@@ -104,6 +104,11 @@ msgstr "Aangemaakt op"
 #: model:ir.ui.menu,name:data_recycle.menu_data_cleaning_root
 msgid "Data Cleaning"
 msgstr "Gegevens opschonen"
+
+#. module: data_recycle
+#: model:ir.module.module,shortdesc:base.module_data_recycle
+msgid "Data Recycle"
+msgstr ""
 
 #. module: data_recycle
 #: model:ir.actions.server,name:data_recycle.ir_cron_clean_records_ir_actions_server
@@ -153,6 +158,12 @@ msgstr "Veldrecyclingrecords"
 #: model:ir.model.fields,field_description:data_recycle.field_data_recycle_model__domain
 msgid "Filter"
 msgstr "Filter"
+
+#. module: data_recycle
+#: model:ir.module.module,description:base.module_data_recycle
+#: model:ir.module.module,summary:base.module_data_recycle
+msgid "Find old records and archive/delete them"
+msgstr "Oude records zoeken en archiveren/verwijderen"
 
 #. module: data_recycle
 #: model:ir.model.fields,field_description:data_recycle.field_data_recycle_model__id
@@ -314,7 +325,7 @@ msgstr "Regels voor het recyclen van records"
 #. odoo-javascript
 #: code:addons/data_recycle/static/src/cog_menu/data_refresh_cog_menu.xml:0
 msgid "Refresh"
-msgstr ""
+msgstr "Vernieuwen"
 
 #. module: data_recycle
 #: model:ir.ui.menu,name:data_recycle.menu_data_cleaning_config_rules
@@ -351,12 +362,12 @@ msgstr "Tijdveld"
 #. module: data_recycle
 #: model_terms:ir.ui.view,arch_db:data_recycle.view_data_recycle_record_list
 msgid "Unarchive Suggestion"
-msgstr ""
+msgstr "Suggestie dearchiveren"
 
 #. module: data_recycle
 #: model_terms:ir.ui.view,arch_db:data_recycle.view_data_recycle_record_list
 msgid "Unarchive Suggestions"
-msgstr ""
+msgstr "Suggesties dearchiveren"
 
 #. module: data_recycle
 #. odoo-python
@@ -395,11 +406,11 @@ msgstr "hier"
 msgid "records to clean with the '"
 msgstr "records op te schonen, met de '"
 
-#~ msgid "Discard"
-#~ msgstr "Negeren"
+msgid "Discard"
+msgstr "Negeren"
 
-#~ msgid "Discarded"
-#~ msgstr "Verworpen"
+msgid "Discarded"
+msgstr "Verworpen"
 
-#~ msgid "Unselect"
-#~ msgstr "Deselecteren"
+msgid "Unselect"
+msgstr "Deselecteren"

@@ -1,8 +1,8 @@
 import { defineCrmLivechatModels } from "@crm_livechat/../tests/crm_livechat_test_helpers";
 
 import {
+    actionPanel,
     click,
-    contains,
     insertText,
     openDiscuss,
     start,
@@ -10,6 +10,7 @@ import {
 } from "@mail/../tests/mail_test_helpers";
 
 import { describe, test } from "@odoo/hoot";
+import { waitFor } from "@odoo/hoot-dom";
 import { mockDate } from "@odoo/hoot-mock";
 
 import { Command, serverState } from "@web/../tests/web_test_helpers";
@@ -37,7 +38,7 @@ test("can create a lead from the thread action after the conversation ends", asy
     });
     await start();
     await openDiscuss(channel_id);
-    await contains(".o-livechat-ChannelInfoList"); // wait for auto-open of this panel
+    await waitFor(`${actionPanel("Information")}:count(1)`); // wait for auto-open of this panel
     await click(".o-mail-DiscussContent-header button[title='Create Lead']");
     await insertText(".o-livechat-LivechatCommandDialog-form input", "testlead");
     await click(".o-mail-ActionPanel button", { text: "Create Lead" });
@@ -45,7 +46,7 @@ test("can create a lead from the thread action after the conversation ends", asy
     const time = deserializeDateTime(date).toLocaleString(luxon.DateTime.TIME_SIMPLE, {
         locale: user.lang,
     });
-    await contains(
-        `.o-mail-NotificationMessage:text('${serverState.partnerName} created a new lead: testlead${time}')`
+    await waitFor(
+        `.o-mail-NotificationMessage:text('${serverState.partnerName} created a new lead: testlead${time}'):count(1)`
     );
 });

@@ -1,14 +1,15 @@
-import { TabHeader, TabPanel, Tabs } from "@mail/core/common/tabs";
+import { Tab, Tabs } from "@mail/core/common/tabs";
 import { attClassObjectToString } from "@mail/utils/common/format";
 import { onExternalClick } from "@mail/utils/common/hooks";
 
-import { Component, signal, t, useProps } from "@odoo/owl";
+import { Component, signal, t, usePlugin, useProps } from "@odoo/owl";
 
 import { Dialog } from "@web/core/dialog/dialog";
+import { UIPlugin } from "@web/core/ui/ui_plugin";
 import { useService } from "@web/core/utils/hooks";
 
 export class PollVotesPanel extends Component {
-    static components = { Dialog, Tabs, TabHeader, TabPanel };
+    static components = { Dialog, Tabs, Tab };
     static template = "mail.PollVotesPanel";
 
     setup() {
@@ -18,7 +19,7 @@ export class PollVotesPanel extends Component {
             close: t.function([]).optional(),
             poll: t.instanceOf(this.store["mail.poll"]),
         });
-        this.ui = useService("ui");
+        this.ui = usePlugin(UIPlugin);
         this.tabsRef = signal.ref();
         onExternalClick(this.tabsRef, (ev) => {
             if (ev.target && !ev.target.closest(".modal-header")) {

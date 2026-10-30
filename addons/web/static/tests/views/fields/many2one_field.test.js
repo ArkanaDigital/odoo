@@ -470,6 +470,9 @@ test("many2ones in form views with show_address", async () => {
         { type: "html" }
     );
     expect("button.o_external_button").toHaveCount(1);
+
+    await contains(".o_field_many2one_extra").click();
+    expect(".o-autocomplete--dropdown-menu").toHaveCount(0);
 });
 
 test("many2one show_address in edit", async () => {
@@ -1504,7 +1507,6 @@ test("standalone many2one field", async () => {
                 <Field name="'partner_id'" record="scope.record" canOpen="false" />
             </Record>
         `;
-        props = useProps();
         setup() {
             this.fields = {
                 partner_id: {
@@ -3427,6 +3429,47 @@ test("search more in many2one: text in input", async () => {
     ]);
 });
 
+test("search more in many2one: dialog uses the 'dialog_size' attribute of the list view arch", async () => {
+    Partner._views = {
+        list: `
+            <list dialog_size="sm">
+                <field name="name" />
+            </list>`,
+    };
+
+    await mountView({
+        type: "form",
+        resModel: "partner",
+        arch: '<form><field name="trululu" /></form>',
+    });
+
+    await contains(`.o_field_widget[name="trululu"] input`).click();
+    await contains(`.o_field_widget[name="trululu"] .o_m2o_dropdown_option_search_more`).click();
+
+    expect(".modal-dialog").toHaveClass("modal-sm");
+});
+
+test("many2one 'create and edit' dialog uses the 'dialog_size' attribute of the form view arch", async () => {
+    Partner._views = {
+        form: `
+            <form dialog_size="sm">
+                <field name="name" />
+            </form>`,
+    };
+
+    await mountView({
+        type: "form",
+        resModel: "partner",
+        arch: '<form><field name="trululu" /></form>',
+    });
+
+    await contains(".o_field_widget[name=trululu] input").edit("ABC", { confirm: false });
+    await runAllTimers();
+    await clickFieldDropdownItem("trululu", "Create and edit...");
+
+    expect(".modal-dialog").toHaveClass("modal-sm");
+});
+
 test("search more in many2one: dropdown click", async () => {
     for (let i = 0; i < 8; i++) {
         Partner._records.push({ id: 100 + i, name: `test_${i}` });
@@ -3684,6 +3727,86 @@ test("focus when closing many2one modal in many2one modal", async () => {
     expect(".o_dialog").toHaveCount(1);
 });
 
+test("closing the many2one modal does not focus the field if it becomes readonly", async () => {
+    onRpc("get_formview_id", () => false);
+
+    await mountViewInDialog({
+        type: "form",
+        resModel: "partner",
+        arch: `<form><field name="trululu" readonly="id"/></form>`,
+    });
+    expect(".modal").toHaveCount(1);
+
+    // Select many2one record
+    await selectFieldDropdownItem("trululu", "first record");
+    expect(".o_field_widget[name=trululu] input").toHaveCount(1);
+
+    // Open many2one modal
+    await contains(".o_field_widget[name=trululu] .o_external_button", { visible: false }).click();
+    expect(".modal").toHaveCount(2);
+
+    // Close modal without focusing readonly field
+    await contains(".o_dialog:not(.o_inactive_modal) .btn-close").click();
+    expect(".o_field_widget[name=trululu]").toHaveClass("o_readonly_modifier");
+});
+
+test("saving many2one dialog does not discard pending changes on child line dialog", async () => {
+    Turtle._records[1].turtle_trululu = 1;
+    Partner._views = {
+        form: `<form><field name="name"/></form>`,
+    };
+
+    onRpc("get_formview_id", () => false);
+    onRpc("web_read", ({ model }) => {
+        expect.step(`web_read ${model}`);
+    });
+    onRpc("web_save", ({ model }) => {
+        expect.step(`web_save ${model}`);
+    });
+
+    await mountView({
+        type: "form",
+        resModel: "partner",
+        resId: 1,
+        arch: `
+            <form>
+                <field name="turtles">
+                    <list>
+                        <field name="name"/>
+                        <field name="turtle_trululu"/>
+                    </list>
+                    <form>
+                        <field name="name"/>
+                        <field name="turtle_trululu"/>
+                    </form>
+                </field>
+            </form>`,
+    });
+
+    expect.verifySteps(["web_read partner"]);
+    await contains(".o_data_row:eq(0) .o_data_cell[name=name]").click();
+    expect(".o_dialog").toHaveCount(1);
+    expect(".o_dialog .o_field_widget[name=turtle_trululu] input").toHaveValue("first record");
+    expect.verifySteps(["web_read turtle"]);
+
+    await contains(".o_dialog .o_field_widget[name=name] input").edit("modified line name");
+
+    await contains(".o_dialog .o_field_widget[name=turtle_trululu] .o_external_button", {
+        visible: false,
+    }).click();
+    expect(".o_dialog").toHaveCount(2);
+
+    await contains(".o_dialog:eq(1) .o_field_widget[name=name] input").edit("updated related name");
+    await contains(".o_dialog:eq(1) footer .o_form_button_save").click();
+    expect(".o_dialog").toHaveCount(1);
+    expect.verifySteps(["web_read partner", "web_save partner", "web_read turtle"]);
+
+    expect(".o_dialog .o_field_widget[name=name] input").toHaveValue("modified line name");
+    expect(".o_dialog .o_field_widget[name=turtle_trululu] input").toHaveValue(
+        "updated related name"
+    );
+});
+
 test("search more pager is reset when doing a new search", async () => {
     Partner._fields.datetime = fields.Datetime({ string: "Datetime Field", searchable: true });
     Partner._records.push(...range(170).map((i) => ({ id: i + 10, name: `Partner ${i}` })));
@@ -3822,7 +3945,7 @@ test("external_button performs a doAction by default", async () => {
     });
 
     await selectFieldDropdownItem("trululu", "first record");
-    expect(".o_field_widget .o_external_button [data-icon='east']").toHaveCount(1);
+    expect(".o_field_widget .o_external_button [data-icon='arrow_forward']").toHaveCount(1);
     await contains(".o_field_widget .o_external_button", { visible: false }).click();
 
     expect.verifySteps(["get_record_default_action"]);
@@ -4100,7 +4223,6 @@ test("skip name search optimization", async () => {
             preventMemoization="true"
         />`;
         static components = { Many2XAutocomplete };
-        props = useProps();
         getDomain() {
             return [];
         }

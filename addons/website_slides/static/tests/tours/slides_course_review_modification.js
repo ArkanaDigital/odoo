@@ -41,11 +41,18 @@ registry.category("web_tour.tours").add("course_review_modification", {
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message:contains(First review)",
-            run: "hover && click #chatterRoot:shadow .o-mail-Message [title='Expand']",
+            run: "hover",
+        },
+        {
+            trigger: "#chatterRoot:shadow .o-mail-Message [title='Expand']",
+            run: "click",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message-moreMenu",
-            run: "click #chatterRoot:shadow button[name='delete']",
+        },
+        {
+            trigger: "#chatterRoot:shadow button[name='delete']",
+            run: "click",
         },
         {
             trigger: "#chatterRoot:shadow .modal button:contains(Delete)",
@@ -132,15 +139,22 @@ registry.category("web_tour.tours").add("course_review_modification", {
         {
             trigger:
                 "#chatterRoot:shadow .o-mail-Message:contains(Second review is edited in rating composer) .o_website_rating_static[title='2 stars on 5']",
-            run: "hover && click #chatterRoot:shadow .o-mail-Message [title='Expand']",
+            run: "hover",
+        },
+        {
+            trigger: "#chatterRoot:shadow .o-mail-Message [title='Expand']",
+            run: "click",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message-moreMenu",
-            run: "click #chatterRoot:shadow .o-mail-Message-moreMenu [name='edit']",
         },
         {
-            trigger: "#chatterRoot:shadow .o-mail-Message .o-mail-Composer-input",
-            run: "edit Second review is edited in message composer",
+            trigger: "#chatterRoot:shadow .o-mail-Message-moreMenu [name='edit']",
+            run: "click",
+        },
+        {
+            trigger: "#chatterRoot:shadow .o-mail-Message .o-mail-Composer-html",
+            run: "editor Second review is edited in message composer",
         },
         {
             trigger:
@@ -169,7 +183,7 @@ registry.category("web_tour.tours").add("course_review_modification", {
         },
         {
             trigger:
-                "#chatterRoot:shadow .o-mail-Message:contains('Second review is edited in message composer')",
+                "#chatterRoot:shadow .o-mail-Message:not(:has(.o-mail-Composer)):contains('Second review is edited in message composer')",
         },
         {
             trigger: "span:contains(Edit Review)",
@@ -192,11 +206,18 @@ registry.category("web_tour.tours").add("course_review_modification", {
         {
             trigger:
                 "#chatterRoot:shadow .o-mail-Message:contains(Second review is editable in rating composer after editing in message composer)",
-            run: "hover && click #chatterRoot:shadow .o-mail-Message [title='Expand']",
+            run: "hover",
+        },
+        {
+            trigger: "#chatterRoot:shadow .o-mail-Message [title='Expand']",
+            run: "click",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message-moreMenu",
-            run: "click #chatterRoot:shadow button[name='delete']",
+        },
+        {
+            trigger: "#chatterRoot:shadow button[name='delete']",
+            run: "click",
         },
         {
             trigger: "#chatterRoot:shadow .modal button:contains(Delete)",
@@ -221,15 +242,22 @@ registry.category("web_tour.tours").add("course_review_modification", {
         {
             trigger:
                 "#chatterRoot:shadow .o-mail-Message:not(:has(.o-mail-Message-body)) .o_website_rating_static[title='4 stars on 5']",
-            run: "hover && click #chatterRoot:shadow .o-mail-Message [title='Expand']",
+            run: "hover",
+        },
+        {
+            trigger: "#chatterRoot:shadow .o-mail-Message [title='Expand']",
+            run: "click",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message-moreMenu",
-            run: "click #chatterRoot:shadow .o-mail-Message-moreMenu [name='edit']",
         },
         {
-            trigger: "#chatterRoot:shadow .o-mail-Message .o-mail-Composer-input",
-            run: "edit Fill the message body",
+            trigger: "#chatterRoot:shadow .o-mail-Message-moreMenu [name='edit']",
+            run: "click",
+        },
+        {
+            trigger: "#chatterRoot:shadow .o-mail-Message .o-mail-Composer-html",
+            run: "editor Fill the message body",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message button:contains(save)",
@@ -237,20 +265,27 @@ registry.category("web_tour.tours").add("course_review_modification", {
         },
         {
             trigger:
-                "#chatterRoot:shadow .o-mail-Message[data-persistent] .o-mail-Message-body:contains(Fill the message body)",
+                "#chatterRoot:shadow .o-mail-Message[data-persistent]:not(:has(.o-mail-Composer)) .o-mail-Message-body:contains(Fill the message body)",
         },
         {
             trigger:
                 "#chatterRoot:shadow .o-mail-Message .o-mail-Message-body:contains(Fill the message body)",
-            run: "hover && click #chatterRoot:shadow .o-mail-Message [title='Expand']",
+            run: "hover",
+        },
+        {
+            trigger: "#chatterRoot:shadow .o-mail-Message [title='Expand']",
+            run: "click",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message-moreMenu",
-            run: "click #chatterRoot:shadow .o-mail-Message-moreMenu [name='edit']",
         },
         {
-            trigger: "#chatterRoot:shadow .o-mail-Message .o-mail-Composer-input",
-            run: "edit",
+            trigger: "#chatterRoot:shadow .o-mail-Message-moreMenu [name='edit']",
+            run: "click",
+        },
+        {
+            trigger: "#chatterRoot:shadow .o-mail-Message .o-mail-Composer-html",
+            run: "editor",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message button:contains(save)",
@@ -280,22 +315,27 @@ registry.category("web_tour.tours").add("course_review_modification_by_admin", {
         {
             trigger:
                 "#chatterRoot:shadow .o-mail-Message:contains(Non admin user review) .o_website_rating_static[title='3 stars on 5']",
-            run: "hover && click #chatterRoot:shadow .o-mail-Message [title='Expand']",
+            run: "hover",
+        },
+        {
+            trigger: "#chatterRoot:shadow .o-mail-Message [title='Expand']",
+            run: "click",
         },
         {
             trigger: "#chatterRoot:shadow button[name='edit']",
             run: "click",
         },
         {
-            trigger: "#chatterRoot:shadow .o-mail-Message .o-mail-Composer-input",
-            run: "edit Admin edited this review.",
+            trigger: "#chatterRoot:shadow .o-mail-Message .o-mail-Composer-html",
+            run: "editor Admin edited this review.",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message button:text(save)",
             run: "click",
         },
         {
-            trigger: "#chatterRoot:shadow .o-mail-Message-body:contains(Admin edited this review.)",
+            trigger:
+                "#chatterRoot:shadow .o-mail-Message:not(:has(.o-mail-Composer)) .o-mail-Message-body:contains(Admin edited this review.)",
         },
         // If it fails here, it means that the default values have changed after the admin edited someone else's review.
         {
@@ -337,7 +377,12 @@ registry.category("web_tour.tours").add("course_review_modification_by_admin", {
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message-body:contains(Admin edited this review.)",
-            run: "hover && click #chatterRoot:shadow .o-mail-Message:contains(Admin edited this review.) [title='Expand']",
+            run: "hover",
+        },
+        {
+            trigger:
+                "#chatterRoot:shadow .o-mail-Message:contains(Admin edited this review.) [title='Expand']",
+            run: "click",
         },
         {
             trigger: "#chatterRoot:shadow .o-dropdown-item:has(:text(Delete))",
@@ -371,8 +416,8 @@ registry.category("web_tour.tours").add("course_review_modification_by_admin", {
         },
         { trigger: "a[href='#discuss'].active:text(Comments (4))" },
         {
-            trigger: "#chatterRoot:shadow .o-mail-Composer-input",
-            run: "edit Test comment",
+            trigger: "#chatterRoot:shadow .o-mail-Composer-html",
+            run: "editor Test comment",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Composer-send:enabled",
@@ -381,7 +426,11 @@ registry.category("web_tour.tours").add("course_review_modification_by_admin", {
         { trigger: "a[href='#discuss']:text(Comments (5))" },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message",
-            run: "hover && click #chatterRoot:shadow .o-mail-Message [title='Expand']",
+            run: "hover",
+        },
+        {
+            trigger: "#chatterRoot:shadow .o-mail-Message [title='Expand']",
+            run: "click",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message-moreMenu [name='delete']",

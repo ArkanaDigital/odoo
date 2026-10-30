@@ -2,13 +2,14 @@
 <odoo>
     <template id="task_submitted" name="Task Submitted">
         <t t-call="website.layout">
-            <div class="oe_structure oe_empty h-100">
+            <div id="wrap" class="h-100">
+                <div class="oe_structure" id="oe_structure_website_project_thanks_you_top"/>
                 <div class="container d-flex flex-column justify-content-center h-100">
                     <div class="d-flex flex-column align-items-center mb16 p-4 text-center">
                         <t t-if="request.session.get('form_builder_model_model', '') == 'project.task'">
                             <t t-set="task" t-value="website._website_form_last_record()"/>
                         </t>
-                        <i class="oi oi-filled oi-2x mb-3 rounded-circle text-bg-success" data-icon="send" role="presentation"/>
+                        <i class="oi oi-filled oi-2x mb-3 rounded-circle text-bg-success" data-icon="send" role="img" aria-hidden="true"/>
                         <h1 class="fw-bolder">Thank you!</h1>
                         <t t-if="task">
                             <p class="lead mb-0">Your task has been sent.</p>
@@ -23,6 +24,7 @@
                         <a href="/">Go to Homepage</a>
                     </div>
                 </div>
+                <div class="oe_structure" id="oe_structure_website_project_thanks_you_bottom"/>
             </div>
         </t>
     </template>

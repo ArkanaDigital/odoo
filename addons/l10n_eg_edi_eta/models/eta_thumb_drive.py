@@ -1,4 +1,3 @@
-# Part of Odoo. See LICENSE file for full copyright and licensing details.
 import base64
 import datetime
 import hashlib
@@ -7,6 +6,7 @@ import json
 from asn1crypto import cms, core, x509, algos, tsp
 
 from odoo import models, fields
+from odoo.addons.l10n_eg_edi_eta.tools.eta_serialize import serialize_eta_document
 from odoo.tools import BinaryBytes
 
 
@@ -25,15 +25,14 @@ class L10n_Eg_EdiThumbDrive(models.Model):
         'You can only have one thumb drive per user per company!',
     )
 
-    def action_sign_invoices(self, invoice_ids):
+    def action_sign_invoices(self, invoice_json_list):
         self.ensure_one()
         sign_host = self._get_host()
 
         to_sign_dict = dict()
-        for invoice_id in invoice_ids:
-            eta_invoice = json.loads(invoice_id.l10n_eg_eta_json_doc_file.content)['request']
-            signed_attrs = self._generate_signed_attrs__(eta_invoice, invoice_id.l10n_eg_signing_time)
-            to_sign_dict[invoice_id.id] = base64.b64encode(signed_attrs.dump()).decode()
+        for invoice_id, invoice_data in invoice_json_list.items():
+            signed_attrs = self._generate_signed_attrs__(invoice_data['invoice'], invoice_data['signing_time'])
+            to_sign_dict[invoice_id] = base64.b64encode(signed_attrs.dump()).decode()
 
         return {
             'type': 'ir.actions.client',
@@ -43,7 +42,7 @@ class L10n_Eg_EdiThumbDrive(models.Model):
                 'access_token': self.access_token,
                 'pin': self.pin,
                 'drive_id': self.id,
-                'invoices': json.dumps(to_sign_dict)
+                'invoices': json.dumps(to_sign_dict),
             }
         }
 
@@ -77,39 +76,24 @@ class L10n_Eg_EdiThumbDrive(models.Model):
         for key, value in invoices.items():
             invoice_id = self.env['account.move'].browse(int(key))
             eta_invoice_json = json.loads(invoice_id.l10n_eg_eta_json_doc_file.content)
-
-            signature = self._generate_cades_bes_signature(eta_invoice_json['request'], invoice_id.l10n_eg_signing_time,
-                                                           base64.b64decode(value))
-
+            signature = self._generate_cades_bes_signature(
+                eta_invoice_json['request'],
+                invoice_id.l10n_eg_signing_time,
+                base64.b64decode(value),
+            )
             eta_invoice_json['request']['signatures'] = [{'signatureType': 'I', 'value': signature}]
             invoice_id.l10n_eg_eta_json_doc_file = BinaryBytes(json.dumps(eta_invoice_json).encode())
             invoice_id.l10n_eg_is_signed = True
-        return True
+            invoice_id.message_post(body=self.env._("Success: Invoice signed for ETA"))
 
     def _get_host(self):
         # It should be on the loopback address or with a fully valid https host
         # in order to be an exception to the mixed-content restrictions
         return self.env['ir.config_parameter'].sudo().get_str('l10n_eg_eta.sign.host') or 'http://localhost:8069'
 
-    def _serialize_for_signing(self, eta_inv):
-        if not isinstance(eta_inv, dict):
-            return json.dumps(str(eta_inv), ensure_ascii=False)
-
-        canonical_str = []
-        for key, value in eta_inv.items():
-            if not isinstance(value, list):
-                canonical_str.append(json.dumps(key, ensure_ascii=False).upper())
-                canonical_str.append(self._serialize_for_signing(value))
-            else:
-                canonical_str.append(json.dumps(key, ensure_ascii=False).upper())
-                for elem in value:
-                    canonical_str.append(json.dumps(key, ensure_ascii=False).upper())
-                    canonical_str.append(self._serialize_for_signing(elem))
-        return ''.join(canonical_str)
-
     def _generate_signed_attrs__(self, eta_invoice, signing_time):
         cert = x509.Certificate.load(self.certificate.content)
-        data = hashlib.sha256(self._serialize_for_signing(eta_invoice).encode()).digest()
+        data = hashlib.sha256(serialize_eta_document(eta_invoice).encode()).digest()
         return cms.CMSAttributes([
             cms.CMSAttribute({
                 'type': cms.CMSAttributeType('content_type'),
@@ -122,16 +106,17 @@ class L10n_Eg_EdiThumbDrive(models.Model):
             cms.CMSAttribute({
                 'type': tsp.CMSAttributeType('signing_certificate_v2'),
                 'values': ({
-                               'certs': (tsp.ESSCertIDv2({
-                                   'hash_algorithm': algos.DigestAlgorithm({'algorithm': 'sha256'}),
-                                   'cert_hash': hashlib.sha256(cert.dump()).digest()
-                               }),)
-                           },),
+                    'certs': (
+                        tsp.ESSCertIDv2({
+                            'hash_algorithm': algos.DigestAlgorithm({'algorithm': 'sha256'}),
+                            'cert_hash': hashlib.sha256(cert.dump()).digest(),
+                        }),
+                    ),
+                },),
             }),
             cms.CMSAttribute({
                 'type': cms.CMSAttributeType('signing_time'),
-                'values': (
-                cms.Time({'utc_time': core.UTCTime(signing_time.replace(tzinfo=datetime.UTC))}),)
+                'values': (cms.Time({'utc_time': core.UTCTime(signing_time.replace(tzinfo=datetime.UTC))}),),
             }),
         ])
 

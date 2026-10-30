@@ -1,5 +1,6 @@
 import { userHasEmployeeInCurrentCompany } from "@hr_holidays/utils";
 import { exportTimeOffRecords } from "@hr_holidays/views/hr_leave_export";
+import { HrHolidaysSearchModel } from "@hr_holidays/search/hr_holidays_search_model";
 import { onWillStart } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
@@ -71,7 +72,10 @@ export class HolidaysListController extends ListController {
         const filter = this.actionFilters[actionName];
         if (filter) {
             const eligibleRecords = this.model.root.selection.filter(filter);
-            if (eligibleRecords.length) {
+            if (actionName === "action_adjust_corresponding_payslip") {
+                return this.onClickViewButton(params);
+            }
+            else if (eligibleRecords.length) {
                 this.executeAction(actionName, eligibleRecords);
             } else {
                 this.onClickViewButton(params);
@@ -117,6 +121,7 @@ export class HolidaysListController extends ListController {
 export const holidaysListView = {
     ...listView,
     Controller: HolidaysListController,
+    SearchModel: HrHolidaysSearchModel,
 };
 
 registry.category("views").add("hr_holidays_payslip_list", holidaysListView);

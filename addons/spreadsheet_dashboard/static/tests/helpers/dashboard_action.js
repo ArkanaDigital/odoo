@@ -1,6 +1,6 @@
 import { getFixture } from "@odoo/hoot";
 import { animationFrame } from "@odoo/hoot-mock";
-import { Spreadsheet } from "@odoo/o-spreadsheet";
+import { Spreadsheet, hooks } from "@odoo/o-spreadsheet";
 import { makeSpreadsheetMockEnv } from "@spreadsheet/../tests/helpers/model";
 import {
     getMockEnv,
@@ -14,6 +14,10 @@ import { loadBundle } from "@web/core/assets";
 import { WebClient } from "@web/webclient/webclient";
 import { getDashboardServerData } from "./data";
 import { DashboardLoader } from "../../src/bundle/dashboard_action/dashboard_loader_service";
+import { MobileFigureContainer } from "../../src/bundle/dashboard_action/mobile_figure_container/mobile_figure_container";
+
+const { useSpreadsheetEnv } = hooks;
+
 /**
  * @param {object} params
  * @param {object} [params.serverData]
@@ -27,8 +31,15 @@ export async function createSpreadsheetDashboard(params = {}) {
     patchWithCleanup(Spreadsheet.prototype, {
         setup() {
             super.setup();
-            model = this.env.model;
-            env = this.env;
+            model = this.model();
+            env = useSpreadsheetEnv();
+        },
+    });
+    patchWithCleanup(MobileFigureContainer.prototype, {
+        setup() {
+            super.setup();
+            env = useSpreadsheetEnv();
+            model = this.props.spreadsheetModel;
         },
     });
 
@@ -74,12 +85,5 @@ export async function createDashboardLoader(params = {}) {
     });
     const env = getMockEnv();
     const orm = getService("orm");
-    return new DashboardLoader(env, orm, async (dashboardId) => {
-        const [record] = await orm.read(
-            "spreadsheet.dashboard",
-            [dashboardId],
-            ["spreadsheet_data"]
-        );
-        return { data: JSON.parse(record.spreadsheet_data), revisions: [] };
-    });
+    return new DashboardLoader(env, orm);
 }

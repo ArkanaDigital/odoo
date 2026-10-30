@@ -5,12 +5,12 @@ from mimetypes import guess_extension
 import werkzeug.http
 
 from odoo import models
-from odoo.exceptions import MissingError, UserError
+from odoo.exceptions import AccessError, MissingError, UserError
 from odoo.http import request
 from odoo.http.stream import Stream
 from odoo.tools import file_open
 from odoo.tools.image import image_guess_size_from_field_name, image_process
-from odoo.tools.mimetypes import get_extension, guess_file_mimetype, guess_mimetype
+from odoo.tools.mimetypes import guess_file_mimetype, guess_mimetype, split_stem_and_extension
 from odoo.tools.misc import verify_limited_field_access_token
 
 DEFAULT_PLACEHOLDER_PATH = 'web/static/img/placeholder.png'
@@ -102,6 +102,17 @@ class IrBinary(models.AbstractModel):
             public=record.env.user._is_public(),  # good enough
         )
 
+    def _get_filename_from_record(self, record, field_name):
+        common_fields = ('filename', '_name', '_fname', '_file')
+        if field_name == 'name' or field_name.endswith(common_fields):
+            return record[field_name]
+        # Try with the user's access rights
+        try:
+            return record.sudo(False)[field_name]
+        except AccessError:
+            pass
+        return False
+
     def _get_stream_from(
         self,
         record,
@@ -158,16 +169,14 @@ class IrBinary(models.AbstractModel):
             if filename:
                 stream.download_name = filename
             elif filename_field in record:
-                field = record._fields[filename_field]
-                if record.sudo(False).has_field_access(field, 'read'):
-                    stream.download_name = record[filename_field]
+                stream.download_name = self._get_filename_from_record(record, filename_field)
+
             if not stream.download_name:
                 stream.download_name = f'{record._table}-{record.id}-{field_name}'
 
             stream.download_name = stream.download_name.replace('\n', '_').replace('\r', '_')
-            ext = get_extension(stream.download_name)
-            stream.download_name = stream.download_name.removesuffix(ext)[:100] + (
-                ext or guess_extension(stream.mimetype) or '')
+            stem, ext = split_stem_and_extension(stream.download_name)
+            stream.download_name = stem[:100] + (ext or guess_extension(stream.mimetype) or '')
 
         return stream
 

@@ -6,6 +6,7 @@ from datetime import timedelta
 from odoo import api, fields, models, _, Command
 from odoo.fields import Domain
 from odoo.tools import OrderedSet
+from odoo.tools.sql import SQL
 from odoo.exceptions import UserError, ValidationError
 
 VALUATION_DICT = {
@@ -52,9 +53,14 @@ class StockMove(models.Model):
         currency_field='company_currency_id',
         string='Remaining Value', compute='_compute_remaining_value')
 
+    origin_company_id = fields.Many2one('res.company', string='Origin Company', compute='_compute_origin_company_id', search='_search_origin_company_id', compute_sudo=True,
+                                        help='Only set if the move is generated from a document belonging to another company')
+    order_partner_id = fields.Many2one('res.partner', compute='_compute_order_partner_id', compute_sql='_compute_sql_order_partner_id', compute_sudo=True,
+                                      help="If the move originates from a document from another company, contains that company's partner, otherwise the move's partner.")
     analytic_account_line_ids = fields.Many2many('account.analytic.line', copy=False)
     account_move_id = fields.Many2one('account.move', 'stock_move_id', copy=False, index="btree_not_null")
     invoice_line_ids = fields.One2many('account.move.line', 'stock_move_id', 'Invoice Line', index='btree_not_null')
+    product_value_ids = fields.One2many('product.value', 'move_id', 'Product Value', index='btree_not_null')
 
     def search_remaining_qty(self, operator, value):
         if operator != '=' or not isinstance(value, bool) or value is not True:
@@ -101,10 +107,28 @@ class StockMove(models.Model):
                 continue
             move.is_dropship = move._is_dropshipped() or move._is_dropshipped_returned()
 
-    @api.depends('is_in', 'is_out', 'is_dropship')
+    @api.depends('state', 'move_line_ids')
     def _compute_is_valued(self):
         for move in self:
-            move.is_valued = move.is_in or move.is_out or move.is_dropship
+            move.is_valued = move.is_in or move.is_out
+
+    def _compute_origin_company_id(self):
+        self.origin_company_id = False
+
+    def _search_origin_company_id(self, operator, value):
+        domains = self._get_origin_company_domains(operator, value)
+        if not domains:
+            return Domain.FALSE
+
+        return [('id', 'in', self._search(Domain.OR(domains)))]
+
+    @api.depends('partner_id')
+    def _compute_order_partner_id(self):
+        for move in self:
+            move.order_partner_id = move.partner_id
+
+    def _compute_sql_order_partner_id(self, table):
+        return SQL("%s", table.partner_id)
 
     def _compute_value_manual(self):
         for move in self:
@@ -146,6 +170,13 @@ class StockMove(models.Model):
                 move.remaining_value = ratio * move.value if ratio else 0
             else:
                 move.remaining_value = move.remaining_qty * move.standard_price
+
+    @api.depends_context('for_product_value')
+    def _compute_display_name(self):
+        if not self.env.context.get('for_product_value'):
+            return super()._compute_display_name()
+        for move in self:
+            move.display_name = move.reference
 
     def write(self, vals):
         """ Editing the done date of a valued move (to the past or the future) shifts the
@@ -193,7 +224,7 @@ class StockMove(models.Model):
 
     def _inverse_value_manual(self):
         for move in self:
-            if move.value_manual == move.value:
+            if move.value_manual == move.value or move.product_id.tracking is None:
                 continue
             self.env['product.value'].create({
                 'move_id': move.id,
@@ -321,7 +352,9 @@ class StockMove(models.Model):
             from ``recompute_date`` (the earliest impacted date among the moves) through
         :param skip_check: internal flag set while replaying, to only refresh in-move
             values without re-triggering the replay detection below (which would loop).
+        :return: the outgoing moves whose value changed during a valuation replay.
         """
+        changed_moves = self.env['stock.move']
         moves_already_sold = self.filtered(lambda m: m.is_in and m.remaining_qty != m._get_valued_qty())
         if not recompute_date and not skip_check and moves_already_sold:
             recompute_date = min(self.mapped('date'))
@@ -334,12 +367,11 @@ class StockMove(models.Model):
                 if oversold_moves:
                     recompute_date = min(recompute_date, *oversold_moves.mapped('date'))
             self._set_value(recompute_date=recompute_date)
-            return
+            return changed_moves
 
         if recompute_date and any(m.remaining_qty != m._get_valued_qty() or m.is_out for m in self):
             self.filtered(lambda m: m.is_in)._set_value(skip_check=True)
-            self.product_id._correct_inventory_valuation(recompute_date)
-            return
+            return self.product_id._correct_inventory_valuation(recompute_date)
 
         self = self.sorted(key=lambda m: (m.date, m.id))  # noqa: PLW0642
         products_to_recompute = set()
@@ -357,7 +389,7 @@ class StockMove(models.Model):
 
         for move in self:
             move = move.with_company(move.company_id)
-            if move.is_dropship or move.is_in:
+            if move.is_in:
                 products_to_recompute.add(move.product_id.id)
                 if move.product_id.lot_valuated:
                     if any(not ml.lot_id for ml in move.move_line_ids):
@@ -365,7 +397,6 @@ class StockMove(models.Model):
                             "A lot/serial number is required for product '%s' as it has lot valuation enabled.",
                             move.product_id.display_name))
                     lots_to_recompute.update(move.move_line_ids.lot_id.ids)
-            if move.is_in or move.is_dropship:
                 move.value = move.sudo()._get_value()
                 continue
             # Outgoing moves
@@ -404,6 +435,7 @@ class StockMove(models.Model):
         # Recompute the standard price
         self.env['product.product'].browse(products_to_recompute)._update_standard_price()
         self.env['stock.lot'].browse(lots_to_recompute)._update_standard_price()
+        return changed_moves
 
     def _get_value(self, forced_std_price=False, ignore_manual_update=False):
         return self._get_value_data(forced_std_price, ignore_manual_update)['value']
@@ -475,7 +507,15 @@ class StockMove(models.Model):
             if return_data.get('description'):
                 descriptions.append(return_data['description'])
 
-        # 4. standard_price
+        # 4. from previous move in another company
+        if remaining_qty:
+            previous_moves_data = self._get_value_from_previous_company(remaining_qty)
+            value += previous_moves_data['value']
+            remaining_qty -= previous_moves_data['quantity']
+            if previous_moves_data.get('description'):
+                descriptions.append(previous_moves_data['description'])
+
+        # 5. standard_price
         if remaining_qty:
             std_price_data = self._get_value_from_std_price(remaining_qty, forced_std_price)
             value += std_price_data['value']
@@ -498,9 +538,9 @@ class StockMove(models.Model):
         stays consistent with `value` (also negative for out moves) and value/qty
         ratios stay positive without needing abs(). """
         self.ensure_one()
-        if self._is_in():
+        if (self.state == 'done' and self.is_in) or (self.state != 'done' and self._is_in()):
             return sum(self._get_in_move_lines(lot).mapped('quantity_product_uom'))
-        if self._is_out():
+        if (self.state == 'done' and self.is_out) or (self.state != 'done' and self._is_out()):
             qty = sum(self._get_out_move_lines(lot).mapped('quantity_product_uom'))
             return -qty if signed else qty
         if self.is_dropship:
@@ -563,6 +603,18 @@ class StockMove(models.Model):
             ),
         }
 
+    def _get_value_from_previous_company(self, quantity):
+        if not self.move_orig_ids or self.move_orig_ids.company_id == self.company_id or len(self.move_orig_ids) > 1:
+            return dict(VALUATION_DICT)
+        origin_moves = self.move_orig_ids
+        origin_quantity = sum(origin_moves.mapped(lambda m: m.uom_id._compute_quantity(m.quantity, m.product_id.uom_id)))
+        # Since move value is signed and previous move is from another operation, we must invert it.
+        return {
+            'value': -1 * sum(origin_moves.mapped('value')) * quantity / origin_quantity if origin_quantity else 0,
+            'quantity': quantity,
+            'description': self.env._('Value from previous move %(references)s', references=list(set(origin_moves.mapped('reference')))),
+        }
+
     def _get_value_from_extra(self, quantity):
         return dict(VALUATION_DICT)
 
@@ -585,7 +637,7 @@ class StockMove(models.Model):
                 continue
             if move_line._should_exclude_for_valuation():
                 continue
-            if not move_line.location_id._should_be_valued() and move_line.location_dest_id._should_be_valued():
+            if not move_line.with_company(move_line.company_id).location_id._should_be_valued() and move_line.with_company(move_line.company_id).location_dest_id._should_be_valued():
                 res.add(move_line.id)
         return self.env['stock.move.line'].browse(res)
 
@@ -615,7 +667,7 @@ class StockMove(models.Model):
                 continue
             if move_line._should_exclude_for_valuation():
                 continue
-            if move_line.location_id._should_be_valued() and not move_line.location_dest_id._should_be_valued():
+            if move_line.with_company(move_line.company_id).location_id._should_be_valued() and not move_line.with_company(move_line.company_id).location_dest_id._should_be_valued():
                 res |= move_line
         return res
 
@@ -727,3 +779,50 @@ class StockMove(models.Model):
         if valued_type == 'out':
             return self.location_dest_id and self.location_dest_id.usage == 'supplier'
         return bool(self.picking_id.return_picking_id)
+
+    def _clear_journal_entries(self):
+        account_moves = self.account_move_id
+        account_moves.sudo().button_draft()
+        account_moves.sudo().unlink()
+
+    def _reset_valuation(self, date):
+        self.value = 0
+        self.product_id._correct_inventory_valuation(date)
+        self.product_id._update_standard_price()
+
+    def _action_reset_to_progress(self):
+        date = min(self.mapped('date'))
+        self._clear_journal_entries()
+        super()._action_reset_to_progress()
+        self._reset_valuation(date)
+
+    def _action_reset_to_draft(self):
+        date = min(self.mapped('date'))
+        self._clear_journal_entries()
+        super()._action_reset_to_draft()
+        self._reset_valuation(date)
+
+    def _get_origin_company_domains(self, operator, value):
+        """ Overriden in `sale_stock` & `purchase_stock`
+        """
+        return []
+
+    def _get_price_unit_delivery(self, product=None):
+        """ Computes the unit price for a set of moves, using a weighted average between
+        dropshipped and non dropshipped moves.
+        """
+        dropship_moves, regular_moves = self.partitioned(lambda m: m._is_dropshipped() or m._is_dropshipped_returned())
+        dropship_quantity = sum(m._get_valued_qty() for m in dropship_moves)
+        dropship_price_unit = dropship_moves._get_price_unit_dropshipped()
+        regular_quantity = sum(m._get_valued_qty() for m in regular_moves)
+        regular_price_unit = regular_moves._get_price_unit(product=product)
+        total_quantity = dropship_quantity + regular_quantity
+        if not total_quantity:
+            return self._get_price_unit()
+        return (dropship_quantity * dropship_price_unit + regular_quantity * regular_price_unit) / total_quantity
+
+    def _get_price_unit_dropshipped(self):
+        """ Returns the unit price to value the dropshipped moves."""
+        total_value = sum(m._get_value() for m in self)
+        total_qty = sum(m._get_valued_qty() for m in self)
+        return total_value / total_qty if total_qty else 0

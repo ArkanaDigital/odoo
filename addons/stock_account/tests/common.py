@@ -294,9 +294,8 @@ class TestStockValuationCommon(BaseCommon):
 
     def _make_return(self, move, quantity_to_return):
         return_pick = move.picking_id._create_return()
-        return_pick.move_ids[0].quantity = quantity_to_return
-        return_pick.move_ids[0].picked = True
-        return_pick._action_done()
+        return_pick.move_ids[0].product_uom_qty = quantity_to_return
+        return_pick.button_validate()
         return return_pick.move_ids
 
     # Post move processing
@@ -351,7 +350,6 @@ class TestStockValuationCommon(BaseCommon):
 
         # To move to stock common later
         cls.route_mto = cls.env.ref('stock.route_warehouse0_mto')
-        cls.route_mto.product_selectable = True
         cls.company = cls.env['res.company'].create({'name': 'Inventory Test Company'})
         cls.env["account.chart.template"]._load(
             "generic_coa", cls.company, install_demo=False

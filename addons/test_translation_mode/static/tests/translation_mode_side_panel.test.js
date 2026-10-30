@@ -10,14 +10,13 @@ import {
     test,
 } from "@odoo/hoot";
 import {
-    assignTestEnv,
     defineModels,
     models,
     mountWithCleanup,
     serverState,
 } from "@web/../tests/web_test_helpers";
 import { encodeTranslation } from "../src/translation.patch";
-import { urlParams } from "../src/translation_mode_service";
+import { urlParams } from "../src/translation_mode_plugin";
 
 class IrConfigParameter extends models.ServerModel {
     _name = "ir.config_parameter";
@@ -83,7 +82,7 @@ test("side panel with no translation", async () => {
 
     expect(document.body).not.toHaveClass("o-body-with-translate-side-panel");
 
-    assignTestEnv({ debug: "translate" });
+    serverState.debug = "translate";
     await mountWithCleanup(/* xml */ `
         <div class="sample-element">
             ${mockEncodedTranslation("Component", "Component")}
@@ -105,7 +104,7 @@ test("side panel with translations", async () => {
 
     expect(document.body).not.toHaveClass("o-body-with-translate-side-panel");
 
-    assignTestEnv({ debug: "translate" });
+    serverState.debug = "translate";
     await mountWithCleanup(/* xml */ `
         <div class="sample-element">
             ${mockEncodedTranslation("Component", "Composant")}

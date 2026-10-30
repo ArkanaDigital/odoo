@@ -5,7 +5,6 @@ from stdnum import (
 from stdnum.at import uid as at_en
 from stdnum.au import acn as au_acn, abn as au_abn
 from stdnum.be import vat as be_vat
-from stdnum.br import cpf as br_cn
 from stdnum.ch import uid as ch_uid
 from stdnum.dk import cvr as dk_cvr
 from stdnum.ee import registrikood as ee_en
@@ -19,10 +18,15 @@ from stdnum.ma import ice as ma_ice
 from stdnum.no import orgnr as no_en
 from stdnum.ro import cui as ro_cui
 from stdnum.se import orgnr as se_en
-from stdnum.sg import uen as sg_en
 
-from odoo.tools.translate import LazyTranslate
-from odoo.tools.partner_identifier_validation import nl_kvk_validate, nl_oin_validate, pk_cn_validate, th_branch_code_validate
+from odoo.tools.translate import LazyGettext, LazyTranslate
+from odoo.tools.partner_identifier_validation import (
+    nl_kvk_validate,
+    nl_oin_validate,
+    pk_cn_validate,
+    sg_uen_validate,
+    th_branch_code_validate,
+)
 
 from odoo.addons.base.models.res_country import (
     FR_AND_OVERSEAS_TERRITORIES,
@@ -45,6 +49,10 @@ GLN_SHARED_VALS = {
     'validation_function': ean.validate,
 }
 
+TIN_CATEGORIES = ['TIN', 'VAT', 'GST']
+INDIVIDUAL_CATEGORIES = ['CN']  # natural persons
+COMPANY_CATEGORIES = [*TIN_CATEGORIES, 'EN']  # legal entities (tax + enterprise numbers)
+
 TIN_METADATA = {
     'AD_VAT': {  # NRT
         # https://www.oecd.org/tax/automatic-exchange/crs-implementation-and-assistance/tax-identification-numbers/Andorra-TIN.pdf
@@ -65,6 +73,7 @@ TIN_METADATA = {
         'countries': ['AL'],
     },
     'AR_CUIT': {
+        'sequence': 10,
         'placeholder': '20055361682',
         'category': 'TIN',
         'countries': ['AR'],
@@ -100,6 +109,7 @@ TIN_METADATA = {
         'countries': ['BG'],
     },
     'BR_TIN': {  # CNPJ
+        'label': _lt('CNPJ'),
         'placeholder': _lt('16.727.230/0001-97'),
         'help': _lt('Brazilian company identification number. 14 digits.'),
         'category': 'TIN',
@@ -156,6 +166,7 @@ TIN_METADATA = {
         'countries': ['DO'],
     },
     'EC_RUC': {
+        'label': _lt('RUC'),
         'placeholder': _lt('1792060346001 or 1792060346'),
         'category': 'TIN',
         'countries': ['EC'],
@@ -339,6 +350,13 @@ TIN_METADATA = {
         'category': 'GST',
         'countries': ['NZ'],
     },
+    'PA_RUC': {
+        'sequence': 1,
+        'label': _lt('RUC'),
+        'help': _lt('Registro Único de Contribuyentes: the DGI tax ID for companies and registered individuals.'),
+        'category': 'TIN',
+        'countries': ['PA'],
+    },
     'PE_RUC': {
         'placeholder': _lt('10XXXXXXXXY or 20XXXXXXXXY or 15XXXXXXXXY or 16XXXXXXXXY or 17XXXXXXXXY'),
         'category': 'TIN',
@@ -496,15 +514,6 @@ ADDITIONAL_IDENTIFIERS_METADATA = {
         'examples': ['0477472701', '1477472701'],
         'countries': ['BE'],
     },
-    'BR_CN': {  # CPF
-        'sequence': 10,
-        'label': _lt('CPF'),
-        'placeholder': _lt('390.533.447-05'),
-        'help': _lt('Brazilian individual identification number.'),
-        'validation_function': br_cn.validate,
-        'category': 'CN',
-        'countries': ['BR'],
-    },
     'CH_EN': {
         'sequence': 10,
         'scheme': '0183',
@@ -581,6 +590,14 @@ ADDITIONAL_IDENTIFIERS_METADATA = {
         'validation_function': ee_en.validate,
         'countries': ['EE'],
     },
+    'EG_NIN': {
+        'sequence': 10,
+        'category': 'CN',
+        'label': _lt('National ID'),
+        'help': _lt('Egyptian National ID (14 digits) used to identify individuals.'),
+        'placeholder': '12345678901234',
+        'countries': ['EG'],
+    },
     'ES_EN': {
         'label': _lt('Company ID'),
         'category': 'EN',
@@ -621,6 +638,7 @@ ADDITIONAL_IDENTIFIERS_METADATA = {
         'label': _lt('SIREN'),
         'help': _lt('French 9-digit business identification number.'),
         'placeholder': '552008443',
+        'display_optional': 'show',
         'category': 'EN',
         'validation_function': fr_siren.validate,
         'countries': FR_AND_OVERSEAS_TERRITORIES,
@@ -631,6 +649,7 @@ ADDITIONAL_IDENTIFIERS_METADATA = {
         'label': _lt('SIRET'),
         'help': _lt('French 14-digit establishment identification number (SIREN + NIC).'),
         'placeholder': '33417522101010',
+        'display_optional': 'show',
         'category': 'EN',
         'validation_function': fr_siret.validate,
         'countries': FR_AND_OVERSEAS_TERRITORIES,
@@ -752,7 +771,7 @@ ADDITIONAL_IDENTIFIERS_METADATA = {
     'MY_EN': {
         'sequence': 10,
         'scheme': '0230',
-        'label': _lt('Company ID'),
+        'label': _lt('SSM No.'),
         'help': _lt('Malaysian company registration number.'),
         'category': 'EN',
         'countries': ['MY'],
@@ -843,85 +862,6 @@ ADDITIONAL_IDENTIFIERS_METADATA = {
         'category': 'EN',
         'countries': ['RS'],
     },
-    'SA_CRN': {
-        'placeholder': _lt('1010123456'),
-        'help': _lt('Saudi Arabia Commercial Registration Number'),
-        'label': _lt('Commercial Registration Number'),
-        'category': 'EN',
-        'countries': ['SA'],
-        'sequence': 11,
-    },
-    'SA_MOM': {
-        'placeholder': _lt('MOMRAH License Number'),
-        'help': _lt('Saudi Arabia MOMRAH License Number'),
-        'label': _lt('MOMRAH License'),
-        'countries': ['SA'],
-        'sequence': 12,
-    },
-    'SA_MLS': {
-        'placeholder': _lt('MHRSD License Number'),
-        'help': _lt('Saudi Arabia MHRSD License Number'),
-        'label': _lt('MHRSD License'),
-        'countries': ['SA'],
-        'sequence': 13,
-    },
-    'SA_700': {
-        'placeholder': _lt('700 123 4567'),
-        'help': _lt('Saudi Arabia 700 Number'),
-        'label': _lt('700 Number'),
-        'countries': ['SA'],
-        'sequence': 14,
-    },
-    'SA_SAG': {
-        'placeholder': _lt('MISA License Number'),
-        'help': _lt('Saudi Arabia MISA License Number'),
-        'label': _lt('MISA License'),
-        'countries': ['SA'],
-        'sequence': 15,
-    },
-    'SA_NAT': {
-        'placeholder': _lt('1099123456'),
-        'help': _lt('Saudi Arabia National ID Number'),
-        'label': _lt('National ID'),
-        'countries': ['SA'],
-        'sequence': 16,
-    },
-    'SA_GCC': {
-        'placeholder': _lt('GCC ID Number'),
-        'help': _lt('Saudi Arabia GCC ID Number'),
-        'label': _lt('GCC ID'),
-        'countries': ['SA'],
-        'sequence': 17,
-    },
-    'SA_IQA': {
-        'placeholder': _lt('Iqama ID Number'),
-        'help': _lt('Saudi Arabia Iqama ID Number'),
-        'label': _lt('Iqama Number'),
-        'countries': ['SA'],
-        'sequence': 18,
-    },
-    'SA_PAS': {
-        'placeholder': _lt('A00012345'),
-        'help': _lt('Saudi Arabia Passport ID Number'),
-        'label': _lt('Passport ID'),
-        'countries': ['SA'],
-        'sequence': 19,
-    },
-    'SA_OTH': {
-        'placeholder': _lt('Other ID Number'),
-        'help': _lt('Saudi Arabia Other ID Number'),
-        'label': _lt('Other ID'),
-        'countries': ['SA'],
-        'sequence': 20,
-    },
-    'SA_TIN': {
-        'sequence': 10,
-        'placeholder': _lt('3002707692 [Tax identification number]'),
-        'category': 'TIN',
-        'help': _lt('Saudi Arabia Tax Identification Number'),
-        'label': _lt('Tax Identification Number'),
-        'countries': ['SA'],
-    },
     'SE_EN': {
         'sequence': 10,
         'scheme': '0007',
@@ -940,15 +880,22 @@ ADDITIONAL_IDENTIFIERS_METADATA = {
         'help': _lt('Singapore Unique Entity Number.'),
         'placeholder': '00192200M',
         'category': 'EN',
-        'validation_function': sg_en.validate,
+        'validation_function': sg_uen_validate,
         'countries': ['SG'],
     },
     'SK_EN': {
         'sequence': 10,
-        'scheme': '0245',
         'label': _lt('Company ID'),
         'help': _lt('Slovak company identification number (IČO).'),
         'category': 'EN',
+        'countries': ['SK'],
+    },
+    'SK_TIN': {
+        'sequence': 20,
+        'scheme': '0245',
+        'label': _lt('DIČ'),
+        'help': _lt('Slovak tax identification number (DIČ).'),
+        'category': 'TIN',
         'countries': ['SK'],
     },
     'TH_BRANCH_CODE': {
@@ -984,6 +931,12 @@ ADDITIONAL_IDENTIFIERS_METADATA = {
         'category': 'EN',
         'countries': ['UZ'],
     },
+    'PASSPORT': {
+        'label': _lt('Passport'),
+        'help': _lt('Passport number.'),
+        'category': 'CN',
+        'countries': ['AR', 'PE', 'CO', 'UY', 'EC'],
+    },
     # Keep international identifiers at the end of the dict
     'DUNS': {
         'sequence': 100,
@@ -1001,6 +954,7 @@ ADDITIONAL_IDENTIFIERS_METADATA = {
         'display_optional': 'hide',
         'help': _lt('Global Location Number, used to identify parties and locations.'),
         'countries': False,
+        'synced': False,
     },
     'OTHER': {  # default non-structured identifier
         'sequence': 1000,
@@ -1047,8 +1001,17 @@ def get_deduced_identifiers(key, value):
         deduced['HU_VAT'] = get_prefixed_identifier('HU', value)[:10]  # "HU" + 8 digits
     if key == 'SG_GST':
         deduced['SG_UEN'] = value
+    if key == 'SK_VAT':
+        deduced['SK_TIN'] = get_non_prefixed_identifier('SK', value)
     if key == 'RO_VAT':
         deduced['RO_EN'] = get_non_prefixed_identifier('RO', value)
+    if key == 'FI_VAT':
+        deduced['FI_EN'] = get_non_prefixed_identifier('FI', value)  # FI + Y-tunnus (8 digits)
+    if key == 'NO_VAT':
+        deduced['NO_EN'] = get_non_prefixed_identifier('NO', value)[:9]  # NO + organisation number (9 digits) + optional 'MVA'
+    if key == 'SE_VAT':
+        deduced['SE_EN'] = get_non_prefixed_identifier('SE', value)[:10]  # SE + organisation number (10 digits) + '01'
+
     return deduced
 
 
@@ -1085,6 +1048,8 @@ def validation_error_message(env, identifier_label, identifier_value, example=No
     is rejected.
     """
     example = env._("\nExample: %(example)s", example=example) if example else ""
+    if isinstance(identifier_label, LazyGettext):
+        identifier_label = env._(identifier_label)  # pylint: disable=gettext-variable
     return env._(
         "Invalid identifier: %(identifier_value)s%(identifier_label)s.%(example)s",
         identifier_value=identifier_value,

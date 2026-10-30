@@ -2,14 +2,14 @@
 <odoo>
     <data>
         <template id="slide_content_detailed" inherit_id="website_slides.slide_content_detailed">
-            <xpath expr="//div[hasclass('o_wslides_lesson_content_type')]" position="inside">
+            <xpath expr="//div[@t-else and hasclass('o_wslides_lesson_content_type')]" position="inside">
                 <div t-if="slide.slide_category == 'certification' and not channel_progress[slide.id].get('completed')" class="col mt32 mb8 text-center">
                     <a role="button"
                         class="btn btn-primary btn-lg"
                         id="start_certification"
                         t-att-href="'/slides_survey/slide/get_certification_url?slide_id=%s' %(slide.id)"
                         target="_blank">
-                        <i class="oi oi-fw" data-icon="school" role="img"/>
+                        <i class="oi oi-fw" data-icon="school" role="img" aria-hidden="true"/>
                         <t t-if="slide.channel_id.is_member and slide.channel_id.active">Begin Certification</t>
                         <t t-else="">Test Certification</t>
                     </a>
@@ -22,7 +22,7 @@
                 </div>
                 <div t-if="slide.slide_category == 'certification' and slide.channel_id.can_upload" class="col mb8 d-flex justify-content-center">
                     <a class="my-4" t-att-href="'/odoo/survey.survey/' + str(slide.survey_id.id)">
-                        <i class="oi me-1" data-icon="east"/>Add Questions to this Survey
+                        <i class="oi me-1" data-icon="east" role="img" aria-hidden="true"/>Add Questions to this Survey
                     </a>
                 </div>
             </xpath>

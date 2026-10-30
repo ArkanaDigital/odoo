@@ -6,6 +6,7 @@ import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { GoogleTranslator, ChatGPTTranslator } from "./translator";
 import { DebugModePlugin } from "@web/core/debug_mode_plugin";
+import { user } from "@web/core/user";
 
 const RTL_LANGUAGES = new Set(["ar", "he", "fa", "ur", "yi", "ps", "ku", "sd", "ug", "dv", "ha"]);
 
@@ -57,19 +58,20 @@ const POSTPROCESS_GENERATED_CONTENT = (content, baseContainer, document) => {
 };
 
 export class TranslateDialog extends Component {
-    static template = "html_editor.TranslateDialog";
     static components = { Dialog, Dropdown, DropdownItem };
+    static template = "html_editor.TranslateDialog";
+
     props = useProps({
-        insert: t.function(),
-        close: t.function(),
-        sanitize: t.function(),
         baseContainer: t.string().optional("DIV"),
+        close: t.function(),
+        document: t.customValidator(t.object(), (p) => p.nodeType === Node.DOCUMENT_NODE),
+        insert: t.function(),
         originalText: t.string(),
+        sanitize: t.function(),
         targetLang: t.object({
             languageCode: t.string(),
             languageName: t.string(),
         }),
-        document: t.customValidator(t.any(), (p) => p.nodeType === Node.DOCUMENT_NODE),
     });
 
     debugMode = usePlugin(DebugModePlugin);
@@ -78,7 +80,7 @@ export class TranslateDialog extends Component {
         const google_translate = new GoogleTranslator("translate_google", "Google Translate");
         this.translators = [google_translate];
 
-        if (this.debugMode.isActive()) {
+        if (this.debugMode.isActive() && user.isInternalUser) {
             const chatgpt_translate = new ChatGPTTranslator("translate_gpt", "ChatGPT");
             this.translators.push(chatgpt_translate);
         }

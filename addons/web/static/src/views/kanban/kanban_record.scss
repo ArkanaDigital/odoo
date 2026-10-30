@@ -1,5 +1,8 @@
 .o_kanban_record {
-    background-color: $o-view-background-color;
+    /* Scoped here rather than on the root so nested rules keep their specificity. */
+    &:not(.o_kanban_ghost) {
+        background-color: var(--o-view-background-color);
+    }
 
     &:first-of-type {
         margin-top: 1px;
@@ -10,12 +13,12 @@
     }
 
     &.o-kanban-button-new {
-        border-radius: 0;
+        border-radius: var(--Card-border-radius-top, 0) var(--Card-border-radius-top, 0) var(--Card-border-radius-bottom, 0) var(--Card-border-radius-bottom, 0);
         text-align: center;
         justify-content: center;
 
         &:focus-within, &:hover {
-            background-color: $gray-100;
+            background-color: var(--gray-100);
         }
     }
 
@@ -23,11 +26,8 @@
         background-color: var(--KanbanColumn__highlight-selected);
     }
 
-    // Follow the card's top corner (only rounded on E.E) (see --Card-border-radius-top).
-    // Falls back to square. Takes the border width into account.
     .o_dropdown_kanban .btn {
-        border-radius: 0;
-        border-top-right-radius: calc(var(--Card-border-radius-top, 0px) - var(--Card-border-width, #{$border-width}));
+        border-radius: calc(var(--o-bs-border-radius-lg) - var(--o-bs-spacer-1));
     }
 
     @media (pointer: fine) {
@@ -41,19 +41,23 @@
         }
     }
 
-    // Records colours
+    /* Records colours */
     .o_kanban_record_colored:after {
-        @include o-position-absolute(0, auto, 0, -$border-width);
+        position: absolute;
+        top: 0;
+        left: calc(var(--o-bs-border-width) * -1);
+        bottom: 0;
+        right: auto;
         content: "";
     }
 
     @for $size from 2 through length($o-colors) {
-        // Note: the first color is not defined as it is the 'no color' for kanban
+        /* Note: the first color is not defined as it is the 'no color' for kanban */
         &.o_kanban_color_#{$size - 1}::after {
             $-color: nth($o-colors, $size);
 
-            border-left: $border-width solid rgba($-color, 0.5);
-            border-right: ($border-width * 2) solid $-color;
+            border-left: var(--border-width) solid rgba($-color, 0.5);
+            border-right: calc(var(--o-bs-border-width) * 2) solid $-color;
         }
     }
 }
@@ -64,21 +68,21 @@
 }
 
 .o_kanban_ungrouped .o_kanban_record:focus-visible, .o_kanban_selection_active .o_kanban_ungrouped .o_kanban_record:focus {
-    @include media-breakpoint-up(md) {
+    @media screen and (min-width: 768px), print and (min-width: 188mm) {
         outline: 3px solid var(--KanbanColumn__highlight-selected-border);
         box-shadow: none;
     }
 }
 
 .o_kanban_selection_available .o_kanban_record.o_record_selection_available {
-    &::after {
+    &::before {
         content: '';
         position: absolute;
         inset: 0;
         background-color: rgba(0, 0, 0, 0.1);
     }
     &:hover {
-        &::after {
+        &::before {
             background-color: rgba(0, 0, 0, 0.5);
         }
         .o_record_selection_tooltip {
@@ -91,15 +95,15 @@
     }
 }
 
-@include media-breakpoint-down(md) {
+@media screen and (max-width: 767.98px), print and (max-width: 187.98mm) {
     .o_field_x2many_kanban.o_kanban_mobile .o_kanban_record:not(.o_kanban_ghost):not(.o-kanban-button-new) {
         border: none;
 
         &:not(:last-of-type) {
-            border-bottom: $border-width solid $border-color;
+            border-bottom: var(--border-width) solid var(--o-bs-border-color);
         }
     }
     .o_kanban_ungrouped .o_kanban_record {
-        --KanbanRecord-border-width: #{$border-width} 0;
+        --KanbanRecord-border-width: var(--border-width) 0;
     }
 }

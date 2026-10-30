@@ -59,7 +59,8 @@ class EventRegistration(models.Model):
     date_closed = fields.Datetime(
         string='Attended Date', compute='_compute_date_closed',
         readonly=False, store=True)
-    event_begin_date = fields.Datetime("Event Start Date", compute="_compute_event_begin_date", search="_search_event_begin_date")
+    event_begin_date = fields.Datetime(
+        "Event Start Date", compute="_compute_event_begin_date", store=True)  # Stored for the cohort view and portal 'order_by'
     event_end_date = fields.Datetime("Event End Date", compute="_compute_event_end_date", search="_search_event_end_date")
     event_date_range = fields.Char("Date Range", compute="_compute_date_range")
     event_organizer_id = fields.Many2one(string='Event Organizer', related='event_id.organizer_id', readonly=True)
@@ -177,17 +178,10 @@ class EventRegistration(models.Model):
                 lang_code=registration.partner_id.lang,
             )
 
-    @api.depends("event_id", "event_slot_id")
+    @api.depends("event_id", "event_slot_id", "event_id.date_begin", "event_slot_id.start_datetime")
     def _compute_event_begin_date(self):
         for registration in self:
             registration.event_begin_date = registration.event_slot_id.start_datetime or registration.event_id.date_begin
-
-    @api.model
-    def _search_event_begin_date(self, operator, value):
-        return Domain.OR([
-            ["&", ("event_slot_id", "!=", False), ("event_slot_id.start_datetime", operator, value)],
-            ["&", ("event_slot_id", "=", False), ("event_id.date_begin", operator, value)],
-        ])
 
     @api.depends("event_id", "event_slot_id")
     def _compute_event_end_date(self):

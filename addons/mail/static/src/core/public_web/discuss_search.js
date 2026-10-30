@@ -1,18 +1,29 @@
-import { propSignal } from "@mail/utils/common/hooks";
-import { Component, signal, types, useEffect, useProps } from "@odoo/owl";
+import { SearchInput } from "@mail/core/common/search_input";
+import { propSignal, useSearch } from "@mail/utils/common/hooks";
+import { Component, computed, signal, types, useEffect, useProps } from "@odoo/owl";
 import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
+import { useService } from "@web/core/utils/hooks";
 
 export class DiscussSearch extends Component {
     static template = "mail.DiscussSearch";
-    static components = {};
+    static components = { SearchInput };
 
-    searchInput = signal();
+    searchInput = signal.ref();
 
     setup() {
+        this.store = useService("mail.store");
         this.autofocus = propSignal("autofocus", types.number(), { optional: true });
-        this.searchTerm = propSignal("searchTerm", types.string());
+        this.messagingMenuUiState = propSignal(
+            "messagingMenuUiState",
+            types.instanceOf(this.store.MessagingMenuUIState)
+        );
         this.props = useProps({
             class: types.or([types.string(), types.object()]).optional(),
+        });
+        this.search = useSearch({
+            searchTerm: computed(() => this.messagingMenuUiState().searchTerm, {
+                set: (searchTerm) => (this.messagingMenuUiState().searchTerm = searchTerm),
+            }),
         });
         useEffect(() => {
             if (this.autofocus?.()) {
@@ -35,11 +46,11 @@ export class DiscussSearch extends Component {
         if (getActiveHotkey(ev) === "escape") {
             ev.stopPropagation();
             ev.preventDefault();
-            this.searchTerm.set("");
+            this.onClearSearch();
         }
     }
 
     onClearSearch() {
-        this.searchTerm.set("");
+        this.search.searchTerm = "";
     }
 }

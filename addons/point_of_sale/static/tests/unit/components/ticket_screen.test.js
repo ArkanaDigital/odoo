@@ -1,6 +1,9 @@
 import { test, expect, describe, waitFor, waitForNone } from "@odoo/hoot";
-import { mountWithCleanup, onRpc } from "@web/../tests/web_test_helpers";
-import { click } from "@odoo/hoot-dom";
+import { mountWithCleanup, onRpc, patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { click, animationFrame } from "@odoo/hoot-dom";
+import { advanceTime } from "@odoo/hoot-mock";
+import { session } from "@web/session";
+import { BarcodePlugin } from "@barcodes/barcode_plugin";
 import { setupPosEnv, makeOrder, getFilledOrder } from "@point_of_sale/../tests/unit/utils";
 import { TicketScreen } from "@point_of_sale/app/screens/ticket_screen/ticket_screen";
 import { definePosModels } from "@point_of_sale/../tests/unit/data/generate_model_definitions";
@@ -421,9 +424,12 @@ test("showSubPads", async () => {
     const order = await getFilledOrder(store);
     const ticketScreen = await mountWithCleanup(TicketScreen);
     ticketScreen.onClickOrder(order);
-    expect(ticketScreen.showSubPads).toBe(false);
+    await animationFrame();
+    expect(document.querySelectorAll(".subpads").length).toBe(0);
     order.state = "paid";
-    expect(ticketScreen.showSubPads).toBe(true);
+    ticketScreen.onClickOrder(order);
+    await animationFrame();
+    expect(store.accessRight.canShowPads).toBe(true);
 });
 
 test("showInvoiceButton", async () => {
@@ -507,4 +513,57 @@ test("refund keeps the fiscal position of the refunded order when the default pr
     expect(refund.fiscal_position_id?.id).toBe(mappedFp.id);
     expect(appliedTaxIds(refund.lines[0])).toEqual([2]);
     expect(refund.priceIncl).toBe(-250);
+});
+
+test("scanning a barcode on the ticket screen does not feed the refund quantity", async () => {
+    // The buffer only drops fast multi-key sequences outside of test mode.
+    patchWithCleanup(session, { test_mode: false });
+
+    const store = await setupPosEnv();
+    const order = store.addNewOrder({});
+    await store.addLineToOrder(
+        { product_tmpl_id: store.models["product.template"].get(5), qty: 10 },
+        order
+    );
+    order.state = "paid";
+    const line = order.lines[0];
+
+    const comp = await mountWithCleanup(TicketScreen, { props: {} });
+    comp.setSelectedOrder(order);
+    comp.state.selectedOrderlineIds[order.id] = line.id;
+
+    const dialogTitles = [];
+    patchWithCleanup(comp.dialog, {
+        add: (_component, props) => dialogTitles.push(props.title.toString()),
+    });
+
+    // A scanner types the barcode a few ms per character.
+    for (const char of "5901234123457") {
+        window.dispatchEvent(new KeyboardEvent("keyup", { key: char }));
+        await advanceTime(10);
+    }
+    await advanceTime(BarcodePlugin.maxTimeBetweenKeysInMs);
+
+    expect(comp.getToRefundDetail(line).qty).toBe(0);
+    expect(dialogTitles).toEqual([]);
+});
+
+test("searching by customer keeps the orders of a nameless address contact", async () => {
+    const store = await setupPosEnv();
+    const company = store.models["res.partner"].get(3);
+    const address = store.models["res.partner"].create({
+        name: false,
+        parent_name: company.name,
+    });
+    const companyOrder = store.addNewOrder({ partner_id: company });
+    const addressOrder = store.addNewOrder({ partner_id: address });
+    expect(addressOrder.getPartnerName()).toBe(company.name);
+
+    const comp = await mountWithCleanup(TicketScreen, {
+        props: { stateOverride: { search: { fieldName: "PARTNER", searchTerm: company.name } } },
+    });
+    expect(comp.getFilteredOrderList().map((order) => order.id)).toEqual(
+        [companyOrder.id, addressOrder.id],
+        { message: "the address contact is searched by its company name" }
+    );
 });

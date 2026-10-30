@@ -15,6 +15,11 @@ class TestAccountPayment(AccountTestInvoicingWithBanksCommon, MailCommon):
     _test_user_groups = None  # FIXME list needed groups
 
     @classmethod
+    def _activate_multi_company(cls):
+        # Disable the MailCommon company creation that clashes with the accounting ones
+        return
+
+    @classmethod
     def setUpClass(cls):
         super().setUpClass()
 
@@ -470,6 +475,9 @@ class TestAccountPayment(AccountTestInvoicingWithBanksCommon, MailCommon):
         """ Ensure the 'partner_bank_id' is well computed on payments. When the payment is inbound, the money must be
         received by a bank account linked to the company. In case of outbound payment, the bank account must be found
         on the partner.
+
+        The 'return_partner_bank_id' must be computed the other way around: for an outbound payment it must be a
+        bank account of the company, while for an inbound payment it must be a bank account of the partner.
         """
         payment = self.env['account.payment'].create({
             'journal_id': self.bank_journal_1.id,
@@ -481,12 +489,16 @@ class TestAccountPayment(AccountTestInvoicingWithBanksCommon, MailCommon):
         self.assertRecordValues(payment, [{
             'available_partner_bank_ids': self.partner_a.bank_ids.ids,
             'partner_bank_id': self.partner_bank_account1.id,
+            'available_return_partner_bank_ids': [],
+            'return_partner_bank_id': False,
         }])
 
         payment.payment_type = 'inbound'
         self.assertRecordValues(payment, [{
             'available_partner_bank_ids': [],
             'partner_bank_id': False,
+            'available_return_partner_bank_ids': self.partner_a.bank_ids.ids,
+            'return_partner_bank_id': self.partner_bank_account1.id,
         }])
 
         self.bank_journal_2.bank_account_id = self.comp_bank_account2
@@ -496,6 +508,8 @@ class TestAccountPayment(AccountTestInvoicingWithBanksCommon, MailCommon):
         self.assertRecordValues(payment, [{
             'available_partner_bank_ids': self.comp_bank_account2.ids,
             'partner_bank_id': self.comp_bank_account2.id,
+            'available_return_partner_bank_ids': self.partner_a.bank_ids.ids,
+            'return_partner_bank_id': self.partner_bank_account1.id,
         }])
 
     def test_reconciliation_with_old_oustanding_account(self):
@@ -661,6 +675,33 @@ class TestAccountPayment(AccountTestInvoicingWithBanksCommon, MailCommon):
         register_payment_and_assert_state(invoice_2, 100.0, is_community=False)
         self.assertFalse(invoice_2.reconciled_payment_ids.move_id)
 
+    def test_payment_is_matched_when_bill_reconciled_afterwards(self):
+        """ Ensure the is_matched field of the payment is updated when the bill is reconciled """
+        with patch.object(self.env.registry['account.move'], '_get_invoice_in_payment_state', return_value='in_payment'):
+            # Set the outbound payment method line to have no outstanding account, so the payment has no journal entry
+            self.company_data['default_journal_bank'].outbound_payment_method_line_ids.payment_account_id = False
+            bill = self.init_invoice('in_invoice', post=True, amounts=[10], taxes=[])
+            payment = self.env['account.payment.register'] \
+                .with_context(active_model='account.move', active_ids=bill.ids) \
+                .create({})._create_payments()
+            self.assertFalse(payment.move_id)
+            self.assertRecordValues(payment, [{'state': 'paid', 'is_matched': False}])
+
+            # Invalidate to force the state to be recomputed, as in a new request
+            self.env.invalidate_all()
+            payable_account = self.company_data['default_account_payable']
+            counterpart = self.env['account.move'].create({
+                'line_ids': [
+                    Command.create({'account_id': payable_account.id, 'balance': 10}),
+                    Command.create({'account_id': self.company_data['default_account_expense'].id, 'balance': -10}),
+                ],
+            })
+            counterpart.action_post()
+            (bill + counterpart).line_ids.filtered(lambda line: line.account_id == payable_account).reconcile()
+
+            self.assertEqual(bill.payment_state, 'paid')
+            self.assertRecordValues(payment, [{'state': 'reconciled', 'is_matched': True}])
+
     def test_payment_confirmation_with_bank_outstanding_account(self):
         """ Ensures that when the outstanding account of the payment method is set to a bank,
             the validation process of a payment is skipped therefore reaching paid status after confirmation of payment. """
@@ -823,8 +864,8 @@ class TestAccountPayment(AccountTestInvoicingWithBanksCommon, MailCommon):
         self.assertEqual(payment.name, f'PBNK1/{year}/00002')
 
     def test_vendor_payment_save_user_selected_journal_id(self):
-        journal_bank = self.env['account.journal'].search([('name', '=', 'Bank')])
-        journal_cash = self.env['account.journal'].search([('name', '=', 'Cash')])
+        journal_bank = self.env['account.journal'].search([('name', '=', 'Bank'), ('company_id', '=', self.env.company.id)])
+        journal_cash = self.env['account.journal'].search([('name', '=', 'Cash'), ('company_id', '=', self.env.company.id)])
 
         self.partner.property_outbound_payment_method_line_id = journal_cash.outbound_payment_method_line_ids
         payment = self.env['account.payment'].create({

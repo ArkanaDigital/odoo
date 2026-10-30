@@ -1,11 +1,12 @@
 import { useSelection } from "@mail/utils/common/hooks";
 
-import { Component, signal, t, useProps } from "@odoo/owl";
+import { Component, signal, t, usePlugin, useProps } from "@odoo/owl";
 
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { useEmojiPicker } from "@web/core/emoji_picker/emoji_picker";
-import { useAutofocus, useService } from "@web/core/utils/hooks";
+import { UIPlugin } from "@web/core/ui/ui_plugin";
+import { useAutofocus } from "@web/core/utils/hooks";
 import { isEventHandled } from "@web/core/utils/misc";
 
 export class CreatePollOptionDialog extends Component {
@@ -17,6 +18,7 @@ export class CreatePollOptionDialog extends Component {
 
     setup() {
         this.props = useProps({
+            autofocus: t.boolean().optional(false),
             deletable: t.boolean(),
             model: t.object({
                 direction: t.selection(["forward", "backward", "none"]).optional(),
@@ -26,8 +28,10 @@ export class CreatePollOptionDialog extends Component {
             }),
             onClickRemove: t.function([t.instanceOf(MouseEvent)]),
         });
-        useAutofocus({ ref: this.rootRef });
-        this.ui = useService("ui");
+        if (this.props.autofocus) {
+            useAutofocus({ ref: this.rootRef, mobile: true });
+        }
+        this.ui = usePlugin(UIPlugin);
         useSelection({
             ref: this.rootRef,
             model: this.props.model,
@@ -41,7 +45,7 @@ export class CreatePollOptionDialog extends Component {
         this.emojiPicker = useEmojiPicker(undefined, {
             onSelect: (emoji) => {
                 this.props.model.emoji = emoji;
-                if (!this.ui.isSmall) {
+                if (!this.ui.isSmall()) {
                     this.rootRef()?.focus();
                 }
             },
@@ -49,7 +53,7 @@ export class CreatePollOptionDialog extends Component {
     }
 
     get emojiPickerAnchor() {
-        return this.ui.isSmall ? undefined : this.pickerRef;
+        return this.ui.isSmall() ? undefined : this.pickerRef;
     }
 
     onClickEmojiDropdownButton(ev) {

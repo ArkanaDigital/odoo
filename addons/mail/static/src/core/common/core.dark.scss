@@ -1,17 +1,25 @@
 .o-mail-DiscussApp-sidebarBgColor {
-    background-color: mix($white, $o-webclient-background-color, 15%) !important;
+    background-color: color-mix(in srgb, var(--white) 15%, var(--o-webclient-background-color)) !important;
 }
 
 a.o_mail_redirect, a.o_channel_redirect, a.o_message_redirect_transformed {
-    @include o-mention-variant(rgba(lighten($o-action, 5%), .075), rgba(lighten($o-action, 10%), .25), lighten($o-action, 10%), rgba(lighten($o-action, 5%), .2), rgba(lighten($o-action, 5%), .3), lighten($o-action, 10%));
+    @include o-mention-variant(rgba(lighten($o-action, 5%), .15), rgba(lighten($o-action, 15%), .15), lighten($o-action, 35%), rgba(lighten($o-action, 5%), .25), rgba(lighten($o-action, 15%), .35), lighten($o-action, 35%));
 }
 
 a.o-discuss-mention {
-    @include o-mention-variant(rgba(lighten($o-action, 5%), .075), rgba(lighten($o-action, 10%), .25), lighten($o-action, 10%), rgba(lighten($o-action, 5%), .075), rgba(lighten($o-action, 10%), .25), lighten($o-action, 10%));
+    @include o-mention-variant(rgba(lighten($o-action, 5%), .15), rgba(lighten($o-action, 15%), .15), lighten($o-action, 35%), rgba(lighten($o-action, 5%), .15), rgba(lighten($o-action, 15%), .15), lighten($o-action, 35%));
+}
+
+.o-discuss-badge {
+    --mail-discuss-badge-mutedBg: var(--gray-500);
+}
+
+.o-discuss-ellipsisButton {
+    --o-discuss-ellipsisButton-mutedBorderOpacity: .75;
 }
 
 .o-discuss-text-body {
-    color: $o-main-text-color !important;
+    color: var(--o-main-text-color) !important;
 }
 
 .o-discuss-warningBadge .i {
@@ -19,5 +27,5 @@ a.o-discuss-mention {
 }
 
 .o-secondary {
-    --o-secondary: #{$o-gray-700};
+    --o-secondary: var(--o-gray-700);
 }

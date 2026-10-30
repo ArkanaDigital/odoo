@@ -18,6 +18,12 @@ class HrEmployeeDeparture(models.Model):
     def _get_domain_employee_id(self):
         return [('active', '=', True), ('company_id', 'in', self.env.companies.ids)]
 
+    def _get_departure_reason_domain(self):
+        return []
+
+    def _get_default_departure_reason(self):
+        return self.env['hr.departure.reason'].search(self._get_departure_reason_domain(), limit=1)
+
     employee_id = fields.Many2one(
         'hr.employee', string='Employee', required=True,
         default=_get_default_employee_id,
@@ -29,40 +35,33 @@ class HrEmployeeDeparture(models.Model):
     departure_reason_id = fields.Many2one(
         "hr.departure.reason",
         string="End Reason",
-        default=lambda self: self.env['hr.departure.reason'].search([], limit=1),
+        domain=lambda self: self._get_departure_reason_domain(),
+        default=lambda self: self._get_default_departure_reason(),
         required=True, index=True, ondelete='restrict')
     departure_description = fields.Html(string="Additional Information")
     dismissal_date = fields.Date(string="Dismissal Date", default=fields.Date.today, required=True,
         help="Date at which the departure process starts. Differs from the actual departure date in case of a notice period.")
     departure_date = fields.Date(string="Departure Date", compute="_compute_departure_date",
         store=True, readonly=False, help="Date at which the departure actually takes place.")
-    action_date = fields.Date(string="Archive Employee On", compute="_compute_action_date",
-        store=True, help="Date at which the departure actually takes place.")
+    action_date = fields.Date(string="Archive Employee On", help="Date at which the employee is archived after the departure.")
     is_user_employee = fields.Boolean(
         compute='_compute_is_user_employee',
         export_string_translation=False,
     )
     apply_immediately = fields.Boolean(compute="_compute_apply_immediately")
     apply_date = fields.Date(readonly=True)
+    last_contract_date_end = fields.Date()
+    activity_plan_ids = fields.Many2many("mail.activity.plan", string="Activity Plans")
 
     @api.depends('dismissal_date')
     def _compute_departure_date(self):
+        """Compute the departure date, equal to the dismissal date by default.
+
+        Override point for localizations with a notice period.
+        """
         # meant to be overriden in case of notice period
         for departure in self:
             departure.departure_date = departure.dismissal_date
-
-    @api.depends('departure_date')
-    def _compute_action_date(self):
-        for departure in self:
-            if not (departure.departure_date and departure.action_date):
-                continue
-            if departure.action_date < departure.departure_date:
-                departure.action_date = departure.departure_date + relativedelta(days=1)
-
-    @api.onchange("departure_date")
-    def _onchange_departure_date(self):
-        if self.departure_date:
-            self.action_date = self.departure_date + relativedelta(days=1)
 
     @api.depends('employee_id.user_id')
     def _compute_is_user_employee(self):
@@ -106,16 +105,52 @@ class HrEmployeeDeparture(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        """Create departures and end the employee's contract on the departure date.
+
+        On all versions of the contract in effect on ``departure_date``,
+        ``departure_id`` is set and ``contract_date_end`` becomes the departure
+        date (only if the version has a contract). The previous contract end
+        date is saved in ``last_contract_date_end`` (restored by
+        ``hr.employee.action_cancel_departure``). The employee is archived
+        later, by :meth:`action_register`.
+        """
         res = super().create(vals_list)
         for departure in res:
             version = departure.employee_id._get_version(departure.departure_date)
+            departure.last_contract_date_end = version.contract_date_end
+            vals = {
+                "departure_id": departure.id,
+            }
+            if version.contract_date_start:
+                vals.update({
+                    "contract_date_end": departure.departure_date,
+                })
             departure.employee_id.version_ids.filtered(
                 lambda v: v.contract_date_start == version.contract_date_start
                 and v.contract_date_end == version.contract_date_end,
-            ).write({"departure_id": departure.id})
+            ).with_context(sync_contract_dates=True).write(vals)
+            val_list = []
+            for plan in departure.activity_plan_ids:
+                val_list.append({
+                    'plan_id': plan.id,
+                    'plan_date': fields.Date.today(),
+                })
+            wizards = self.env['mail.activity.schedule'].with_context(
+                plan_mode=True,
+                active_model='hr.employee',
+                active_ids=departure.employee_id.ids,
+            ).create(val_list)
+            for wiz in wizards:
+                wiz.action_schedule_plan()
         return res
 
     def _cron_apply_departure(self):
+        """Apply the pending departures whose date is reached (daily cron).
+
+        Targets departures not applied yet whose ``action_date`` is today or
+        earlier, or, without ``action_date``, whose ``departure_date`` is
+        before today; see :meth:`action_register`.
+        """
         today = fields.Date.today()
         departures = self.search([
             ('apply_date', '=', False),
@@ -131,6 +166,19 @@ class HrEmployeeDeparture(models.Model):
         return {'type': 'ir.actions.act_window_close'}
 
     def action_register(self):
+        """Apply the departures: archive the employees (and their users) and delete later versions.
+
+        For the departures returned by :meth:`_get_departures_to_archive`:
+        versions with ``date_version`` after the departure date are deleted,
+        employees are archived (``hr.employee.action_archive``) and
+        ``apply_date`` is set to today. A user is archived only if all its
+        active employees are departing.
+
+        :return: a notification action listing archived / kept users, or a
+            window close action
+        :rtype: dict
+        :raise ValidationError: if a departure's apply date is in the future
+        """
         def _get_user_archive_notification_action(message, message_type, next_action):
             return {
                 'type': 'ir.actions.client',
@@ -143,7 +191,8 @@ class HrEmployeeDeparture(models.Model):
                 },
             }
 
-        departures_per_user = self.grouped(lambda departure: departure.employee_id.user_id)
+        departures_to_archive = self._get_departures_to_archive()
+        departures_per_user = departures_to_archive.grouped(lambda departure: departure.employee_id.user_id)
         users_to_archive = self.env['res.users']
         users_to_keep_active = self.env['res.users']
         for user, departures in departures_per_user.items():
@@ -159,7 +208,7 @@ class HrEmployeeDeparture(models.Model):
             users_to_archive.sudo().action_archive()
 
         emp_to_archive = self.env['hr.employee']
-        for departure in self:
+        for departure in departures_to_archive:
             employee = departure.employee_id
             apply_date = departure.action_date or departure.departure_date + relativedelta(days=1) or fields.Date.today()
             if apply_date > fields.Date.today():
@@ -170,12 +219,10 @@ class HrEmployeeDeparture(models.Model):
             if departure.employee_id.active:
                 emp_to_archive += employee
 
-            if employee.sudo().contract_date_start:
-                employee.sudo().write({'contract_date_end': departure.departure_date})
             employee.version_ids.filtered(lambda v: v.date_version > departure.departure_date).unlink()
 
         emp_to_archive.action_archive()
-        self.apply_date = fields.Date.context_today(self)
+        departures_to_archive.apply_date = fields.Date.context_today(self)
 
         next_action = {'type': 'ir.actions.act_window_close'}
         if users_to_archive:
@@ -192,3 +239,13 @@ class HrEmployeeDeparture(models.Model):
             next_action = _get_user_archive_notification_action(message, 'danger', next_action)
 
         return next_action
+
+    def _get_departures_to_archive(self):
+        """Return the departures that :meth:`action_register` should apply (all of ``self`` by default).
+
+        Override to exclude departures from archival, e.g. per country rules
+        (see ``l10n_be_hr_payroll``).
+
+        :rtype: hr.employee.departure
+        """
+        return self

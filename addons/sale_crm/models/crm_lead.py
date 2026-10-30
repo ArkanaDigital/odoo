@@ -7,7 +7,7 @@ from odoo.fields import Domain
 class CrmLead(models.Model):
     _inherit = 'crm.lead'
 
-    sale_amount_total = fields.Monetary(compute='_compute_sale_data', string="Sum of Orders", help="Untaxed Total of Confirmed Orders", currency_field='company_currency')
+    sale_amount_total = fields.Monetary(compute='_compute_sale_data', string="Sum of Orders", help="Total of Confirmed Orders", currency_field='company_currency')
     quotation_count = fields.Integer(compute='_compute_sale_data', string="Number of Quotations")
     sale_order_count = fields.Integer(compute='_compute_sale_data', string="Number of Sale Orders")
     order_ids = fields.One2many('sale.order', 'opportunity_id', string='Orders')
@@ -19,7 +19,7 @@ class CrmLead(models.Model):
             sale_orders = lead.order_ids.filtered_domain(self._get_lead_sale_order_domain())
             lead.sale_amount_total = sum(
                 order.currency_id._convert(
-                    order.amount_untaxed, company_currency, order.company_id, order.date_order,
+                    order.amount_total, company_currency, order.company_id, order.date_order,
                 )
                 for order in sale_orders
             )
@@ -93,6 +93,9 @@ class CrmLead(models.Model):
             quotation_context['default_team_id'] = self.team_id.id
         if self.user_id:
             quotation_context['default_user_id'] = self.user_id.id
+        quotation_context.update(
+            self.env["sale.order"]._get_order_creation_context()
+        )
         return quotation_context
 
     def _merge_get_fields_specific(self):

@@ -1,9 +1,9 @@
 import { CALL_ICON_DEAFEN, CALL_ICON_MUTED } from "@mail/discuss/call/common/call_actions";
 import { TalkingAudioBars } from "@mail/discuss/call/common/talking_audio_bars";
 import { AvatarStack } from "@mail/discuss/core/common/avatar_stack";
-import { toggleFn } from "@mail/utils/common/signal";
+import { computedShallowEqual, toggleFn } from "@mail/utils/common/signal";
 
-import { Component, computed, signal, t, useEffect, useProps } from "@odoo/owl";
+import { Component, computed, signal, t, useOnChange, useProps } from "@odoo/owl";
 
 import { localeCompare } from "@web/core/l10n/utils/collation";
 import { _t } from "@web/core/l10n/translation";
@@ -17,7 +17,10 @@ export class MessagingMenuCallParticipants extends Component {
     CALL_ICON_MUTED = CALL_ICON_MUTED;
     toggleFn = toggleFn;
     expanded = signal(false);
-    personas = computed(() =>
+    /** Expand / collapse is only offered from 2 participants, a single one is always shown expanded. */
+    canToggle = computed(() => this.channel.rtc_session_ids.length >= 2);
+    isExpanded = computed(() => !this.canToggle() || this.expanded());
+    personas = computedShallowEqual(() =>
         this.sessions.map((session) => session.channel_member_id?.persona).filter(Boolean)
     );
     selfInCall = computed(() => Boolean(this.rtc.selfSession?.in(this.channel.rtc_session_ids)));
@@ -27,9 +30,10 @@ export class MessagingMenuCallParticipants extends Component {
         this.store = useService("mail.store");
         this.rtc = useService("discuss.rtc");
         this.channel = useProps.static("channel", t.instanceOf(this.store["discuss.channel"]));
-        useEffect(() => {
-            this.expanded.set(this.selfInCall());
-        });
+        useOnChange(
+            () => [this.canToggle(), this.selfInCall()],
+            (canToggle, selfInCall) => this.expanded.set(selfInCall)
+        );
     }
 
     get sessions() {
@@ -44,7 +48,7 @@ export class MessagingMenuCallParticipants extends Component {
     }
 
     get title() {
-        return this.expanded() ? _t("Collapse participants") : _t("Expand participants");
+        return this.isExpanded() ? _t("Collapse participants") : _t("Expand participants");
     }
 
     /** @param {import("models").Persona} persona */

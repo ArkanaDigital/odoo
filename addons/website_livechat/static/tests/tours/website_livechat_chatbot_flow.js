@@ -9,6 +9,7 @@ import {
 } from "@im_livechat/../tests/tours/livechat_tour_utils";
 
 let chatbotDelayProcessingDef;
+let firstTypingDef;
 
 registry.category("web_tour.tours").add("website_livechat_chatbot_flow_tour", {
     steps: () => {
@@ -19,14 +20,29 @@ registry.category("web_tour.tours").add("website_livechat_chatbot_flow_tour", {
                 chatbotDelayProcessingDef?.resolve();
                 return await super._delayThenProcessAnswerAgain(message);
             },
+            // Hold the first typing message, as MESSAGE_DELAY is 0 and the message never renders.
+            async _simulateTyping(duration) {
+                if (firstTypingDef) {
+                    this.isTyping = true;
+                    await firstTypingDef.promise;
+                    firstTypingDef = null;
+                }
+                return await super._simulateTyping(duration);
+            },
         });
         patch(Chatbot, {
             MESSAGE_DELAY: 0,
             MULTILINE_STEP_DEBOUNCE_DELAY: 2000,
             TYPING_DELAY: 0,
         });
+        firstTypingDef = Promise.withResolvers();
         return [
             waitForMessage("Hello! I'm a bot!"),
+            {
+                trigger:
+                    ".o-livechat-root:shadow .o-mail-Message img[src$='chatbot_is_typing.gif']",
+                run: () => firstTypingDef.resolve(),
+            },
             waitForMessage("I help lost visitors find their way."),
             waitForMessage("How can I help you?"),
             {
@@ -37,13 +53,18 @@ registry.category("web_tour.tours").add("website_livechat_chatbot_flow_tour", {
                 trigger: '.o-livechat-root:shadow button:text("I\'d like to buy the software")',
                 run: "click",
             },
+            waitForMessage("Can you give us your email please?"),
+            {
+                trigger:
+                    ".o-livechat-root:shadow .o-mail-ChatWindow .o-mail-Message[data-persistent]:text('I\\'d like to buy the software')",
+                run: "hover",
+            },
             {
                 // check selected option is posted and reactions are available since
                 // the thread has been persisted in the process
                 trigger:
                     ".o-livechat-root:shadow .o-mail-ChatWindow .o-mail-Message:has(.o-mail-Message-actions [title='Add a Reaction']):text('I\\'d like to buy the software')",
             },
-            waitForMessage("Can you give us your email please?"),
             ...postMessage("No, you won't get my email!"),
             waitForMessage(
                 "'No, you won't get my email!' does not look like a valid email. Can you please try again?"
@@ -68,8 +89,8 @@ registry.category("web_tour.tours").add("website_livechat_chatbot_flow_tour", {
             editComposer("I want to say..."),
             {
                 // Simulate that the user is typing, so the chatbot shouldn't go to the next step
-                trigger: `${LIVECHAT_COMPOSER}:enabled`,
-                async run({ edit }) {
+                trigger: `${LIVECHAT_COMPOSER}[contenteditable='true']`,
+                async run({ editor }) {
                     chatbotDelayProcessingDef = Promise.withResolvers();
                     let failTimeout = setTimeout(() => {
                         chatbotDelayProcessingDef.reject(
@@ -77,7 +98,7 @@ registry.category("web_tour.tours").add("website_livechat_chatbot_flow_tour", {
                         );
                     }, 5000);
                     chatbotDelayProcessingDef.promise.then(() => clearTimeout(failTimeout));
-                    await edit("Never mind!");
+                    await editor("Never mind!");
                     await chatbotDelayProcessingDef.promise;
                     chatbotDelayProcessingDef = Promise.withResolvers();
                     failTimeout = setTimeout(() => {
@@ -86,7 +107,7 @@ registry.category("web_tour.tours").add("website_livechat_chatbot_flow_tour", {
                         );
                     }, 5000);
                     chatbotDelayProcessingDef.promise.then(() => clearTimeout(failTimeout));
-                    await edit("Never mind!!!");
+                    await editor("Never mind!!!");
                     await chatbotDelayProcessingDef.promise;
                 },
             },
@@ -128,7 +149,7 @@ registry.category("web_tour.tours").add("website_livechat_chatbot_flow_tour", {
             waitForMessage("I will transfer you to a human."),
             {
                 // Wait for the operator to be added: composer is only enabled at that point.
-                trigger: ".o-livechat-root:shadow .o-mail-Composer-input:enabled",
+                trigger: ".o-livechat-root:shadow .o-mail-Composer-html[contenteditable='true']",
             },
         ];
     },

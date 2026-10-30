@@ -73,7 +73,7 @@ export class GeneratePrinterData {
                     category_name: productCat.name,
                     total_quantity: productCat.qty,
                     products: productsList,
-                    total: this.formatCurrency(productCat.total),
+                    total: this.formatCurrency(productCat.total_paid),
                 });
             }
 
@@ -182,7 +182,7 @@ export class GeneratePrinterData {
     }
 
     generateLineData() {
-        return this.order.lines.map((line) => {
+        return this.order.getOrderlines().map((line) => {
             const productData = { ...line.product_id.raw };
             productData.display_name = line.getFullProductName();
             return {
@@ -203,7 +203,7 @@ export class GeneratePrinterData {
         return this.order.payment_ids.map((line) => ({
             ...line.raw,
             payment_method_data: { name: line.payment_method_id?.name || "" },
-            amount: this.formatCurrency(line.amount, line.currency),
+            amount: this.formatCurrency(line.amount_currency || line.amount, line.currency),
         }));
     }
 
@@ -237,8 +237,13 @@ export class GeneratePrinterData {
             };
         }
 
+        const order = this.order.raw;
+        let amount_return_currency = 0;
+        if (this.order.payment_ids[0]?.isDifferentCurrency) {
+            amount_return_currency = this.order.amount_return * this.order.orderCurrency.rate;
+        }
         return {
-            order: this.order.raw,
+            order: { ...order, amount_return_currency: amount_return_currency },
             config: this.config.raw,
             company: this.company.raw,
             partner: this.order.partner_id ? this.order.partner_id.raw : false,
@@ -279,14 +284,42 @@ export class GeneratePrinterData {
     preparePreparationGroupedData(changes) {
         const dataChanges = changes.data || [];
         if (dataChanges && dataChanges.some((c) => c.group)) {
+            const comboParents = {};
+            const childParentUuids = new Set();
+            for (const change of dataChanges) {
+                if (change.combo_line_ids?.length) {
+                    comboParents[change.uuid] = change;
+                }
+                if (change.combo_parent_uuid) {
+                    childParentUuids.add(change.combo_parent_uuid);
+                }
+            }
+
             const groupedData = dataChanges.reduce((acc, c) => {
-                const { name = "", index = -1 } = c.group || {};
+                if (c.combo_line_ids?.length && childParentUuids.has(c.uuid)) {
+                    return acc;
+                }
+                const { name = "", index = Infinity } = c.group || {};
                 if (!acc[name]) {
                     acc[name] = { name, index, data: [] };
                 }
                 acc[name].data.push(c);
                 return acc;
             }, {});
+
+            for (const group of Object.values(groupedData)) {
+                const seenParents = new Set();
+                for (let i = 0; i < group.data.length; i++) {
+                    const line = group.data[i];
+                    const parentUuid = line.combo_parent_uuid;
+                    if (parentUuid && !seenParents.has(parentUuid) && comboParents[parentUuid]) {
+                        seenParents.add(parentUuid);
+                        group.data.splice(i, 0, { ...comboParents[parentUuid] });
+                        i++;
+                    }
+                }
+            }
+
             changes.groupedData = Object.values(groupedData).sort((a, b) => a.index - b.index);
         }
         return changes;
@@ -361,23 +394,9 @@ export class GeneratePrinterData {
         const order = this.order;
         const override = opts.orderChange;
         let orderChange = override || order.getChanges({ cancelled: opts.cancelled });
-        let reprint = false;
-
+        const reprint = opts.explicitReprint;
         if (!opts.prepOrderLines) {
-            if (
-                !orderChange.addedQuantity.length &&
-                !orderChange.removedQuantity.length &&
-                !orderChange.noteUpdate.length &&
-                !orderChange.internal_note &&
-                !orderChange.general_customer_note &&
-                order.lastPrints.length
-            ) {
-                orderChange = [order.lastPrints.at(-1)];
-                reprint = true;
-            } else {
-                order.pushLastPrints(orderChange);
-                orderChange = [orderChange];
-            }
+            orderChange = [orderChange];
         }
 
         if (reprint && opts.orderDone) {
@@ -392,7 +411,8 @@ export class GeneratePrinterData {
                 receipts.push({
                     changes: changeData,
                     order: order.raw,
-                    config: this.config.raw,
+                    // Kitchen may have multiple configs, so use the order's config to print on receipt.
+                    config: this.order.config_id.raw,
                     // KOTs don't require company data, so it isn't loaded here while using from kitchen.
                     company: this.company?.raw,
                     partner: order.partner_id ? order.partner_id.raw : false,
@@ -411,7 +431,7 @@ export class GeneratePrinterData {
                         prepTicketBarcode: opts.prepBarcode || false,
                     },
                     conditions: {
-                        module_pos_restaurant: this.config.module_pos_restaurant,
+                        module_pos_restaurant: this.order.config_id.module_pos_restaurant,
                     },
                     _rawChange: reprint ? null : changes[0],
                 });

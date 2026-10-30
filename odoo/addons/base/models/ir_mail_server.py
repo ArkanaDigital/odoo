@@ -13,9 +13,8 @@ from email.utils import make_msgid
 from socket import gaierror, timeout
 
 import idna
-import OpenSSL
-from OpenSSL import crypto as SSLCrypto
-from OpenSSL.crypto import FILETYPE_PEM
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
+from cryptography.x509 import load_pem_x509_certificate
 from OpenSSL.crypto import Error as SSLCryptoError
 from OpenSSL.SSL import VERIFY_FAIL_IF_NO_PEER_CERT, VERIFY_PEER
 from OpenSSL.SSL import Error as SSLError
@@ -30,22 +29,7 @@ from odoo.tools import (
     email_normalize,
     encapsulate_email,
     formataddr,
-    parse_version,
 )
-
-if parse_version(OpenSSL.__version__) >= parse_version('24.3.0'):
-    from cryptography.hazmat.primitives.serialization import load_pem_private_key
-    from cryptography.x509 import load_pem_x509_certificate
-else:
-    from OpenSSL import crypto as SSLCrypto
-    from OpenSSL.crypto import FILETYPE_PEM
-    from OpenSSL.crypto import Error as SSLCryptoError
-
-    def load_pem_private_key(pem_key, password):
-        return SSLCrypto.load_privatekey(FILETYPE_PEM, pem_key)
-
-    def load_pem_x509_certificate(pem_cert):
-        return SSLCrypto.load_certificate(FILETYPE_PEM, pem_cert)
 
 try:
     # urllib3 1.26 (ubuntu jammy and up, debian bullseye and up)
@@ -71,7 +55,7 @@ smtplib.SMTP._print_debug = _print_debug
 
 # Python 3: workaround for bpo-35805, only partially fixed in Python 3.8.
 RFC5322_IDENTIFICATION_HEADERS = {'message-id', 'in-reply-to', 'references', 'resent-msg-id'}
-USER_DEFINED_HEADERS = {'bcc', 'cc', 'from', 'reply-to', 'subject', 'to'}
+USER_DEFINED_HEADERS = {'bcc', 'cc', 'from', 'reply-to', 'subject', 'to', 'list-unsubscribe'}
 _noFoldPolicy = email.policy.SMTP.clone(max_line_length=None)
 _maxFoldPolicy = email.policy.SMTP.clone(max_line_length=998)  # rfc5322#section-2.1.1
 class IdentificationFieldsNoFoldPolicy(email.policy.EmailPolicy):
@@ -517,6 +501,7 @@ class IrMail_Server(models.Model):
         # need to change the FROM headers or not when we will prepare the mail message
         connection.from_filter = from_filter
         connection.smtp_from = smtp_from
+        connection.mail_server_name = mail_server.display_name if mail_server else smtp_server
 
         return connection
 
@@ -848,7 +833,7 @@ class IrMail_Server(models.Model):
         except Exception as e:
             msg = _(
                 "Mail delivery failed via SMTP server '%(server)s'.\n%(exception_name)s: %(message)s",
-                server=smtp_server,
+                server=getattr(smtp, 'mail_server_name', smtp_server),
                 exception_name=e.__class__.__name__,
                 message=e,
             )

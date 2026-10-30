@@ -1,5 +1,5 @@
 import { expect, test } from "@odoo/hoot";
-import { press } from "@odoo/hoot-dom";
+import { dblclick, press } from "@odoo/hoot-dom";
 import { patchWithCleanup } from "@web/../tests/web_test_helpers";
 import { setupEditor, testEditor } from "../_helpers/editor";
 import { getContent } from "../_helpers/selection";
@@ -48,8 +48,11 @@ test("should make two paragraphs not italic", async () => {
 
 test("should make qweb tag italic", async () => {
     await testEditor({
-        contentBefore: `<div><p t-out="'Test'" contenteditable="false">[Test]</p></div>`,
-        stepFunction: italic,
+        contentBefore: `<div><p t-out="'Test'" contenteditable="false">Test</p></div>`,
+        stepFunction: async (editor) => {
+            await dblclick("p[t-out]");
+            italic(editor);
+        },
         contentAfter: `<div>[<p t-out="'Test'" style="font-style: italic;">Test</p>]</div>`,
         config: { includePlugins: [QWebPlugin] },
     });
@@ -199,7 +202,7 @@ test("should make a few characters italic inside table (italic)", async () => {
         stepFunction: italic,
         contentAfterEdit: unformat(`
             <p data-selection-placeholder=""><br></p>
-            <table class="table table-bordered o_table o_selected_table">
+            <div class="o_table_wrapper"><table class="table table-bordered o_table o_selected_table">
                 <tbody>
                     <tr>
                         <td class="o_selected_td"><p><em>[abc</em></p></td>
@@ -217,7 +220,7 @@ test("should make a few characters italic inside table (italic)", async () => {
                         <td><p><br></p></td>
                     </tr>
                 </tbody>
-            </table>
+            </table></div>
             <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>`),
     });
 });
@@ -238,4 +241,22 @@ test("should not add history commit for italic on collapsed selection", async ()
 
     undo(editor);
     expect(getContent(el)).toBe(`<p>abcd[]</p>`);
+});
+
+test("italic on list item should not make its nested list items italic", async () => {
+    await testEditor({
+        contentBefore: "<ul><li><p>[A]</p><ul><li>B</li></ul></li></ul>",
+        stepFunction: italic,
+        contentAfter:
+            '<ul><li style="font-style: italic;"><p>[A]</p><ul style="font-style: normal;"><li>B</li></ul></li></ul>',
+    });
+});
+
+test("removing italic on list item should remove neutral style from its nested list", async () => {
+    await testEditor({
+        contentBefore:
+            '<ul><li style="font-style: italic;"><p>[A]</p><ul style="font-style: normal;"><li>B</li></ul></li></ul>',
+        stepFunction: italic,
+        contentAfter: "<ul><li><p>[A]</p><ul><li>B</li></ul></li></ul>",
+    });
 });

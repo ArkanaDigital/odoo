@@ -8,8 +8,9 @@ import { BuilderSelectionRestrictionPlugin } from "@html_builder/core/builder_se
 import { Operation } from "@html_builder/core/operation";
 import { describe, expect, test } from "@odoo/hoot";
 import { animationFrame, click, queryAll, queryAllTexts, queryOne, waitFor } from "@odoo/hoot-dom";
-import { contains, patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { contains } from "@web/../tests/web_test_helpers";
 import { loadBundle } from "@web/core/assets";
+import { patch } from "@web/core/utils/patch";
 
 describe.current.tags("desktop");
 
@@ -35,7 +36,7 @@ test("Display inner content snippet", async () => {
         snippetContent,
         dropzoneSelectors,
     });
-    const snippetInnerContentSelector = ".o-snippets-menu #snippet_content .o_snippet";
+    const snippetInnerContentSelector = ".o_hb_snippets_menu #snippet_content .o_snippet";
     expect(snippetInnerContentSelector).toHaveCount(2);
     expect(queryAllTexts(snippetInnerContentSelector)).toEqual(["Button A", "Button B"]);
     const thumbnailImgUrls = queryAll(
@@ -53,19 +54,19 @@ test("Drag & drop inner content block", async () => {
         dropzoneSelectors,
     });
     expect(contentEl).toHaveInnerHTML(`<div><p>Text</p></div>`);
-    expect(".o-website-builder_sidebar [data-icon='undo']").not.toBeEnabled();
+    expect(".o_website_builder_sidebar [data-icon='undo']").not.toBeEnabled();
 
     const { moveTo, drop } = await contains(
-        ".o-website-builder_sidebar [name='Button A'] .o_snippet_thumbnail"
+        ".o_website_builder_sidebar [name='Button A'] .o_snippet_thumbnail"
     ).drag();
     expect(":iframe .oe_drop_zone:nth-child(1)").toHaveCount(1);
     expect(":iframe .oe_drop_zone:nth-child(3)").toHaveCount(1);
 
-    expect(".o-website-builder_sidebar [data-icon='undo']").not.toBeEnabled();
+    expect(".o_website_builder_sidebar [data-icon='undo']").not.toBeEnabled();
 
     await moveTo(":iframe .oe_drop_zone");
     expect(":iframe .oe_drop_zone.invisible:nth-child(1)").toHaveCount(1);
-    expect(".o-website-builder_sidebar [data-icon='undo']").not.toBeEnabled();
+    expect(".o_website_builder_sidebar [data-icon='undo']").not.toBeEnabled();
 
     await drop(getDragHelper());
     await waitForEndOfOperation();
@@ -73,7 +74,7 @@ test("Drag & drop inner content block", async () => {
     expect(contentEl).toHaveInnerHTML(
         `<div>\ufeff<a class="btn btn-primary" href="#" data-snippet="s_button" data-name="Button A">\ufeffButton A\ufeff</a>\ufeff<p>Text</p></div>`
     );
-    expect(".o-website-builder_sidebar [data-icon='undo']").toBeEnabled();
+    expect(".o_website_builder_sidebar [data-icon='undo']").toBeEnabled();
 });
 
 test("Drag & drop inner content block + undo/redo", async () => {
@@ -82,12 +83,12 @@ test("Drag & drop inner content block + undo/redo", async () => {
         dropzoneSelectors,
     });
     expect(contentEl).toHaveInnerHTML(`<div><p>Text</p></div>`);
-    expect(".o-website-builder_sidebar [data-icon='undo']").not.toBeEnabled();
-    expect(".o-website-builder_sidebar [data-icon='redo']").not.toBeEnabled();
+    expect(".o_website_builder_sidebar [data-icon='undo']").not.toBeEnabled();
+    expect(".o_website_builder_sidebar [data-icon='redo']").not.toBeEnabled();
 
-    await click(".o-website-builder_sidebar [data-icon='undo']");
+    await click(".o_website_builder_sidebar [data-icon='undo']");
     const { moveTo, drop } = await contains(
-        ".o-website-builder_sidebar [name='Button A'] .o_snippet_thumbnail"
+        ".o_website_builder_sidebar [name='Button A'] .o_snippet_thumbnail"
     ).drag();
     await moveTo(":iframe .oe_drop_zone");
     await drop(getDragHelper());
@@ -96,14 +97,14 @@ test("Drag & drop inner content block + undo/redo", async () => {
     expect(contentEl).toHaveInnerHTML(
         `<div>\ufeff<a class="btn btn-primary" href="#" data-snippet="s_button" data-name="Button A">\ufeffButton A\ufeff</a>\ufeff<p>Text</p></div>`
     );
-    expect(".o-website-builder_sidebar [data-icon='undo']").toBeEnabled();
-    expect(".o-website-builder_sidebar [data-icon='redo']").not.toBeEnabled();
+    expect(".o_website_builder_sidebar [data-icon='undo']").toBeEnabled();
+    expect(".o_website_builder_sidebar [data-icon='redo']").not.toBeEnabled();
 
-    await click(".o-website-builder_sidebar [data-icon='undo']");
+    await click(".o_website_builder_sidebar [data-icon='undo']");
     await animationFrame();
     expect(contentEl).toHaveInnerHTML(`<div><p>Text</p></div>`);
-    expect(".o-website-builder_sidebar [data-icon='undo']").not.toBeEnabled();
-    expect(".o-website-builder_sidebar [data-icon='redo']").toBeEnabled();
+    expect(".o_website_builder_sidebar [data-icon='undo']").not.toBeEnabled();
+    expect(".o_website_builder_sidebar [data-icon='redo']").toBeEnabled();
 });
 
 test("Drag inner content and drop it outside of a dropzone", async () => {
@@ -114,7 +115,7 @@ test("Drag inner content and drop it outside of a dropzone", async () => {
     expect(contentEl).toHaveInnerHTML(`<div><p>Text</p></div>`);
 
     const { moveTo, drop } = await contains(
-        ".o-website-builder_sidebar [name='Button A'] .o_snippet_thumbnail"
+        ".o_website_builder_sidebar [name='Button A'] .o_snippet_thumbnail"
     ).drag();
     expect(":iframe .oe_drop_zone:nth-child(1)").toHaveCount(1);
     expect(":iframe .oe_drop_zone:nth-child(3)").toHaveCount(1);
@@ -138,7 +139,7 @@ test("A snippet should appear disabled if there is nowhere to drop it", async ()
 test.tags("desktop");
 test("click just after drop is redispatched in next operation", async () => {
     const nextDef = Promise.withResolvers();
-    patchWithCleanup(Operation.prototype, {
+    patch(Operation.prototype, {
         next(fn, ...args) {
             const originalFn = fn;
             fn = async () => {
@@ -150,13 +151,13 @@ test("click just after drop is redispatched in next operation", async () => {
             return res;
         },
     });
-    patchWithCleanup(BuilderOptionsPlugin.prototype, {
+    patch(BuilderOptionsPlugin.prototype, {
         updateContainers(...args) {
             expect.step("updateContainers");
             super.updateContainers(...args);
         },
     });
-    patchWithCleanup(BuilderSelectionRestrictionPlugin.prototype, {
+    patch(BuilderSelectionRestrictionPlugin.prototype, {
         async onClick(ev) {
             expect.step("onClick");
             super.onClick(ev);
@@ -175,7 +176,7 @@ test("click just after drop is redispatched in next operation", async () => {
 
     // TODO: the next lines replicate website's `insertCategorySnippet` helper.
     // It should be moved to html_builder.
-    await contains(".o-snippets-menu #snippet_groups .o_snippet_thumbnail_area").click();
+    await contains(".o_hb_snippets_menu #snippet_groups .o_snippet_thumbnail_area").click();
     await animationFrame();
     await loadBundle("html_builder.iframe_add_dialog", {
         targetDoc: queryOne("iframe.o_add_snippet_iframe").contentDocument,
@@ -196,5 +197,5 @@ test("click just after drop is redispatched in next operation", async () => {
     await animationFrame();
     expect.verifySteps(["onClick", "next", "updateContainers"]); // On click redispatched
     await animationFrame();
-    expect(".o-snippets-tabs .o-hb-tab.active").toHaveText("Style");
+    expect(".o_hb_snippets_tabs .o_hb_tab.active").toHaveText("Style");
 });

@@ -23,13 +23,24 @@ class SaleOrder(models.Model):
 
     def write(self, vals):
         """Override to adapt pickup location-related data on delivery method change."""
-        if "carrier_id" in vals:
+        if "carrier_id" in vals and not self.env.context.get("keep_pickup_location"):
             for order in self:
                 # Reset the shipping partner if it is a pickup location.
                 partner_shipping_dm_id = order.partner_shipping_id.pickup_delivery_method_id
                 if partner_shipping_dm_id and partner_shipping_dm_id.id != vals["carrier_id"]:
                     order.partner_shipping_id = order.partner_id
         return super().write(vals)
+
+    def _set_delivery_method(self, delivery_method, rate=None):
+        """Restore the customer address before rating a different delivery method.
+
+        Pickup methods replace `partner_shipping_id` with the pickup location. That address must
+        not be used to fetch rates for another method.
+        """
+        pickup_dm = self.partner_shipping_id.pickup_delivery_method_id
+        if pickup_dm and delivery_method and pickup_dm != delivery_method:
+            self.partner_shipping_id = self.partner_shipping_id.parent_id
+        return super()._set_delivery_method(delivery_method, rate=rate)
 
     def action_open_delivery_wizard(self):
         """Override of `delivery` to include default values for pickup delivery methods."""
@@ -50,7 +61,15 @@ class SaleOrder(models.Model):
                 self.partner_id,
                 pickup_delivery_method_id=self.carrier_id.id,
             )
-            self.partner_shipping_id = address or self.partner_id
+            if address:
+                self.partner_shipping_id = address
+
+    def _get_checkout_delivery_address(self):
+        """Override of `website_sale` to select the customer address instead of the pickup
+        location, which is not listed among the delivery addresses."""
+        if self.partner_shipping_id.pickup_delivery_method_id:
+            return self.partner_shipping_id.parent_id
+        return super()._get_checkout_delivery_address()
 
     def _get_shop_warehouse_id(self):
         """Return the warehouse to use for shop availability checks.

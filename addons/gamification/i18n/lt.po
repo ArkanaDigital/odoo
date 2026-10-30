@@ -20,31 +20,52 @@
 # digitouch UAB <digitouchagencyeur@gmail.com>, 2022
 # Ramunė ViaLaurea <ramune.vialaurea@gmail.com>, 2023
 # "Tiffany Chang (tic)" <tic@odoo.com>, 2025.
-# Weblate <noreply-mt-weblate@weblate.org>, 2025, 2026.
+# Weblate <noreply-mt-weblate@weblate.org>, 2025.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0beta\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-03 17:38+0000\n"
-"PO-Revision-Date: 2026-06-20 05:32+0000\n"
-"Last-Translator: Weblate <noreply-mt-weblate@weblate.org>\n"
-"Language-Team: Lithuanian <https://translate.odoo.com/projects/odoo-master/"
+"POT-Creation-Date: 2026-08-28 17:43+0000\n"
+"PO-Revision-Date: 2026-08-31 16:36+0000\n"
+"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"Language-Team: Lithuanian <https://translate.odoo.com/projects/odoo-s19-4/"
 "gamification/lt/>\n"
 "Language: lt\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=4; plural=(n % 10 == 1 && (n % 100 > 19 || n % 100 < "
-"11) ? 0 : (n % 10 >= 2 && n % 10 <=9) && (n % 100 > 19 || n % 100 < 11) ? 1 "
-": n % 1 != 0 ? 2: 3);\n"
-"X-Generator: Weblate 2026.6.1\n"
+"11) ? 0 : (n % 10 >= 2 && n % 10 <=9) && (n % 100 > 19 || n % 100 < 11) ? "
+"1 : n % 1 != 0 ? 2: 3);\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: gamification
+#: model:ir.module.module,description:base.module_gamification
+msgid ""
+"\n"
+"Gamification process\n"
+"====================\n"
+"The Gamification module provides ways to evaluate and motivate the users of "
+"Odoo.\n"
+"\n"
+"The users can be evaluated using goals and numerical objectives to reach.\n"
+"**Goals** are assigned through **challenges** to evaluate and compare "
+"members of a team with each others and through time.\n"
+"\n"
+"For non-numerical achievements, **badges** can be granted to users. From a "
+"simple \"thank you\" to an exceptional achievement, a badge is an easy way "
+"to exprimate gratitude to a user for their good work.\n"
+"\n"
+"Both goals and badges are flexibles and can be adapted to a large range of "
+"modules and actions. When installed, this module creates easy goals to help "
+"new users to discover Odoo and configure their user profile.\n"
+msgstr ""
 
 #. module: gamification
 #: model:ir.model.fields,field_description:gamification.field_gamification_challenge__user_count
 #: model:ir.model.fields,field_description:gamification.field_gamification_karma_rank__rank_users_count
-#, fuzzy
 msgid "# Users"
-msgstr "Vartotojų sk."
+msgstr ""
 
 #. module: gamification
 #. odoo-python
@@ -139,35 +160,33 @@ msgstr ""
 #. module: gamification
 #: model_terms:ir.ui.view,arch_db:gamification.goal_kanban_view
 msgid ""
-"<i role=\"img\" class=\"text-body fa fa-clock-o fa-3x\" title=\"Goal in "
-"Progress\" aria-label=\"Goal in Progress\"/>"
+"<i role=\"img\" class=\"text-body oi oi-3x\" data-icon=\"schedule\" "
+"title=\"Goal in Progress\" aria-label=\"Goal in Progress\"/>"
 msgstr ""
 
 #. module: gamification
 #: model_terms:ir.ui.view,arch_db:gamification.goal_kanban_view
 msgid ""
-"<i role=\"img\" class=\"text-danger fa fa-times fa-3x\" title=\"Goal "
-"Failed\" aria-label=\"Goal Failed\"/>"
+"<i role=\"img\" class=\"text-danger oi oi-3x\" data-icon=\"close\" "
+"title=\"Goal Failed\" aria-label=\"Goal Failed\"/>"
 msgstr ""
 
 #. module: gamification
 #: model_terms:ir.ui.view,arch_db:gamification.goal_kanban_view
 msgid ""
-"<i role=\"img\" class=\"text-success fa fa-check fa-3x\" title=\"Goal "
-"Reached\" aria-label=\"Goal Reached\"/>"
+"<i role=\"img\" class=\"text-success oi oi-3x\" data-icon=\"check\" "
+"title=\"Goal Reached\" aria-label=\"Goal Reached\"/>"
 msgstr ""
 
 #. module: gamification
 #: model_terms:ir.ui.view,arch_db:gamification.challenge_form_view
-#, fuzzy
 msgid "<span class=\"o_stat_text\">Related Goals</span>"
-msgstr "<span class=\"o_stat_text\">Susiję Siekiai</span>"
+msgstr ""
 
 #. module: gamification
 #: model_terms:ir.ui.view,arch_db:gamification.gamification_karma_rank_view_form
-#, fuzzy
 msgid "<span class=\"o_stat_text\">Users</span>"
-msgstr "<span class=\"o_stat_text\">Vartotojai</span>"
+msgstr ""
 
 #. module: gamification
 #: model:mail.template,body_html:gamification.email_template_badge_received
@@ -601,9 +620,8 @@ msgstr "Aktyvus"
 #: code:addons/gamification/models/gamification_karma_tracking.py:0
 #: code:addons/gamification/models/res_users.py:0
 #: code:addons/gamification/tests/test_karma_tracking.py:0
-#, fuzzy
 msgid "Add Manually"
-msgstr "Pridėti Rankiniu Būdu"
+msgstr ""
 
 #. module: gamification
 #: model_terms:ir.ui.view,arch_db:gamification.challenge_form_view
@@ -1188,6 +1206,11 @@ msgstr "Pilnas priešdėlis"
 #: model:ir.model.fields,field_description:gamification.field_gamification_karma_tracking__gain
 msgid "Gain"
 msgstr "Pelnas"
+
+#. module: gamification
+#: model:ir.module.module,shortdesc:base.module_gamification
+msgid "Gamification"
+msgstr ""
 
 #. module: gamification
 #: model:ir.model,name:gamification.model_gamification_badge
@@ -1976,51 +1999,43 @@ msgstr ""
 
 #. module: gamification
 #: model_terms:gamification.karma.rank,description_motivational:gamification.rank_master
-#, fuzzy
 msgid "Reach the next rank and become a Master!"
-msgstr "Įrodyk savo meistrystę pasiekus kitą lygį!"
+msgstr ""
 
 #. module: gamification
 #: model_terms:gamification.karma.rank,description_motivational:gamification.rank_doctor
-#, fuzzy
 msgid "Reach the next rank and become a powerful user!"
-msgstr "Pasiekite kitą lygį ir tapkite galingu vartotoju!"
+msgstr ""
 
 #. module: gamification
 #: model_terms:gamification.karma.rank,description_motivational:gamification.rank_bachelor
-#, fuzzy
 msgid "Reach the next rank and gain a very magic wand!"
-msgstr "Pasiekite kitą lygį ir gaukite labai stebuklingą lazdelę!"
+msgstr ""
 
 #. module: gamification
 #: model_terms:gamification.karma.rank,description_motivational:gamification.rank_master
-#, fuzzy
 msgid "Reach the next rank and gain a very nice hat!"
-msgstr "Pasiekite kitą lygį ir gaukite labai gražią skrybėlę!"
+msgstr ""
 
 #. module: gamification
 #: model_terms:gamification.karma.rank,description_motivational:gamification.rank_student
-#, fuzzy
 msgid "Reach the next rank and gain a very nice mug!"
-msgstr "Pasiekite kitą lygį ir gaukite labai gražų puodelį!"
+msgstr ""
 
 #. module: gamification
 #: model_terms:gamification.karma.rank,description_motivational:gamification.rank_doctor
-#, fuzzy
 msgid "Reach the next rank and gain a very nice unicorn!"
-msgstr "Pasiekite kitą lygį ir gaukite labai gražų vienaragį!"
+msgstr ""
 
 #. module: gamification
 #: model_terms:gamification.karma.rank,description_motivational:gamification.rank_bachelor
-#, fuzzy
 msgid "Reach the next rank to improve your status!"
-msgstr "Pagerinkite savo statusą pasiekdami kitą lygį!"
+msgstr ""
 
 #. module: gamification
 #: model_terms:gamification.karma.rank,description_motivational:gamification.rank_student
-#, fuzzy
 msgid "Reach the next rank to show the rest of the world you exist."
-msgstr "Pasiekite kitą lygį, jog parodytumėte visam pasauliui, kad esate čia."
+msgstr ""
 
 #. module: gamification
 #: model:ir.model.fields.selection,name:gamification.selection__gamification_goal__state__reached
@@ -2090,9 +2105,8 @@ msgstr "Reikalingi ženkleliai"
 
 #. module: gamification
 #: model:ir.model.fields,field_description:gamification.field_gamification_karma_rank__karma_min
-#, fuzzy
 msgid "Required Karma"
-msgstr "Reikalinga Karma"
+msgstr ""
 
 #. module: gamification
 #: model_terms:ir.ui.view,arch_db:gamification.goal_form_view
@@ -2165,9 +2179,8 @@ msgstr "Suplanuoti"
 
 #. module: gamification
 #: model_terms:ir.ui.view,arch_db:gamification.gamification_badge_view_search
-#, fuzzy
 msgid "Search Badge"
-msgstr "Ieškoti Ženklelių"
+msgstr ""
 
 #. module: gamification
 #: model_terms:ir.ui.view,arch_db:gamification.challenge_search_view
@@ -2186,9 +2199,8 @@ msgstr "Ieškoti tikslų"
 
 #. module: gamification
 #: model_terms:ir.ui.view,arch_db:gamification.gamification_karma_ranks_view_search
-#, fuzzy
 msgid "Search Ranks"
-msgstr "Ieškoti Lygių"
+msgstr ""
 
 #. module: gamification
 #: model_terms:ir.ui.view,arch_db:gamification.gamification_karma_tracking_view_search

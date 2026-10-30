@@ -27,7 +27,7 @@ class L10nInPanEntity(models.Model):
         comodel_name='res.partner',
         inverse_name='l10n_in_pan_entity_id',
         string="Partners",
-        domain="[('l10n_in_pan_entity_id', '=', False), '|', ('vat', '=', False), ('vat', 'like', name)]"
+        domain="[('l10n_in_pan_entity_id', '=', False), '|', ('has_vat', '=', False), ('vat', 'like', name)]"
     )
     tds_deduction = fields.Selection([
         ('normal', 'Normal'),
@@ -36,7 +36,6 @@ class L10nInPanEntity(models.Model):
         ('no', 'No'),
     ], string="TDS Deduction", default='normal', tracking=2)
     tds_certificate = fields.Binary(string="TDS Certificate", copy=False)
-    tds_certificate_filename = fields.Char(string="TDS Certificate Filename", copy=False)
 
     # MSME/Udyam Registration details
     msme_type = fields.Selection([
@@ -76,7 +75,7 @@ class L10nInPanEntity(models.Model):
                     body=_("TDS Certificate Added"),
                     message_type='notification',
                     subtype_xmlid='mail.mt_note',
-                    attachments=[(rec.tds_certificate_filename, rec.tds_certificate.content)]
+                    attachments=[(rec.tds_certificate.filename, rec.tds_certificate.content)]
                 )
         return res
 

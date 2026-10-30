@@ -12,8 +12,11 @@ declare module "models" {
         startInvitationTimeout: () => void;
     }
     export interface DiscussChannel {
+        _playRtcSessionsSoundEffects: (rtcSessions: RtcSession[]) => Promise<void>;
         activeRtcSession: RtcSession;
+        activeSpeakers: RtcSession[];
         cancelRtcInvitationTimeout: number|undefined;
+        clearActiveSpeakers: () => void;
         focusAvailableVideo: () => void;
         focusStack: RtcSession[];
         hadSelfSession: boolean;
@@ -23,14 +26,14 @@ declare module "models" {
         lastSessionIds: Set<number>;
         pin: (session: RtcSession) => void;
         pinnedRtcSession: RtcSession;
-        promoteFullscreen: typeof CALL_PROMOTE_FULLSCREEN[keyof CALL_PROMOTE_FULLSCREEN];
+        pruneSpeakersTimeout: number|undefined;
         rtc_session_ids: RtcSession[];
         showCallView: Readonly<boolean>;
         unpin: () => void;
+        updateActiveSpeakers: () => void;
         updateCallFocusStack: (session: RtcSession) => void;
         useCameraByDefault: null;
         videoCount: number;
-        videoCountNotSelf: number;
         visibleCards: import("@mail/discuss/call/common/call").CardData[];
     }
     export interface MailGuest {
@@ -42,7 +45,6 @@ declare module "models" {
     export interface Store {
         _hasFullscreenUrl: boolean;
         _hasFullscreenUrlOnUpdate: () => void;
-        _shareUrl: undefined|unknown;
         "discuss.channel.rtc.session": StaticMailRecord<RtcSession, typeof RtcSessionClass>;
         fullscreenChannel: DiscussChannel;
         meetingViewOpened: boolean;
@@ -50,6 +52,7 @@ declare module "models" {
         ringingChannels: DiscussChannel[];
         rtc: Rtc;
         Rtc: StaticMailRecord<Rtc, typeof RtcClass>;
+        shareUrl: Readonly<string|undefined>;
     }
 
     export interface Models {

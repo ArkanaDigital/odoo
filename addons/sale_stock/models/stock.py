@@ -3,6 +3,8 @@
 from collections import defaultdict
 
 from odoo import api, fields, models, Command
+from odoo.fields import Domain
+from odoo.tools.sql import SQL
 
 
 class StockRoute(models.Model):
@@ -32,6 +34,43 @@ class StockMove(models.Model):
         for sale_order_line_id, aml_ids in aml_ids_by_sale_line.items():
             moves = self.env['stock.move'].browse(move_by_sale_order_line[sale_order_line_id])
             moves.cogs_aml_ids = self.env['account.move.line'].browse(aml_ids)
+
+    @api.depends('company_id', 'sale_line_id', 'sale_line_id.company_id')
+    def _compute_origin_company_id(self):
+        super()._compute_origin_company_id()
+        for move in self:
+            if move.sale_line_id and move.sale_line_id.company_id != move.company_id:
+                move.origin_company_id = move.sale_line_id.company_id
+
+    @api.depends('company_id', 'sale_line_id', 'sale_line_id.company_id', 'sale_line_id.company_id.partner_id')
+    def _compute_order_partner_id(self):
+        super()._compute_order_partner_id()
+        for move in self:
+            if move.sale_line_id and move.sale_line_id.company_id != move.company_id:
+                move.order_partner_id = move.sale_line_id.company_id.partner_id
+
+    def _compute_sql_order_partner_id(self, table):
+        sol_alias = table._make_alias('sale_order_line')
+        company_alias = sol_alias._make_alias('res_company')
+        table._query.add_join(
+            'LEFT JOIN',
+            sol_alias,
+            self.env['sale.order.line']._table,
+            SQL("%s = %s", table.sale_line_id, sol_alias.id)
+        )
+        table._query.add_join(
+            'LEFT JOIN',
+            company_alias,
+            self.env['res.company']._table,
+            SQL("%s = %s", sol_alias.company_id, company_alias.id)
+        )
+        return SQL(
+            "CASE WHEN %(move_company)s != %(sol_company)s THEN %(company_partner)s ELSE %(move_partner)s END",
+            move_company=table.company_id,
+            sol_company=sol_alias.company_id,
+            company_partner=company_alias.partner_id,
+            move_partner=table.partner_id
+        )
 
     @api.depends('sale_line_id', 'sale_line_id.product_uom_id')
     def _compute_packaging_uom_id(self):
@@ -75,7 +114,9 @@ class StockMove(models.Model):
 
             so_line_vals = {
                 'move_ids': [(4, move.id, 0)],
-                'name': product.with_context(lang=sale_order.partner_id.lang).get_product_multiline_description_sale(),
+                'name': product.with_context(
+                    lang=sale_order.partner_id.lang
+                ).get_product_multiline_description_sale(with_display_name=False),
                 'order_id': sale_order.id,
                 'product_id': product.id,
                 'product_uom_qty': 0,
@@ -109,9 +150,23 @@ class StockMove(models.Model):
         distinct_fields.append('sale_line_id')
         return distinct_fields
 
+    def _get_origin_company_domains(self, operator, value):
+        domains = super()._get_origin_company_domains(operator, value)
+        domains.append(Domain.AND([
+            Domain.custom(
+                to_sql=lambda table: SQL(
+                    "%(move_company_id)s != %(sol_company_id)s",
+                    move_company_id=table.company_id,
+                    sol_company_id=table._join('sale_line_id').company_id,
+                ),
+            ),
+            Domain('sale_line_id.company_id', operator, value),
+        ]))
+        return domains
+
     def _get_source_document(self):
         res = super()._get_source_document()
-        return self.sale_line_id.order_id or res
+        return self.sale_line_id._filtered_access('read').order_id or res
 
     def _get_sale_order_lines(self):
         """ Return all possible sale order lines for one stock move. """
@@ -228,21 +283,20 @@ class StockPicking(models.Model):
                     picking.move_type = "one"
 
     def _set_sale_id(self):
-        if self.reference_ids:
-            if self.sale_id:
-                self.reference_ids.sale_ids = [Command.link(self.sale_id.id)]
-            else:
-                sale_order = self.move_ids.sale_line_id.order_id
-                if len(sale_order) == 1:
-                    self.reference_ids.sale_ids = [Command.unlink(sale_order.id)]
-        else:
-            if self.sale_id:
-                reference = self.env['stock.reference'].create({
-                    'sale_ids': [Command.link(self.sale_id.id)],
-                    'name': self.sale_id.name,
-                })
-                self._add_reference(reference)
-        self.move_ids._reassign_sale_lines(self.sale_id)
+        for picking in self:
+            sale_order = picking.sale_id
+            references = sale_order.stock_reference_ids
+            # Destination moves still link this picking to its original supply chain.
+            chain_references = picking.move_ids.move_dest_ids.reference_ids
+            picking._remove_reference(picking.reference_ids.filtered('sale_ids') - references - chain_references)
+            if sale_order:
+                if not references:
+                    references = self.env['stock.reference'].sudo().create({
+                        'sale_ids': [Command.link(sale_order.id)],
+                        'name': sale_order.sudo().name,
+                    })
+                picking._add_reference(references)
+            picking.move_ids._reassign_sale_lines(sale_order)
 
     def _action_done(self):
         res = super()._action_done()
@@ -352,6 +406,9 @@ class StockPicking(models.Model):
         if self.sale_id:
             vals['sale_id'] = self.sale_id.id
         return vals
+
+    def _get_related_account_moves(self):
+        return self.move_ids.sale_line_id.invoice_lines.move_id or super()._get_related_account_moves()
 
 
 class StockLot(models.Model):

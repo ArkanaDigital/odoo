@@ -23,10 +23,10 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0beta\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-03 17:40+0000\n"
-"PO-Revision-Date: 2026-06-22 01:00+0000\n"
+"POT-Creation-Date: 2026-08-28 17:43+0000\n"
+"PO-Revision-Date: 2026-08-31 20:38+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Polish <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Polish <https://translate.odoo.com/projects/odoo-s19-4/"
 "website_payment/pl/>\n"
 "Language: pl\n"
 "MIME-Version: 1.0\n"
@@ -35,7 +35,15 @@ msgstr ""
 "Plural-Forms: nplurals=4; plural=(n==1 ? 0 : (n%10>=2 && n%10<=4) && "
 "(n%100<12 || n%100>14) ? 1 : n!=1 && (n%10>=0 && n%10<=1) || (n%10>=5 && "
 "n%10<=9) || (n%100>=12 && n%100<=14) ? 2 : 3);\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: website_payment
+#: model:ir.module.module,description:base.module_website_payment
+msgid ""
+"\n"
+"This is a bridge module that adds multi-website support for payment "
+"providers.\n"
+msgstr ""
 
 #. module: website_payment
 #: model_terms:ir.ui.view,arch_db:website_payment.res_config_settings_view_form
@@ -83,7 +91,7 @@ msgstr ""
 #. module: website_payment
 #: model:ir.model,name:website_payment.model_res_config_settings
 msgid "Config Settings"
-msgstr "Ustawienia konfiguracji"
+msgstr "Konfiguracja ustawień"
 
 #. module: website_payment
 #: model_terms:ir.ui.view,arch_db:website_payment.res_config_settings_view_form
@@ -98,12 +106,12 @@ msgstr "Skonfiguruj metody płatności"
 #. module: website_payment
 #: model_terms:ir.ui.view,arch_db:website_payment.res_config_settings_view_form
 msgid "Connect"
-msgstr ""
+msgstr "Połącz"
 
 #. module: website_payment
 #: model_terms:ir.ui.view,arch_db:website_payment.res_config_settings_view_form
 msgid "Connect Stripe"
-msgstr ""
+msgstr "Połącz Stripe"
 
 #. module: website_payment
 #: model:ir.model.fields,field_description:website_payment.field_payment_provider__display_name
@@ -143,12 +151,17 @@ msgstr "Limit"
 #. odoo-javascript
 #: code:addons/website_payment/static/src/snippets/s_supported_payment_methods/000.edit.xml:0
 msgid "No published payment methods"
-msgstr ""
+msgstr "Brak opublikowanych metod płatności"
 
 #. module: website_payment
 #: model:ir.model,name:website_payment.model_payment_provider
 msgid "Payment Provider"
 msgstr "Operator płatności"
+
+#. module: website_payment
+#: model:ir.module.module,summary:base.module_website_payment
+msgid "Payment integration with website"
+msgstr ""
 
 #. module: website_payment
 #: model_terms:ir.ui.view,arch_db:website_payment.res_config_settings_view_form
@@ -173,7 +186,7 @@ msgstr "Obsługiwane metody płatności"
 #. odoo-javascript
 #: code:addons/website_payment/static/src/snippets/s_supported_payment_methods/000.edit.xml:0
 msgid "View providers"
-msgstr ""
+msgstr "Zobacz operatorów"
 
 #. module: website_payment
 #: model_terms:ir.ui.view,arch_db:website_payment.res_config_settings_view_form
@@ -181,229 +194,236 @@ msgid ""
 "Visa, Mastercard, Maestro, UPI, Netbanking, PayNow, Klarna, etc., as well as "
 "recurring charges."
 msgstr ""
+"Visa, Mastercard, Maestro, UPI, Netbanking, PayNow, Klarna itp., a także "
+"opłaty cykliczne."
 
 #. module: website_payment
 #: model:ir.model.fields,field_description:website_payment.field_payment_provider__website_id
 msgid "Website"
 msgstr "Strona internetowa"
 
-#~ msgid ""
-#~ ".\n"
-#~ "                        <br/>\n"
-#~ "                        We appreciate your support for our organization "
-#~ "as such.\n"
-#~ "                        <br/>\n"
-#~ "                        Regards."
-#~ msgstr ""
-#~ ".\n"
-#~ "<br/>\n"
-#~ "Dziękujemy za wsparcie dla naszej organizacji.\n"
-#~ "<br/>\n"
-#~ "Z poważaniem."
+#. module: website_payment
+#: model:ir.module.module,shortdesc:base.module_website_payment
+msgid "Website Payment"
+msgstr ""
 
-#~ msgid "<b>Comment:</b>"
-#~ msgstr "<b>Komentarz:</b>"
+msgid ""
+".\n"
+"                        <br/>\n"
+"                        We appreciate your support for our organization as "
+"such.\n"
+"                        <br/>\n"
+"                        Regards."
+msgstr ""
+".\n"
+"<br/>\n"
+"Dziękujemy za wsparcie dla naszej organizacji.\n"
+"<br/>\n"
+"Z poważaniem."
 
-#~ msgid "<b>Donation Date:</b>"
-#~ msgstr "<b>Data darowizny:</b>"
+msgid "<b>Comment:</b>"
+msgstr "<b>Komentarz:</b>"
 
-#~ msgid "<b>Donor Email:</b>"
-#~ msgstr "<b>Adres e-mail darczyńcy:</b>"
+msgid "<b>Donation Date:</b>"
+msgstr "<b>Data darowizny:</b>"
 
-#~ msgid "<b>Donor Name:</b>"
-#~ msgstr "<b>Nazwa darczyńcy:</b>"
+msgid "<b>Donor Email:</b>"
+msgstr "<b>Adres e-mail darczyńcy:</b>"
 
-#~ msgid "<b>Payment ID:</b>"
-#~ msgstr "<b>Identyfikator płatności:</b>"
+msgid "<b>Donor Name:</b>"
+msgstr "<b>Nazwa darczyńcy:</b>"
 
-#~ msgid "<b>Payment Method:</b>"
-#~ msgstr "<b>Metoda płatności:</b>"
+msgid "<b>Payment ID:</b>"
+msgstr "<b>Identyfikator płatności:</b>"
 
-#~ msgid ""
-#~ "<span class=\"oe_inline pe-0\">\n"
-#~ "                            Enable a payment provider to accept online "
-#~ "payments.\n"
-#~ "                        </span>"
-#~ msgstr ""
-#~ "<span class=\"oe_inline pe-0\">\n"
-#~ "                            Aktywuj operatora płatności do akceptowania "
-#~ "płatności online.\n"
-#~ "                        </span>"
+msgid "<b>Payment Method:</b>"
+msgstr "<b>Metoda płatności:</b>"
 
-#~ msgid "<span class=\"s_donation_currency pe-1\">$</span>"
-#~ msgstr "<span class=\"s_donation_currency pe-1\">$</span>"
+msgid ""
+"<span class=\"oe_inline pe-0\">\n"
+"                            Enable a payment provider to accept online "
+"payments.\n"
+"                        </span>"
+msgstr ""
+"<span class=\"oe_inline pe-0\">\n"
+"                            Aktywuj operatora płatności do akceptowania "
+"płatności online.\n"
+"                        </span>"
 
-#~ msgid "<span class=\"s_donation_currency pe-1\">$</span>10"
-#~ msgstr "<span class=\"s_donation_currency pe-1\">$</span>10"
+msgid "<span class=\"s_donation_currency pe-1\">$</span>"
+msgstr "<span class=\"s_donation_currency pe-1\">$</span>"
 
-#~ msgid "<span class=\"s_donation_currency pe-1\">$</span>100"
-#~ msgstr "<span class=\"s_donation_currency pe-1\">$</span>100"
+msgid "<span class=\"s_donation_currency pe-1\">$</span>10"
+msgstr "<span class=\"s_donation_currency pe-1\">$</span>10"
 
-#~ msgid "<span class=\"s_donation_currency pe-1\">$</span>25"
-#~ msgstr "<span class=\"s_donation_currency pe-1\">$</span>25"
+msgid "<span class=\"s_donation_currency pe-1\">$</span>100"
+msgstr "<span class=\"s_donation_currency pe-1\">$</span>100"
 
-#~ msgid "<span class=\"s_donation_currency pe-1\">$</span>50"
-#~ msgstr "<span class=\"s_donation_currency pe-1\">$</span>50"
+msgid "<span class=\"s_donation_currency pe-1\">$</span>25"
+msgstr "<span class=\"s_donation_currency pe-1\">$</span>25"
 
-#~ msgid "<span>Enable a payment provider to accept online payments.</span>"
-#~ msgstr ""
-#~ "<span>Aktywuj operatora płatności, aby akceptować płatności online.</span>"
+msgid "<span class=\"s_donation_currency pe-1\">$</span>50"
+msgstr "<span class=\"s_donation_currency pe-1\">$</span>50"
 
-#~ msgid "<span>or</span>"
-#~ msgstr "<span>lub</span>"
+msgid "<span>Enable a payment provider to accept online payments.</span>"
+msgstr ""
+"<span>Aktywuj operatora płatności, aby akceptować płatności online.</span>"
 
-#~ msgid "<strong>Warning</strong> The currency is missing or incorrect."
-#~ msgstr "<strong>Ostrzeżenie</strong> Brak waluty lub nieprawidłowa waluta."
+msgid "<span>or</span>"
+msgstr "<span>lub</span>"
 
-#~ msgid "A donation has been made on your website"
-#~ msgstr "Darowizna została przekazana w witrynie"
+msgid "<strong>Warning</strong> The currency is missing or incorrect."
+msgstr "<strong>Ostrzeżenie</strong> Brak waluty lub nieprawidłowa waluta."
 
-#~ msgid "A year of cultural awakening."
-#~ msgstr "Rok kulturowego przebudzenia."
+msgid "A donation has been made on your website"
+msgstr "Darowizna została przekazana w witrynie"
 
-#~ msgid "Add"
-#~ msgstr "Dodaj"
+msgid "A year of cultural awakening."
+msgstr "Rok kulturowego przebudzenia."
 
-#~ msgid "Add a description here"
-#~ msgstr "Dodaj opis tutaj"
+msgid "Add"
+msgstr "Dodaj"
 
-#~ msgid "Amount"
-#~ msgstr "Kwota"
+msgid "Add a description here"
+msgstr "Dodaj opis tutaj"
 
-#~ msgid "Amount ("
-#~ msgstr "Kwota ("
+msgid "Amount"
+msgstr "Kwota"
 
-#~ msgid "Amount("
-#~ msgstr "Kwota("
+msgid "Amount ("
+msgstr "Kwota ("
 
-#~ msgid "Caring for a baby for 1 month."
-#~ msgstr "Opieka nad dzieckiem przez 1 miesiąc."
+msgid "Amount("
+msgstr "Kwota("
 
-#~ msgid "Choose Your Amount"
-#~ msgstr "Wybierz kwotę"
+msgid "Caring for a baby for 1 month."
+msgstr "Opieka nad dzieckiem przez 1 miesiąc."
 
-#~ msgid "Country"
-#~ msgstr "Kraj"
+msgid "Choose Your Amount"
+msgstr "Wybierz kwotę"
 
-#~ msgid "Country is required."
-#~ msgstr "Wymagany kraj."
+msgid "Country"
+msgstr "Kraj"
 
-#~ msgid "Custom Amount"
-#~ msgstr "Kwota niestandardowa"
+msgid "Country is required."
+msgstr "Wymagany kraj."
 
-#~ msgid "Dear"
-#~ msgstr "Dzień dobry,"
+msgid "Custom Amount"
+msgstr "Kwota niestandardowa"
 
-#~ msgid "Default Amount"
-#~ msgstr "Kwota domyślna"
+msgid "Dear"
+msgstr "Dzień dobry,"
 
-#~ msgid "Descriptions"
-#~ msgstr "Opisy"
+msgid "Default Amount"
+msgstr "Kwota domyślna"
 
-#~ msgid "Display Options"
-#~ msgstr "Opcje wyświetlania"
+msgid "Descriptions"
+msgstr "Opisy"
 
-#~ msgid "Donate"
-#~ msgstr "Darowizna"
+msgid "Display Options"
+msgstr "Opcje wyświetlania"
 
-#~ msgid "Donate Now"
-#~ msgstr "Przekaż darowiznę teraz"
+msgid "Donate"
+msgstr "Darowizna"
 
-#~ msgid "Donation"
-#~ msgstr "Darowizna"
+msgid "Donate Now"
+msgstr "Przekaż darowiznę teraz"
 
-#~ msgid "Donation Button"
-#~ msgstr "Przycisk darowizny"
+msgid "Donation"
+msgstr "Darowizna"
 
-#~ msgid "Donation amount must be at least %.2f."
-#~ msgstr "Kwota darowizny musi wynosić co najmniej %.2f."
+msgid "Donation Button"
+msgstr "Przycisk darowizny"
 
-#~ msgid "Donation confirmation"
-#~ msgstr "Potwierdzenie darowizny"
+msgid "Donation amount must be at least %.2f."
+msgstr "Kwota darowizny musi wynosić co najmniej %.2f."
 
-#~ msgid "Donation notification"
-#~ msgstr "Powiadomienie o darowiźnie"
+msgid "Donation confirmation"
+msgstr "Potwierdzenie darowizny"
 
-#~ msgid "Email"
-#~ msgstr "E-mail"
+msgid "Donation notification"
+msgstr "Powiadomienie o darowiźnie"
 
-#~ msgid "Email is required."
-#~ msgstr "Wymagany jest e-mail."
+msgid "Email"
+msgstr "E-mail"
 
-#~ msgid "Input"
-#~ msgstr "Przyjęcia"
+msgid "Email is required."
+msgstr "Wymagany jest e-mail."
 
-#~ msgid "Is Donation"
-#~ msgstr "Czy darowizna"
+msgid "Input"
+msgstr "Przyjęcia"
 
-#~ msgid "Is donation"
-#~ msgstr "Czy darowizna"
+msgid "Is Donation"
+msgstr "Czy darowizna"
 
-#~ msgid "Make a Donation"
-#~ msgstr "Przekaż darowiznę"
+msgid "Is donation"
+msgstr "Czy darowizna"
 
-#~ msgid "Maximum"
-#~ msgstr "Maksymalnie"
+msgid "Make a Donation"
+msgstr "Przekaż darowiznę"
 
-#~ msgid "Minimum"
-#~ msgstr "Minimum"
+msgid "Maximum"
+msgstr "Maksymalnie"
 
-#~ msgid "Name"
-#~ msgstr "Nazwa"
+msgid "Minimum"
+msgstr "Minimum"
 
-#~ msgid "Name is required."
-#~ msgstr "Nazwa jest wymagana."
+msgid "Name"
+msgstr "Nazwa"
 
-#~ msgid "None"
-#~ msgstr "Brak"
+msgid "Name is required."
+msgstr "Nazwa jest wymagana."
 
-#~ msgid "One year in elementary school."
-#~ msgstr "Jeden rok w szkole podstawowej."
+msgid "None"
+msgstr "Brak"
 
-#~ msgid "One year in high school."
-#~ msgstr "Jeden rok w szkole średniej."
+msgid "One year in elementary school."
+msgstr "Jeden rok w szkole podstawowej."
 
-#~ msgid "Payment Details"
-#~ msgstr "Szczegóły płatności"
+msgid "One year in high school."
+msgstr "Jeden rok w szkole średniej."
 
-#~ msgid "Payment Transaction"
-#~ msgstr "Transakcja płatnicza"
+msgid "Payment Details"
+msgstr "Szczegóły płatności"
 
-#~ msgid "Please enter a valid email address."
-#~ msgstr "Wprowadź prawidłowy adres e-mail."
+msgid "Payment Transaction"
+msgstr "Transakcja płatnicza"
 
-#~ msgid "Please select or enter an amount"
-#~ msgstr "Wybierz lub wprowadź kwotę"
+msgid "Please enter a valid email address."
+msgstr "Wprowadź prawidłowy adres e-mail."
 
-#~ msgid "Pre-filled Options"
-#~ msgstr "Wstępnie wypełnione opcje"
+msgid "Please select or enter an amount"
+msgstr "Wybierz lub wprowadź kwotę"
 
-#~ msgid "Recipient Email"
-#~ msgstr "Email odbiorcy"
+msgid "Pre-filled Options"
+msgstr "Wstępnie wypełnione opcje"
 
-#~ msgid "Slider"
-#~ msgstr "Suwak"
+msgid "Recipient Email"
+msgstr "Email odbiorcy"
 
-#~ msgid "Small or large, your contribution is essential."
-#~ msgstr "Mały czy duży, Twój wkład jest niezbędny."
+msgid "Slider"
+msgstr "Suwak"
 
-#~ msgid "Step"
-#~ msgstr "Krok"
+msgid "Small or large, your contribution is essential."
+msgstr "Mały czy duży, Twój wkład jest niezbędny."
 
-#~ msgid "Thank you for your donation of"
-#~ msgstr "Dziękujemy za darowiznę w wysokości"
+msgid "Step"
+msgstr "Krok"
 
-#~ msgid "The minimum donation amount is %(amount)s"
-#~ msgstr "Minimalna kwota darowizny wynosi %(amount)s"
+msgid "Thank you for your donation of"
+msgstr "Dziękujemy za darowiznę w wysokości"
 
-#~ msgid "There is nothing to pay."
-#~ msgstr "Nie trzeba nic płacić."
+msgid "The minimum donation amount is %(amount)s"
+msgstr "Minimalna kwota darowizny wynosi %(amount)s"
 
-#~ msgid "Write us a comment"
-#~ msgstr "Napisz nam komentarz"
+msgid "There is nothing to pay."
+msgstr "Nie trzeba nic płacić."
 
-#~ msgid "Your comment"
-#~ msgstr "Twój komentarz"
+msgid "Write us a comment"
+msgstr "Napisz nam komentarz"
 
-#~ msgid "made on"
-#~ msgstr "wykonane na"
+msgid "Your comment"
+msgstr "Twój komentarz"
+
+msgid "made on"
+msgstr "wykonane na"

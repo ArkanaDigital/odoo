@@ -40,9 +40,12 @@ export class VersionsTimeline extends StatusBarField {
 
     /** @override **/
     getFieldNames(props) {
-        const fieldNames = super.getFieldNames(props);
-        fieldNames.push("employee_type_id", "contract_date_start", "contract_date_end");
-        return fieldNames.filter((fName) => fName in props.record.fields);
+        const contractFields = [
+            "employee_type_id",
+            "contract_date_start",
+            "contract_date_end",
+        ].filter((fName) => fName in props.record.fields);
+        return [...super.getFieldNames(props), ...contractFields];
     }
 
     displayContractLines() {
@@ -124,6 +127,20 @@ export class VersionsTimeline extends StatusBarField {
                 toolTip,
             };
         });
+    }
+
+    /** @override **/
+    getSortedItems() {
+        const sorted = super.getSortedItems();
+
+        sorted.inline.sort((a, b) => {
+            const dateA = luxon.DateTime.fromFormat(a.label, "MMM d, yyyy");
+            const dateB = luxon.DateTime.fromFormat(b.label, "MMM d, yyyy");
+
+            return dateB.toMillis() - dateA.toMillis();
+        });
+
+        return sorted;
     }
 }
 

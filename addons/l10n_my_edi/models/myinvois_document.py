@@ -99,6 +99,13 @@ class MyInvoisDocument(models.Model):
         readonly=True,
         tracking=True,
     )
+    is_superseded = fields.Boolean(
+        help="Whether the linked invoice was reset to draft after this document reached a terminal state on the "
+             "platform. Superseded documents are excluded when computing the invoice's current MyInvois status.",
+        copy=False,
+        readonly=True,
+        export_string_translation=False,
+    )
     myinvois_error_document_hash = fields.Char(
         string="Document Hash",
         copy=False,
@@ -350,6 +357,9 @@ class MyInvoisDocument(models.Model):
 
         # Required for the file, this is the exact date at which the consolidated invoice was sent to MyInvois.
         documents.filtered(lambda d: not d.myinvois_issuance_date).myinvois_issuance_date = fields.Date.context_today(documents)
+        # Submitting a document puts it back in play, whether the submission succeeds or not; it is the current
+        # document of its invoice again.
+        documents.is_superseded = False
         documents._submit_to_myinvois(allow_raising=allow_raising)
 
     def action_update_submission_status(self):
@@ -406,7 +416,7 @@ class MyInvoisDocument(models.Model):
             # raised error.
             invoice_bodies = {
                 invoice.id: self.env['account.move.send']._format_error_html({
-                    'error_title': self.env._("Error when generating the file."),
+                    'error_title': self.env._("Error when processing E-Invoice."),
                     'errors': errored_doc_messages[doc.id],
                 })
                 for doc in errored_docs
@@ -418,7 +428,7 @@ class MyInvoisDocument(models.Model):
                     log_env['account.move'].browse(invoice_bodies)._message_log_batch(bodies=invoice_bodies)
             if len(self) == 1:
                 raise UserError(self.env['account.move.send']._format_error_text({
-                    'error_title': self.env._("Error when generating the file."),
+                    'error_title': self.env._("Error when processing E-Invoice."),
                     'errors': errored_doc_messages[errored_docs.id],
                 }))
             errored_invoices = errored_docs.invoice_ids

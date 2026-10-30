@@ -8,9 +8,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server saas~18.2\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-17 17:37+0000\n"
-"PO-Revision-Date: 2026-06-21 15:10+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-08-28 17:41+0000\n"
+"PO-Revision-Date: 2026-09-09 14:10+0000\n"
+"Last-Translator: Bren Driesen <brdri@odoo.com>\n"
 "Language-Team: Dutch <https://translate.odoo.com/projects/odoo-master/"
 "mail_plugin/nl/>\n"
 "Language: nl\n"
@@ -18,7 +18,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: mail_plugin
 #. odoo-python
@@ -46,6 +46,11 @@ msgstr "Toevoegen aan Odoo"
 #: model_terms:ir.ui.view,arch_db:mail_plugin.app_auth
 msgid "Allow"
 msgstr "Toestaan"
+
+#. module: mail_plugin
+#: model:ir.module.module,summary:base.module_mail_plugin
+msgid "Allows integration with mail plugins."
+msgstr ""
 
 #. module: mail_plugin
 #. odoo-javascript
@@ -162,6 +167,13 @@ msgid "In this conversation"
 msgstr "In dit gesprek"
 
 #. module: mail_plugin
+#: model:ir.module.module,description:base.module_mail_plugin
+msgid ""
+"Integrate Odoo with your mailbox, get information about contacts directly "
+"inside your mailbox, log content of emails as internal notes"
+msgstr ""
+
+#. module: mail_plugin
 #. odoo-javascript
 #: code:addons/mail_plugin/static/src/to_translate/translations_gmail.xml:0
 msgid "Invalid URL"
@@ -188,6 +200,11 @@ msgid "Logged from"
 msgstr "Aangemaakt vanaf"
 
 #. module: mail_plugin
+#: model:ir.module.module,shortdesc:base.module_mail_plugin
+msgid "Mail Plugin"
+msgstr ""
+
+#. module: mail_plugin
 #. odoo-javascript
 #: code:addons/mail_plugin/static/src/to_translate/translations_gmail.xml:0
 #: code:addons/mail_plugin/static/src/to_translate/translations_outlook.xml:0
@@ -198,7 +215,7 @@ msgstr "Nieuwe persoon"
 #. odoo-javascript
 #: code:addons/mail_plugin/static/src/to_translate/translations_gmail.xml:0
 msgid "No contact found."
-msgstr ""
+msgstr "Geen contactpersoon gevonden."
 
 #. module: mail_plugin
 #. odoo-javascript

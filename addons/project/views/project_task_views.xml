@@ -9,16 +9,19 @@
                 <search string="Tasks">
                     <field name="name" string="Tasks" filter_domain="[('name', 'ilike', self)]"/>
                     <field name="tag_ids"/>
-                    <field name="stage_id"/>
-                    <field name="milestone_id" groups="project.group_project_milestone" invisible="not context.get('allow_milestones', True)"/>
+                    <field name="milestone_id" groups="project.group_project_milestone" invisible="not context.get('allow_milestones', True) or not context.get('default_project_id')"/>
                     <field name="partner_id" operator="child_of" invisible="context.get('template_project')"/>
+                    <field name="stage_id"/>
                     <filter string="Unassigned" name="unassigned" domain="[('user_ids', '=', False)]"/>
                     <separator invisible="context.get('default_project_id')"/>
                     <filter string="Favorite Projects" name="favorite_projects" domain="[('project_id.is_favorite', '=', True)]" invisible="context.get('default_project_id')"/>
                     <separator groups="project.group_project_task_dependencies" invisible="not context.get('allow_task_dependencies', True)"/>
-                    <filter string="Blocking" name="blocking" domain="[('is_closed', '=', False), ('dependent_ids', '!=', False)]" groups="project.group_project_task_dependencies" invisible="not context.get('allow_task_dependencies', True)"/>
-                    <separator/>
-                    <filter string="Creation Date" name="creation_date_filter" date="create_date"/>
+                    <filter name="priority" string="Priority">
+                        <filter string="Urgent" domain="[('priority', '=', '3')]" name="urgent_priority"/>
+                        <filter string="High" domain="[('priority', '=', '2')]" name="high_priority"/>
+                        <filter string="Medium" domain="[('priority', '=', '1')]" name="medium_priority"/>
+                        <filter string="Low" domain="[('priority', '=', '0')]" name="low_priority"/>
+                    </filter>
                     <separator/>
                     <filter string="Open" name="open_tasks" domain="[('is_closed', '=', False)]"/>
                     <filter string="Closed" name="closed_tasks" domain="[('is_closed', '=', True)]"/>
@@ -28,16 +31,13 @@
                         <filter name="create_date_last_365_days" string="Last 365 Days" domain="[('date_last_stage_update', '&gt;=', 'today -365d'), ('date_last_stage_update', '&lt;', 'today')]"/>
                     </filter>
                     <separator/>
+                    <filter string="Creation Date" name="creation_date_filter" date="create_date"/>
+                    <separator/>
                     <filter string="Templates" context="{'render_task_templates': True, 'default_is_template': True}" name="templates" domain="[('has_template_ancestor', '=', True)]"/>
                     <group>
-                        <filter string="Stage" name="stage" context="{'group_by': 'stage_id'}"/>
-                        <filter string="Milestone" name="milestone" context="{'group_by': 'milestone_id'}" groups="project.group_project_milestone" invisible="not context.get('allow_milestones', True)"/>
                         <filter string="Priority" name="groupby_priority" context="{'group_by': 'priority'}"/>
-                        <filter string="Tags" name="tags" context="{'group_by': 'tag_ids'}"/>
-                         <filter string="Customer" name="customer" context="{'group_by': 'partner_id'}"
-                            invisible="context.get('template_project')"/>
-                        <filter string="Company" name="company_id" context="{'group_by': 'company_id'}" groups="base.group_multi_company"/>
-                        <filter string="Creation Date" name="create_date" context="{'group_by': 'create_date'}"/>
+                        <filter string="Milestone" name="milestone" context="{'group_by': 'milestone_id'}" groups="project.group_project_milestone" invisible="not context.get('allow_milestones', True) or not context.get('default_project_id')"/>
+                        <filter string="Stage" name="stage" context="{'group_by': 'stage_id'}"/>
                     </group>
                 </search>
             </field>
@@ -51,21 +51,16 @@
             <field name="mode">primary</field>
             <field name="priority">999</field>
             <field name="arch" type="xml">
-                 <field name="stage_id" position="before">
+                 <field name="name" position="after">
                     <field name="user_ids" filter_domain="[('user_ids.name', 'ilike', self), ('user_ids.active', 'in', [True, False])]"/>
+                    <field name="project_id" string="Project" invisible="context.get('default_project_id')"/>
                 </field>
-                <field name="stage_id" position="after">
-                    <field name="project_id" string="Project"/>
-                </field>
-                <field name="partner_id" position="after">
-                    <field name="company_id" groups="base.group_multi_company" placeholder="Visible to all"/>
+                <filter name="unassigned" position="before">
                     <filter string="My Tasks" name="my_tasks" domain="[('user_ids', 'in', uid)]"/>
-                </field>
-                <filter name="stage" position="before">
-                    <filter string="Assignees" name="user" context="{'group_by': 'user_ids'}"/>
                 </filter>
-                <filter name="stage" position="after">
-                    <filter string="Project" name="project" context="{'group_by': 'project_id'}"/>
+                <filter name="groupby_priority" position="before">
+                    <filter string="Assignees" name="user" context="{'group_by': 'user_ids'}"/>
+                    <filter string="Project" name="project" context="{'group_by': 'project_id'}" invisible="context.get('default_project_id')"/>
                 </filter>
             </field>
         </record>
@@ -78,16 +73,17 @@
             <field name="mode">primary</field>
             <field name="priority">999</field>
             <field name="arch" type="xml">
-                <filter name="creation_date_filter" position="after">
-                    <field name="activity_user_id" string="Activities of"/>
-                    <field name="activity_type_id" string="Activity type"/>
+                <filter name="priority" position="after">
                     <filter string="Deadline" name="date_deadline" date="date_deadline">
+                        <separator/>
                         <filter name="deadline_future" string="Future" domain="[('date_deadline', '&gt;=', 'today +1d')]"/>
                         <filter name="deadline_past_due" string="Overdue" domain="[('date_deadline', '&lt;', 'today')]"/>
                     </filter>
                 </filter>
-                <filter name="create_date" position="after">
+                <filter name="groupby_priority" position="after">
                     <filter string="Deadline" name="deadline" context="{'group_by': 'date_deadline'}"/>
+                </filter>
+                <filter name="stage" position="after">
                     <separator/>
                     <filter string="Properties" name="group_by_properties" context="{'group_by': 'task_properties'}"/>
                 </filter>
@@ -263,6 +259,15 @@
         <field name="groups_ids" eval="[(4, ref('project.group_project_manager'))]" />
     </record>
 
+    <record id="project_embedded_action_time_by_stage" model="ir.embedded.actions">
+        <field name="parent_res_model">project.project</field>
+        <field name="sequence">132</field>
+        <field name="name">Time by Stage</field>
+        <field name="parent_action_id" ref="project.act_project_project_2_project_task_all"/>
+        <field name="python_method">action_project_time_by_stage_report</field>
+        <field name="groups_ids" eval="[(4, ref('project.group_project_manager'))]" />
+    </record>
+
     <!-- Set pivot view and arrange in order -->
     <record id="project_task_kanban_action_view" model="ir.actions.act_window.view">
         <field name="sequence" eval="10"/>
@@ -413,7 +418,7 @@
                     </div>
                     <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="active or is_template"/>
                     <widget name="web_ribbon" title="Template" bg_color="text-bg-info" invisible="not is_template"/>
-                    <div class="d-flex flex-wrap-reverse flex-lg-nowrap justify-content-between align-items-center gap-2 mb-3 mb-lg-0">
+                    <div class="d-flex flex-wrap-reverse flex-lg-nowrap justify-content-between align-items-center gap-2">
                         <h1 class="o_outlined d-flex w-100">
                             <field name="name" options="{'line_breaks': False}" widget="text" class="o_task_name text-truncate w-md-75 w-100 pe-2" placeholder="Task Title..."/>
                         </h1>
@@ -452,7 +457,7 @@
                             <label for="date_deadline"/>
                             <div id="date_deadline_and_recurring_task" class="d-inline-flex w-100">
                                 <field name="date_deadline" nolabel="1" decoration-danger="date_deadline and date_deadline &lt; current_date and state not in ['1_done', '1_canceled']"/>
-                                <field name="recurring_task" nolabel="1" class="w-auto w-lg-100"
+                                <field name="recurring_task" nolabel="1" class="w-auto ms-2"
                                        widget="boolean_icon" options="{'icon': 'redo'}"
                                        invisible="not active or parent_id or not allow_recurring_tasks"
                                        groups="project.group_project_recurring_tasks"/>
@@ -475,7 +480,7 @@
                         <field name="task_properties" columns="2"/>
                     <notebook>
                         <page name="description_page" string="Description">
-                            <field name="description" type="html" options="{'collaborative': true, 'resizable': false}" placeholder="Add details about this task..."/>
+                            <field name="description" type="html" options="{'collaborative': true, 'resizable': false, 'allowWhiteboard': true}" placeholder="Add details about this task..."/>
                         </page>
                         <page name="sub_tasks_page" string="Sub-tasks" invisible="not project_id and not is_template">
                             <field name="child_ids"
@@ -696,43 +701,67 @@
                             <field name="color" widget="kanban_color_picker"/>
                         </t>
                         <t t-name="card">
-                            <main t-att-class="['1_done', '1_canceled'].includes(record.state.raw_value) ? 'opacity-50' : ''">
-                                <a t-if="record.parent_id.raw_value" class="o_kanban_parent mw-100 me-auto pe-3 btn-link o_small-fs text-dark text-truncate" title="See Parent Task" name="action_open_parent_task" type="object" role="button">
-                                    <i class="oi me-1" data-icon="subdirectory_arrow_right"/>
-                                    <field name="parent_id"/>
-                                </a>
-                                <field name="name" class="fw-bold fs-5"/>
-                                <div class="text-muted d-flex flex-column">
-                                    <field invisible="context.get('default_project_id', False)" name="project_id" options="{'no_open': True}"/>
-                                    <field name="partner_id" invisible="context.get('template_project')"/>
-                                    <field t-if="record.allow_milestones.raw_value and record.milestone_id.raw_value" t-att-class="record.has_late_and_unreached_milestone.raw_value and !record.state.raw_value.startsWith('1_') ? 'text-danger' : ''" name="milestone_id" options="{'no_open': True}"/>
+                            <main class="row-gap-1" t-att-class="['1_done', '1_canceled'].includes(record.state.raw_value) ? 'opacity-50' : ''">
+                                <div class="o_kanban_project_header">
+                                    <a t-if="record.parent_id.raw_value" class="o_kanban_parent btn btn-hover-dark d-inline-flex gap-1 align-items-center mw-100 me-4 p-1 text-truncate" title="See Parent Task" name="action_open_parent_task" type="object" role="button">
+                                        <i class="oi oi-flip-vertical" data-icon="subdirectory_arrow_right"/>
+                                        <field name="parent_id" class="text-truncate small lh-1"/>
+                                    </a>
+                                    <div class="d-flex gap-2 justify-content-between">
+                                        <div class="d-flex align-items-baseline me-4 pe-2">
+                                            <i t-if="!record.project_id.raw_value and !record.is_template.raw_value" title="Private Task" class="oi me-1 text-muted" data-icon="lock" data-tooltip="Private task"/>
+                                            <field name="name" class="fw-bold fs-5"/>
+                                        </div>
+                                    </div>
                                 </div>
-                                <field name="tag_ids" widget="many2many_tags" options="{'color_field': 'color', 'on_tag_click': 'edit_color'}"/>
-                                <field t-if="record.date_deadline.raw_value" invisible="state in ['1_done', '1_canceled']" name="date_deadline" widget="relative_date"/>
-                                <field name="task_properties" widget="properties"/>
-                                <field name="displayed_image_id" widget="attachment_image"/>
-                                <footer t-if="!selection_mode" class="pt-1">
-                                    <div class="d-flex align-items-center gap-1">
-                                        <field name="activity_ids" widget="kanban_activity" style="margin-right: 2px"/>
-                                        <b t-if="record.rating_active.raw_value and record.rating_count.raw_value &gt; 0">
-                                            <span class="oi oi-fw o_button_icon text-success rating_face" data-icon="sentiment_satisfied" t-if="record.rating_avg.raw_value &gt;= 3.66" title="Average Rating: Happy" role="img" aria-label="Happy face"/>
-                                            <span class="oi oi-fw o_button_icon text-warning rating_face" data-icon="sentiment_neutral" t-elif="record.rating_avg.raw_value &gt;= 2.33" title="Average Rating: Neutral" role="img" aria-label="Neutral face"/>
-                                            <span class="oi oi-fw o_button_icon text-danger rating_face" data-icon="sentiment_sad" t-else="" title="Average Rating: Unhappy" role="img" aria-label="Unhappy face"/>
-                                        </b>
-                                        <a t-if="!record.project_id.raw_value and !record.is_template.raw_value" class="text-muted" style="font-size: 17px; margin-left: 1.5px">
-                                            <i title="Private Task" class="oi" data-icon="lock"/>
-                                        </a>
-                                        <t t-if="record.project_id.raw_value and record.subtask_count.raw_value">
-                                            <widget name="subtask_counter" class="me-1"/>
-                                        </t>
-                                        <field name="priority" class="lh-1" widget="priority"/>
-                                        <field name="is_rotting" invisible="1"/>
-                                        <field name="rotting_days" widget="rotting_days" class="ms-1 d-flex"/>
+                                <field name="displayed_image_id" widget="attachment_image" invisible="not displayed_image_id"/>
+                                <div class="d-flex d-empty-none flex-column text-muted">
+                                    <span t-if="record.project_id.raw_value and !context.default_project_id" class="d-flex gap-1 align-items-baseline">
+                                        <i class="oi" data-icon="assignment_turned_in" title="Project" data-tooltip="Project"/>
+                                        <field name="project_id" options="{'no_open': True}"/>
+                                    </span>
+                                    <span t-if="record.partner_id.raw_value and !context.template_project" class="d-flex gap-1 align-items-baseline">
+                                        <i class="oi oi-filled" data-icon="person" title="Customer" data-tooltip="Customer"/>
+                                        <field name="partner_id"/>
+                                    </span>
+                                    <span t-if="record.allow_milestones.raw_value and record.milestone_id.raw_value" class="d-flex gap-1 align-items-baseline" t-att-class="record.has_late_and_unreached_milestone.raw_value and !record.state.raw_value.startsWith('1_') ? 'text-danger' : ''">
+                                        <i class="oi oi-filled" data-icon="flag" title="Miltstone" data-tooltip="Milestone"/>
+                                        <field name="milestone_id" options="{'no_open': True}"/>
+                                    </span>
+                                    <field name="task_properties" widget="card.properties" icon="stat_0" t-if="(record.task_properties.raw_value || []).some((property) =&gt; property.value)"/>
+                                    <div class="d-flex flex-wrap d-empty-none">
+                                        <div t-if="record.date_deadline.raw_value" class="o_project_deadline_wrap d-flex flex-basis-100 gap-1 align-items-baseline">
+                                            <t t-set="deadline_diff_days" t-value="Math.floor(luxon.DateTime.fromISO(record.date_deadline.raw_value).startOf('day').diff(luxon.DateTime.local().startOf('day'), 'days').days)"/>
+                                            <i class="oi" data-icon="calendar_clock" data-tooltip="Deadline" title="Deadline"/>
+                                            <field invisible="state in ['1_done', '1_canceled']" name="date_deadline" widget="relative_date"/>
+                                        </div>
+                                        <t t-set="rating_value" t-value="record.rating_avg.raw_value"/>
+                                        <t t-set="rating_mood" t-value="rating_value &gt;= 3.66 ? 'happy' : rating_value &gt;= 2.33 ? 'neutral' : 'unhappy'"/>
+                                        <t t-set="rating_tooltip" t-value="{happy: 'Average Rating: Happy', neutral: 'Average Rating: Neutral', unhappy: 'Average Rating: Unhappy'}[rating_mood]"/>
+                                        <span t-if="record.rating_active.raw_value and record.rating_count.raw_value &gt; 0" class="d-flex gap-1 align-items-baseline flex-basis-50">
+                                            <i class="oi"
+                                                t-att-data-icon="{happy: 'sentiment_satisfied', neutral: 'sentiment_neutral', unhappy: 'sentiment_sad'}[rating_mood]"
+                                                t-att-aria-label="rating_tooltip"
+                                                role="img"
+                                                t-att-title="rating_tooltip"
+                                                t-att-data-tooltip="rating_tooltip"
+                                            />
+                                            <span t-att-class="{happy: 'text-success', neutral: 'text-warning', unhappy: 'text-danger'}[rating_mood]"><t t-out="rating_value"/>/5</span>
+                                        </span>
                                     </div>
-                                    <div class="d-flex ms-auto">
-                                        <field name="user_ids" widget="many2many_avatar_user"/>
-                                        <field name="state" class="ms-1" widget="project_task_state_selection" options="{'is_toggle_mode': false}"/>
-                                    </div>
+                                </div>
+                                <field name="tag_ids" widget="many2many_tags" options="{'color_field': 'color', 'on_tag_click': 'edit_color'}" invisible="not tag_ids"/>
+                                <footer t-if="!selection_mode" class="mt-1 p-0">
+                                    <field name="activity_ids" widget="kanban_activity" class="me-1"/>
+                                    <t t-if="record.project_id.raw_value and record.subtask_count.raw_value">
+                                        <widget name="subtask_counter" class="me-1"/>
+                                    </t>
+                                    <field name="priority" widget="priority"/>
+                                    <field name="is_rotting" invisible="1"/>
+                                    <field name="rotting_days" invisible="not rotting_days" widget="rotting_days" class="d-inline-block"/>
+                                    <field name="project_sharing_portal_user_ids" invisible="1"/>
+                                    <field name="user_ids" widget="many2many_avatar_user" class="ms-auto"/>
+                                    <field name="state" widget="project_task_state_selection" options="{'is_toggle_mode': false}"/>
                                 </footer>
                             </main>
                             <widget name="subtask_kanban_list"/>
@@ -882,6 +911,7 @@
                     <field name="project_id" widget="project" invisible="context.get('default_project_id', False)"/>
                     <field name="display_in_project" invisible="1"/>
                     <field name="subtask_count" invisible="1"/>
+                    <field name="project_sharing_portal_user_ids" invisible="1"/> <!-- Required by the user_ids domain -->
                     <field name="milestone_id" invisible="not allow_milestones or not milestone_id"/>
                     <field name="company_id" invisible="1"/>
                     <field name="user_ids" widget="many2many_avatar_user" invisible="not user_ids"/>
@@ -922,6 +952,7 @@
                     <field name="user_ids"/>
                     <field name="project_id"/>
                     <field name="company_id" invisible="1"/>
+                    <field name="project_sharing_portal_user_ids" invisible="1"/> <!-- Required by the user_ids domain -->
                     <templates>
                         <div t-name="activity-box" class="justify-content-between gap-2">
                             <div class="flex-shrink-1">
@@ -1015,9 +1046,11 @@
             <field name="arch" type="xml">
                 <list position="attributes">
                     <attribute name="default_group_by"/>
+                    <attribute name="multi_edit">1</attribute>
                 </list>
                 <field name="project_id" position="attributes">
                     <attribute name="column_invisible">0</attribute>
+                    <attribute name="readonly">0</attribute>
                 </field>
             </field>
         </record>

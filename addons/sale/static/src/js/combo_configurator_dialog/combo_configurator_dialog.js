@@ -1,45 +1,43 @@
 import { useSubEnv } from "@web/owl2/utils";
-import { Component, onMounted, onWillUnmount, proxy } from '@odoo/owl';
+import { Component, proxy, t, useProps } from '@odoo/owl';
 import { formatCurrency } from '@web/core/currency';
 import { Dialog } from '@web/core/dialog/dialog';
 import { _t } from '@web/core/l10n/translation';
 import { rpc } from '@web/core/network/rpc';
+import { registry } from '@web/core/registry';
 import { useService } from '@web/core/utils/hooks';
 import { ProductCombo } from '../models/product_combo';
 import { ProductTemplateAttributeLine } from '../models/product_template_attribute_line';
 import { ProductCard } from '../product_card/product_card';
-import {
-    ProductConfiguratorDialog
-} from '../product_configurator_dialog/product_configurator_dialog';
 import { QuantityButtons } from '../quantity_buttons/quantity_buttons';
 
 export class ComboConfiguratorDialog extends Component {
     static template = 'sale.ComboConfiguratorDialog';
     static components = { Dialog, ProductCard, QuantityButtons };
-    static props = {
-        product_tmpl_id: Number,
-        display_name: String,
-        quantity: Number,
-        price: Number,
-        combos: { type: Array, element: ProductCombo },
-        currency_id: Number,
-        company_id: { type: Number, optional: true },
-        pricelist_id: { type: Number, optional: true },
-        date: String,
-        price_info: { type: String, optional: true },
-        edit: { type: Boolean, optional: true },
-        options: {
-            type: Object,
-            optional: true,
-            shape: {
-                showQuantity : { type: Boolean, optional: true },
-                showPrice : { type: Boolean, optional: true },
-            },
-        },
-        save: Function,
-        discard: Function,
-        close: Function,
-    };
+
+    props = useProps({
+        product_tmpl_id: t.number(),
+        display_name: t.string(),
+        quantity: t.number(),
+        price: t.number(),
+        combos: t.array(t.instanceOf(ProductCombo)),
+        currency_id: t.number(),
+        company_id: t.number().optional(),
+        pricelist_id: t.number().optional(),
+        date: t.string(),
+        price_info: t.string().optional(),
+        edit: t.boolean().optional(),
+        options: t
+            .object({
+                showQuantity: t.boolean().optional(),
+                showPrice: t.boolean().optional(),
+            })
+            .optional(),
+        save: t.function(),
+        discard: t.function(),
+        deleteRecord: t.function().optional(),
+        close: t.function(),
+    });
 
     setup() {
         this.dialog = useService('dialog');
@@ -61,8 +59,6 @@ export class ComboConfiguratorDialog extends Component {
         this.unconfigurableCombos = this.props.combos.filter(combo => !combo.isConfigurable);
         this.configurableCombos = this.props.combos.filter(combo => combo.isConfigurable);
 
-        onMounted(() => this.env.bus.trigger("FORM-CONTROLLER:FORM-IN-DIALOG:ADD"));
-        onWillUnmount(() => this.env.bus.trigger("FORM-CONTROLLER:FORM-IN-DIALOG:REMOVE"));
     }
 
     /**
@@ -77,6 +73,7 @@ export class ComboConfiguratorDialog extends Component {
         comboItem = this.getSelectedOrProvidedComboItem(comboId, comboItem);
         let product = comboItem.product;
         if (comboItem.is_configurable) {
+            const ProductConfiguratorDialog = registry.category('sale_configurator_dialogs').get('product');
             const productConfiguratorData = await rpc(this.getValuesUrl,
                 {
                     product_template_id: product.product_tmpl_id,
@@ -195,6 +192,13 @@ export class ComboConfiguratorDialog extends Component {
         this.props.close();
     }
 
+    async deleteRecord() {
+        if (this.props.deleteRecord) {
+            await this.props.deleteRecord();
+        }
+        this.props.close();
+    }
+
     /**
      * Initialize the selected combo item in each combo.
      */
@@ -230,7 +234,10 @@ export class ComboConfiguratorDialog extends Component {
      * @return {Object} Data about the combo product.
      */
     get _comboProductData() {
-        return { 'quantity': this.state.quantity };
+        return {
+            quantity: this.state.quantity,
+            price: this._comboPrice,
+        };
     }
 
     /**
@@ -265,3 +272,5 @@ export class ComboConfiguratorDialog extends Component {
         return {};
     }
 }
+
+registry.category('sale_configurator_dialogs').add('combo', ComboConfiguratorDialog);

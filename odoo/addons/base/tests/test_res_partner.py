@@ -239,6 +239,18 @@ class TestPartner(TransactionCaseWithUserDemo):
         self.assertEqual(first_child.lang, 'de_DE')
         self.assertEqual(second_child.lang, 'fr_FR')
 
+    def test_create_ignores_default_user_ids(self):
+        """ default_user_ids is meant for other models (e.g. the 'All Tasks'
+        action), creating a partner with it must not re-link the user. """
+        user = self.user_demo
+        user_partner = user.partner_id
+        partner_id, _name = self.env['res.partner'].with_context(
+            default_user_ids=[Command.link(user.id)],
+        ).name_create('Imported Customer')
+        partner = self.env['res.partner'].browse(partner_id)
+        self.assertFalse(partner.user_ids)
+        self.assertEqual(user.partner_id, user_partner)
+
     def test_name_create(self):
         res_partner = self.env['res.partner']
         for text, expected_name, expected_mail in SAMPLES:
@@ -1263,7 +1275,7 @@ class TestPartnerForm(TransactionCase):
         self.assertEqual(partner.child_ids.filtered(lambda p: p.name == "Second Child").lang, 'fr_FR')
 
     def test_onchange_parent_sync_user(self):
-        company_1 = self.env['res.company'].create({'name': 'company_1'})
+        company_1 = self.add_company('base.test_company', {'name': 'company_1'})
         test_user = self.env['res.users'].create({
             'name': 'This user',
             'login': 'thisu',

@@ -10,7 +10,7 @@
         <field name="name">User</field>
         <field name="comment">User: Can manage tasks in projects shared with them.</field>
         <field name="sequence">10</field>
-        <field name="implied_ids" eval="[(3, ref('base.group_user')), (4, ref('base.group_user_regular'))]"/>
+        <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
         <field name="privilege_id" ref="res_groups_privilege_project"/>
     </record>
 
@@ -51,14 +51,10 @@
             ('project_id.privacy_visibility', 'in', ['invited_users', 'portal']),
             ('has_template_ancestor', '=', False),
             ('active', '=', True),
-            '|',
-                '&amp;',
-                    ('message_partner_ids', 'child_of', [user.partner_id.commercial_partner_id.id]),
-                    ('project_id.collaborator_ids.partner_id', 'in', [user.partner_id.id]),
-                ('project_id.collaborator_ids', 'any', [
-                    ('partner_id', '=', user.partner_id.id),
-                    ('limited_access', '=', False),
-                ]),
+            ('project_id.collaborator_ids', 'any', [
+                ('partner_id', '=', user.partner_id.id),
+                ('access_mode', 'in', ['edit', 'advanced_edit'])
+            ]),
         ]</field>
         <field name="active">0</field>
     </record>

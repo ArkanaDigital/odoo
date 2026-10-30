@@ -6,14 +6,13 @@
             <form string="Generate time off for multiple employees">
                 <group>
                     <field name="employee_ids" widget="many2many_avatar_employee" placeholder="All Employees"/>
-                    <field name="valid_work_entry_type_ids" invisible="1"/>
                     <label for="date_from" string="Dates"/>
                     <field
                         name="date_from"
                         widget="daterange"
                         options="{'end_date_field': 'date_to'}"
                         class="w-50" nolabel="1"/>
-                    <field name="date_to" invisible="1" />
+                    <field name="date_to" invisible="1" /> <!-- end date of the date_from daterange widget (end_date_field option) -->
                     <!-- half day or custom hours-->
                     <label for="date_from_period" invisible="work_entry_type_request_unit != 'half_day'" string="Day Period"/>
                     <div class="o_row" invisible="work_entry_type_request_unit != 'half_day'">
@@ -25,10 +24,9 @@
                         <field name="hour_from" required="work_entry_type_request_unit != 'hour'" widget="float_time_selection" class="o_hr_narrow_field me-2"/>
                         <field name="hour_to" required="work_entry_type_request_unit != 'hour'" widget="float_time_selection" class="o_hr_narrow_field"/>
                     </div>
-                    <field name="work_entry_type_id" class="w-100"
+                    <field name="work_entry_type_id" widget="many2one_work_entry_type" class="w-100"
                         domain="[
                             ('id', 'in', allowed_work_entry_type_ids),
-                            ('time_off_selectable', '=', True),
                             '|',
                                 ('requires_allocation', '=', False),
                                 '&amp;',

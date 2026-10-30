@@ -1,28 +1,30 @@
 # Translation of Odoo Server.
 # This file contains the translation of the following modules:
-# 	* stock_fleet
+# * stock_fleet
 #
+# Weblate <noreply-mt-weblate@weblate.org>, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 18.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-17 17:39+0000\n"
-"PO-Revision-Date: 2026-06-18 20:44+0000\n"
+"POT-Creation-Date: 2026-09-11 17:43+0000\n"
+"PO-Revision-Date: 2026-08-31 16:57+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Burmese <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Burmese <https://translate.odoo.com/projects/odoo-s19-4/"
 "stock_fleet/my/>\n"
 "Language: my\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: stock_fleet
 #. odoo-python
 #: code:addons/stock_fleet/models/fleet_vehicle_model.py:0
+#, fuzzy
 msgid "%(display_name)s (%(load_capacity)s)"
-msgstr ""
+msgstr "%(display_name)s (%(load_capacity)s)"
 
 #. module: stock_fleet
 #. odoo-python
@@ -44,17 +46,21 @@ msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_card
-msgid "<i class=\"fa fa-cubes text-primary me-2\" title=\"Location\"/>"
+msgid "<i class=\"oi mx-2\" data-icon=\"east\" title=\"Arrow\"/>"
 msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_card
-msgid "<i class=\"fa fa-long-arrow-right mx-2\" title=\"Arrow\"/>"
+msgid ""
+"<i class=\"oi text-primary me-2\" data-icon=\"inventory_2\" "
+"title=\"Location\"/>"
 msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_card
-msgid "<i class=\"fa fa-truck text-primary me-2\" title=\"Vehicle\"/>"
+msgid ""
+"<i class=\"oi text-primary me-2\" data-icon=\"local_shipping\" "
+"title=\"Vehicle\"/>"
 msgstr ""
 
 #. module: stock_fleet
@@ -91,8 +97,20 @@ msgid "Allowed Docks"
 msgstr ""
 
 #. module: stock_fleet
+#: model:ir.module.module,description:base.module_stock_fleet
+msgid ""
+"Allows organizing deliveries by dock, assigning drivers and vehicles, and "
+"printing the associated consignment notes."
+msgstr ""
+
+#. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.report_cmr_translated_label
 msgid "Annexed documents"
+msgstr ""
+
+#. module: stock_fleet
+#: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_type__auto_print_cmr_report
+msgid "Auto Print Consignment Note (CMR)"
 msgstr ""
 
 #. module: stock_fleet
@@ -128,8 +146,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_type_kanban_inherit_stock_fleet
+#, fuzzy
 msgid "Calendar"
-msgstr ""
+msgstr "ပြက္ခဒိန်"
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.report_cmr_translated_label
@@ -174,6 +193,7 @@ msgstr ""
 #. module: stock_fleet
 #: model:ir.actions.report,name:stock_fleet.action_report_cmr
 #: model:ir.actions.report,name:stock_fleet.action_report_cmr_batch
+#: model_terms:ir.ui.view,arch_db:stock_fleet.view_picking_type_form
 msgid "Consignment Note (CMR)"
 msgstr ""
 
@@ -216,8 +236,9 @@ msgstr ""
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__display_name
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_type__display_name
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_warehouse__display_name
+#, fuzzy
 msgid "Display Name"
-msgstr ""
+msgstr "ပြသသော အမည်"
 
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__dock_id
@@ -242,8 +263,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__driver_id
+#, fuzzy
 msgid "Driver"
-msgstr ""
+msgstr "ယာဉ်မောင်း"
 
 #. module: stock_fleet
 #: model:ir.model.fields,help:stock_fleet.field_stock_picking_batch__has_dispatch_management
@@ -255,8 +277,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__end_date
+#, fuzzy
 msgid "End Date"
-msgstr ""
+msgstr "ကုန်ဆုံးသော နေ့စွဲ"
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.report_cmr_translated_label
@@ -291,7 +314,15 @@ msgstr ""
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__id
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_type__id
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_warehouse__id
+#, fuzzy
 msgid "ID"
+msgstr "အိုင်ဒီ"
+
+#. module: stock_fleet
+#: model:ir.model.fields,help:stock_fleet.field_stock_picking_type__auto_print_cmr_report
+msgid ""
+"If this checkbox is ticked, Odoo will automatically print the Consignment "
+"Note (CMR) of a delivery when it is validated."
 msgstr ""
 
 #. module: stock_fleet
@@ -316,8 +347,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_fleet_vehicle_model_category__volume_capacity
+#, fuzzy
 msgid "Max Volume"
-msgstr ""
+msgstr "အများဆုံး ထုထည်"
 
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__vehicle_volume_capacity
@@ -326,8 +358,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_fleet_vehicle_model_category__weight_capacity
+#, fuzzy
 msgid "Max Weight"
-msgstr ""
+msgstr "အများဆုံး အလေးချိန်"
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.report_cmr_translated_label
@@ -366,11 +399,6 @@ msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_filter
-msgid "Operation Type"
-msgstr ""
-
-#. module: stock_fleet
-#: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_filter
 msgid "Own Fleet"
 msgstr ""
 
@@ -396,8 +424,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_filter
+#, fuzzy
 msgid "Scheduled Date"
-msgstr ""
+msgstr "စီစဉ်ထားသော ရက်"
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.report_cmr_translated_label
@@ -421,8 +450,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.report_picking_batch_inherit
+#, fuzzy
 msgid "Sequence"
-msgstr ""
+msgstr "စီးကွင့်"
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.vpicktree
@@ -462,6 +492,16 @@ msgstr ""
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_type_kanban_inherit_stock_fleet
 msgid "Statistics"
+msgstr ""
+
+#. module: stock_fleet
+#: model:ir.module.module,shortdesc:base.module_stock_fleet
+msgid "Stock Transport"
+msgstr ""
+
+#. module: stock_fleet
+#: model:ir.module.module,summary:base.module_stock_fleet
+msgid "Stock Transport Management"
 msgstr ""
 
 #. module: stock_fleet
@@ -509,13 +549,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_filter
-msgid "Today"
-msgstr ""
-
-#. module: stock_fleet
-#: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_filter
+#, fuzzy
 msgid "Tomorrow"
-msgstr ""
+msgstr "မနက်ဖြန်"
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.vpicktree
@@ -544,8 +580,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model:ir.model,name:stock_fleet.model_stock_picking
+#, fuzzy
 msgid "Transfer"
-msgstr ""
+msgstr "ရွှေ့ပြောင်းမှူ"
 
 #. module: stock_fleet
 #: model:fleet.vehicle.tag,name:stock_fleet.vehicle_tag_transport
@@ -565,8 +602,9 @@ msgstr ""
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__vehicle_id
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_filter
+#, fuzzy
 msgid "Vehicle"
-msgstr ""
+msgstr "ယာဉ်"
 
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__vehicle_category_id
@@ -576,8 +614,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_form
+#, fuzzy
 msgid "Volume"
-msgstr ""
+msgstr "ထုထည်"
 
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__used_volume_percentage
@@ -597,13 +636,15 @@ msgstr ""
 
 #. module: stock_fleet
 #: model:ir.model,name:stock_fleet.model_stock_warehouse
+#, fuzzy
 msgid "Warehouse"
-msgstr ""
+msgstr "ဂိုဒေါင်"
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_form
+#, fuzzy
 msgid "Weight"
-msgstr ""
+msgstr "အလေးချိန်"
 
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking_batch__used_weight_percentage
@@ -618,8 +659,9 @@ msgstr ""
 
 #. module: stock_fleet
 #: model:ir.model.fields,field_description:stock_fleet.field_stock_picking__zip
+#, fuzzy
 msgid "Zip"
-msgstr ""
+msgstr "စာတိုက် သင်္ကေတ"
 
 #. module: stock_fleet
 #: model_terms:ir.ui.view,arch_db:stock_fleet.stock_picking_batch_form

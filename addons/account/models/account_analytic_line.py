@@ -21,7 +21,8 @@ class AccountAnalyticLine(models.Model):
         string='Financial Account',
         ondelete='restrict',
         check_company=True,
-        compute='_compute_general_account_id', store=True, readonly=False
+        compute='_compute_general_account_id', store=True, readonly=False,
+        index='btree_not_null',
     )
     journal_id = fields.Many2one(
         'account.journal',
@@ -176,6 +177,11 @@ class AccountAnalyticLine(models.Model):
                 affected_move_lines |= self.move_line_id
             affected_move_lines._update_analytic_distribution()
         return res
+
+    @api.ondelete(at_uninstall=False)
+    def _ondelete_invalidate(self):
+        # invalidate once we delete the lines
+        return self.env.invalidate_all
 
     def unlink(self):
         affected_move_lines = self.move_line_id

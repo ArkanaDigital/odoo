@@ -8,6 +8,7 @@ import {
     untrack,
 } from "@odoo/owl";
 import {
+    COMPUTED_SYM,
     OR_SYM,
     STORE_SYM,
     isCommandList,
@@ -16,11 +17,12 @@ import {
     isRecord,
     isRelation,
     modelRegistry,
-    technicalKeysOnRecords,
     untrackFunctions,
 } from "./misc";
-import { computedUntilStale } from "@mail/utils/common/signal";
+import { localStorageField } from "@mail/model/local_storage_field";
+import { RecordInternal } from "./record_internal";
 import { serializeDate, serializeDateTime } from "@web/core/l10n/dates";
+import { nestedShallowEqual } from "@mail/utils/common/signal";
 
 /** @typedef {import("./misc").FieldDefinition} FieldDefinition */
 /** @typedef {import("./record_list").RecordList} RecordList */
@@ -51,8 +53,18 @@ export class Record {
     /** @type {string} */
     static _name;
 
-    constructor() {
+    /** @param {Object} [ids] the identifying values, from `Record.new` */
+    constructor(ids) {
         markRaw(this);
+        const Model = new.target;
+        this._raw = this;
+        if (!Model._) {
+            // the dummy record collecting the field declarations has no internals
+            return;
+        }
+        this.Model = Model;
+        this._ = this[STORE_SYM] ? Record.store._ : new RecordInternal();
+        return this._.prepareRecord(this, ids);
     }
 
     /** @param {() => any} fn */
@@ -61,7 +73,7 @@ export class Record {
     }
     static get(data) {
         const Model = this;
-        return Model.records[Model.localId(data)];
+        return Model.records.get(Model.localId(data));
     }
     /**
      * Gets a record by id, fetching it from the server if it doesn't exist in the store or if some
@@ -192,27 +204,20 @@ export class Record {
         const Model = this;
         const store = Model._rawStore;
         return store.MAKE_UPDATE(function RecordNew() {
-            const recordProxy = new Model();
+            const recordProxy = new Model(ids);
             const record = recordProxy._raw;
-            Object.assign(record._, { localId: Model.localId(ids) });
-            for (const name of Model._.fields.keys()) {
-                record._.prepareField(record, name, recordProxy);
-            }
+            recordProxy.setup();
             Object.assign(recordProxy, { ...ids });
-            Model.records[record.localId] = recordProxy;
+            Model.records.set(record.localId, recordProxy);
             if (record.Model.getName() === "Store") {
                 record.env = Model._rawStore.env;
             }
             // compute inherits fields in priority, as other fields might depend on them
             for (const fieldName of Model._.inheritsFields) {
-                record._.compute?.(record, fieldName);
+                record._.compute?.(fieldName);
             }
             for (const fieldName of record.Model._.fields.keys()) {
-                if (record.Model._.fieldsComputable.get(fieldName)) {
-                    // the owl computed() runs on the first read, nothing to request
-                    continue;
-                }
-                record._.requestCompute?.(record, fieldName);
+                record._.requestCompute?.(fieldName);
             }
             record._.isConstructing.set(false);
             return recordProxy;
@@ -300,6 +305,69 @@ export class Record {
     _proxy;
 
     setup() {}
+
+    /**
+     * Declares a value computed from the record, read like a field without
+     * being one: the value lives in an owl computed, and the model neither
+     * stores nor serializes it.
+     *
+     * @template T
+     * @param {() => T} compute
+     * @param {Object} [options={}]
+     * @param {(a: T, b: T) => boolean} [options.equals] compares the new
+     *  value to the previous one; a computed that returns an equal value
+     *  keeps its previous reference instead of notifying its readers.
+     * @returns {T}
+     */
+    computed(compute, options) {
+        return { [COMPUTED_SYM]: true, compute, equals: options?.equals };
+    }
+
+    /**
+     * `computed` for an array or plain object value: a recomputation giving the same
+     * content is interpreted as the same value.
+     *
+     * @template T
+     * @param {() => T} compute
+     * @param {{ nested?: boolean }} [options] Whether to compare nested arrays/objects.
+     * @returns {T}
+     */
+    computedShallowEqual(compute, options) {
+        return this.computed(compute, {
+            equals: options?.nested ? nestedShallowEqual : shallowEqual,
+        });
+    }
+
+    /**
+     * Declares a computed whose value goes stale on its own, a value read
+     * from the clock in particular: `msUntilStale` gives the delay after
+     * which the value is made again, or nothing to leave it as it is. The
+     * value is made again while it is read and schedules nothing once nobody
+     * reads it.
+     *
+     * @template T
+     * @param {() => T} compute
+     * @param {(value: T) => number|void} msUntilStale
+     * @param {Object} [options={}]
+     * @param {(a: T, b: T) => boolean} [options.equals]
+     * @returns {T}
+     */
+    computedUntilStale(compute, msUntilStale, options) {
+        return { ...this.computed(compute, options), msUntilStale };
+    }
+
+    /**
+     * Declares a field whose value lives in the browser local storage: it is
+     * restored when the record is made, written back on change, and follows the
+     * storage events of the other tabs.
+     *
+     * @template T
+     * @param {T} [defaultValue]
+     * @returns {T}
+     */
+    localStorage(defaultValue) {
+        return localStorageField(this, defaultValue);
+    }
 
     /**
      * @param {Object|any} data
@@ -392,8 +460,9 @@ export class Record {
      * @param {(this: this, ...deps: T) => (() => void)|void} callback may return
      *  a cleanup function, invoked before the next callback and on dispose
      * @param {Object} [options]
-     * @param {boolean} [options.immediate=false] use owl's synchronous
-     *  `immediateEffect` instead of the default batched `effect`
+     * @param {boolean} [options.immediate=false] run synchronously, once the
+     *  write that changed a dependency is applied, instead of in the default
+     *  batched `effect`
      * @param {boolean} [options.initialRun=true] pass false to skip the first run
      */
     onChange(dependencies, callback, { immediate = false, initialRun = true } = {}) {
@@ -402,13 +471,13 @@ export class Record {
             // the dummy record collecting the field declarations has no internals
             return;
         }
-        const deps = record._.ensureScope(record).run(() =>
-            computed(dependencies.bind(record), { equals: shallowEqual })
-        );
-        const boundCallback = callback.bind(record);
+        const scope = record._.ensureScope();
+        const deps = scope.run(() => computed(dependencies.bind(record), { equals: shallowEqual }));
+        const boundCallback = (...values) => callback.apply(record._proxy, values);
         let firstRun = true;
+        let firstValues;
         let cleanup;
-        record._registerDisposeFn(
+        scope.onDestroy(
             immediateEffect(function onChangeAfterConstructing() {
                 if (untrack(() => record._.isConstructing())) {
                     // deps and initial run wait for a complete record
@@ -416,23 +485,50 @@ export class Record {
                     return;
                 }
                 const effectFn = immediate ? immediateEffect : effect;
+                const { isDrainingQueues, isUpdateInProgress } = record._rawStore._;
                 const disposeFn = untrack(() =>
                     effectFn(function runOnChange() {
                         const values = deps() ?? [];
+                        if (
+                            immediate &&
+                            (untrack(isUpdateInProgress) || untrack(isDrainingQueues))
+                        ) {
+                            // Wait for the applied write, subscribed only meanwhile.
+                            void isUpdateInProgress();
+                            void isDrainingQueues();
+                            firstValues ??= values;
+                            return;
+                        }
                         if (firstRun) {
                             firstRun = false;
-                            if (!initialRun) {
+                            // A write of the insert counts as a change, the default does not.
+                            if (
+                                !initialRun &&
+                                (!firstValues || shallowEqual(values, firstValues))
+                            ) {
                                 return;
                             }
                         }
                         untrack(() => {
-                            cleanup?.();
-                            const result = boundCallback(...values);
-                            cleanup = typeof result === "function" ? result : undefined;
+                            try {
+                                cleanup?.();
+                                const result = boundCallback(...values);
+                                cleanup = typeof result === "function" ? result : undefined;
+                            } catch (error) {
+                                // Leave the error to the update, as a throw here stops the other
+                                // observers. A batched run comes after the update and throws.
+                                if (!immediate) {
+                                    throw error;
+                                }
+                                record._rawStore.handleError(error);
+                            }
+                            // Read again, as owl stops notifying through a computed
+                            // left stale by a write of the callback.
+                            void deps();
                         });
                     })
                 );
-                record._registerDisposeFn(() => {
+                scope.onDestroy(() => {
                     disposeFn();
                     untrack(() => cleanup?.());
                     cleanup = undefined;
@@ -442,26 +538,70 @@ export class Record {
     }
 
     /**
-     * The `computedUntilStale` of this record kept under `key`, made on the
-     * first read so that a value nobody reads is never scheduled.
+     * Run `callback` once per value that enters the array returned by
+     * `dependencies`, the falsy ones ignored, synchronously like an immediate
+     * `onChange`.
      *
-     * @template T
-     * @param {string} key where the computed is kept, off the fields of the record
-     * @param {() => T} compute
-     * @param {(value: T) => number|void} msUntilStale
-     * @returns {() => T}
+     * @template {any[]} T
+     * @param {(this: this) => T} dependencies
+     * @param {(this: this, item: T[number]) => (() => void)|void} callback may
+     *  return an `onLeave` function, invoked when that item leaves or when the
+     *  record is deleted
      */
-    computedUntilStale(key, compute, msUntilStale) {
-        const record = this._raw;
-        const staleComputeds = (record._.staleComputeds ??= new Map());
-        let staleComputed = staleComputeds.get(key);
-        if (!staleComputed) {
-            staleComputed = record._.ensureScope(record).run(() =>
-                computedUntilStale(compute, msUntilStale)
-            );
-            staleComputeds.set(key, staleComputed);
+    onEnter(dependencies, callback) {
+        const record = this;
+        if (!record._) {
+            return;
         }
-        return staleComputed;
+        const getItems = () => [...new Set(dependencies.call(record).filter(Boolean))];
+        let previous = [];
+        /** @type {Map<any, () => void>} */
+        const onLeaveByItem = new Map();
+        function getChanges(items) {
+            const added = items.filter((item) => !previous.includes(item));
+            const removed = previous.filter((item) => !items.includes(item));
+            previous = items;
+            return added.length || removed.length ? { added, removed } : undefined;
+        }
+        // Keep going on the other items, the update throws the error once done.
+        function tryCall(fn) {
+            try {
+                return fn();
+            } catch (error) {
+                record._rawStore.handleError(error);
+            }
+        }
+        record._.ensureScope().onDestroy(() => {
+            if (!record.exists()) {
+                // Undo only for a deleted record: the app teardown
+                // disposes live ones too.
+                untrack(() => onLeaveByItem.forEach((onLeave) => tryCall(onLeave)));
+            }
+            onLeaveByItem.clear();
+        });
+        record.onChange(
+            getItems,
+            (...items) => {
+                // Loop over what the callbacks change themselves, as the effect
+                // subscribed to the items they read before running.
+                let changes = getChanges(items);
+                while (changes) {
+                    for (const item of changes.removed) {
+                        const onLeave = onLeaveByItem.get(item);
+                        onLeaveByItem.delete(item);
+                        tryCall(() => onLeave?.());
+                    }
+                    for (const item of changes.added) {
+                        const onLeave = tryCall(() => callback.call(record._proxy, item));
+                        if (typeof onLeave === "function") {
+                            onLeaveByItem.set(item, onLeave);
+                        }
+                    }
+                    changes = getChanges(getItems());
+                }
+            },
+            { immediate: true }
+        );
     }
 
     /**
@@ -484,35 +624,6 @@ export class Record {
         return ongoing.storeData;
     }
 
-    _cleanupData(data) {
-        technicalKeysOnRecords.forEach((field) => delete data[field]);
-    }
-
-    /** @param {Function} disposeFn */
-    _registerDisposeFn(disposeFn) {
-        this._.disposeFns.add(disposeFn);
-        if (!this[STORE_SYM]) {
-            this.store._.disposeFns.add(disposeFn);
-        }
-    }
-
-    /** @param {Function} f */
-    _runDisposeFn(f) {
-        f();
-        this._.disposeFns.delete(f);
-        if (!this[STORE_SYM]) {
-            this.store._.disposeFns.delete(f);
-        }
-    }
-
-    _runDisposeFns() {
-        for (const f of this._.disposeFns) {
-            this._runDisposeFn(f);
-        }
-        // after the effects, so that none of them recomputes a disposed computed
-        this._.scope?.destroy();
-    }
-
     /**
      * @param {Ongoing} ongoing The ongoing data conversion state.
      * @param {string} [prefix] The prefix for the current field (used for nested fields).
@@ -526,10 +637,9 @@ export class Record {
         const recordProxy = this;
         const record = recordProxy._raw;
         const Model = record.Model;
-        const data = { ...recordProxy };
+        const data = {};
         for (const name of Model._.fields.keys()) {
             if (Model._.fieldsCompute.has(name)) {
-                delete data[name];
                 continue;
             }
             const fullFieldName = prefix ? `${prefix}.${name}` : name;
@@ -564,7 +674,6 @@ export class Record {
             }
         }
 
-        this._cleanupData(data);
         const modelName = record.Model.getName();
         ongoing.storeData[modelName] ||= [];
         ongoing.storeData[modelName].push(data);

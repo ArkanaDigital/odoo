@@ -1,4 +1,3 @@
-import { delay } from "@web/core/utils/concurrency";
 import { registry } from "@web/core/registry";
 import { stepUtils } from "@web_tour/tour_utils";
 
@@ -26,7 +25,7 @@ const projectSharingSteps = [...stepUtils.goToAppSteps("project.menu_main_pm", '
     content: 'Open Access mode selection dropdown.',
     run: 'click',
 },{
-    trigger: '.o_select_menu_item:contains(Edit)',
+    trigger: '.o_select_menu_item:contains(Advanced Edit)',
     run: 'click',
 }, {
     trigger: '.modal footer > button[name="action_share_record"]',
@@ -72,9 +71,16 @@ const projectSharingSteps = [...stepUtils.goToAppSteps("project.menu_main_pm", '
     content: 'Change the stage of the task.',
     run: "click",
 }, {
-    trigger: '.o-mail-Composer-input',
+    trigger: '.o_form_button_save',
+    content: 'Save the stage change',
+    run: "click",
+}, {
+    trigger: '.o-mail-Message-body.o_track:contains(Done)',
+    content: 'The stage change tracking must be visible in the chatter',
+}, {
+    trigger: '.o-mail-Composer-html',
     content: 'Write a message in the chatter of the task',
-    run: "edit I create a new task for testing purpose.",
+    run: "editor I create a new task for testing purpose.",
 }, {
     trigger: '.o-mail-Composer-send:enabled',
     content: 'Send the message',
@@ -234,17 +240,7 @@ registry.category("web_tour.tours").add("portal_project_sharing_chatter_mention_
         },
         { trigger: ".o_project_sharing" },
         { trigger: ".o_kanban_record:contains('Test Task')", run: "click" },
-        { trigger: ".o-mail-Composer-input", run: "edit @xxx" },
-        {
-            trigger: "body:not(:has(.o-mail-Composer-suggestion))",
-            run: async () => {
-                const delay_fetch = odoo.loader.modules.get(
-                    "@mail/core/common/suggestion_hook"
-                ).DELAY_FETCH;
-                await delay(delay_fetch);
-            },
-        },
-        { trigger: ".o-mail-Composer-input", run: "edit @Georges" },
-        { trigger: ".o-mail-Composer-suggestion:contains('Georges')" },
+        { trigger: ".o-mail-Composer-html", run: "editor @Alice" },
+        { trigger: ".o-mail-Composer-suggestionPartner-name:text('Alice')" },
     ],
 });

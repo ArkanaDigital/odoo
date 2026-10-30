@@ -21,6 +21,7 @@
         'views/subcontracting_portal_views.xml',
         'views/subcontracting_portal_templates.xml',
         'report/mrp_report_bom_structure.xml',
+        'report/mrp_report_mo_overview.xml',
         'security/ir.access.csv',
     ],
     'demo': [
@@ -35,7 +36,7 @@
             'mrp_subcontracting/static/src/subcontracting_portal/move_list_view.js',
         ],
         'web.assets_frontend': [
-            'mrp_subcontracting/static/src/scss/subcontracting_portal.scss',
+            'mrp_subcontracting/static/src/scss/subcontracting_portal.css',
         ],
         'mrp_subcontracting.webclient': [
             ('include', 'web._assets_helpers'),
@@ -91,18 +92,21 @@
             'web/static/src/libs/bootstrap.js',
 
             ('include', 'web._assets_bootstrap'),
+            'web/static/src/scss/css_variables.scss',
 
             'base/static/src/css/modules.css',
 
-            'web/static/src/core/utils/transitions.scss',
             'web/static/src/core/**/*',
+            ('remove', 'web/static/src/core/**/*.dark.scss'),
             ('remove', 'web/static/src/core/emoji_picker/emoji_data.js'),
+            'web/static/src/css/**/*',
             'web/static/src/search/**/*',
             'web/static/src/views/*.js',
             'web/static/src/views/*.xml',
-            'web/static/src/views/*.scss',
+            'web/static/src/views/*.css',
             'web/static/src/views/fields/**/*',
             'web/static/src/views/form/**/*',
+            ('remove', 'web/static/src/views/form/**/*.dark.css'),
             'web/static/src/views/card/**/*',
             'web/static/src/views/kanban/**/*',
             'web/static/src/views/list/**/*',
@@ -123,7 +127,7 @@
 
             'web/static/src/env.js',
 
-            'base/static/src/scss/res_partner.scss',
+            'base/static/src/scss/res_partner.css',
 
             # Form style should be computed before
             'web/static/src/views/form/button_box/*.scss',

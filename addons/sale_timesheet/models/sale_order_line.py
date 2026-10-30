@@ -33,16 +33,7 @@ class SaleOrderLine(models.Model):
                 if line.remaining_hours_available:
                     remaining_time = ''
                     if is_hour:
-                        hours, mins = divmod(round(abs(line.remaining_hours) * 60), 60)
-                        sign = '-' if line.remaining_hours < 0 else ''
-                        kwargs = {'sign': sign, 'hours': hours, 'minutes': mins}
-                        if hours and mins:
-                            time_part = self.env._("%(sign)s%(hours)sh %(minutes)sm", **kwargs)
-                        elif hours:
-                            time_part = self.env._("%(sign)s%(hours)sh", **kwargs)
-                        else:
-                            time_part = self.env._("%(sign)s%(minutes)sm", **kwargs)
-                        remaining_time = f' ({time_part})'
+                        remaining_time = f' ({self.env["account.analytic.line"]._format_portal_hours(line.remaining_hours)})'
                     elif is_day:
                         remaining_days = company.project_time_mode_id._compute_quantity(line.remaining_hours, encoding_uom, round=False)
                         remaining_time = f' ({remaining_days:.02f} {unit_label})'
@@ -52,14 +43,14 @@ class SaleOrderLine(models.Model):
                         name = f'{line.display_name}{remaining_time}'
                     line.display_name = name
 
-    @api.depends('product_id.service_policy')
+    @api.depends('product_id.service_policy', 'product_uom_id')
     def _compute_remaining_hours_available(self):
         for line in self:
             is_ordered_prepaid = line.product_id.service_policy == 'ordered_prepaid'
             is_time_product = line.product_uom_id and line.product_uom_id._has_common_reference(self.env.ref('uom.product_uom_hour'))
             line.remaining_hours_available = is_ordered_prepaid and is_time_product
 
-    @api.depends('qty_delivered', 'product_uom_qty', 'analytic_line_ids')
+    @api.depends('remaining_hours_available', 'qty_delivered', 'product_uom_qty', 'product_uom_id')
     def _compute_remaining_hours(self):
         uom_hour = self.env.ref('uom.product_uom_hour')
         for line in self:
@@ -106,10 +97,11 @@ class SaleOrderLine(models.Model):
         product_uom = self.product_uom_id
         if product_uom == self.env.ref('uom.product_uom_unit'):
             product_uom = self.env.ref('uom.product_uom_hour')
-        if product_uom != company_time_uom_id and product_uom._has_common_reference(company_time_uom_id):
-            allocated_hours = product_uom._compute_quantity(self.product_uom_qty, company_time_uom_id, rounding_method='HALF-UP')
-        else:
-            allocated_hours = self.product_uom_qty
+        if product_uom._has_common_reference(company_time_uom_id):
+            if product_uom != company_time_uom_id:
+                allocated_hours = product_uom._compute_quantity(self.product_uom_qty, company_time_uom_id, rounding_method='HALF-UP')
+            else:
+                allocated_hours = self.product_uom_qty
         return allocated_hours
 
     def _timesheet_create_project(self):
@@ -129,6 +121,7 @@ class SaleOrderLine(models.Model):
         factor_per_id = {
             uom.id: uom.factor
             for uom in self.order_id.order_line.product_uom_id
+            if uom._has_common_reference(project_uom)
         }
         # if sold as units, assume hours for time allocation
         factor_per_id[uom_unit.id] = uom_hour.factor
@@ -172,7 +165,8 @@ class SaleOrderLine(models.Model):
             and sol.product_id._is_delivered_timesheet()
             and sol.invoice_status == 'to invoice')
         domain = Domain(lines_by_timesheet._timesheet_compute_delivered_quantity_domain())
-        refund_account_moves = self.order_id.invoice_ids.filtered(lambda am: am.state == 'posted' and am.move_type == 'out_refund').reversed_entry_id
+        credit_notes = self.order_id.invoice_ids.filtered(lambda am: am.state == 'posted' and am.move_type == 'out_refund' and am.reversed_entry_id)
+        refund_account_moves = credit_notes.reversed_entry_id
         timesheet_domain = Domain('reinvoice_move_id', '=', False) | Domain('reinvoice_move_id.state', '=', 'cancel') & Domain('reinvoice_move_id.payment_state', '!=', 'invoicing_legacy')
         if refund_account_moves:
             credited_timesheet_domain = Domain('reinvoice_move_id.state', '=', 'posted') & Domain('reinvoice_move_id', 'in', refund_account_moves.ids)
@@ -185,12 +179,17 @@ class SaleOrderLine(models.Model):
         mapping = lines_by_timesheet.sudo()._get_delivered_quantity_by_analytic(domain)
 
         for line in lines_by_timesheet:
-            # A period only selects which delivered hours are candidates; qty_delivered
-            # - qty_invoiced remains the authoritative quantity still due.
-            qty_to_invoice = max(0.0, min(
-                mapping.get(line.id, 0.0),
-                line.qty_delivered - line.qty_invoiced,
-            ))
+            if line.invoice_lines.move_id & credit_notes:
+                # `qty_delivered - qty_invoiced` to prevent over-billing
+                # when credit notes complicate the invoiced state
+                qty_to_invoice = max(0.0, min(
+                    mapping.get(line.id, 0.0),
+                    line.qty_delivered - line.qty_invoiced,
+                ))
+            else:
+                # No related credit note: invoice exactly what is
+                # calculated for this period
+                qty_to_invoice = mapping.get(line.id, 0.0)
             if qty_to_invoice:
                 line.qty_to_invoice = qty_to_invoice
             elif start_date or end_date:

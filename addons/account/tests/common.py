@@ -59,7 +59,7 @@ class AccountTestInvoicingCommon(ProductCommon):
         def _decorator(function):
             @wraps(function)
             def wrapper(self):
-                self.country_code = country_code.upper()
+                self.country_code = country_code[:2].upper()
                 function(self)
             return wrapper
 
@@ -101,6 +101,8 @@ class AccountTestInvoicingCommon(ProductCommon):
             list_price=1000.0,
             standard_price=800.0,
             uom_id=cls.uom_unit.id,
+            taxes_id=[Command.set(cls.tax_sale_a.ids)],  # pin explicitly, see product_b
+            supplier_taxes_id=[Command.set(cls.tax_purchase_a.ids)],
         )
         cls.product_b = cls._create_product(
             name='product_b',
@@ -226,9 +228,8 @@ class AccountTestInvoicingCommon(ProductCommon):
             )
 
     @classmethod
-    def setup_other_company(cls, **kwargs):
-        # OVERRIDE
-        company = cls._create_company(**{'name': 'company_2'} | kwargs)
+    def setup_other_company(cls, name='company_2', **create_values):
+        company = cls._create_company(name=name, **create_values)
         data = cls.collect_company_accounting_data(company)
         cls.product_category.with_company(company).write({
             'property_account_income_categ_id': data['default_account_revenue'].id,
@@ -237,17 +238,11 @@ class AccountTestInvoicingCommon(ProductCommon):
         return data
 
     @classmethod
-    def setup_independent_company(cls, **kwargs):
-        if cls.env.registry.loaded:
-            # Only create a new company for post-install tests
-            return cls._create_company(name='company_1_data', **kwargs)
-        else:
-            cls.env['account.tax.group'].create({
-                'name': 'Test tax group',
-                'company_id': cls.env.company.id,
-            })
-            cls.env.company.country_id = cls.quick_ref('base.be')
-        return super().setup_independent_company(**kwargs)
+    def setup_independent_company(cls, name='company_1_data', **create_values):
+        if cls._test_independent_company_xmlid:
+            return cls.env.ref(cls._test_independent_company_xmlid)
+        company = cls._create_company(name=name, **create_values)  # many tests hardcode this name
+        return company
 
     @classmethod
     def setup_independent_user(cls):
@@ -262,7 +257,12 @@ class AccountTestInvoicingCommon(ProductCommon):
         )
 
     @classmethod
-    def _create_company(cls, **create_values):
+    def _create_company(cls, company_xmlid=None, **create_values):
+        create_values.setdefault('terms_type', 'plain')  # avoid an unwanted auto note
+        create_values.setdefault('account_opening_date', False)  # avoid auto-generating returns
+
+        if (cls.country_code or cls.chart_template) and company_xmlid is None:
+            create_values['candidate_xmlids'] = ('base.test_company_template', 'base.test_company_template2')
         if cls.country_code:
             country = cls.env['res.country'].search([('code', '=', cls.country_code.upper())])
             if not country:
@@ -271,8 +271,11 @@ class AccountTestInvoicingCommon(ProductCommon):
                 create_values['country_id'] = country.id
             if 'currency_id' not in create_values:
                 create_values['currency_id'] = country.currency_id.id
-        company = super()._create_company(**create_values)
-        cls._use_chart_template(company, cls.chart_template)
+
+        company = super()._create_company(company_xmlid=company_xmlid, **create_values)
+        if cls.chart_template or not company.chart_template:
+            cls._use_chart_template(company, cls.chart_template)
+
         # if the currency_id was defined explicitly (or via the country), it should override the one from the coa
         if create_values.get('currency_id'):
             company.currency_id = create_values['currency_id']
@@ -322,6 +325,9 @@ class AccountTestInvoicingCommon(ProductCommon):
 
         # Install the chart template
         cls.env['account.chart.template'].try_loading(chart_template_ref, company=company, install_demo=False)
+        # The new company only exists in this transaction, so the planner has no statistics for it
+        cls.env.flush_all()
+        cls.env.cr.execute("ANALYZE account_account, account_account_res_company_rel")
         if not company.account_fiscal_country_id:
             company.account_fiscal_country_id = cls.env.ref('base.us')
 
@@ -351,8 +357,16 @@ class AccountTestInvoicingCommon(ProductCommon):
                     *account_company_domain,
                     ('account_type', '=', 'liability_payable')
                 ], limit=1),
-            'default_tax_account_receivable': company.account_purchase_tax_id.tax_group_id.tax_receivable_account_id,
-            'default_tax_account_payable': company.account_sale_tax_id.tax_group_id.tax_payable_account_id,
+            'default_tax_account_receivable': AccountAccount.search([
+                    *account_company_domain,
+                    ('account_type', '=', 'asset_receivable'),
+                    ('non_trade', '=', True),
+                ], limit=1),
+            'default_tax_account_payable': AccountAccount.search([
+                    *account_company_domain,
+                    ('account_type', '=', 'liability_payable'),
+                    ('non_trade', '=', True),
+                ], limit=1),
             'default_account_assets': AccountAccount.search([
                     *account_company_domain,
                     ('account_type', '=', 'asset_fixed')
@@ -916,13 +930,13 @@ class AccountTestInvoicingCommon(ProductCommon):
 
         if amount_type in ('percent', 'percentage'):
             create_values = {
-                'advance_payment_method': 'percentage',
-                'amount': amount,
+                'advance_payment_method': 'downpayment',
+                'percentage': amount / 100,
             }
         elif amount_type == 'fixed':
             create_values = {
-                'advance_payment_method': 'fixed',
-                'fixed_amount': amount,
+                'advance_payment_method': 'downpayment',
+                'amount': amount,
             }
         else:  # amount_type == 'delivered'
             create_values = {
@@ -1102,6 +1116,25 @@ class AccountTestInvoicingCommon(ProductCommon):
                 current_tax_group = {k: v for k, v in tax_group.items() if k not in excluded_fields}
                 fix_monetary_value(current_tax_group, expected_tax_group, monetary_fields)
                 self.assertDictEqual(current_tax_group, expected_tax_group)
+
+    def _assert_document_titles(self, moves, expected_titles):
+        """Assert document titles for the given moves.
+
+        :param moves: Account moves to check.
+        :param expected_titles: Expected document titles in the same order as moves.
+        """
+        self.assertEqual(
+            len(moves),
+            len(expected_titles),
+            "The number of moves must match the number of expected titles.",
+        )
+
+        for move, expected_title in zip(moves, expected_titles):
+            self.assertEqual(
+                move._get_document_title(),
+                expected_title,
+                f"Unexpected document title for move {move.name}",
+            )
 
     ####################################################
     # Xml / JSON Comparison

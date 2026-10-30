@@ -1,13 +1,5 @@
 import { describe, expect, test } from "@odoo/hoot";
-import {
-    click,
-    fill,
-    press,
-    queryFirst,
-    queryOne,
-    waitFor,
-    waitForNone,
-} from "@odoo/hoot-dom";
+import { click, fill, press, queryFirst, queryOne, waitFor, waitForNone } from "@odoo/hoot-dom";
 import { animationFrame, tick } from "@odoo/hoot-mock";
 import { markup } from "@odoo/owl";
 import { contains, dataURItoBlob, onRpc, patchWithCleanup } from "@web/../tests/web_test_helpers";
@@ -111,17 +103,17 @@ describe("should open a popover", () => {
         await click(".o_we_edit_link");
         await expectElementCount(".o_link_popover_container", 1);
     });
-    test("link popover should close when clicking on a contenteditable false element", async () => {
+    test("link popover should update when clicking on a different link", async () => {
         await setupEditor(
-            '<p><a href="http://test.test/">li[]nk</a> <a contenteditable="false">uneditable link</a></p>'
+            '<p><a href="http://a.com/">li[]nk</a> <a contenteditable="false" href="http://b.com/">uneditable link</a></p>'
         );
         await waitFor(".o-we-linkpopover");
-        expect(".o-we-linkpopover").toHaveCount(1);
-        // click on an uneditable element
-        const nodeEl = queryOne("a[contenteditable='false']");
+        expect(`.o-we-linkpopover a[href="http://a.com/"]`).toHaveCount(1);
+        // click on the second link, the popover should update, not disappear
+        const nodeEl = queryOne(`a[href="http://b.com/"]`);
         setSelection({ anchorNode: nodeEl, anchorOffset: 0 });
-        await waitForNone(".o-we-linkpopover", { timeout: 1500 });
-        expect(".o-we-linkpopover").toHaveCount(0);
+        await waitFor(`.o-we-linkpopover a[href="http://b.com/"]`);
+        expect(`.o-we-linkpopover a[href="http://b.com/"]`).toHaveCount(1);
     });
     test("clicking input prefix icon should focus associated input", async () => {
         const { editor } = await setupEditor("<p>[]<br></p>");
@@ -757,6 +749,9 @@ describe("popover for file uploads", () => {
     });
 
     test("direct download option works as expected", async () => {
+        onRpc("ir.attachment", "read", () => [
+            { name: "file.txt", mimetype: "text/plain", type: "binary" },
+        ]);
         const { editor } = await setupEditor("<p>[]<br></p>", {
             config: { allowTargetBlank: true },
         });
@@ -801,6 +796,95 @@ describe("popover for file uploads", () => {
         );
         const favIcon = await waitFor(".o_we_preview_favicon span.o_image");
         expect(favIcon).toHaveAttribute("data-mimetype", "text/plain");
+    });
+
+    test("popover in preview mode should not crash when attachment was deleted", async () => {
+        onRpc("ir.attachment", "read", () => []);
+        await setupEditor(
+            '<p><a href="/web/content/1?download=true&unique=123">file.txt[]</a></p>',
+            {
+                config: { allowTargetBlank: true },
+            }
+        );
+        await waitFor(".o-we-linkpopover");
+        expect(".o_we_url_link").toHaveText("file.txt");
+        await click(".o_we_edit_link");
+        await waitFor(".o_we_href_input_link");
+        expect(".direct-download-option").toHaveCount(0);
+    });
+
+    test("updating the file name updates the link URL in popover to include the filename in the path", async () => {
+        onRpc("ir.attachment", "read", () => [{ name: "abc", mimetype: "text/plain" }]);
+        const { el, editor } = await setupEditor(
+            '<p><span class="o_file_box"><a href="/web/content/1?download=true&unique=123">abc[]</a></span></p>'
+        );
+        await waitFor(".o-we-linkpopover");
+        expect(".o_we_url_link").toHaveAttribute(
+            "href",
+            "/web/content/1/abc?download=true&unique=123"
+        );
+
+        await insertText(editor, "def");
+        const link = el.querySelector("a");
+        link.dispatchEvent(new KeyboardEvent("keyup"));
+        await animationFrame();
+        expect(".o_we_url_link").toHaveAttribute(
+            "href",
+            "/web/content/1/abcdef?download=true&unique=123"
+        );
+    });
+
+    test("updating file name in file box appends extension to link URL if missing", async () => {
+        onRpc("ir.attachment", "read", () => [{ name: "report.pdf", mimetype: "application/pdf" }]);
+        const { el } = await setupEditor(
+            '<p><span class="o_file_box" data-extension="pdf"><a href="/web/content/1?download=true&unique=123">report.pdf[]</a></span></p>'
+        );
+        await waitFor(".o-we-linkpopover");
+        expect(".o_we_url_link").toHaveAttribute(
+            "href",
+            "/web/content/1/report.pdf?download=true&unique=123"
+        );
+
+        const link = el.querySelector("a");
+        link.textContent = "my_report";
+        link.dispatchEvent(new KeyboardEvent("keyup"));
+        await animationFrame();
+        expect(".o_we_url_link").toHaveAttribute(
+            "href",
+            "/web/content/1/my_report.pdf?download=true&unique=123"
+        );
+    });
+
+    test("updating file name in file box does not duplicate extension if already present", async () => {
+        onRpc("ir.attachment", "read", () => [{ name: "report.pdf", mimetype: "application/pdf" }]);
+        const { el } = await setupEditor(
+            '<p><span class="o_file_box" data-extension="pdf"><a href="/web/content/1?download=true&unique=123">report.pdf[]</a></span></p>'
+        );
+        await waitFor(".o-we-linkpopover");
+
+        const link = el.querySelector("a");
+        link.textContent = "my_report.pdf";
+        link.dispatchEvent(new KeyboardEvent("keyup"));
+        await animationFrame();
+        expect(".o_we_url_link").toHaveAttribute(
+            "href",
+            "/web/content/1/my_report.pdf?download=true&unique=123"
+        );
+    });
+
+    test("popover in preview mode correctly fetches metadata for URL with filename", async () => {
+        onRpc("ir.attachment", "read", ({ args }) => {
+            expect(args[0]).toEqual([1]);
+            return [{ id: 1, name: "report.pdf", mimetype: "application/pdf", type: "binary" }];
+        });
+        await setupEditor(
+            '<p><a href="/web/content/1/report.pdf?download=true&unique=123">report.pdf[]</a></p>',
+            {
+                config: { allowTargetBlank: true },
+            }
+        );
+        const favIcon = await waitFor(".o_we_preview_favicon span.o_image");
+        expect(favIcon).toHaveAttribute("data-mimetype", "application/pdf");
     });
 
     test("should not insert attachment as link if popover is discarded during file upload", async () => {
@@ -1115,4 +1199,38 @@ test("Should should show link popover without edit", async () => {
     // Should open the link popover without edit button
     expectElementCount(".o-we-linkpopover", 1);
     expectElementCount(".o_we_edit_link", 0);
+});
+
+test("Should open link popover in read only mode when link is not editable (1)", async () => {
+    onRpc("/html_editor/link_preview_internal", () => ({}));
+    onRpc("/link", () => ({}));
+    const { el } = await setupEditor('<p><a contenteditable="false" href="/link">link</a></p>');
+    setSelection({ anchorNode: el.querySelector("a"), anchorOffset: 1 });
+    await waitFor(".o-we-linkpopover");
+    expect(".o_we_edit_link").toHaveCount(0);
+});
+
+test("Should open link popover in read only mode when link is not editable (2)", async () => {
+    onRpc("/html_editor/link_preview_internal", () => ({}));
+    onRpc("/link", () => ({}));
+    const { el } = await setupEditor(
+        '<p contenteditable="false"><a href="/link"><span contenteditable="false">link</span></a></p>'
+    );
+    setSelection({ anchorNode: el.querySelector("span"), anchorOffset: 0 });
+    await waitFor(".o-we-linkpopover");
+    expect(".o_we_edit_link").toHaveCount(0);
+});
+
+test("Should change selection when clicking inside a contenteditable under non editable link", async () => {
+    onRpc("/html_editor/link_preview_internal", () => ({}));
+    onRpc("/link", () => ({}));
+    const { el } = await setupEditor(
+        '<p><a contenteditable="false" href="/link"><span contenteditable="true">abc</span></a></p>'
+    );
+    setSelection({ anchorNode: el.querySelector("span"), anchorOffset: 1 });
+    await click(queryOne(`a[contenteditable="false"]`));
+    await waitFor(".o-we-linkpopover");
+    expect(getContent(el)).toBe(
+        '<p><a contenteditable="false" href="/link"><span contenteditable="true">abc[]</span></a></p>'
+    );
 });

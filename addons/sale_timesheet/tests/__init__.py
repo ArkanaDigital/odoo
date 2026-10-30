@@ -2,6 +2,7 @@
 # # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from . import common
+from . import test_account_analytic_line
 from . import test_analytic_to_sale_timesheet
 from . import test_sale_timesheet
 from . import test_sale_service
@@ -14,6 +15,7 @@ from . import test_so_line_determined_in_timesheet
 from . import test_sale_timesheet_ui
 from . import test_project_pricing_type
 from . import test_sale_timesheet_accrued_entries
+from . import test_report_timesheet
 from . import test_sale_timesheet_report
 from . import test_sale_timesheet_product_product
 from . import test_sale_timesheet_product_template

@@ -10,6 +10,9 @@ from . import test_hr_holidays_tour
 from . import test_hr_work_entry_type
 from . import test_accrual_allocations
 from . import test_change_department
+from . import test_calendar_reschedule
+from . import test_calendar_resize_tour
+from . import test_leave_outside_schedule
 from . import test_leave_requests
 from . import test_out_of_office
 from . import test_company_leave
@@ -38,3 +41,4 @@ from . import test_work_entry_holidays
 from . import test_timeoff_overview_my_department_tour
 from . import test_hr_leave_report
 from . import test_member_of_department
+from . import test_time_rule_day_types

@@ -18,11 +18,10 @@ On a simple click, your visitors can subscribe to mailing lists managed in the E
     'auto_install': ['website', 'mass_mailing'],
     'assets': {
         'web.assets_frontend': [
-            'website_mass_mailing/static/src/scss/website_mass_mailing.scss',
+            'website_mass_mailing/static/src/scss/website_mass_mailing.css',
             'website_mass_mailing/static/src/interactions/**/*',
             'website_mass_mailing/static/src/scss/website_mass_mailing_popup.scss',
             'website_mass_mailing/static/src/interactions/fix_newsletter_list_class.edit.js',
-            'website_mass_mailing/static/src/xml/*.xml',
         ],
         'website.website_builder_assets': [
             'website_mass_mailing/static/src/plugins/form_option_plugin.js',
@@ -45,6 +44,9 @@ On a simple click, your visitors can subscribe to mailing lists managed in the E
         ],
         'html_builder.iframe_add_dialog': [
             'website_mass_mailing/static/src/snippets/**/*.preview.scss',
+        ],
+        'mass_mailing.assets_builder': [
+            'website_mass_mailing/static/snippets/**/*',
         ],
     },
     'author': 'Odoo S.A.',

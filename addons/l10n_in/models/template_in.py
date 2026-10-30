@@ -8,7 +8,15 @@ class AccountChartTemplate(models.AbstractModel):
     @template('in')
     def _get_in_template_data(self):
         return {
-            'code_digits': '6',
+            'name': self.env._('Non-Corporate Entities'),
+        }
+
+    @template('in_sch3')
+    def _get_in_sch3_template_data(self):
+        return {
+            'name': self.env._('Corporate Entities'),
+            'parent': 'in',
+            'sequence': 2,
         }
 
     @template('in', 'res.company')
@@ -126,9 +134,9 @@ class AccountChartTemplate(models.AbstractModel):
 
     def _post_load_data(self, template_code, company, template_data):
         super()._post_load_data(template_code, company, template_data)
-        if template_code == 'in':
+        if template_code and template_code.startswith('in'):
             company = company or self.env.company
-            company._update_l10n_in_is_gst_registered()
+            company._update_l10n_in_gst_registration_type()
 
             # The COA (Chart of Accounts) data is loaded after the initial compute methods are called.
             # During initial journal setup, the payment methods and accounts may not exist yet,
@@ -136,15 +144,15 @@ class AccountChartTemplate(models.AbstractModel):
             # We call these helper methods again in _post_load_data to ensure all payment method lines
             # are correctly assigned once all COA data is fully available.
             bank_journals = company.bank_journal_ids
-            bank_journals._assign_outsanding_account_to_payment_method_lines("inbound", payment_method_codes=['manual'], chart_template="in")
-            bank_journals._assign_outsanding_account_to_payment_method_lines("outbound", payment_method_codes=['manual'], chart_template="in")
+            bank_journals._assign_outstanding_account_to_payment_method_lines("inbound", payment_method_codes=['manual'], chart_template="in")
+            bank_journals._assign_outstanding_account_to_payment_method_lines("outbound", payment_method_codes=['manual'], chart_template="in")
 
             # Load journals for Indian branch having different GSTIN than parent company.
             # Process only Indian branches with GST and a parent company.
             parent = company.parent_id
             if (
                 company.country_code == 'IN'
-                and parent.chart_template == 'in'
+                and (parent.chart_template or '').startswith('in')
                 and all(self.env['res.partner'].check_vat_in(vat) for vat in (parent.vat, company.vat))
                 and parent.vat != company.vat
             ):
@@ -160,8 +168,18 @@ class AccountChartTemplate(models.AbstractModel):
                 }})
 
     def _load(self, template_code, company, install_demo, force_create=True):
+        # Both fields use `ondelete='restrict'`, so the chart template cannot be changed while either account is set.
+        # Clear them from the cash rounding configuration before changing the chart template.
+        is_indian_template = template_code and template_code.startswith('in')
+        if (
+            is_indian_template
+            and (cash_rounding := self.with_company(company).ref('cash_rounding_in_half_up', raise_if_not_found=False))
+            and (cash_rounding.profit_account_id or cash_rounding.loss_account_id)
+        ):
+            cash_rounding.write({'profit_account_id': False, 'loss_account_id': False})
+
         res = super()._load(template_code, company, install_demo, force_create)
-        if template_code == 'in':
+        if is_indian_template:
             if company.l10n_in_tds_feature:
                 company._activate_l10n_in_taxes(['tds_it_act_25_group'], company)
             if company.l10n_in_tcs_feature:

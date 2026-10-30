@@ -25,6 +25,7 @@ import {
     addGlobalFilter,
     deleteColumns,
     editGlobalFilter,
+    lockSheet,
     moveGlobalFilter,
     removeGlobalFilter,
     setCellContent,
@@ -1646,7 +1647,7 @@ test("filter display value of year filter is a range of dates", async function (
     const { model } = await createSpreadsheetWithPivotAndList();
     await addGlobalFilter(model, THIS_YEAR_GLOBAL_FILTER);
     const [filter] = model.getters.getGlobalFilters();
-    const values = model.getters.getFilterDisplayValue(filter.label);
+    const values = model.getters.getFilterDisplayValue(filter);
     expect(values[0][0].value).toBe(toNumber("2023-01-01", DEFAULT_LOCALE));
     expect(values[1][0].value).toBe(toNumber("2023-12-31", DEFAULT_LOCALE));
 });
@@ -1668,10 +1669,10 @@ test("Export global filters for excel", async function () {
     expect(filterSheet.cells["A2"]).toBe(filter.label);
     expect(filterSheet.cells["B1"]).toBe("Value");
     expect(filterSheet.cells["B2"]).toBe(
-        String(model.getters.getFilterDisplayValue(filter.label)[0][0].value)
+        String(model.getters.getFilterDisplayValue(filter)[0][0].value)
     );
     expect(filterSheet.cells["C2"]).toBe(
-        String(model.getters.getFilterDisplayValue(filter.label)[1][0].value)
+        String(model.getters.getFilterDisplayValue(filter)[1][0].value)
     );
     await model.exportXLSX(); // should not crash
 });
@@ -1870,7 +1871,8 @@ test("Relative date filter display value", async function () {
         label,
         defaultValue: "year_to_date",
     });
-    const values = model.getters.getFilterDisplayValue(label);
+    const filter = model.getters.getGlobalFilterByName(label);
+    const values = model.getters.getFilterDisplayValue(filter);
     expect(values[0][0].value).toBe(toNumber("2022-01-01", DEFAULT_LOCALE));
     expect(values[1][0].value).toBe(toNumber("2022-05-16", DEFAULT_LOCALE));
 });
@@ -3468,4 +3470,31 @@ test("Default value of boolean filter", () => {
         label: "Default value is empty",
     });
     expect(result.isSuccessful).toBe(true);
+});
+
+test("Can update a filter from a locked sheet", async () => {
+    const { model } = await createSpreadsheetWithPivot();
+    await addGlobalFilter(model, {
+        id: "42",
+        type: "numeric",
+        label: "Numeric Filter",
+        defaultValue: { operator: "=", targetValue: 1998 },
+    });
+    const [filter] = model.getters.getGlobalFilters();
+    lockSheet(model);
+    model.dispatch("SET_GLOBAL_FILTER_VALUE", {
+        id: filter.id,
+        value: { operator: "=", targetValue: 0 },
+    });
+    expect(model.getters.getGlobalFilterValue(filter.id)).toEqual({
+        operator: "=",
+        targetValue: 0,
+    });
+    model.dispatch("SET_MANY_GLOBAL_FILTER_VALUE", {
+        filters: [{ filterId: "42", value: { operator: "=", targetValue: 1 } }],
+    });
+    expect(model.getters.getGlobalFilterValue("42")).toEqual({
+        operator: "=",
+        targetValue: 1,
+    });
 });

@@ -1,11 +1,11 @@
 import { Component, computed, onWillDestroy, onWillStart, signal, t, useProps } from "@odoo/owl";
 
-import { browser } from "@web/core/browser/browser";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
 import { isBrowserChrome } from "@web/core/browser/feature_detection";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 
 export class DeviceSelect extends Component {
     static components = { Dropdown, DropdownItem };
@@ -15,6 +15,7 @@ export class DeviceSelect extends Component {
 
     setup() {
         super.setup();
+        this.ancestors = useAncestors();
         this.props = useProps({
             icon: t.string().optional(),
             iconClass: t.string().optional(),
@@ -29,25 +30,17 @@ export class DeviceSelect extends Component {
                 .optional(),
         });
         this.store = useService("mail.store");
-        this.notification = useService("notification");
         /** @type {import("@odoo/owl").Signal<Element>} */
         this.rootRef = signal();
         this.userDevices = signal.Array([], { type: t.instanceOf(MediaDeviceInfo) });
         this.selectedDevice = computed(() =>
-            this.userDevices().find((device) => this.isSelected(device.deviceId))
+            this.userDevices().find(
+                (device) => device.kind === this.props.kind && this.isSelected(device.deviceId)
+            )
         );
         this.abortController = new AbortController();
         this.isBrowserChrome = isBrowserChrome();
         onWillStart(() => {
-            if (!browser.navigator.mediaDevices) {
-                // zxing-js: isMediaDevicesSuported or canEnumerateDevices is false.
-                this.notification.add(
-                    _t("Media devices unobtainable. SSL might not be set up properly."),
-                    { type: "warning" }
-                );
-                console.warn("Media devices unobtainable. SSL might not be set up properly.");
-                return;
-            }
             this.updateDevicesList();
             this.setupEventListeners();
         });
@@ -61,19 +54,19 @@ export class DeviceSelect extends Component {
     }
 
     async updateDevicesList() {
-        this.userDevices.set(await browser.navigator.mediaDevices.enumerateDevices());
+        this.userDevices.set(await window.navigator.mediaDevices.enumerateDevices());
     }
 
     async setupEventListeners() {
         const boundHandler = this.updateDevicesList.bind(this);
         const signal = this.abortController.signal;
 
-        browser.navigator.mediaDevices.addEventListener("devicechange", boundHandler, { signal });
+        window.navigator.mediaDevices.addEventListener("devicechange", boundHandler, { signal });
         if (this.props.kind == "videoinput") {
-            const cameraPermission = await browser.navigator.permissions.query({ name: "camera" });
+            const cameraPermission = await window.navigator.permissions.query({ name: "camera" });
             cameraPermission.addEventListener("change", boundHandler, { signal });
         } else {
-            const microphonePermission = await browser.navigator.permissions.query({
+            const microphonePermission = await window.navigator.permissions.query({
                 name: "microphone",
             });
             microphonePermission.addEventListener("change", boundHandler, { signal });
@@ -115,6 +108,14 @@ export class DeviceSelect extends Component {
         }
     }
 
+    /** @param {PointerEvent} ev */
+    onPointerdownButton(ev) {
+        if (ev.button !== 0) {
+            return;
+        }
+        this.showPermissionDialog(this.props.kind);
+    }
+
     /**
      * @param {MouseEvent} ev
      * @param {Object} [param1={}]
@@ -152,5 +153,15 @@ export class DeviceSelect extends Component {
             return this.store.rtc.cameraPermission === "granted";
         }
         return this.store.rtc.microphonePermission === "granted";
+    }
+
+    /**
+     * @param {KeyboardEvent} ev
+     */
+    handlePermissionKeydown(ev) {
+        if (ev.key === "Enter" || ev.key === " ") {
+            ev.preventDefault();
+            this.showPermissionDialog(this.props.kind);
+        }
     }
 }

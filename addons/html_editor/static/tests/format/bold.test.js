@@ -1,5 +1,11 @@
 import { describe, expect, test } from "@odoo/hoot";
-import { click, manuallyDispatchProgrammaticEvent, press, queryOne } from "@odoo/hoot-dom";
+import {
+    click,
+    dblclick,
+    manuallyDispatchProgrammaticEvent,
+    press,
+    queryOne,
+} from "@odoo/hoot-dom";
 import { animationFrame, tick, advanceTime } from "@odoo/hoot-mock";
 import { patchWithCleanup } from "@web/../tests/web_test_helpers";
 import { setupEditor, testEditor } from "../_helpers/editor";
@@ -15,6 +21,7 @@ import {
     undo,
 } from "../_helpers/user_actions";
 import { QWebPlugin } from "@html_editor/others/qweb_plugin";
+import { DYNAMIC_FIELD_PLUGINS } from "@html_editor/backend/dynamic_field/dynamic_field_plugin";
 import { EDITOR_MUTATION_TYPES } from "@html_editor/core/dom_observer_plugin";
 
 const styleH1Bold = `h1 { font-weight: bold; }`;
@@ -53,8 +60,11 @@ test("should make two paragraphs not bold", async () => {
 
 test("should make qweb tag bold (1)", async () => {
     await testEditor({
-        contentBefore: `<div><p t-out="'Test'" contenteditable="false">[Test]</p></div>`,
-        stepFunction: bold,
+        contentBefore: `<div><p t-out="'Test'" contenteditable="false">Test</p></div>`,
+        stepFunction: async (editor) => {
+            await dblclick("p[t-out]");
+            bold(editor);
+        },
         contentAfter: `<div>[<p t-out="'Test'" style="font-weight: bolder;">Test</p>]</div>`,
         config: { includePlugins: [QWebPlugin] },
     });
@@ -62,18 +72,22 @@ test("should make qweb tag bold (1)", async () => {
 
 test("should make qweb tag bold (2)", async () => {
     await testEditor({
-        contentBefore: `<div><p t-field="record.name" contenteditable="false">[Test]</p></div>`,
-        stepFunction: bold,
+        contentBefore: `<div><p t-field="record.name" contenteditable="false">Test</p></div>`,
+        stepFunction: async (editor) => {
+            await dblclick("p[t-field]");
+            bold(editor);
+        },
         contentAfter: `<div>[<p t-field="record.name" style="font-weight: bolder;">Test</p>]</div>`,
         config: { includePlugins: [QWebPlugin] },
     });
 });
 
-test("should make qweb tag bold and create a commit even with partial selection inside contenteditable false", async () => {
+test("should make qweb tag bold with one commit that only changes its style", async () => {
     const { editor, el } = await setupEditor(
-        `<div><p t-out="'Test'" contenteditable="false">T[e]st</p></div>`,
+        `<div><p t-out="'Test'" contenteditable="false">Test</p></div>`,
         { config: { includePlugins: [QWebPlugin] } }
     );
+    await dblclick("p[t-out]");
     bold(editor);
     expect(getContent(el)).toBe(
         '<p data-selection-placeholder=""><br></p>' +
@@ -88,6 +102,23 @@ test("should make qweb tag bold and create a commit even with partial selection 
     expect(lastCommit.data.mutations[0].type).toBe(EDITOR_MUTATION_TYPES.ATTRIBUTES);
     expect(lastCommit.data.mutations[0].attributeName).toBe("style");
     expect(lastCommit.data.mutations[0].value).toBe("font-weight: bolder;");
+});
+
+test("should make dynamic field bold after selecting it with a single click", async () => {
+    const { editor, el } = await setupEditor(
+        `<div><p t-out="'Test'" data-oe-expression-readable="Test" contenteditable="false">Test</p></div>`,
+        { config: { includePlugins: DYNAMIC_FIELD_PLUGINS } }
+    );
+    await click("p[t-out]");
+    await animationFrame();
+    bold(editor);
+    expect(getContent(el)).toBe(
+        unformat(`
+            <p data-selection-placeholder=""><br></p>
+            <div>[<p t-out="'Test'" data-oe-expression-readable="Test" contenteditable="false" data-oe-protected="true" style="font-weight: bolder;">Test</p>]</div>
+            <p data-selection-placeholder=""><br></p>
+        `)
+    );
 });
 
 test("bold is active when the selection wraps a bold qweb node", async () => {
@@ -236,7 +267,7 @@ test("should make a few characters bold inside table (bold)", async () => {
         stepFunction: bold,
         contentAfterEdit: unformat(`
             <p data-selection-placeholder=""><br></p>
-            <table class="table table-bordered o_table o_selected_table">
+            <div class="o_table_wrapper"><table class="table table-bordered o_table o_selected_table">
                 <tbody>
                     <tr>
                         <td class="o_selected_td"><p><strong>[abc</strong></p></td>
@@ -254,7 +285,7 @@ test("should make a few characters bold inside table (bold)", async () => {
                         <td><p><br></p></td>
                     </tr>
             </tbody>
-            </table>
+            </table></div>
             <p data-selection-placeholder="" style="margin: -9px 0px 8px;"><br></p>`),
     });
 });
@@ -318,21 +349,21 @@ test("should remove bold format on formatting bold twice", () =>
         contentAfterEdit: `<p o-we-hint-text='Type "/" for commands' class="o-we-hint">[]<br></p>`,
     }));
 
-// This test uses execCommand to reproduce as closely as possible the browser's
-// default behaviour when typing in a contenteditable=true zone.
-test("should type in bold", async () => {
-    async function typeChar(editor, char) {
-        await manuallyDispatchProgrammaticEvent(editor.editable, "keydown", { key: char });
-        await manuallyDispatchProgrammaticEvent(editor.editable, "beforeinput", {
-            inputType: "insertText",
-            data: char,
-        });
-        // Simulate text insertion as done by the contenteditable.
-        editor.document.execCommand("insertText", false, char);
-        // Input event is dispatched and handlers are called synchronously.
-        await manuallyDispatchProgrammaticEvent(editor.editable, "keyup", { key: char });
-    }
+// The tests below use execCommand to reproduce as closely as possible the
+// browser's default behaviour when typing in a contenteditable=true zone.
+async function typeChar(editor, char) {
+    await manuallyDispatchProgrammaticEvent(editor.editable, "keydown", { key: char });
+    await manuallyDispatchProgrammaticEvent(editor.editable, "beforeinput", {
+        inputType: "insertText",
+        data: char,
+    });
+    // Simulate text insertion as done by the contenteditable.
+    editor.document.execCommand("insertText", false, char);
+    // Input event is dispatched and handlers are called synchronously.
+    await manuallyDispatchProgrammaticEvent(editor.editable, "keyup", { key: char });
+}
 
+test("should type in bold", async () => {
     const { editor, el } = await setupEditor("<p>ab[]cd</p>");
 
     /** @todo fix warnings */
@@ -356,6 +387,21 @@ test("should type in bold", async () => {
     expect(getContent(el)).toBe(`<p>ab<strong>xy[]</strong>cd</p>`);
     await typeChar(editor, "z");
     expect(getContent(el)).toBe(`<p>ab<strong>xy</strong>z[]cd</p>`);
+});
+
+test("should type a space after toggling bold off", async () => {
+    const { editor, el } = await setupEditor("<p>ab[]cd</p>");
+
+    /** @todo fix warnings */
+    patchWithCleanup(console, { warn: () => {} });
+
+    bold(editor);
+    await typeChar(editor, "x");
+    expect(getContent(el)).toBe(`<p>ab<strong>x[]</strong>cd</p>`);
+
+    bold(editor);
+    await typeChar(editor, " ");
+    expect(getContent(el)).toBe(`<p>ab<strong>x</strong> []cd</p>`);
 });
 
 test.tags("desktop");
@@ -559,28 +605,28 @@ test("should not apply bold to selection placeholder nodes", async () => {
     expect(getContent(el)).toBe(
         unformat(`
             <p data-selection-placeholder="">[<br></p>
-            <table class="o_selected_table">
+            <div class="o_table_wrapper"><table class="o_selected_table">
                 <tbody>
                     <tr>
                         <td class="o_selected_td">1</td>
                     </tr>
                 </tbody>
-            </table>
-            <p data-selection-placeholder="">]<br></p>
+            </table></div>
+            <p data-selection-placeholder="" style="margin: -9px 0px 8px;">]<br></p>
         `)
     );
     await press(["ctrl", "b"]);
     expect(getContent(el)).toBe(
         unformat(`
             <p data-selection-placeholder="">[<br></p>
-            <table class="o_selected_table">
+            <div class="o_table_wrapper"><table class="o_selected_table">
                 <tbody>
                     <tr>
                         <td class="o_selected_td"><strong>1</strong></td>
                     </tr>
                 </tbody>
-            </table>
-            <p data-selection-placeholder="">]<br></p>
+            </table></div>
+            <p data-selection-placeholder="" style="margin: -9px 0px 8px;">]<br></p>
         `)
     );
 });
@@ -653,4 +699,91 @@ test("toggle bold on a selection that is only a formatted space", async () => {
         stepFunction: bold,
         contentAfter: `<p>A[ ]B</p>`,
     });
+});
+
+test("bold on list item should not make its nested list items bold", async () => {
+    await testEditor({
+        contentBefore: "<ul><li><p>[A]</p><ul><li>B</li></ul></li></ul>",
+        stepFunction: bold,
+        contentAfter:
+            '<ul><li style="font-weight: bolder;"><p>[A]</p><ul style="font-weight: normal;"><li>B</li></ul></li></ul>',
+    });
+});
+
+test("removing bold on list item should remove neutral style from its nested list", async () => {
+    await testEditor({
+        contentBefore:
+            '<ul><li style="font-weight: bolder;"><p>[A]</p><ul style="font-weight: normal;"><li>B</li></ul></li></ul>',
+        stepFunction: bold,
+        contentAfter: "<ul><li><p>[A]</p><ul><li>B</li></ul></li></ul>",
+    });
+});
+
+test("should apply the style on the link itself (1)", async () => {
+    const { el, editor } = await setupEditor(`<p><a href="test">[abc]</a></p>`, {
+        styleContent: `a {font-weight: bolder}`,
+    });
+    bold(editor);
+    expect(getContent(el)).toBe(
+        `<p>\ufeff<a href="test" style="font-weight: normal;" class="o_link_in_selection">\ufeff[abc]\ufeff</a>\ufeff</p>`
+    );
+    bold(editor);
+    expect(getContent(el)).toBe(
+        `<p>\ufeff<a href="test" class="o_link_in_selection">\ufeff[abc]\ufeff</a>\ufeff</p>`
+    );
+});
+
+test("should apply the style on the link itself (2)", async () => {
+    const { el, editor } = await setupEditor(`<p>a[a<a href="test">bb</a>c]c</p>`, {
+        styleContent: `a {font-weight: bolder}`,
+    });
+    bold(editor);
+    expect(getContent(el)).toBe(
+        `<p>a<strong>[a</strong>\ufeff<a href="test">\ufeffbb\ufeff</a>\ufeff<strong>c]</strong>c</p>`
+    );
+    bold(editor);
+    expect(getContent(el)).toBe(
+        `<p>a[a\ufeff<a href="test" style="font-weight: normal;">\ufeffbb\ufeff</a>\ufeffc]c</p>`
+    );
+});
+
+test("should apply the style on the link itself (3)", async () => {
+    const { el, editor } = await setupEditor(`<p>aa[<a href="test">bb</a>]cc</p>`, {
+        styleContent: `a {font-weight: normal}`,
+    });
+    bold(editor);
+    expect(getContent(el)).toBe(
+        `<p>aa[\ufeff<a href="test" style="font-weight: bolder;">\ufeffbb\ufeff</a>\ufeff]cc</p>`
+    );
+    bold(editor);
+    expect(getContent(el)).toBe(`<p>aa[\ufeff<a href="test">\ufeffbb\ufeff</a>\ufeff]cc</p>`);
+});
+
+test("should apply the style on the link itself (4)", async () => {
+    const { el, editor } = await setupEditor(`<p>a[a<a href="test">bb</a>c]c</p>`, {
+        styleContent: `a {font-weight: normal}`,
+    });
+    bold(editor);
+    expect(getContent(el)).toBe(
+        `<p>a<strong>[a</strong>\ufeff<a href="test" style="font-weight: bolder;">\ufeffbb\ufeff</a>\ufeff<strong>c]</strong>c</p>`
+    );
+    bold(editor);
+    expect(getContent(el)).toBe(`<p>a[a\ufeff<a href="test">\ufeffbb\ufeff</a>\ufeffc]c</p>`);
+});
+
+test("should apply the style on the link itself (5)", async () => {
+    const { el, editor } = await setupEditor(
+        `<p><strong>a[a</strong><a href="test">bb</a><strong>c]c</strong></p>`,
+        {
+            styleContent: `a {font-weight: normal}`,
+        }
+    );
+    bold(editor);
+    expect(getContent(el)).toBe(
+        `<p><strong>a[a</strong>\ufeff<a href="test" style="font-weight: bolder;">\ufeffbb\ufeff</a>\ufeff<strong>c]c</strong></p>`
+    );
+    bold(editor);
+    expect(getContent(el)).toBe(
+        `<p><strong>a</strong>[a\ufeff<a href="test">\ufeffbb\ufeff</a>\ufeffc]<strong>c</strong></p>`
+    );
 });

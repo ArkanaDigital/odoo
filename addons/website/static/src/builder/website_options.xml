@@ -39,7 +39,7 @@
             selector="section.s_features_grid, section.s_process_steps, section.s_splash_intro"
             applyTo=":scope > *:has(> .row), :scope > .s_allow_columns"/>
         <vertical_alignment_option
-            selector=".s_text_image, .s_image_text, .s_three_columns, .s_showcase, .s_numbers, .s_faq_collapse, .s_references, .s_references_lite, .s_accordion_image, .s_shape_image, .s_reviews_wall, .s_key_images, .s_cards_soft, .s_cards_grid, .s_features_image, .s_image_features, .s_hero_minimalist, .s_features_cards"
+            selector=".s_text_image, .s_image_text, .s_three_columns, .s_showcase, .s_numbers, .s_faq_collapse, .s_references, .s_references_lite, .s_accordion_image, .s_shape_image, .s_reviews_wall, .s_key_images, .s_cards_soft, .s_cards_grid, .s_features_image, .s_image_features, .s_hero_minimalist, .s_features_cards, .s_text_chart, .s_chart_text"
             applyTo=".row"/>
         <vertical_alignment_option
             selector=".s_pricelist_cafe"
@@ -108,7 +108,7 @@
         <content_width_option
             template="website.ContentWidthOption"
             selector="section, .s_carousel .carousel-item, .s_carousel_intro_item"
-            exclude="[data-snippet] :not(.oe_structure) > [data-snippet],#footer > *,#o_wblog_post_content *, .s_bento_banner section[data-name='Card'],.s_floating_blocks .s_floating_blocks_block, .s_bento_block_card, .o_no_content_width_option"
+            exclude="[data-snippet] :not(.oe_structure) > [data-snippet],#footer > *, .s_bento_banner section[data-name='Card'], .s_floating_blocks .s_floating_blocks_block, .s_bento_block_card, .o_no_content_width_option"
             applyTo=":scope > .container, :scope > .container-fluid, :scope > .o_container_small"/>
         <vertical_justify_option
             template="html_builder.VerticalJustifyOption"

@@ -30,18 +30,43 @@ export class HrEmployee extends models.ServerModel {
             id: 4,
             name: "A Little Guy",
         },
+        {
+            id: 5,
+            name: "Supervised Employee",
+        },
+        {
+            id: 6,
+            name: "Employee2",
+            work_contact_id: 3,
+        },
     ];
 
     _load_pos_data_read(records) {
         const employeeRoles = {
             2: "manager",
             3: "cashier",
-            4: "minimal",
+            4: "restrictive",
+            5: "supervised",
+            6: "cashier",
+        };
+        const employeePins = {
+            2: "1234",
+            6: "5678",
+        };
+        const employeeBarcodes = {
+            4: "041333",
+            6: "041222",
         };
         records.forEach((emp) => {
             emp._role = employeeRoles[emp.id] || "manager";
             if (emp.id === 2) {
-                emp._pin = Sha1.hash("1234");
+                emp._user_role = "admin";
+            }
+            if (employeePins[emp.id]) {
+                emp._pin = Sha1.hash(employeePins[emp.id]);
+            }
+            if (employeeBarcodes[emp.id]) {
+                emp._barcode = Sha1.hash(employeeBarcodes[emp.id]);
             }
         });
         return records;

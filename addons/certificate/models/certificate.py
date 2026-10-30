@@ -1,4 +1,3 @@
-import base64
 from importlib import metadata
 from contextlib import suppress
 
@@ -441,7 +440,7 @@ class CertificateCertificate(models.Model):
                 for record in self
                 if record.content and not record.loading_error
                 for ca_vals in self._parse_chain_missing_ca_vals({
-                    'content': record.content.content,
+                    'content': record.content,
                     'pkcs12_password': record.pkcs12_password,
                     'company_id': record.company_id.id,
                     **vals,
@@ -476,8 +475,8 @@ class CertificateCertificate(models.Model):
 
         company_id = vals.get('company_id')
         password = vals.get('pkcs12_password', '').encode('utf-8') if vals.get('pkcs12_password') else None
-        content = vals.get('content') or b''
-        content = base64.b64decode(content) if isinstance(content, str) else bytes(content)
+        content = self._fields['content'].convert_to_cache(vals.get('content'), self, validate=False)
+        content = content.content if content else b''
 
         _leaf_pem, *ca_pems = self._extract_and_filter_chain(content, password)
         if not ca_pems:

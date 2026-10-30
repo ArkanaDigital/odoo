@@ -5,7 +5,6 @@ from datetime import timedelta
 from markupsafe import Markup
 
 from odoo import _, api, fields, models
-from odoo.tools import plaintext2html
 from odoo.tools.sql import SQL
 
 
@@ -57,11 +56,11 @@ class CalendarAlarm_Manager(models.AbstractModel):
                 COALESCE((SELECT MIN(cal.start - interval '1' minute  * calcul_delta.max_delta)
                 FROM calendar_event cal
                 RIGHT JOIN calcul_delta ON calcul_delta.calendar_event_id = cal.id
-                WHERE cal.start - interval '1' minute  * calcul_delta.max_delta > now() at time zone 'utc'
-            ) + interval '3' minute, now() at time zone 'utc')""")
+                WHERE cal.start - interval '1' minute  * calcul_delta.max_delta > %(now)s
+            ) + interval '3' minute, %(now)s)""", now=self.env.cr.now())
         else:
             # now + given seconds
-            first_alarm_max_value = SQL("(now() at time zone 'utc' + interval %s second )", seconds)
+            first_alarm_max_value = SQL("(%(now)s + interval %s second )", seconds, now=self.env.cr.now())
 
         self.env.flush_all()
         self.env.cr.execute(SQL("""
@@ -69,8 +68,8 @@ class CalendarAlarm_Manager(models.AbstractModel):
             SELECT *
                 FROM ( %s ) AS ALL_EVENTS
             WHERE ALL_EVENTS.first_alarm < %s
-                AND ALL_EVENTS.last_alarm > (%s at time zone 'utc')
-        """, delta_request, base_request, first_alarm_max_value, fields.Datetime.now()))
+                AND ALL_EVENTS.last_alarm > (%s)
+        """, delta_request, base_request, first_alarm_max_value, self.env.cr.now()))
 
         for event_id, first_alarm, last_alarm, first_meeting, last_meeting, min_duration, max_duration in self.env.cr.fetchall():
             result[event_id] = {
@@ -153,6 +152,7 @@ class CalendarAlarm_Manager(models.AbstractModel):
                 ON event_alarm_rel.calendar_alarm_id = alarm.id
              WHERE alarm.alarm_type = %s
                AND event.active
+               AND event.is_draft IS NOT TRUE
                AND event.start - CAST(alarm.duration || ' ' || alarm.interval AS Interval) >= %s
                AND event.start - CAST(alarm.duration || ' ' || alarm.interval AS Interval) < %s
                %s
@@ -219,10 +219,6 @@ class CalendarAlarm_Manager(models.AbstractModel):
         meeting = self.env['calendar.event'].browse(alert['event_id'])
 
         if alarm.alarm_type == 'notification':
-            message = meeting.display_time
-            if alarm.body:
-                message += '<p>%s</p>' % plaintext2html(alarm.body)
-
             delta = alert['notify_at'] - fields.Datetime.now()
             delta = delta.seconds + delta.days * 3600 * 24
 
@@ -230,7 +226,7 @@ class CalendarAlarm_Manager(models.AbstractModel):
                 'alarm_id': alarm.id,
                 'event_id': meeting.id,
                 'title': meeting.name,
-                'message': message,
+                'message': self._format_notification_message(meeting, alarm),
                 'timer': delta,
                 'notify_at': fields.Datetime.to_string(alert['notify_at']),
             }
@@ -244,3 +240,28 @@ class CalendarAlarm_Manager(models.AbstractModel):
         for user in users:
             notif = self.with_user(user).with_context(allowed_company_ids=user.sudo().company_ids.ids).get_next_notif()
             user._bus_send("calendar.alarm", notif)
+
+    def _format_notification_message(self, event, alarm):
+        is_event_today = fields.Datetime.context_timestamp(event, event.start).date() == fields.Date.context_today(event)
+        date_start, time_start = self.env['calendar.event'].get_formatted_date_and_time(event.start, "d MMMM", "short")
+        date_stop, time_stop = self.env['calendar.event'].get_formatted_date_and_time(event.stop, "d MMMM", "short")
+
+        if is_event_today:
+            if date_start == date_stop:
+                schedule = _("%(time_start)s - %(time_stop)s",
+                    time_start=time_start, time_stop=time_stop)
+            else:
+                schedule = _("%(time_start)s - %(date_stop)s, %(time_stop)s",
+                    time_start=time_start, date_stop=date_stop, time_stop=time_stop)
+        else:
+            if event.duration < 24:
+                schedule = _("%(date_start)s, %(time_start)s - %(time_stop)s",
+                    date_start=date_start, time_start=time_start, time_stop=time_stop)
+            else:
+                schedule = _("%(date_start)s, %(time_start)s - %(date_stop)s, %(time_stop)s",
+                    date_start=date_start, time_start=time_start, date_stop=date_stop, time_stop=time_stop)
+
+        location = event.location if event.location else _("Online")
+        body = alarm.body if alarm.body else ""
+
+        return Markup("<br/>%(schedule)s<br/>%(location)s<br/>%(body)s") % {'schedule': schedule, 'location': location, 'body': body}

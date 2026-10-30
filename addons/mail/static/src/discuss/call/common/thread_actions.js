@@ -6,6 +6,8 @@ import { _t } from "@web/core/l10n/translation";
 
 registerThreadAction("call", {
     condition: ({ channel, store }) => channel?.allowCalls && !channel?.eq(store.rtc.channel),
+    disabledCondition: ({ store }) => store.rtc.hasPendingRequest,
+    hasBtnBg: true,
     icon: "phone",
     iconClass: "oi-filled",
     name: ({ channel }) => (channel?.hasRtcSessionActive ? _t("Join the Call") : _t("Start Call")),
@@ -16,6 +18,8 @@ registerThreadAction("call", {
 });
 registerThreadAction("camera-call", {
     condition: ({ channel, store }) => channel?.allowCalls && !channel?.eq(store.rtc.channel),
+    disabledCondition: ({ store }) => store.rtc.hasPendingRequest,
+    hasBtnBg: true,
     icon: "videocam",
     iconClass: "oi-filled",
     name: ({ channel }) =>
@@ -26,26 +30,25 @@ registerThreadAction("camera-call", {
             fullscreen: !store.inPublicPage,
         }),
     sequence: 5,
-    sequenceQuick: ({ owner }) => (owner.env.inDiscussApp ? 25 : 35),
+    sequenceQuick: ({ ancestors }) => (ancestors.inDiscussApp ? 25 : 35),
     tags: [ACTION_TAGS.SUCCESS, ACTION_TAGS.JOIN_LEAVE_CALL],
 });
 registerThreadAction("call-settings", {
-    actionPanelComponent: CallSettings,
-    actionPanelComponentProps: () => ({ isCompact: true }),
-    condition: ({ channel, owner, store }) =>
+    condition: ({ ancestors, channel, owner, store }) =>
         channel?.allowCalls &&
-        store.self_user &&
-        (owner.props.chatWindow?.isOpen || store.inPublicPage) &&
+        (ancestors.inChatWindow || store.inPublicPage) &&
         !owner.isDiscussSidebarChannelActions,
     icon: "settings",
     iconClass: "oi-filled oi-fw",
     name: _t("Voice & Video Settings"),
+    panel: { component: CallSettings, props: () => ({ isCompact: true }) },
     sequence: 5,
     sequenceGroup: 30,
 });
 registerThreadAction("disconnect", {
     condition: ({ channel, owner, store }) =>
         store.rtc.selfSession?.in(channel?.rtc_session_ids) && owner.isDiscussSidebarChannelActions,
+    hasBtnBg: true,
     onSelected: ({ channel, store }) => store.rtc.toggleCall(channel),
     icon: "phone",
     iconClass: "oi-filled",

@@ -54,14 +54,14 @@ class TestLiteUserCore(TransactionCase):
         User -- the projection follows from the user gaining an extra app group."""
         emp = self.env['hr.employee'].create({'name': 'Climber', 'work_email': 'climber@employee.com'})
         emp.user_id = emp._get_or_create_light_user()
-        self.assertEqual(emp.user_id.role, 'group_user')
+        self.assertEqual(emp.user_id.role, 'light_user')
         app_group = self.env['res.groups'].create({
             'name': 'Some App / User',
             'implied_ids': [(4, self.group_user_light.id)],
         })
         emp.user_id.write({'group_ids': [(4, app_group.id)]})
         self.assertIn(self.group_user_light, emp.user_id.all_group_ids)
-        self.assertEqual(emp.user_id.role, 'group_user_regular')
+        self.assertEqual(emp.user_id.role, 'regular_user')
 
     def test_lite_user_can_browse_directory(self):
         """A Light user (a plain internal user) can read the employee directory
@@ -79,4 +79,4 @@ class TestLiteUserCore(TransactionCase):
         # the real path the web client uses to render the menu tree
         self.env['ir.ui.menu'].with_user(light_user).load_menus(False)
         # reading own user record with its groups (user preferences)
-        light_user.with_user(light_user).read(['name', 'login', 'group_ids'])
+        light_user.with_user(light_user).fetch(['name', 'login', 'group_ids'])

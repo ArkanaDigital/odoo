@@ -8,10 +8,10 @@ from datetime import datetime, timedelta
 from dateutil.relativedelta import MO, relativedelta
 
 from odoo import api, fields, models, _
-from odoo.exceptions import AccessError
+from odoo.exceptions import AccessError, MissingError, UserError
 from odoo.fields import Domain
 from odoo.tools import OrderedSet, is_html_empty
-from odoo.tools.constants import PREFETCH_MAX
+from odoo.tools.constants import IN_MAX
 from odoo.tools.misc import clean_context, format_date, groupby
 from odoo.addons.base.models.ir_attachment import condition_values
 from odoo.addons.mail.tools.discuss import Store
@@ -99,6 +99,7 @@ class MailActivity(models.Model):
     activity_plan_id = fields.Many2one('mail.activity.plan', string='Plan', ondelete='set null', copy=False)
     activity_template_id = fields.Many2one('mail.activity.plan.template', string='Generated From',
                                            index='btree_not_null')
+    phone = fields.Char('Phone', compute='_compute_phone', readonly=False, store=True)
     summary = fields.Char('Summary', compute='_compute_summary', precompute=True, store=True, readonly=False)
     note = fields.Html('Note', sanitize_style=True, compute='_compute_note', precompute=True, store=True, readonly=False)
     date_deadline = fields.Date('Due Date', index=True, required=True,
@@ -120,7 +121,9 @@ class MailActivity(models.Model):
     user_id = fields.Many2one(
         'res.users', 'Assigned to',
         index=True, required=False, ondelete='cascade',
-        compute='_compute_user_id', precompute=True, store=True, readonly=False)
+        compute='_compute_user_id', precompute=True, store=True, readonly=False,
+        domain=lambda self: [('share', '=', False), ('role', '!=', 'light_user')],
+    )
     role_id = fields.Many2one(
         'res.role', 'Role',
         index='btree_not_null', required=False, ondelete='set null',
@@ -165,11 +168,14 @@ class MailActivity(models.Model):
 
     @api.depends('res_model', 'res_id')
     def _compute_res_name(self):
-        free = self.filtered(lambda a: not a.res_model or not a.res_id)
-        free.res_name = False
-        for activity in (self - free):
-            activity.res_name = activity.res_model and \
-                self.env[activity.res_model].browse(activity.res_id).display_name
+        for activity in self:
+            name = False
+            if activity.res_model and activity.res_id:
+                try:  # noqa: SIM105
+                    name = self.env[activity.res_model].browse(activity.res_id).display_name
+                except MissingError:
+                    pass
+            activity.res_name = name
 
     @api.depends('active', 'date_deadline')
     def _compute_state(self):
@@ -177,6 +183,48 @@ class MailActivity(models.Model):
             tz = record.user_tz
             date_deadline = record.date_deadline
             record.state = 'done' if not record.active else self._compute_state_from_date(date_deadline, tz)
+
+    @api.depends('res_model', 'res_id', 'activity_type_id')
+    def _compute_phone(self):
+        call_activities = self.filtered(
+            lambda activity: activity.id
+            and activity.res_model
+            and activity.res_id
+            and activity.activity_category == 'phonecall',
+        )
+        (self - call_activities).phone = False
+        phone_numbers_by_activity = call_activities._get_phone_numbers_by_activity()
+        for activity in call_activities:
+            activity.phone = phone_numbers_by_activity.get(activity, False)
+
+    def _get_phone_numbers_by_activity(self):
+        """Batch compute the phone numbers associated with the activities.
+
+        :return: phone number for each activity (obtained from the related
+            record itself or from its related partner)
+        """
+        phone_numbers_by_activity = {}
+        data_by_model = self.filtered("res_model")._classify_by_model()
+        for model, data in data_by_model.items():
+            records = self.env[model].browse(data["record_ids"])
+            for record, activity in zip(records, data["activities"]):
+                try:
+                    phone = self._get_phone_number_from_record(record)
+                    if not phone:
+                        recipient = next(
+                            iter(record._mail_get_partners(introspect_fields=True)[record.id]),
+                            self.env["res.partner"],
+                        )
+                        phone = self._get_phone_number_from_record(recipient) if recipient else False
+                # cascade-deleted records might make this crash, be defensive
+                except MissingError:
+                    phone = False
+                phone_numbers_by_activity[activity] = phone
+        return phone_numbers_by_activity
+
+    def _get_phone_number_from_record(self, record):
+        """Hook for phone modules to find the phone number of ``record``."""
+        return record.phone if "phone" in record else False
 
     @api.model
     def _compute_state_from_date(self, date_deadline, tz=False):
@@ -294,8 +342,7 @@ class MailActivity(models.Model):
         else:
             activities_to_notify = activities.filtered(lambda act: act.user_id != self.env.user)
         if activities_to_notify:
-            to_sudo = activities_to_notify.filtered(lambda act: act.user_id.partner_id not in readable_user_partners)
-            other = activities_to_notify - to_sudo
+            to_sudo, other = activities_to_notify.partitioned(lambda act: act.user_id.partner_id not in readable_user_partners)
             to_sudo.sudo().action_notify()
             other.action_notify()
 
@@ -443,14 +490,14 @@ class MailActivity(models.Model):
                 domain,
                 SECURITY_FIELDS,
                 offset=looping_offset,
-                limit=PREFETCH_MAX,
+                limit=IN_MAX,
                 order=order,
             ).sudo(False)
             result.extend(records._filtered_access('read')._ids)
-            if len(records) < PREFETCH_MAX:
+            if len(records) < IN_MAX:
                 # There are no more records
                 break
-            looping_offset += PREFETCH_MAX
+            looping_offset += IN_MAX
         return self.browse(result[offset:limit])._as_query(ordered)
 
     def _search_res_access(self, operation, domain_operator):
@@ -467,7 +514,7 @@ class MailActivity(models.Model):
             records = self.sudo().with_context(active_test=False).search_fetch(
                 domain, SECURITY_FIELDS, order='id', limit=MAX_SEARCH_LIMIT)
             if len(records) == MAX_SEARCH_LIMIT:  # avoid out of memory
-                raise ValueError(self.env._("Cannot search, too many activities"))
+                raise UserError(self.env._("Cannot search, too many activities"))
             records = records.sudo(False)._filtered_access(operation)
             # [('id', 'any!', query_with_ids)] is optimized in sec_domain
             return Domain('id', 'any!', records._as_query(ordered=False))
@@ -475,6 +522,9 @@ class MailActivity(models.Model):
         # search by model and res_id
         sec_domain = Domain.FALSE
         env = self.with_context(active_test=False).env
+        inverse_field = self.env.context.get('search_from_field')
+        if self._fields['res_id'] not in self.env.registry.field_inverses.get(inverse_field, ()):
+            inverse_field = None
         for res_model_name in res_model_names:
             if res_model_name not in env:
                 continue
@@ -486,6 +536,7 @@ class MailActivity(models.Model):
             # similar implementation to what is in mail.message._search
             comodel_domain = Domain.FALSE
             comodel_domain_remaining = Domain.TRUE
+            only_read = bool(inverse_field)
             for domain_operation, doc_operation in comodel._mail_get_operation_for_mail_message_operation('read'):
                 domain_operation, comodel_domain_remaining = (
                     comodel_domain_remaining & domain_operation,
@@ -493,13 +544,20 @@ class MailActivity(models.Model):
                 )
                 comodel_rule = comodel._access_domain(doc_operation)
                 if comodel_rule.is_false():
+                    only_read = False
                     continue
                 if doc_operation == 'read':
                     comodel_rule = Domain.TRUE  # covered by the search below
+                else:
+                    only_read = False
                 comodel_domain |= (domain_operation & comodel_rule)
             if comodel_res_ids is not None:
                 comodel_domain &= Domain('id', 'in', comodel_res_ids)
-            comodel_domain = comodel_domain.optimize_full(comodel.sudo())
+            if not (only_read and inverse_field.model_name == res_model_name):
+                # if we only read and we have access
+                comodel_domain &= comodel._access_domain('read')
+            comodel = comodel.sudo()
+            comodel_domain = comodel_domain.optimize_full(comodel)
             query = comodel._search(comodel_domain)
             if query.is_empty():
                 continue
@@ -689,9 +747,9 @@ class MailActivity(models.Model):
                     activities_to_remove += activity
 
                 message_attachments = activity_attachments.get(activity.id) or self.env['ir.attachment']
-                attachment_ids = (attachment_ids or []) + message_attachments.ids
-                if attachment_ids:
-                    activity.attachment_ids = attachment_ids
+                activity_attachment_ids = (attachment_ids or []) + message_attachments.ids
+                if activity_attachment_ids:
+                    activity.attachment_ids = activity_attachment_ids
 
                 # Moving the attachments in the message
                 # TODO: Fix void res_id on attachment when you create an activity with an image
@@ -777,7 +835,7 @@ class MailActivity(models.Model):
         res.extend(["can_write", "create_date"])
         res.one("create_uid", lambda res: res.one("partner_id", ["name"]))
         res.extend(["date_deadline", "date_done", "display_name", "icon", "note"])
-        res.extend(["res_id", "res_model", "state", "summary"])
+        res.extend(["phone", "res_id", "res_model", "state", "summary"])
         res.one("role_id", ["name"])
         res.one("user_id", lambda res: res.one("partner_id", "_store_partner_fields"))
         res.many("attachment_ids", ["name"])
@@ -848,8 +906,7 @@ class MailActivity(models.Model):
             activity_domain.append(('res_id', 'in', DocModel._search(domain or [], offset, limit, DocModel._order) if is_filtered else []))
         all_activities = Activity.with_context(active_test=not fetch_done).search(
             activity_domain, order='date_done DESC, date_deadline ASC')
-        all_ongoing = all_activities.filtered('active')
-        all_completed = all_activities.filtered(lambda act: not act.active)
+        all_ongoing, all_completed = all_activities.partitioned('active')
 
         # 2. Get attachment of completed activities
         if all_completed:

@@ -4,23 +4,25 @@ import {
     onPatched,
     onWillUnmount,
     proxy,
+    shallowEqual,
+    signal,
     t,
     untrack,
     useEffect,
     useListener,
+    useOnChange,
     usePlugin,
     useProps,
     useScope,
 } from "@odoo/owl";
 
-import { Reactive } from "@web/core/utils/reactive";
-import { useLayoutEffect } from "@web/owl2/utils";
-
 import { CallPermissionDeniedDialog } from "@mail/discuss/call/common/call_permission_denied_dialog";
 import { monitorAudio } from "@mail/utils/common/media_monitoring";
-import { browser } from "@web/core/browser/browser";
 import { makeDraggableHook } from "@web/core/utils/draggable_hook_builder_owl";
 import { useService } from "@web/core/utils/hooks";
+import { batched } from "@web/core/utils/timing";
+import { useDropdownState } from "@web/core/dropdown/dropdown_hooks";
+import { UIPlugin } from "@web/core/ui/ui_plugin";
 
 /**
  * Version of usePlugin() where the plugin is allowed to not be provided by any parented component.
@@ -193,7 +195,7 @@ export function useHover(refs, { onHover, onAway, stateObserver } = {}) {
     }
 
     if (stateObserver) {
-        useLayoutEffect((open) => {
+        useOnChange(stateObserver, (open) => {
             // Note: stateObserver is essentially used with useDropdownState()?.isOpen.
             // While isOpen can become false, the ref() can still be there for a short period of time.
             // Relying on isOpen becoming false forces good syncing of isHover state on dropdown close.
@@ -201,9 +203,170 @@ export function useHover(refs, { onHover, onAway, stateObserver } = {}) {
                 setHover(false);
                 lastHoveredRef = null;
             }
-        }, stateObserver);
+        });
     }
     return state;
+}
+
+export const PEEK_DELAY = 150;
+export const PEEK_CLOSE_DELAY = 300;
+
+/**
+ * Shows a hidden element (e.g. a collapsed sidebar) while it is hovered or focused with the
+ * keyboard, until the pointer and focus leave it or a click lands elsewhere.
+ *
+ * @param {import("@odoo/owl").Signal<HTMLElement>} ref
+ * @param {Object} param1
+ * @param {() => boolean} param1.enabled whether the element is hidden, so that it can show.
+ * @param {() => boolean} [param1.keep] whether it also stays shown otherwise, e.g. while
+ *   searching in it.
+ * @param {() => void} [param1.onClose] called when it hides, also when left before showing.
+ * @param {string} [param1.ignoreSelector] parts of it that do not show it when hovered or
+ *   focused, e.g. its toggle.
+ */
+export function usePeek(ref, { enabled, keep = () => false, onClose, ignoreSelector } = {}) {
+    const isOpen = signal(false);
+    /** Whether the mouse is on the element: a touch tap does not count as hovering. */
+    let isHovered = false;
+    /** Whether its use is over, so that `keep` no longer holds it. */
+    let isReleased = false;
+    /** Whether a press that began on it is held, wherever the pointer goes. */
+    let isPressed = false;
+    let timeout;
+    function clear() {
+        clearTimeout(timeout);
+        timeout = undefined;
+    }
+    function open() {
+        clear();
+        isReleased = false;
+        isOpen.set(true);
+    }
+    function close() {
+        clear();
+        isReleased = false;
+        isOpen.set(false);
+        onClose?.();
+    }
+    /** Closes now, or once the mouse on it leaves, regardless of `keep`. */
+    function closeOnceLeft() {
+        if (isHovered) {
+            isReleased = true;
+        } else {
+            close();
+        }
+    }
+    /** @param {Element} el */
+    function contains(el) {
+        return ref().contains(el) || Boolean(el.closest(".o-overlay-container"));
+    }
+    /** @param {Element} el */
+    function isIgnored(el) {
+        return Boolean(ignoreSelector && el.closest(ignoreSelector));
+    }
+    /** Whether an element triggered from it is active: its shown focus, or a dropdown it opened. */
+    function hasActiveElement() {
+        return Boolean(ref().querySelector(":focus-visible, [aria-expanded='true']"));
+    }
+    function isKept() {
+        return isPressed || hasActiveElement() || (!isReleased && keep());
+    }
+    // Over each of its parts, not only on entering it: the delay runs off the ignored ones.
+    useListener(ref, "pointerover", (ev) => {
+        if (ev.pointerType !== "mouse") {
+            return;
+        }
+        isHovered = true;
+        if (!enabled() || isOpen()) {
+            return;
+        }
+        if (isIgnored(ev.target)) {
+            clear();
+        } else if (!timeout) {
+            timeout = setTimeout(open, PEEK_DELAY);
+        }
+    });
+    // Left before the delay: nothing to show. Once shown, it hides on where the pointer goes.
+    useListener(ref, "pointerleave", () => {
+        isHovered = false;
+        if (enabled() && !isOpen()) {
+            close();
+        }
+    });
+    useListener(ref, "focusin", (ev) => {
+        if (enabled() && ev.target.matches(":focus-visible") && !isIgnored(ev.target)) {
+            open();
+        }
+    });
+    useListener(ref, "focusout", (ev) => {
+        if (
+            isOpen() &&
+            !(ev.relatedTarget && contains(ev.relatedTarget)) &&
+            !ref().matches(":hover") &&
+            !isKept()
+        ) {
+            close();
+        }
+    });
+    useEffect(() => {
+        if (!isOpen()) {
+            return;
+        }
+        /** @param {PointerEvent} ev */
+        const onPointerdown = (ev) => {
+            isPressed = contains(ev.target);
+            if (!isPressed) {
+                close();
+            }
+        };
+        const onPointerup = () => (isPressed = false);
+        // Wherever the pointer goes next, also from one of the dropdowns of the element.
+        /** @param {PointerEvent} ev */
+        const onPointerover = (ev) => {
+            if (ev.pointerType !== "mouse") {
+                return;
+            }
+            if (contains(ev.target) || isKept()) {
+                clear();
+            } else if (!timeout) {
+                // Some grace, for a pointer briefly out of the element on its way.
+                timeout = setTimeout(() => {
+                    timeout = undefined;
+                    if (!ref().matches(":hover") && !isKept()) {
+                        close();
+                    }
+                }, PEEK_CLOSE_DELAY);
+            }
+        };
+        document.addEventListener("pointerdown", onPointerdown, { capture: true });
+        document.addEventListener("pointerup", onPointerup, { capture: true });
+        document.addEventListener("pointerover", onPointerover);
+        return () => {
+            document.removeEventListener("pointerdown", onPointerdown, { capture: true });
+            document.removeEventListener("pointerup", onPointerup, { capture: true });
+            document.removeEventListener("pointerover", onPointerover);
+            isPressed = false;
+        };
+    });
+    onWillUnmount(clear);
+    return { isOpen, open, close, closeOnceLeft };
+}
+
+/**
+ * Calls `onIntent` when the element is about to be left clicked, on pointer down. Useful
+ * to start loading what the click opens.
+ *
+ * @param {import("@odoo/owl").Signal<Element>} ref
+ * @param {(ev: PointerEvent) => void} onIntent
+ * @param {Object} [options]
+ * @param {string} [options.ignoreSelector] events from matching targets are ignored
+ */
+export function onClickIntent(ref, onIntent, { ignoreSelector } = {}) {
+    useListener(ref, "pointerdown", (ev) => {
+        if (ev.button === 0 && !(ignoreSelector && ev.target.closest?.(ignoreSelector))) {
+            onIntent(ev);
+        }
+    });
 }
 
 /**
@@ -281,11 +444,20 @@ export function useOnBottomScrolled(ref, callback, threshold = 1) {
 }
 
 /**
- * @param {string} refName
- * @param {function} [cb]
+ * Observes the visibility of the element of `ref` while `ready`. The element is
+ * observed from the mount/patch following a change of `ref` or `ready`, i.e.
+ * once the patched DOM is scrolled in place: observed from the change itself,
+ * it could be reported visible before the patch scrolls it away (e.g. to a
+ * highlighted message). The rendering of the component must read `ready` so
+ * that a patch follows its change. A change of `ref` is also followed when the
+ * element is patched by another component (e.g. in a slot).
+ *
+ * @param {import("@odoo/owl").Signal<HTMLElement>} ref
+ * @param {function} [cb] called with the visibility on each change
+ * @param {Object} [options]
+ * @param {boolean} [options.ready=true] whether the element can be observed
  */
 export function useVisible(ref, cb, { ready = true } = {}) {
-    const getEl = () => untrack(ref);
     const state = proxy({
         isVisible: undefined,
         ready,
@@ -297,150 +469,61 @@ export function useVisible(ref, cb, { ready = true } = {}) {
     const observer = new IntersectionObserver((entries) => {
         setValue(entries.at(-1).isIntersecting);
     });
-    useLayoutEffect(
-        (el, ready) => {
-            if (el && ready) {
-                observer.observe(el);
-                return () => {
-                    setValue(undefined);
-                    observer.unobserve(el);
-                };
-            }
-        },
-        () => [getEl(), state.ready]
-    );
-    return state;
-}
-
-/**
- * @typedef {Object} MessageScrolling
- * @property {function} clear
- * @property {function} highlightMessage
- * @property {number|null} highlightedMessageId
- */
-
-/**
- * @param {Object} params
- * @param {function(): import("models").Thread|null} params.thread
- * @param {function(): Object} [params.messageFetchRouteParams]
- * @param {number} [params.duration=1500]
- * @returns {MessageScrolling}
- */
-export function useMessageScrolling({
-    thread: threadFn,
-    messageFetchRouteParams = () => ({}),
-    duration = 1500,
-}) {
-    let timeout;
-    const state = proxy({
-        clear() {
-            if (this.highlightedMessageId) {
-                browser.clearTimeout(timeout);
-                timeout = null;
-                this.highlightedMessageId = null;
-            }
-        },
-        /**
-         * @param {import("models").Message} message
-         */
-        async highlightMessage(message) {
-            const thread = threadFn();
-            if (!thread) {
-                return;
-            }
-            state.initiated = true;
-            let messageScrollDirection;
-            if (message.notIn(thread.messages)) {
-                messageScrollDirection = message.id < thread.messages[0]?.id ? "top" : "bottom";
-                await thread.loadAround({
-                    messageId: message.id,
-                    routeParams: messageFetchRouteParams(),
-                });
-            }
-            const lastHighlightedMessageId = state.highlightedMessageId;
-            this.clear();
-            if (lastHighlightedMessageId === message.id) {
-                // Give some time for the state to update.
-                await new Promise(setTimeout);
-            }
-            thread.scrollTop = messageScrollDirection === "top" ? "bottom" : undefined;
-            if (thread.scrollTop === "bottom") {
-                state.startupPromise = new Promise((resolve) => (state.resolveStartup = resolve));
-                await state.startupPromise;
-                state.startupPromise = null;
-                state.resolveStartup = null;
-            }
-            state.highlightedMessageId = message.id;
-            state.initiated = false;
-            timeout = browser.setTimeout(() => this.clear(), duration);
-        },
-        initiated: false,
-        /**
-         * Promise during highlight startup, i.e. highlight is initiated but isn't scrolling yet
-         * Useful to set correct starting condition to initiate scroll to highlight, like scroll to bottom.
-         */
-        startupPromise: null,
-        /** @type {(value?: void) => void | null}  */
-        resolveStartup: null,
-        /** @type {?Promise<void>} Promise during scrolling to highlight */
-        scrollPromise: null,
-        /** @type {(value?: void) => void | null}  */
-        resolveScroll: null,
-        /**
-         * Scroll the element into view and expose a promise that will resolved
-         * once the scroll is done.
-         *
-         * @param {Element} el
-         */
-        scrollTo(el) {
-            state.resolveScroll?.();
-            const { promise: scrollPromise, resolve: resolveScroll } = Promise.withResolvers();
-            state.scrollPromise = scrollPromise;
-            state.resolveScroll = resolveScroll;
-            if ("onscrollend" in window) {
-                document.addEventListener("scrollend", resolveScroll, {
-                    capture: true,
-                    once: true,
-                });
-            } else {
-                // To remove when safari will support the "scrollend" event.
-                setTimeout(resolveScroll, 250);
-            }
-            el.scrollIntoView({ behavior: "smooth", block: "center" });
-            return scrollPromise;
-        },
-        highlightedMessageId: null,
-    });
+    let observedEl;
+    const unobserve = () => {
+        if (observedEl) {
+            setValue(undefined);
+            observer.unobserve(observedEl);
+            observedEl = undefined;
+        }
+    };
+    const observe = () => {
+        const el = state.ready ? ref() : undefined;
+        if (el === observedEl) {
+            return;
+        }
+        unobserve();
+        if (el) {
+            observer.observe(el);
+            observedEl = el;
+        }
+    };
+    onMounted(observe);
+    onPatched(observe);
+    // the ref can be patched by another component (e.g. in a slot)
+    useOnChange(() => [ref()], observe);
+    onWillUnmount(unobserve);
     return state;
 }
 
 export class MessageSelectionState {
     selectedMessageId;
-    data = new Set();
+    /** @type {import("@odoo/owl").Signal<Set<number>>} */
+    data = signal.Set(new Set(), { type: t.number() });
 
     clearSelected() {
-        this.data.delete(this.selectedMessageId);
+        this.data().delete(this.selectedMessageId);
     }
 
     /** @param {import("models").Message} message */
     isSelected(message) {
-        return this.data.has(message.id);
+        return this.data().has(message.id);
     }
 
     /** @param {import("models").Message} message */
     setSelected(message) {
         this.clearSelected();
-        this.data.add(message.id);
+        this.data().add(message.id);
         this.selectedMessageId = message.id;
     }
 
     get size() {
-        return this.data.size;
+        return this.data().size;
     }
 }
 
 export function useMessageSelection() {
-    return proxy(new MessageSelectionState());
+    return new MessageSelectionState();
 }
 
 export function useMicrophoneVolume() {
@@ -470,7 +553,7 @@ export function useMicrophoneVolume() {
             }
             let track;
             try {
-                const audioStream = await browser.navigator.mediaDevices.getUserMedia({
+                const audioStream = await window.navigator.mediaDevices.getUserMedia({
                     audio: store.settings.audioConstraints,
                 });
                 track = audioStream.getAudioTracks()[0];
@@ -506,7 +589,7 @@ export function useMicrophoneVolume() {
 }
 
 export function useSelection({ ref, model, preserveOnClickAwayPredicate = () => false }) {
-    const ui = useService("ui");
+    const ui = usePlugin(UIPlugin);
     const elRef = ref;
     const getEl = () => untrack(elRef);
     function onSelectionChange() {
@@ -534,14 +617,11 @@ export function useSelection({ ref, model, preserveOnClickAwayPredicate = () => 
             direction: el.selectionDirection,
         });
     });
-    onMounted(() => {
-        document.addEventListener("selectionchange", onSelectionChange);
-        document.addEventListener("input", onSelectionChange);
-    });
-    onWillUnmount(() => {
-        document.removeEventListener("selectionchange", onSelectionChange);
-        document.removeEventListener("input", onSelectionChange);
-    });
+    onMounted(() => document.addEventListener("selectionchange", onSelectionChange));
+    onWillUnmount(() => document.removeEventListener("selectionchange", onSelectionChange));
+    // on the element, like `t-model`: the selection is synced with the text, even from an
+    // `input` event that does not bubble (`selectionchange` only follows asynchronously)
+    useListener(elRef, "input", onSelectionChange);
     return {
         restore() {
             getEl()?.setSelectionRange(model.start, model.end, model.direction);
@@ -549,7 +629,7 @@ export function useSelection({ ref, model, preserveOnClickAwayPredicate = () => 
         moveCursor(position) {
             model.start = model.end = position;
             const el = getEl();
-            if (el && !ui.isSmall) {
+            if (el && !ui.isSmall()) {
                 // In mobile, selection seems to adjust correctly.
                 // Don't programmatically adjust, otherwise it shows soft keyboard!
                 el.selectionStart = el.selectionEnd = position;
@@ -569,8 +649,16 @@ export function useSelection({ ref, model, preserveOnClickAwayPredicate = () => 
  * when the broader one had none). Resolve to anything else to disable this for
  * the current bookmark; call `reset()` to drop it (e.g. on context change).
  */
-export class SearchState extends Reactive {
-    searchTerm = "";
+export class SearchState {
+    /**
+     * Backing store of {@link searchTerm}, a local signal unless the parent
+     * passed one through the `searchTerm` option.
+     *
+     * @type {import("@odoo/owl").Signal<string>}
+     */
+    _searchTerm = signal("");
+    /** Whether {@link _searchTerm} is ours to clear, i.e. not the parent's. */
+    ownsSearchTerm = true;
     searching = false;
     loading = false;
     /** @type {any} */
@@ -594,8 +682,8 @@ export class SearchState extends Reactive {
      * @param {(term: string) => Promise<boolean | void>} [options.fetch] Async
      *  server call. Resolving to `false` signals "no results" for narrow-dedup.
      * @param {(term: string) => any} [options.filter] Sync local lookup that
-     *  produces `results`. Runs immediately on term/deps change and again after
-     *  `fetch` resolves (to pick up server-loaded data).
+     *  produces `results`. Runs on term/deps change (once per animation frame)
+     *  and again after `fetch` resolves (to pick up server-loaded data).
      * @param {any} [options.initialResults] Value assigned to `results` on
      *  reset. Defaults to an empty array.
      * @param {() => any[]} [options.deps] Extra reactive values read inside
@@ -604,9 +692,17 @@ export class SearchState extends Reactive {
      *  search is active. Defaults to "term is non-empty". Override when a
      *  non-empty term is not the right signal (e.g. a mention popover stays
      *  active for an empty term as long as a delimiter is set).
+     * @param {import("@odoo/owl").Signal<string>} [options.searchTerm] Signal
+     *  holding the term when it is owned elsewhere (e.g. a field of a record
+     *  the rest of the UI reads). Reads and writes go straight through to it,
+     *  so there is no second copy to keep in sync. Defaults to a local signal.
      */
-    constructor({ initialResults = [], fetch, filter, isActive, deps } = {}) {
-        super();
+    constructor({ initialResults = [], fetch, filter, isActive, deps, searchTerm } = {}) {
+        const self = proxy(this);
+        if (searchTerm) {
+            this._searchTerm = searchTerm;
+            this.ownsSearchTerm = false;
+        }
         this.initialResults = initialResults;
         this.results = initialResults;
         if (fetch) {
@@ -622,20 +718,41 @@ export class SearchState extends Reactive {
             this.depsGetter = deps;
         }
         this.sequential = useSequential();
-        useLayoutEffect(
+        const scope = useScope();
+        // once per animation frame, like the rendering: searching on each change
+        // (e.g. each typed character) would fetch every intermediate term
+        const update = batched(
             () => {
-                if (!this.isActive) {
-                    this.reset();
+                if (scope.isDestroyed()) {
                     return;
                 }
-                if (this.filter) {
-                    this.results = this.filter(this.searchTerm);
+                if (!self.isActive) {
+                    self.reset();
+                    return;
                 }
-                this.run();
+                if (self.filter) {
+                    self.results = self.filter(self.searchTerm);
+                }
+                self.run();
             },
-            () => [this.searchTerm, ...this.deps]
+            () => new Promise((resolve) => requestAnimationFrame(resolve))
         );
-        onWillUnmount(() => this.reset());
+        useOnChange(
+            () => [self.searchTerm, ...self.deps],
+            () => {
+                update();
+            }
+        );
+        onWillUnmount(() => self.reset());
+        return self;
+    }
+
+    get searchTerm() {
+        return this._searchTerm();
+    }
+
+    set searchTerm(value) {
+        this._searchTerm.set(value);
     }
 
     get isActive() {
@@ -647,7 +764,9 @@ export class SearchState extends Reactive {
     }
 
     reset() {
-        this.searchTerm = "";
+        if (this.ownsSearchTerm) {
+            this.searchTerm = "";
+        }
         this.searching = false;
         this.loading = false;
         this.results = this.initialResults;
@@ -668,6 +787,9 @@ export class SearchState extends Reactive {
         }
         if (this.fetch && !skipFetch) {
             await this.sequential(async () => {
+                if (!this.isActive) {
+                    return;
+                }
                 this.loading = true;
                 let result;
                 try {
@@ -741,7 +863,7 @@ export function useSequential() {
 
 /** @param {import("@web/core/dropdown/dropdown_hooks").DropdownState} [dropdownState] */
 export function useDiscussSystray(dropdownState) {
-    const ui = useService("ui");
+    const ui = usePlugin(UIPlugin);
     if (dropdownState) {
         useEffect(() => {
             if (dropdownState.isOpen) {
@@ -755,12 +877,12 @@ export function useDiscussSystray(dropdownState) {
         class: "o-mail-DiscussSystray-class",
         get contentClass() {
             return `d-flex flex-column flex-grow-1 ${
-                ui.isSmall ? "overflow-auto o-scrollbar-thin w-100 mh-100" : ""
+                ui.isSmall() ? "overflow-auto o-scrollbar-thin w-100 mh-100" : ""
             }`;
         },
         get menuClass() {
             return `p-0 o-mail-DiscussSystray ${
-                ui.isSmall
+                ui.isSmall()
                     ? "o-mail-systrayFullscreenDropdownMenu start-0 w-100 mh-100 d-flex flex-column mt-0 border-0 shadow-lg"
                     : ""
             }`;
@@ -890,17 +1012,27 @@ export class UseForwardRefsToParent {
     constructor(propName, getRefIdFn, ref) {
         const compProps = useProps();
         this.ref = ref;
-        // Note: The `useChildRefs()` Map is shared with all children, using useLayoutEffect/willUnmount to ensure proper on/off life cycle hook calls for given child.
+        // Note: The `useChildRefs()` Map is shared with all children, using mounted/patched/willUnmount to ensure proper on/off life cycle hook calls for given child.
         // If we use setup/willDestroy we can have 2 fiber nodes of same child component with one finalizing with willDestroy from cancelling duplicated fiber node.
-        useLayoutEffect(
-            (map, key) => {
-                if (map) {
-                    this.registerRef(map, key);
-                    return () => map.delete(key);
-                }
-            },
-            () => [compProps[propName], getRefIdFn(compProps)]
-        );
+        let registered;
+        const unregister = () => {
+            registered?.map.delete(registered.key);
+            registered = undefined;
+        };
+        const register = () => {
+            const current = { map: compProps[propName], key: getRefIdFn(compProps) };
+            if (shallowEqual(current, registered)) {
+                return;
+            }
+            unregister();
+            if (current.map) {
+                this.registerRef(current.map, current.key);
+                registered = current;
+            }
+        };
+        onMounted(register);
+        onPatched(register);
+        onWillUnmount(unregister);
     }
 
     registerRef(map, key) {
@@ -952,4 +1084,110 @@ export function propComputed(name, shape) {
 export function propSignal(name, shape, { optional = false } = {}) {
     const type = t.signal(shape);
     return useProps.static(name, optional ? type.optional() : type);
+}
+
+/**
+ * This hook makes it easier to enable right-click to open a dropdown at position of cursor
+ *
+ * @param {import("@odoo/owl").Signal<Element>} rootRef - The root ref of the element that has right-click.
+ *   This rootRef defines the node where the right-click should work.
+ * @param {Object} param1
+ * @param {() => Object} [param1.extraMenuProps={}] - Optional object of extra props provided to the context menu component.
+ * @param {() => void} [param1.onClose] - Optional function invoked when the dropdown closes.
+ * @param {() => void} [param1.onContextMenu] when set, provides a custom handler when right-clicking.
+ * @param {() => boolean} [param1.predicate] - Optional guard to decide whether right-click should
+ *   proceed at all, whether that opens the menu or calls `onContextMenu`.
+ */
+export function useRightClickMenu(
+    rootRef,
+    {
+        extraMenuProps = () => ({}),
+        onClose: onCloseParam,
+        onContextMenu,
+        predicate = () => true,
+    } = {}
+) {
+    /**
+     * @type {boolean} Whether the right-click dropdown is being closed.
+     * Useful to detect when close comes from another right-click on the same element,
+     * in order to show the browser right-click instead.
+     */
+    let isOngoingClose = false;
+    const anchor = signal.ref();
+    const dropdownState = useDropdownState({
+        onClose: async () => {
+            if (isOngoingClose) {
+                return; // onClose can be called more than once. Limiting to a single onClose to prevent race-condition in tests.
+            }
+            onCloseParam?.();
+            pendingPosition = undefined;
+            isOngoingClose = true;
+            await new Promise((resolve) => setTimeout(() => requestAnimationFrame(resolve)));
+            isOngoingClose = false;
+            delete rootRef()?.dataset.rightClicking;
+        },
+    });
+    const shouldRender = signal(false);
+    let pendingPosition;
+    const openAt = (el, { left, top }) => {
+        Object.assign(el.style, { left, top });
+        dropdownState.open();
+    };
+    useOnChange(
+        () => [anchor()],
+        (el) => {
+            if (el && pendingPosition) {
+                const position = pendingPosition;
+                pendingPosition = undefined;
+                openAt(el, position);
+            }
+        }
+    );
+    const res = {
+        get shouldRender() {
+            return shouldRender();
+        },
+        get menuProps() {
+            return {
+                anchorRef: anchor,
+                dropdownState,
+                ...extraMenuProps(),
+            };
+        },
+        /**
+         * @param {Event} ev
+         * @returns {Boolean} whether the open of right-click menu happens or not.
+         */
+        open(ev) {
+            if (
+                !rootRef() ||
+                dropdownState.isOpen ||
+                isOngoingClose ||
+                !document.getSelection()?.isCollapsed // some text selected
+            ) {
+                return false;
+            }
+            rootRef().dataset.rightClicking = true;
+            const position = { left: ev.clientX + "px", top: ev.clientY + "px" };
+            if (anchor()) {
+                openAt(anchor(), position);
+            } else {
+                pendingPosition = position;
+                shouldRender.set(true);
+            }
+            ev.preventDefault();
+            return true;
+        },
+    };
+    useListener(rootRef, "contextmenu", (ev) => {
+        if (!predicate()) {
+            return;
+        }
+        if (onContextMenu) {
+            onContextMenu(ev);
+        } else {
+            res.open(ev);
+        }
+    });
+    return res;
 }

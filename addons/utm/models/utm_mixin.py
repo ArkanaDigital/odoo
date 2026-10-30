@@ -20,7 +20,10 @@ class UtmMixin(models.AbstractModel):
         return [
             (model.model, model.name)
             for model
-            in self.env['ir.model'].sudo().search_fetch([('transient', '=', False)])
+            in self.env['ir.model'].sudo().search_fetch(
+                [('transient', '=', False)], ['model', 'name']
+            )
+            if model.model in self.env
         ]
 
     campaign_id = fields.Many2one('utm.campaign', 'Campaign', index='btree_not_null',
@@ -237,6 +240,7 @@ class UtmMixin(models.AbstractModel):
         return {
             'utm.utm_medium_direct': ('Direct', 'utm.medium'),
             'utm.utm_medium_email': ('Email', 'utm.medium'),
+            'utm.utm_medium_messaging': ('Messaging', 'utm.medium'),
             'utm.utm_medium_social_media': ('Social Media', 'utm.medium'),
             'utm.utm_medium_website': ('Website', 'utm.medium'),
             'utm.utm_source_facebook': ('Facebook', 'utm.source'),

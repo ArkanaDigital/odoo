@@ -82,10 +82,9 @@ class AccountMove(models.Model):
 
     @api.depends('invoice_line_ids', 'invoice_line_ids.product_id', 'invoice_line_ids.product_id.type', 'journal_id')
     def _compute_l10n_ar_afip_concept(self):
-        recs_afip = self.filtered(lambda x: x.company_id.account_fiscal_country_id.code == "AR" and x.l10n_latam_use_documents)
+        recs_afip, remaining = self.partitioned(lambda x: x.company_id.account_fiscal_country_id.code == "AR" and x.l10n_latam_use_documents)
         for rec in recs_afip:
             rec.l10n_ar_afip_concept = rec._get_concept()
-        remaining = self - recs_afip
         remaining.l10n_ar_afip_concept = ''
 
     def _get_concept(self):
@@ -440,11 +439,13 @@ class AccountMove(models.Model):
             amount_sign = -1
 
         for grouping_key, values in vat_afip_code_aggregated_tax_details.items():
-            if grouping_key['vat_afip_code'] not in (False, '0', '1', '2') and (values['base_amount_currency'] or values['tax_amount_currency']):
+            base_imp = float_round(amount_sign * values['base_amount_currency'], precision_digits=2)
+            importe = float_round(amount_sign * values['tax_amount_currency'], precision_digits=2)
+            if grouping_key['vat_afip_code'] not in (False, '0', '1', '2') and (base_imp or importe):
                 res.append({
                     'Id': grouping_key['vat_afip_code'],
-                    'BaseImp': float_round(amount_sign * values['base_amount_currency'], precision_digits=2),
-                    'Importe': float_round(amount_sign * values['tax_amount_currency'], precision_digits=2),
+                    'BaseImp': base_imp,
+                    'Importe': importe,
                 })
                 if grouping_key['vat_afip_code'] == '3':
                     res[-1]['Importe'] = 0.0
@@ -503,8 +504,6 @@ class AccountMove(models.Model):
                 or (self._l10n_ar_is_transparency_document() and self._l10n_ar_is_tax_group_iibb_perception(tax_group))
             )).ids
         if tax_group_ids_to_exclude:
-            if self._l10n_ar_is_refund_invoice():
-                self._apply_refund_adjustments(tax_totals)
             tax_totals = self.env['account.tax']._exclude_tax_groups_from_tax_totals_summary(tax_totals, tax_group_ids_to_exclude)
 
         return tax_totals

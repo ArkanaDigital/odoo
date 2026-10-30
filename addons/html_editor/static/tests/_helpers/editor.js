@@ -2,7 +2,7 @@ import { EmbeddedComponentPlugin } from "@html_editor/others/embedded_component_
 import { fixInvalidHTML } from "@html_editor/utils/sanitize";
 import { Wysiwyg } from "@html_editor/wysiwyg";
 import { animationFrame, expect, getFixture, queryOne, tick } from "@odoo/hoot";
-import { Component, markup, onWillDestroy, useApp, xml } from "@odoo/owl";
+import { Component, markup, onWillDestroy, t, useApp, useProps, xml } from "@odoo/owl";
 import { toExplicitString } from "@web/../lib/hoot/hoot_utils";
 import { destroyApp, mountWithCleanup } from "@web/../tests/web_test_helpers";
 import { processThroughCleanForSave } from "./dispatch";
@@ -33,7 +33,13 @@ class TestEditor extends Component {
         </t>
         <Wysiwyg t-props="this.wysiwygProps" />`;
     static components = { Wysiwyg };
-    static props = ["wysiwygProps", "content", "styleContent?", "onMounted?", "onWillDestroy?"];
+    props = useProps({
+        wysiwygProps: t.any(),
+        content: t.any(),
+        styleContent: t.any().optional(),
+        onMounted: t.any().optional(),
+        onWillDestroy: t.any().optional(),
+    });
 
     app = useApp();
 
@@ -89,6 +95,7 @@ class TestEditor extends Component {
  * @property { Object } [props]
  * @property { boolean } [toolbar]
  * @property { Object } [env]
+ * @property { HTMLElement } [target] element in which to mount the editor
  */
 
 /**
@@ -129,6 +136,7 @@ export async function setupEditor(content, options = {}) {
     });
     const styleContent = options.styleContent || "";
     const editorComponent = await mountWithCleanup(TestEditor, {
+        target: options.target,
         props: {
             // TODO: Move the markup call up the chain and call markup at source.
             // markup: Not the correct place to call markup as content can be anything but would be okay for the tests.

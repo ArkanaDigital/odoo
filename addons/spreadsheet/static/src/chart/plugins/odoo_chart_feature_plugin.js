@@ -8,20 +8,20 @@ export class OdooChartFeaturePlugin extends OdooUIPlugin {
     overwrittenGranularities = {};
     granularityOptionsCache = {};
 
-    handle(cmd) {
-        switch (cmd.type) {
-            case "SET_GLOBAL_FILTER_VALUE": {
-                if (this.getters.isDashboard()) {
-                    this._onGlobalFilterChange(cmd);
-                }
-                break;
-            }
-            case "UPDATE_CHART_GRANULARITY": {
-                this._updateChartGranularity(cmd.chartId, cmd.granularity);
-                this.overwrittenGranularities[cmd.chartId] = cmd.granularity;
-                break;
-            }
+    handlers = {
+        SET_GLOBAL_FILTER_VALUE: this.onSetGlobalFilterValue,
+        UPDATE_CHART_GRANULARITY: this.onUpdateChartGranularity,
+    };
+
+    onSetGlobalFilterValue(cmd) {
+        if (this.getters.isDashboard()) {
+            this._onGlobalFilterChange(cmd);
         }
+    }
+
+    onUpdateChartGranularity(cmd) {
+        this._updateChartGranularity(cmd.chartId, cmd.granularity);
+        this.overwrittenGranularities[cmd.chartId] = cmd.granularity;
     }
 
     getAvailableChartGranularities(chartId) {
@@ -86,18 +86,25 @@ export class OdooChartFeaturePlugin extends OdooUIPlugin {
         }
     }
 
-    _updateChartGranularity(chartId, granularity) {
+    _updateChartGranularity(chartId, newGranularity) {
         const definition = this.getters.getChartDefinition(chartId);
-        const { fieldName } = this.getters.getChartGranularity(chartId);
+        const { fieldName, granularity } = this.getters.getChartGranularity(chartId);
         const newGroupBy = [
-            `${fieldName}:${granularity}`,
+            `${fieldName}:${newGranularity}`,
             ...definition.dataSource.searchParams.groupBy.slice(1),
         ];
+        const style = definition.dataSetStyles
+            ? definition.dataSetStyles[`${fieldName}:${granularity}`]
+            : undefined;
         this.dispatch("UPDATE_CHART", {
             chartId,
             figureId: this.getters.getFigureIdFromChartId(chartId),
             definition: {
                 ...definition,
+                dataSetStyles: {
+                    ...definition.dataSetStyles,
+                    [`${fieldName}:${newGranularity}`]: style,
+                },
                 dataSource: {
                     ...definition.dataSource,
                     // I don't know why it's in both searchParams and metaData.

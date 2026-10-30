@@ -2,6 +2,7 @@
 
 from . import hr_department
 from . import hr_applicant
+from . import hr_applicant_skill
 from . import hr_applicant_category
 from . import hr_applicant_refuse_reason
 from . import hr_recruitment_degree
@@ -23,3 +24,5 @@ from . import ir_ui_menu
 from . import mail_activity_plan
 from . import hr_job_platform
 from . import hr_job_tag
+
+from . import res_groups

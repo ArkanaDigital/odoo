@@ -36,7 +36,7 @@ class TestReportsCommon(TransactionCase):
         cls.product = cls.env['product.product'].create({
             'name': 'Product',
             'categ_id': cls.env.ref('product.product_category_goods').id,
-            'tracking': 'none',
+            'is_storable': True,
         })
         cls.product_template = cls.product.product_tmpl_id
         cls.wh_2 = cls.env['stock.warehouse'].create({
@@ -84,24 +84,70 @@ class TestReports(TestReportsCommon):
         wrong_xz_count = findall(r'\^XZ[^\\]+[^n]', str(zpl_rendered_template))
         self.assertFalse(wrong_xz_count, "invalid closure command")
 
+    def _assert_zpl_contains(self, rendering, expected_fragments, message):
+        rendering = rendering.replace(b' ', b'')
+        for fragment, count in expected_fragments:
+            with self.subTest(fragment=fragment):
+                self.assertEqual(
+                    rendering.count(fragment),
+                    count,
+                    message,
+                )
+        return rendering
+
+    def _prepare_product_label_data(self, product, barcode_quantities):
+        wizard = self.env['product.label.layout'].create({
+            'product_tmpl_ids': product.product_tmpl_id.ids,
+            'print_format': 'zpl',
+        })
+        _xml_id, data = wizard._prepare_report_data()
+        data['labels'] = [
+            wizard._prepare_label_values(
+                product.product_tmpl_id,
+                barcode,
+                quantity,
+                wizard.packaging_id,
+            )
+            for barcode, quantity in barcode_quantities
+        ]
+        return data
+
     def test_product_label_reports(self):
         """ Test that all the special characters are correctly rendered for the product name, the default code and the barcode.
             In this test we test that the double quote is rendered correctly.
         """
         report = self.env.ref('product.report_product_template_label_zpl')
-        target = b'\n\n^XA^CI28\n\n^FT35,40^A0N,25^FD[C4181234""154654654654]Mellohi"^FS\n^FO35,77^BY2^BCN,100,Y,N,N^FDscan""me^FS\n^XZ\n\n\n^XA^CI28\n\n^FT35,40^A0N,25^FD[C4181234""154654654654]Mellohi"^FS\n^FO35,77^BY2^BCN,100,Y,N,N^FDscan""me^FS\n^XZ\n'
-        rendering, qweb_type = report._render_qweb_text('product.report_product_template_label_zpl', self.product1.product_tmpl_id.id, {'quantity_by_product': {self.product1.product_tmpl_id.id: 2}, 'active_model': 'product.template', 'zpl_template': 'normal'})
+        data = self._prepare_product_label_data(self.product1, [(self.product1.barcode, 2)])
+        rendering, qweb_type = report._render_qweb_text(
+            'product.report_product_template_label_zpl', self.product1.product_tmpl_id.id, data,
+        )
         self._check_closure_commands(rendering)
-        self.assertEqual(target, rendering.replace(b' ', b''), 'Product name, default code or barcode is not correctly rendered, make sure the quotes are escaped correctly')
+        self._assert_zpl_contains(rendering, [
+            (b'^XA^CI28', 2),
+            (b'Mellohi_22', 2),  # _22 is the hexadecimal representation of the double quote character (") in ZPL encoding
+            (b'C4181234_22_22154654654654', 2),
+            (b'scan_22_22me', 2),
+        ], 'Product name, default code or barcode is not correctly encoded as ZPL field data')
         self.assertEqual(qweb_type, 'text', 'the report type is not good')
 
     def test_product_label_custom_barcode_reports(self):
         """ Test that the custom barcodes are correctly rendered with special characters."""
         report = self.env.ref('product.report_product_template_label_zpl')
-        target = b'\n\n^XA^CI28\n\n^FT35,40^A0N,25^FD[C4181234""154654654654]Mellohi"^FS\n^FO35,77^BY2^BCN,100,Y,N,N^FD123"barcode^FS\n^XZ\n\n\n^XA^CI28\n\n^FT35,40^A0N,25^FD[C4181234""154654654654]Mellohi"^FS\n^FO35,77^BY2^BCN,100,Y,N,N^FD123"barcode^FS\n^XZ\n\n\n^XA^CI28\n\n^FT35,40^A0N,25^FD[C4181234""154654654654]Mellohi"^FS\n^FO35,77^BY2^BCN,100,Y,N,N^FDbarcode"456^FS\n^XZ\n\n\n^XA^CI28\n\n^FT35,40^A0N,25^FD[C4181234""154654654654]Mellohi"^FS\n^FO35,77^BY2^BCN,100,Y,N,N^FDbarcode"456^FS\n^XZ\n'
-        rendering, qweb_type = report._render_qweb_text('product.report_product_template_label_zpl', self.product1.product_tmpl_id.id, {'custom_barcodes': {self.product1.product_tmpl_id.id: [('123"barcode', 2), ('barcode"456', 2)]}, 'quantity_by_product': {}, 'active_model': 'product.template', 'zpl_template': 'normal'})
+        data = self._prepare_product_label_data(
+            self.product1,
+            [('123"barcode', 2), ('barcode"456', 2)],
+        )
+        rendering, qweb_type = report._render_qweb_text(
+            'product.report_product_template_label_zpl', self.product1.product_tmpl_id.id, data,
+        )
         self._check_closure_commands(rendering)
-        self.assertEqual(target, rendering.replace(b' ', b''), 'Custom barcodes are most likely not corretly rendered, make sure the quotes are escaped correctly')
+        self._assert_zpl_contains(rendering, [
+            (b'^XA^CI28', 4),
+            (b'Mellohi_22', 4),  # _22 is the hexadecimal representation of the double quote character (") in ZPL encoding
+            (b'C4181234_22_22154654654654', 4),
+            (b'123_22barcode', 2),
+            (b'barcode_22456', 2),
+        ], 'Custom barcodes are not correctly encoded as ZPL field data')
         self.assertEqual(qweb_type, 'text', 'the report type is not good')
 
     def test_reports_with_special_characters(self):
@@ -117,14 +163,23 @@ class TestReports(TestReportsCommon):
             'name': 'Volume-Beta"',
             'product_id': product_test.id,
         })
-        #add group to the user
-        self.env.user.group_ids += self.env.ref('stock.group_stock_lot_print_gs1')
-        report = self.env.ref('stock.label_lot_template')
-        target = b'\n\n^XA^CI28\n^FO100,50\n^A0N,44,33^FD[C4181234""154654654654]Mellohi"^FS\n^FO100,100\n^A0N,44,33^FDLN/SN:Volume-Beta"^FS\n\n^FO425,150^BY3\n^BXN,8,200\n^FD010974521379614210Volume-Beta"^FS\n^XZ\n'
-
-        rendering, qweb_type = report._render_qweb_text('stock.label_lot_template', lot1.id)
+        wizard = self.env['lot.label.layout'].create({
+            'lot_ids': lot1.ids,
+            'print_format': 'zpl',
+        })
+        report_xml_id, data = wizard._prepare_report_data()
+        report = self.env.ref(report_xml_id)
+        rendering, qweb_type = report._render_qweb_text(
+            report_xml_id, None, data=data,
+        )
         self._check_closure_commands(rendering)
-        self.assertEqual(target, rendering.replace(b' ', b''), 'The rendering is not good, make sure quotes are correctly escaped')
+        self._assert_zpl_contains(rendering, [
+            (b'^XA^CI28', 1),
+            (b'Mellohi_22', 1),  # _22 is the hexadecimal representation of the double quote character (") in ZPL encoding
+            (b'C4181234_22_22154654654654', 1),
+            (b'Volume-Beta_22', 2),
+            (b'^BCN', 1),
+        ], 'The rendering is not correctly encoded as ZPL field data')
         self.assertEqual(qweb_type, 'text', 'the report type is not good')
 
     def test_reports_product_no_barcode(self):
@@ -132,16 +187,23 @@ class TestReports(TestReportsCommon):
         """
         report = self.env.ref('product.report_product_template_label_zpl')
         self.product1.barcode = False
-        target = b'\n\n^XA^CI28\n\n^FT35,40^A0N,25^FD[C4181234""154654654654]Mellohi"^FS\n^XZ\n'
-        rendering, qweb_type = report._render_qweb_text('product.report_product_template_label_zpl', self.product1.product_tmpl_id.id, {'quantity_by_product': {self.product1.product_tmpl_id.id: 1}, 'active_model': 'product.template', 'zpl_template': 'normal'})
-        self.assertEqual(target, rendering.replace(b' ', b''), 'Product name, default code or barcode is not correctly rendered, make sure the quotes are escaped correctly')
+        data = self._prepare_product_label_data(self.product1, [(False, 1)])
+        rendering, qweb_type = report._render_qweb_text(
+            'product.report_product_template_label_zpl', self.product1.product_tmpl_id.id, data,
+        )
+        rendering = self._assert_zpl_contains(rendering, [
+            (b'^XA^CI28', 1),
+            (b'Mellohi_22', 1),  # _22 is the hexadecimal representation of the double quote character (") in ZPL encoding
+            (b'C4181234_22_22154654654654', 1),
+        ], 'Product name or default code is not correctly encoded as ZPL field data')
+        self.assertNotIn(b'^BCN', rendering, 'Barcode command should not be rendered for a product without barcode')
         self.assertEqual(qweb_type, 'text', 'the report type is not good')
 
     def test_report_quantity_1(self):
-        product_form = Form(self.env['product.product'])
-        product_form.is_storable = True
-        product_form.name = 'Product'
-        product = product_form.save()
+        product = self.env['product.product'].create({
+            'name': 'Product',
+            'is_storable': True,
+        })
 
         warehouse = self.env['stock.warehouse'].search([], limit=1)
         stock = self.env['stock.location'].create({
@@ -254,10 +316,10 @@ class TestReports(TestReportsCommon):
     def test_report_quantity_2(self):
         """ Not supported case.
         """
-        product_form = Form(self.env['product.product'])
-        product_form.is_storable = True
-        product_form.name = 'Product'
-        product = product_form.save()
+        product = self.env['product.product'].create({
+            'name': 'Product',
+            'is_storable': True,
+        })
 
         warehouse = self.env['stock.warehouse'].search([], limit=1)
         stock = self.env['stock.location'].create({
@@ -311,10 +373,10 @@ class TestReports(TestReportsCommon):
         self.assertEqual(sum(product_qty for state, product_qty in report_records if state == 'forecast'), 40.0)
 
     def test_report_quantity_3(self):
-        product_form = Form(self.env['product.product'])
-        product_form.is_storable = True
-        product_form.name = 'Product'
-        product = product_form.save()
+        product = self.env['product.product'].create({
+            'name': 'Product',
+            'is_storable': True,
+        })
 
         warehouse = self.env['stock.warehouse'].search([], limit=1)
         stock = self.env['stock.location'].create({
@@ -725,10 +787,6 @@ class TestReports(TestReportsCommon):
         # Warehouse config.
         warehouse = self.env.ref('stock.warehouse0')
         warehouse.reception_steps = 'three_steps'
-        # Product config.
-        mto_route = self.env.ref('stock.route_warehouse0_mto')
-        mto_route.product_selectable = True
-        self.product.write({'route_ids': [(4, mto_route.id)]})
         # Create a RR
         reordering_rule = self.env['stock.warehouse.orderpoint'].create({
             'name': 'Product RR',
@@ -860,10 +918,7 @@ class TestReports(TestReportsCommon):
                 'location_dest_from_rule': True,
             })],
         })
-        mto_route = self.env.ref('stock.route_warehouse0_mto')
-        mto_route.active = True
-        mto_route.product_selectable = True
-        self.product.route_ids = mto_route + replenish_route
+        self.product.route_ids = [Command.link(replenish_route.id)]
         self.env['stock.quant']._update_available_quantity(self.product, wh_2.lot_stock_id, 5)
 
         # Creates a delivery to empty WH
@@ -2266,3 +2321,26 @@ class TestReports(TestReportsCommon):
             self.assertTrue(self.allocation_report.action_unassign(in_move.ids, out_move.id, 1.0))
 
         self.assertFalse(in_move.move_dest_ids)
+
+    def test_delivery_slip_product_description_with_whitespace(self):
+        """ Test that product name is not printed twice on the delivery slip when
+        the product name has leading/trailing whitespace compared to description_picking.
+        """
+        product = self.env['product.product'].create({
+            'name': ' Customizable Desk ',
+            'is_storable': True,
+        })
+        picking_out = self.env['stock.picking'].create({
+            'picking_type_id': self.ref('stock.picking_type_out'),
+            'location_id': self.stock_location.id,
+            'location_dest_id': self.ref('stock.stock_location_customers'),
+            'move_ids': [Command.create({
+                'product_id': product.id,
+                'product_uom_qty': 1.0,
+                'description_picking': 'Customizable Desk',
+            })],
+        })
+        picking_out.action_confirm()
+
+        html = self.env['ir.actions.report']._render_qweb_html('stock.report_deliveryslip', [picking_out.id])[0]
+        self.assertEqual(len(findall(rb'Customizable Desk', html)), 1)

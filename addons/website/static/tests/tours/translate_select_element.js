@@ -5,7 +5,7 @@ import {
     registerWebsitePreviewTour,
 } from "@website/js/tours/tour_utils";
 
-function changeLanguageAndOpenTranslateMode() {
+export function changeLanguageAndOpenTranslateMode() {
     return [
         {
             content: "Change the language to French",
@@ -48,12 +48,17 @@ registerWebsitePreviewTour(
         },
         {
             content: "Click on add field button",
-            trigger: ".options-container-header button:contains('+ Field')",
+            trigger: ".o_hb_options_container_header button:contains('+ Field')",
+            run: "click",
+        },
+        {
+            content: "Open the field type dropdown",
+            trigger: "[data-label=Type] button.dropdown-toggle",
             run: "click",
         },
         {
             content: "Select field type as Selection",
-            trigger: "[data-container-title=Field] [data-action-value=many2one]:not(:visible)",
+            trigger: "[data-action-value=many2one]",
             run: "click",
         },
         ...clickOnSave(),
@@ -74,8 +79,8 @@ registerWebsitePreviewTour(
         },
         {
             content: "Edit the second option and click on another one to apply the edit",
-            trigger: "input.o-hb-input-base[data-id='1']",
-            run: "edit(Second option) && click input.o-hb-input-base[data-id='0']",
+            trigger: "input.o_hb_input_base[data-id='1']",
+            run: "edit(Second option) && click input.o_hb_input_base[data-id='0']",
         },
         ...clickOnSave(),
         {

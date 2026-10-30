@@ -6,13 +6,13 @@ declare module "plugins" {
     import { CachedModelShared } from "@html_builder/core/cached_model_plugin";
     import { CloneShared, on_cloned_handlers, on_will_clone_handlers } from "@html_builder/core/clone_plugin";
     import { DisableSnippetsShared } from "@html_builder/core/disable_snippets_plugin";
-    import { dropzone_selectors, DropZoneShared, is_valid_for_sibling_dropzone_predicates } from "@html_builder/core/drop_zone_plugin";
+    import { dropzone_selectors, DropZoneShared, ignored_sibling_selectors, is_valid_for_sibling_dropzone_predicates } from "@html_builder/core/drop_zone_plugin";
     import { on_replicated_handlers } from "@html_builder/core/field_change_replication_plugin";
     import { MediaWebsiteShared } from "@html_builder/core/media_website_plugin";
     import { OperationShared } from "@html_builder/core/operation_plugin";
     import { get_overlay_buttons, OverlayButtonsShared, should_show_overlay_buttons_of_ancestor_predicates } from "@html_builder/core/overlay_buttons/overlay_buttons_plugin";
     import { is_node_empty_predicates, is_unremovable_selectors, on_removed_handlers, on_will_remove_handlers, RemoveShared } from "@html_builder/core/remove_plugin";
-    import { on_saved_handlers, on_will_save_handlers, dirty_els_providers, on_will_save_element_handlers, save_elements_overrides, on_ready_to_save_document_handlers, SaveShared } from "@html_builder/core/save_plugin";
+    import { on_saved_handlers, on_will_save_handlers, dirty_trackers, on_ready_to_save_document_handlers, SaveShared } from "@html_builder/core/save_plugin";
     import { submit_button_selectors } from "@html_builder/core/save_snippet_plugin";
     import { after_setup_editor_overrides, on_will_setup_editor_handlers, savable_selectors, SetupEditorShared } from "@html_builder/core/setup_editor_plugin";
     import { on_target_hidden_handlers, on_target_shown_handlers, VisibilityShared } from "@html_builder/core/visibility_plugin";
@@ -22,7 +22,7 @@ declare module "plugins" {
     import { is_draggable_predicates, on_element_dragged_handlers, on_element_dropped_handlers, on_element_dropped_near_handlers, on_element_dropped_over_handlers, on_element_move_handlers, on_element_out_dropzone_handlers, on_element_over_dropzone_handlers, on_prepare_drag_handlers } from "@html_builder/core/drag_and_drop_plugin";
     import { lower_panel_entries, on_dom_updated_handlers, on_mobile_view_switched_handlers } from "@html_builder/builder";
     import { on_target_revealed_handlers } from "@html_builder/sidebar/invisible_elements_panel";
-    import { on_snippet_dragged_handlers, on_snippet_dropped_handlers, on_snippet_dropped_near_handlers, on_snippet_dropped_over_handlers, on_snippet_move_handlers, on_snippet_out_dropzone_handlers, on_snippet_over_dropzone_handlers } from "@html_builder/sidebar/block_tab";
+    import { on_snippet_dragged_handlers, on_snippet_dropped_handlers, on_snippet_dropped_near_handlers, on_snippet_dropped_over_handlers, on_snippet_inserted_handlers, on_snippet_move_handlers, on_snippet_out_dropzone_handlers, on_snippet_over_dropzone_handlers } from "@html_builder/sidebar/block_tab";
     import { snippet_preview_dialog_bundles, snippet_preview_dialog_stylesheets_processors } from "@html_builder/snippets/add_snippet_dialog";
     import { background_shape_groups_providers, background_shape_target_providers, BackgroundShapeOptionShared, is_element_in_invisible_panel_predicates, should_ignore_background_color_for_shapes_predicates } from "@html_builder/plugins/background_option/background_shape_option_plugin";
     import { mark_color_level_selector_params } from "@html_builder/plugins/background_option/background_option_plugin";
@@ -89,6 +89,7 @@ declare module "plugins" {
         on_snippet_dropped_handlers: on_snippet_dropped_handlers;
         on_snippet_dropped_near_handlers: on_snippet_dropped_near_handlers;
         on_snippet_dropped_over_handlers: on_snippet_dropped_over_handlers;
+        on_snippet_inserted_handlers: on_snippet_inserted_handlers;
         on_snippet_move_handlers: on_snippet_move_handlers;
         on_snippet_out_dropzone_handlers: on_snippet_out_dropzone_handlers;
         on_snippet_over_dropzone_handlers: on_snippet_over_dropzone_handlers;
@@ -99,14 +100,12 @@ declare module "plugins" {
         on_will_remove_handlers: on_will_remove_handlers;
         on_will_restore_containers_handlers: on_will_restore_containers_handlers;
         on_will_save_handlers: on_will_save_handlers;
-        on_will_save_element_handlers: on_will_save_element_handlers;
         on_will_setup_editor_handlers: on_will_setup_editor_handlers;
         on_ready_to_save_document_handlers: on_ready_to_save_document_handlers;
 
         // Overrides
         after_setup_editor_overrides: after_setup_editor_overrides;
         apply_custom_css_style_overrides: apply_custom_css_style_overrides;
-        save_elements_overrides: save_elements_overrides;
 
         // Predicates
         should_keep_overlay_options_predicates: should_keep_overlay_options_predicates;
@@ -130,7 +129,6 @@ declare module "plugins" {
         background_shape_target_providers: background_shape_target_providers;
         clone_disabled_reason_providers: clone_disabled_reason_providers;
         default_shape_providers: default_shape_providers;
-        dirty_els_providers: dirty_els_providers;
         image_shape_groups_providers: image_shape_groups_providers;
         options_container_top_buttons_providers: options_container_top_buttons_providers;
         remove_disabled_reason_providers: remove_disabled_reason_providers;
@@ -146,11 +144,13 @@ declare module "plugins" {
         container_title: container_title;
         content_editable_selectors: content_editable_selectors;
         content_not_editable_selectors: content_not_editable_selectors;
+        dirty_trackers: dirty_trackers;
         dropzone_selectors: dropzone_selectors;
         elements_to_options_title_components: elements_to_options_title_components;
         fontCssVariables: fontCssVariables;
         get_overlay_buttons: get_overlay_buttons;
         has_overlay_options: has_overlay_options;
+        ignored_sibling_selectors: ignored_sibling_selectors;
         is_movable_selectors: is_movable_selectors;
         is_unremovable_selectors: is_unremovable_selectors;
         lower_panel_entries: lower_panel_entries;

@@ -4,12 +4,12 @@
     }
 }
 
-// TODO EGGMAIL: maybe use bootstrap
+/* TODO EGGMAIL: maybe use bootstrap */
 .o_mail_theme_selector {
     display: block;
     font-size: 1rem;
     overflow: auto;
-    background-color: $o-we-sidebar-bg;
+    background-color: var(--o-we-sidebar-bg);
     margin: 0;
     height: 100%;
 
@@ -28,7 +28,6 @@
             display: none;
             background-size: cover;
             padding-top: 50%;
-            border: 1px solid $o-we-border-color;
 
             &.logo {
                 display: block;
@@ -36,20 +35,16 @@
         }
 
         &:hover {
-            background-color: $o-we-sidebar-bg;
-
-            .o_thumb {
-                border: 1px solid black;
-            }
+            background-color: var(--o-we-sidebar-bg);
         }
 
         &:focus {
-            background-color: $o-we-sidebar-bg;
+            background-color: var(--o-we-sidebar-bg);
         }
 
         &.selected .o_thumb {
             border: 2px solid $o-brand-odoo;
-            background-color: $o-we-sidebar-bg;
+            background-color: var(--o-we-sidebar-bg);
         }
     }
 
@@ -68,7 +63,7 @@
             display: none;
             padding-top: 107%;
             border: 1px solid #4e525b;
-            border-top: 1px solid $o-we-border-color;
+            border-top: 1px solid var(--o-we-border-color);
             will-change: transform;
             backface-visibility: hidden;
             transition: all 0.3s ease 0s;
@@ -98,7 +93,8 @@
             opacity: 0.2;
 
             > .oi {
-                @include o-position-absolute(0, 0, 0, 0);
+                position: absolute;
+                inset: 0;
                 text-align: center;
                 font-size: 50px;
                 color: white;
@@ -148,26 +144,25 @@
         width: 100%;
         position: relative;
         flex-grow: 1;
-        background-color: #e8ebee;
+        background-color: #ffffff;
         overflow: hidden;
 
         .o_mail_favorite_preview {
             position: absolute;
-            transform-origin: top left;
             overflow: hidden;
             white-space: wrap;
             color: black;
-            height: 1000%;
-            transform: scale(0.2);
-            width: calc(500% + 5px);
+            width: 100%;
+            height: 100%;
+            zoom: 0.2;
         }
     }
 }
 
 @media (max-width: 768px) {
-    // Show 2 columns for the templates on small screen
-    // can not be done with "o_xxs_form_view" because those
-    // elements are inside an iframe (HTML field).
+    /* Show 2 columns for the templates on small screen
+       can not be done with "o_xxs_form_view" because those
+       elements are inside an iframe (HTML field). */
     .o_mail_theme_selector {
         .o_mail_templates_grid {
             grid-template-columns: repeat(2, 50%) !important;

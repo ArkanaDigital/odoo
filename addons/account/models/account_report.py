@@ -7,7 +7,7 @@ from collections import defaultdict
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 from odoo.fields import Command, Domain
-from odoo.tools.translate import mark_as_copy
+from odoo.tools import SQL
 
 FIGURE_TYPE_SELECTION_VALUES = [
     ('monetary', "Monetary"),
@@ -50,9 +50,18 @@ class AccountReport(models.Model):
 
     #  CORE ==========================================================================================================================================
 
-    name = fields.Char(string="Name", required=True, translate=True, copy=mark_as_copy('name'))
+    name = fields.Char(string="Name", required=True, translate=True)
     sequence = fields.Integer(string="Sequence")
-    active = fields.Boolean(string="Active", default=True)
+    active = fields.Boolean(compute="_compute_active", compute_sql="_compute_sql_active", inverse="_inverse_active", compute_sudo=False)
+    active_fallback = fields.Boolean(default=True)
+    # In this case we need a selection field because in DB a False boolean is just not set, in this case we need a differenciation of Null an False
+    active_selection = fields.Selection(
+        selection=[
+            ('False', "False"),
+            ('True', "True"),
+        ],
+        company_dependent=True,
+    )
     line_ids = fields.One2many(string="Lines", comodel_name='account.report.line', inverse_name='report_id')
     groupby = fields.Char(
         string="Group By",
@@ -84,7 +93,7 @@ class AccountReport(models.Model):
     )
     availability_condition = fields.Selection(
         string="Availability",
-        selection=[('country', "Country Matches"), ('coa', "Chart of Accounts Matches"), ('always', "Always")],
+        selection=[('country', "Country Matches"), ('coa', "Chart of Accounts Matches"), ('always', "Always"), ('consolidation', "Consolidation")],
         compute='_compute_default_availability_condition', readonly=False, store=True,
     )
     load_more_limit = fields.Integer(string="Load More Limit", default=500)
@@ -292,7 +301,27 @@ class AccountReport(models.Model):
         if self.availability_condition != 'country':
             self.country_id = None
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        self._check_no_active_use_in_data_files(vals_list)
+        return super().create(vals_list)
+
+    @api.model
+    def _check_no_active_use_in_data_files(self, vals_list):
+        """ account.report's active field should never be directly written to in data files. If someone does that, only the active company
+        will receive the data, as a company-dependent value in active_selection. To prevent mistakes (especially with forward-ports),
+        this check is called in write() and create(), making sure active isn't used in the provided values when a module is being installed.
+        """
+        if install_filename := self.env.context.get('install_filename'):
+            if any('active' in vals for vals in vals_list):
+                raise UserError(_(
+                    "'active' field of account.report shouldn't be directly written to in data files. Use active_fallback. (Detected while loading %(file_path)s)",
+                    file_path=install_filename,
+                ))
+
     def write(self, vals):
+        self._check_no_active_use_in_data_files([vals])
+
         # Overridden so that changing the country of a report also creates new tax tags if necessary, or updates the country
         # of existing tags, if they aren't shared with another report.
         if 'country_id' in vals:
@@ -345,6 +374,20 @@ class AccountReport(models.Model):
             old_report.column_ids.copy({'report_id': new_report.id})
         return new_reports
 
+    @api.depends_context('company')
+    @api.depends('active_selection', 'active_fallback')
+    def _compute_active(self):
+        for record in self:
+            record.active = record.active_selection == 'True' if record.active_selection else record.active_fallback
+
+    def _compute_sql_active(self, table):
+        return SQL("COALESCE(%s = 'True', %s)", table.active_selection, table.active_fallback)
+
+    @api.onchange('active')
+    def _inverse_active(self):
+        for record in self:
+            record.active_selection = str(record.active)
+
     @api.ondelete(at_uninstall=False)
     def _unlink_if_no_variant(self):
         if self.variant_report_ids:
@@ -364,7 +407,7 @@ class AccountReportLine(models.Model):
     _description = "Accounting Report Line"
     _order = 'sequence, id'
 
-    name = fields.Char(string="Name", translate=True, required=True)
+    name = fields.Char(string="Name", translate=True, required=True, copy=True)
     expression_ids = fields.One2many(string="Expressions", comodel_name='account.report.expression', inverse_name='report_line_id')
     report_id = fields.Many2one(
         string="Parent Report",
@@ -607,16 +650,6 @@ class AccountReportLine(models.Model):
         if vals_list:
             self.env['account.report.expression'].create(vals_list)
 
-    @api.ondelete(at_uninstall=False)
-    def _unlink_child_expressions(self):
-        """
-        We explicitly unlink child expressions.
-        This is necessary even if there is an ondelete='cascade' on it, because
-        the @api.ondelete method _unlink_archive_used_tags is not automatically
-        called if the parent model is deleted.
-        """
-        self.expression_ids.unlink()
-
 
 class AccountReportExpression(models.Model):
     _name = 'account.report.expression'
@@ -781,7 +814,6 @@ class AccountReportExpression(models.Model):
         return result
 
     def write(self, vals):
-
         tax_tags_expressions = self.filtered(lambda x: x.engine == 'tax_tags')
 
         if vals.get('engine') == 'tax_tags':

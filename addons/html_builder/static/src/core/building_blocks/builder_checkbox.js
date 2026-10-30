@@ -22,7 +22,7 @@ export class BuilderCheckbox extends Component {
             useDependencyDefinition(this.props, { isActive: isApplied }, { onReady });
         }
         this.state = useDomState(async () => {
-            await onReady;
+            await onReady?.();
             return {
                 isActive: isApplied(),
             };
@@ -33,6 +33,6 @@ export class BuilderCheckbox extends Component {
     }
 
     getClassName() {
-        return "o-hb-checkbox o_field_boolean o_boolean_toggle form-switch";
+        return "o_hb_checkbox o_field_boolean o_boolean_toggle form-switch";
     }
 }

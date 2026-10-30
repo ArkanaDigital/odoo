@@ -8,7 +8,6 @@ from odoo.exceptions import ValidationError, UserError
 from odoo.fields import Domain
 from odoo.tools import BinaryBytes, SQL, email_normalize, unique
 from odoo.tools.safe_eval import safe_eval, time
-from odoo.tools.translate import mark_as_copy
 
 _logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ class MailTemplate(models.Model):
         return [('model', 'not in', abstract_models)]
 
     # description
-    name = fields.Char('Name', translate=True, copy=mark_as_copy('name'))
+    name = fields.Char('Name', translate=True)
     description = fields.Text(
         'Template Description', translate=True,
         help="This field is used for internal description of the template's usage.")
@@ -272,10 +271,6 @@ class MailTemplate(models.Model):
         self._fix_attachment_ownership()
         return True
 
-    def unlink(self):
-        self.unlink_action()
-        return super(MailTemplate, self).unlink()
-
     def copy(self, default=None):
         default = default or {}
         copy_attachments = 'attachment_ids' not in default
@@ -297,11 +292,9 @@ class MailTemplate(models.Model):
                     })
         return copies
 
+    @api.ondelete(at_uninstall=True)
     def unlink_action(self):
-        for template in self:
-            if template.ref_ir_act_window:
-                template.ref_ir_act_window.unlink()
-        return True
+        self.ref_ir_act_window.unlink()
 
     def create_action(self):
         ActWindow = self.env['ir.actions.act_window']

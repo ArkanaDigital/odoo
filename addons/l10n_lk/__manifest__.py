@@ -15,6 +15,12 @@ Forms
 =====
 - VAT001
 - WHT001
+
+Tax Invoice
+===========
+- Custom tax invoice sequence format: YYMMM_QQQQ_XXXXX
+- Tax Invoice / Supply Date / Mode of Payment in PDF report
+- VAT registration tracking for companies and partners
     """,
     "author": "Odoo S.A.",
     "category": "Accounting/Localizations/Account Charts",
@@ -25,8 +31,12 @@ Forms
     ],
     "auto_install": ["account"],
     "data": [
+        "data/account.account.tag.csv",
         "data/form_vat001.xml",
         "data/form_wht001.xml",
+        "views/report_invoice.xml",
+        "views/res_partner_views.xml",
+        "views/res_company_views.xml",
     ],
     "demo": [
         "demo/demo_company.xml",

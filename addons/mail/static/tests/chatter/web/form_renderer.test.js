@@ -1,17 +1,18 @@
 import {
     SIZES,
     click,
-    contains,
+    contains as mailContains,
     defineMailModels,
-    insertText,
     openFormView,
     patchUiSize,
     scroll,
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
-import { describe, expect, test } from "@odoo/hoot";
-import { mockService, serverState } from "@web/../tests/web_test_helpers";
+import { insertTextInComposer } from "@mail/../tests/mail_test_helpers_composer";
+
+import { describe, expect, getFixture, test, waitFor } from "@odoo/hoot";
+import { contains, mockService, serverState } from "@web/../tests/web_test_helpers";
 
 import { range } from "@web/core/utils/numbers";
 
@@ -51,16 +52,16 @@ test.skip("Form view not scrolled when switching record", async () => {
             </form>`,
         resIds: [partnerId_1, partnerId_2],
     });
-    await contains(".o-mail-Message", { count: 29 });
-    await contains(".o_content", { scroll: 0 });
+    await waitFor(".o-mail-Message:count(29)");
+    await mailContains(".o_content", { scroll: 0 });
     await scroll(".o_content", 150);
-    await click(".o_pager_next");
-    await contains(".o-mail-Message", { count: 30 });
-    await contains(".o_content", { scroll: 150 });
+    await contains(".o_pager_next:count(1)").click();
+    await waitFor(".o-mail-Message:count(30)");
+    await mailContains(".o_content", { scroll: 150 });
     await scroll(".o_content", 0);
-    await click(".o_pager_previous");
-    await contains(".o-mail-Message", { count: 29 });
-    await contains(".o_content", { scroll: 0 });
+    await contains(".o_pager_previous:count(1)").click();
+    await waitFor(".o-mail-Message:count(29)");
+    await mailContains(".o_content", { scroll: 0 });
 });
 
 test("Attachments that have been unlinked from server should be visually unlinked from record", async () => {
@@ -96,15 +97,15 @@ test("Attachments that have been unlinked from server should be visually unlinke
         resId: partnerId_1,
         resIds: [partnerId_1, partnerId_2],
     });
-    await contains("button[aria-label='Attach files']:text('2')");
+    await waitFor("button[aria-label='Attach files']:text('2'):count(1)");
     // The attachment links are updated on (re)load,
     // so using pager is a way to reload the record "Partner1".
-    await click(".o_pager_next");
-    await contains("button[aria-label='Attach files']:not(:has(sup))");
+    await contains(".o_pager_next:count(1)").click();
+    await waitFor("button[aria-label='Attach files']:not(:has(sup)):count(1)");
     // Simulate unlinking attachment 1 from Partner 1.
     pyEnv["ir.attachment"].write([attachmentId_1], { res_id: 0 });
-    await click(".o_pager_previous");
-    await contains("button[aria-label='Attach files']:text('1')");
+    await contains(".o_pager_previous:count(1)").click();
+    await waitFor("button[aria-label='Attach files']:text('1'):count(1)");
 });
 
 test("ellipsis button is not duplicated when switching from read to edit mode", async () => {
@@ -137,9 +138,9 @@ test("ellipsis button is not duplicated when switching from read to edit mode", 
                 <chatter/>
             </form>`,
     });
-    await contains(".o-mail-Chatter");
-    await contains(".o-mail-Message");
-    await contains(".o-mail-ellipsis");
+    await waitFor(".o-mail-Chatter:count(1)");
+    await waitFor(".o-mail-Message:count(1)");
+    await waitFor(".o-mail-ellipsis:count(1)");
 });
 
 test("[TECHNICAL] unfolded ellipsis button should not fold on message click besides that button", async () => {
@@ -181,10 +182,85 @@ test("[TECHNICAL] unfolded ellipsis button should not fold on message click besi
             </form>`,
     });
     expect(".o-mail-Message-body span").toHaveCount(0);
-    await click(".o-mail-ellipsis");
+    await contains(".o-mail-ellipsis:count(1)").click();
     expect(".o-mail-Message-body span").toHaveText("--\nSystem");
-    await click(".o-mail-Message");
+    await contains(".o-mail-Message:count(1)").click();
     expect(".o-mail-Message-body span").toHaveCount(1);
+});
+
+test("nested quoted replies expand one level at a time", async () => {
+    const pyEnv = await startServer();
+    const partnerId = pyEnv["res.partner"].create({});
+    pyEnv["mail.message"].create({
+        author_id: partnerId,
+        body: `<p>New reply</p>
+            <div data-o-mail-quote="1">
+                <p data-o-mail-quote="1">Previous reply</p>
+                <blockquote data-o-mail-quote="1">
+                    <p class="earlier-reply">Earlier reply</p>
+                </blockquote>
+            </div>`,
+        model: "res.partner",
+        res_id: partnerId,
+    });
+    await start();
+    await openFormView("res.partner", partnerId);
+    await waitFor('.o-mail-Message-richBody p:text("New reply"):visible');
+    expect(".o-mail-ellipsis:visible").toHaveCount(1);
+
+    const ellipsisButtons = getFixture().querySelectorAll(".o-mail-ellipsis");
+    await contains(ellipsisButtons[0]).click();
+    expect(".o-mail-ellipsis:visible").toHaveCount(2);
+    await waitFor('.o-mail-Message-richBody p:text("Previous reply"):visible');
+    expect('.o-mail-Message-richBody p:text("Earlier reply")').not.toBeVisible();
+
+    await contains(ellipsisButtons[1]).click();
+    await waitFor('.o-mail-Message-richBody p:text("Earlier reply"):visible');
+});
+
+test("Gmail quote header does not add a quote level and reopening preserves expanded replies", async () => {
+    const pyEnv = await startServer();
+    const partnerId = pyEnv["res.partner"].create({});
+    pyEnv["mail.message"].create({
+        author_id: partnerId,
+        body: `<p>New reply</p>
+            <div data-o-mail-quote="1">
+                <div class="gmail_attr" data-o-mail-quote="1">On Friday, Alex wrote:</div>
+                <blockquote data-o-mail-quote="1">
+                    <p data-o-mail-quote="1">Previous reply</p>
+                    <blockquote data-o-mail-quote="1">
+                        <p>Earlier reply</p>
+                    </blockquote>
+                </blockquote>
+            </div>`,
+        model: "res.partner",
+        res_id: partnerId,
+    });
+    await start();
+    await openFormView("res.partner", partnerId);
+    await waitFor('.o-mail-Message-richBody p:text("New reply"):visible');
+    await waitFor(".o-mail-ellipsis", { count: 2 });
+    const ellipsisButtons = getFixture().querySelectorAll(".o-mail-ellipsis");
+    await waitFor(".o-mail-ellipsis:visible", { count: 1 });
+
+    await contains(ellipsisButtons[0]).click();
+    await waitFor('.o-mail-Message-richBody .gmail_attr:visible');
+    await waitFor('.o-mail-Message-richBody p:text("Previous reply"):visible');
+    await waitFor(".o-mail-ellipsis:visible", { count: 2 });
+    expect('.o-mail-Message-richBody p:text("Earlier reply")').not.toBeVisible();
+
+    await contains(ellipsisButtons[1]).click();
+    await waitFor('.o-mail-Message-richBody p:text("Earlier reply"):visible');
+
+    await contains(ellipsisButtons[0]).click();
+    await waitFor(".o-mail-ellipsis:visible", { count: 1 });
+    expect('.o-mail-Message-richBody p:text("Previous reply")').not.toBeVisible();
+    expect('.o-mail-Message-richBody p:text("Earlier reply")').not.toBeVisible();
+
+    await contains(ellipsisButtons[0]).click();
+    await waitFor(".o-mail-ellipsis:visible", { count: 2 });
+    await waitFor('.o-mail-Message-richBody p:text("Previous reply"):visible');
+    await waitFor('.o-mail-Message-richBody p:text("Earlier reply"):visible');
 });
 
 test("ellipsis button on message of type notification", async () => {
@@ -218,7 +294,7 @@ test("ellipsis button on message of type notification", async () => {
                 <chatter/>
             </form>`,
     });
-    await contains(".o-mail-ellipsis");
+    await waitFor(".o-mail-ellipsis:count(1)");
 });
 
 test("read more/less should appear only once for the signature", async () => {
@@ -259,10 +335,10 @@ test("read more/less should appear only once for the signature", async () => {
 
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Chatter");
+    await waitFor(".o-mail-Chatter:count(1)");
     await click(".o-mail-Chatter-sendMessage");
-    await insertText(".o-mail-Composer-input", "Example Body");
+    await insertTextInComposer(".o-mail-Composer", "Example Body");
     await click("[name='open-full-composer']");
-    await contains(".o-mail-Message-body:has(:text('Example Body'))");
+    await waitFor(".o-mail-Message-body:has(:text('Example Body')):count(1)");
     expect(".o-mail-Message .o-signature-container button.o-mail-ellipsis").toHaveCount(1);
 });

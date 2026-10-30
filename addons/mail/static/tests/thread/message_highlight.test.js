@@ -1,6 +1,5 @@
 import {
-    click,
-    contains,
+    contains as mailContains,
     defineMailModels,
     isInViewportOf,
     openDiscuss,
@@ -13,7 +12,8 @@ import { advanceTime, tick, waitFor } from "@odoo/hoot-dom";
 import { disableAnimations } from "@odoo/hoot-mock";
 import { router, routerBus } from "@web/core/browser/router";
 import { range } from "@web/core/utils/numbers";
-import { mountWebClient, patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { contains, mountWebClient } from "@web/../tests/web_test_helpers";
+import { patch } from "@web/core/utils/patch";
 
 defineMailModels();
 describe.current.tags("desktop");
@@ -38,7 +38,38 @@ test("can highlight messages that are not yet loaded", async () => {
     await openDiscuss(channelId);
     await tick(); // Wait for the scroll to first unread to complete.
     await isInViewportOf(".o-mail-Message:contains(message 199)", ".o-mail-Thread");
-    await click("a[data-oe-type='highlight']");
+    await contains("a[data-oe-type='highlight']:count(1)").click();
+    await isInViewportOf(".o-mail-Message:contains(message 100)", ".o-mail-Thread");
+});
+
+test("highlight scroll is not stopped by the scrollend of a previous scroll", async () => {
+    const pyEnv = await startServer();
+    const channelId = pyEnv["discuss.channel"].create({ name: "general" });
+    let middleMessageId;
+    for (let i = 0; i < 200; i++) {
+        const messageId = pyEnv["mail.message"].create({
+            body: `message ${i}`,
+            model: "discuss.channel",
+            res_id: channelId,
+        });
+        if (i === 100) {
+            middleMessageId = messageId;
+        }
+    }
+    await pyEnv["discuss.channel"].set_message_pin(channelId, middleMessageId, true);
+    patch(Element.prototype, {
+        scrollIntoView(options) {
+            super.scrollIntoView(options);
+            if (options?.behavior === "smooth") {
+                // Simulate the late scrollend of the previous scroll.
+                this.closest(".o-mail-Thread").dispatchEvent(new Event("scrollend"));
+            }
+        },
+    });
+    await start();
+    await openDiscuss(channelId);
+    await isInViewportOf(".o-mail-Message:contains(message 199)", ".o-mail-Thread");
+    await contains("a[data-oe-type='highlight']:count(1)").click();
     await isInViewportOf(".o-mail-Message:contains(message 100)", ".o-mail-Thread");
 });
 
@@ -59,7 +90,7 @@ test("can highlight message (slow ref registration)", async () => {
     }
     await pyEnv["discuss.channel"].set_message_pin(channelId, middleMessageId, true);
     const { promise: refRegistered, resolve: resolveRefRegistration } = Promise.withResolvers();
-    patchWithCleanup(UseForwardRefsToParent.prototype, {
+    patch(UseForwardRefsToParent.prototype, {
         async registerRef(...args) {
             // Ensure scroll is made even when messages are mounted later.
             await refRegistered;
@@ -70,7 +101,7 @@ test("can highlight message (slow ref registration)", async () => {
     await openDiscuss(channelId);
     await tick(); // Wait for the scroll to first unread to complete.
     await isInViewportOf(".o-mail-Message:contains(message 199)", ".o-mail-Thread");
-    await click("a[data-oe-type='highlight']");
+    await contains("a[data-oe-type='highlight']:count(1)").click();
     await advanceTime(1000);
     resolveRefRegistration();
     await isInViewportOf(".o-mail-Message:contains(message 100)", ".o-mail-Thread");
@@ -97,7 +128,7 @@ test("highlight scrolls to beginning of long message", async () => {
     await openDiscuss(channelId);
     await waitFor(".o-mail-Message:contains('short message')");
     await isInViewportOf(".o-mail-Message:contains('short message')", ".o-mail-Thread");
-    await click("a[data-oe-type='highlight']");
+    await contains("a[data-oe-type='highlight']:count(1)").click();
     await advanceTime(1000);
     await isInViewportOf(".o-mail-Message:contains('long message')", ".o-mail-Thread");
     await isInViewportOf(
@@ -126,5 +157,7 @@ test("Chatter jumps when navigating to a specific message link", async () => {
         { sync: true }
     );
     routerBus.trigger("ROUTE_CHANGE");
-    await contains(".o-mail-Message.o-highlighted .o-mail-Message-content", { text: "message 0" });
+    await mailContains(".o-mail-Message.o-highlighted .o-mail-Message-content", {
+        text: "message 0",
+    });
 });

@@ -1,4 +1,3 @@
-/* eslint-env serviceworker */
 /* eslint-disable no-restricted-globals */
 /* global idbKeyval */
 importScripts("/mail/static/lib/idb-keyval/idb-keyval.js");
@@ -215,10 +214,6 @@ self.addEventListener("push", async (event) => {
     const notification = event.data.json();
     switch (notification.options?.data?.type) {
         case PUSH_NOTIFICATION_TYPE.CALL:
-            if (notification.options.actions && navigator.userAgent.includes("Android")) {
-                // action "accept" is disabled on mobile until: https://issues.chromium.org/issues/40286493 is fixed.
-                delete notification.options.actions.accept;
-            }
             event.waitUntil(
                 self.registration.showNotification(notification.title, notification.options || {})
             );

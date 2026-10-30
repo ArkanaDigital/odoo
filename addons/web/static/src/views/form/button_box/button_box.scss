@@ -1,9 +1,9 @@
 .o-form-buttonbox {
-    // Compute the expected oe_stat_button's height according to the default btn size.
+    /* Compute the expected oe_stat_button's height according to the default btn size. */
     $-stat-button-inner-size: calc(#{$btn-padding-y} * 2 + #{$btn-font-size} * #{$btn-line-height});
     $-stat-button-height: calc(#{$-stat-button-inner-size} + #{$btn-border-width} * 2);
 
-    $-stat-button-icon-size: 1.5em;
+    --o-stat-button-icon-size: 1.5em;
     $-stat-button-icon-margin-end: $btn-padding-x * 0.5;
 
     margin-bottom: var(--ButtonBox-margin-bottom, 0);
@@ -13,26 +13,31 @@
         flex-direction: column;
         max-width: 100%;
         text-align: left;
-        font-weight: $font-weight-normal;
+        font-weight: var(--o-bs-font-weight-normal);
         line-height: 1;
     }
 
     %-stat-button-text {
-        @include o-text-overflow(block);
+        display: block;
+        max-width: 100%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        vertical-align: top;
         order: 1;
-        font-size: $o-font-size-base-smaller;
-        line-height: $line-height-sm;
+        font-size: var(--o-font-size-base-smaller);
+        line-height: var(--o-bs-line-height-sm);
     }
 
     %-stat-button-value {
         order: 2;
-        font-weight: $font-weight-bold;
-        color: var(--o-stat-text-color, #{$o-brand-primary});
-        font-size: $o-font-size-base-smaller;
+        font-weight: var(--o-bs-font-weight-bold);
+        color: var(--o-stat-text-color, var(--o-brand-primary));
+        font-size: var(--o-font-size-base-smaller);
     }
 
     %-stat-button-figure-offset {
-        margin-left: $btn-padding-x * -0.33;
+        margin-left: calc(var(--o-bs-btn-padding-x) * -0.33);
     }
 
     .oe_stat_button {
@@ -42,25 +47,30 @@
         flex-grow: 1;
         padding-top: 0;
         padding-bottom: 0;
-        height: $-stat-button-height;
         min-width: 0;
 
-        @include media-breakpoint-up(md) {
-            min-width: 7.5em; // Arbitrary
+        @media screen and (min-width: 768px), print and (min-width: 188mm) {
+            height: $-stat-button-height;
+            min-width: 7.5em; /* Arbitrary */
         }
 
         .o_button_icon {
-            font-size: $-stat-button-icon-size;
-            color: var(--o-stat-button-color, #{$primary});
+            font-size: var(--o-stat-button-icon-size);
+            color: var(--o-stat-button-color, var(--primary));
 
             &:before {
                 margin-right: $-stat-button-icon-margin-end;
             }
         }
 
-        // Some buttons only display text without using StatInfo template
+        /* Some buttons only display text without using StatInfo template */
         > span {
-            @include o-text-overflow(block);
+            display: block;
+            max-width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: top;
         }
 
         .o_field_statinfo {
@@ -103,19 +113,36 @@
             opacity: 1;
             color:inherit;
         }
-        &.btn-outline-secondary:active {
-            z-index: 1;
+
+        /* The following code ensures that the correct button state */
+        /* is brought to the front, depending on the situation. */
+        /* For example, when a user starts clicking on one button */
+        /* and then drags to another. */
+        &.btn-outline-secondary, .o_button_more {
+            &:hover {
+                z-index: 1;
+            }
+
+            &:active, &.show {
+                z-index: 2;
+            }
+
+            &:focus-visible {
+                z-index: 3;
+            }
         }
     }
 
-    &:not(.o-form-buttonbox-small) > * + * {
-        margin-left: -$border-width;
+    &:not(.o-form-buttonbox-small, .o_dropdown_more) > * + * {
+        margin-left: calc(var(--o-bs-border-width) * -1);
     }
 
-    @include media-breakpoint-up(md) {
-        .oe_stat_button,
-        .oe_stat_button > button {
-            border-radius: 0;
+    @media screen and (min-width: 768px), print and (min-width: 188mm) {
+        &:not(.o_dropdown_more) {
+            .oe_stat_button,
+            .oe_stat_button > button {
+                border-radius: 0;
+            }
         }
 
         > .oe_stat_button:first-child,
@@ -130,23 +157,8 @@
         }
     }
 
-    // "More" button and dropdown
-    .oe_stat_button.dropdown {
-        min-width: auto;
-
-        > .o_button_more {
-            width: 100%;
-            height: 100%;
-
-            &:after {
-                margin-left: 5px;
-                @include o-caret-down;
-            }
-        }
-    }
-
-    // Piechart
-    --PercentPieField-size: #{$-stat-button-icon-size};
+    /* Piechart */
+    --PercentPieField-size: var(--o-stat-button-icon-size);
     --PercentPieField-gap: #{$-stat-button-icon-margin-end};
 
     .oe_stat_button:not(:first-child) .o_pie {
@@ -169,8 +181,8 @@
 .o-form-buttonbox-small {
     --button-box-gap: 1px;
     --button-box-per-row: 2;
-    --button-box-border-color: #{map-get(map-get($o-btns-bs-outline-override, 'secondary'), 'border')};
-    --button-box-spacing: #{map-get($spacers, 3)};
+    --button-box-border-color: var(--o-btn-outline-secondary-border);
+    --button-box-spacing: var(--o-bs-spacer-3);
 
     display: grid;
     grid-template-columns: repeat(var(--button-box-per-row), minmax(0, 1fr));
@@ -187,7 +199,9 @@
     }
 
     > span .o_field_widget, .o_stat_info, .o_stat_value {
-        @include text-truncate;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .oe_stat_button,
@@ -197,18 +211,23 @@
     }
 
     > .o-dropdown-item {
-        outline: $btn-border-width solid var(--button-box-border-color);
+        outline: var(--border-width) solid var(--button-box-border-color);
     }
 }
 
 .o_dropdown_more {
 
     .oe_stat_button {
+        /* Use the value of $focus-ring-box-shadow defined in bootstrap_overridden.scss, */
+        /* but apply it with inset so the ring is visible inside the button. */
+        /* If the default value changes, this should be updated accordingly. */
+        --btn-focus-box-shadow: inset 0 0 var(--o-bs-focus-ring-blur) calc(var(--focus-ring-width) * .5) var(--o-component-active-border), inset 0 0 var(--o-bs-focus-ring-blur) var(--focus-ring-width) var(--focus-ring-color);
+
         height: auto;
         width: 100%;
         border: none;
-        padding-top: map-get($spacers, 2);
-        padding-bottom: map-get($spacers, 2);
+        padding-top: var(--o-bs-spacer-2);
+        padding-bottom: var(--o-bs-spacer-2);
     }
 }
 
@@ -219,7 +238,7 @@
     --button-box-gap: 0;
 
     display: grid;
-    padding: map-get($spacers, 3) !important;
+    padding: var(--o-bs-spacer-3) !important;
 
     &.o-form-buttonbox-small:not(:has(.o-dropdown-item:only-child)) {
         width: revert !important;
@@ -229,17 +248,17 @@
         outline: none;
 
         &:not(:last-child) {
-            border-bottom: solid 1px var(--o-stat-button-border-color, #{$border-color});
+            border-bottom: solid 1px var(--o-stat-button-border-color, var(--o-bs-border-color));
         }
 
         .oe_stat_button {
-            gap: map-get($spacers, 2);
+            gap: var(--o-bs-spacer-2);
             height: unset;
             padding: var(--dropdown-item-padding-y) var(--dropdown-item-padding-x);
 
             &, * {
-                font-size: $h5-font-size;
-                font-weight: $o-font-weight-medium;
+                font-size: var(--o-bs-h5-font-size);
+                font-weight: var(--o-font-weight-medium);
             }
 
             .o_button_icon {
@@ -255,7 +274,7 @@
         .o_field_statinfo, .o_stat_info {
             flex-direction: row-reverse;
             align-items: baseline;
-            gap: map-get($spacers, 1);
+            gap: var(--o-bs-spacer-1);
         }
     }
 }

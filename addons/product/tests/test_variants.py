@@ -477,21 +477,26 @@ class TestVariants(ProductVariantsCommon):
                 ],
             })]
         })
-        self.assertFalse(template.barcode)  # 2 active variants --> no barcode on template
+
+        # Since _compute_barcode only updates the template when there is a
+        # single active variant, the existing template barcode is preserved.
+        self.assertEqual(template.barcode, 'test')
 
         variant_1 = template.product_variant_ids[0]
         variant_2 = template.product_variant_ids[1]
 
         variant_1.barcode = 'v1_barcode'
-        variant_2.barcode = 'v2_barcode'
+        variant_2.barcode = 'other_v2_barcode'
 
         variant_1.action_archive()
         template.invalidate_model(['barcode'])
         self.assertEqual(template.barcode, variant_2.barcode)  # 1 active variant --> barcode on template
 
         variant_1.action_unarchive()
+        variant_2.barcode = 'v2_barcode_updated'
         template.invalidate_model(['barcode'])
-        self.assertFalse(template.barcode)  # 2 active variants --> no barcode on template
+
+        self.assertEqual(template.barcode, 'other_v2_barcode')
 
     @mute_logger('odoo.models.unlink')
     def test_archive_all_variants(self):
@@ -529,6 +534,17 @@ class TestVariants(ProductVariantsCommon):
         product_form.name = 'Test Product'
         product = product_form.save()
         self.assertEqual(uom_unit, product.uom_id)
+
+    def test_open_product_form_with_default_uom_id_is_false_and_ir_default(self):
+        """ Test default UoM is used when a ir.default record defines a specific value,
+        and when default_uom_id is false. """
+        self.env['ir.default'].sudo().set("product.template", "uom_id", self.uom_dozen.id)
+        product_form = Form(self.env['product.product'].with_context(
+            default_uom_id=False,
+        ))
+        product_form.name = 'Test Product'
+        product = product_form.save()
+        self.assertEqual(self.uom_dozen.id, product.uom_id.id)
 
     def test_single_variant_template_computed_values_after_creation(self):
         """Check that variant-related fields on templates are correctly set."""
@@ -1092,6 +1108,27 @@ class TestVariantsImages(ProductVariantsCommon):
         # last update changed for the variant without image
         self.assertLess(old_last_update, new_last_update)
 
+    def test_batch_create_variants_with_image(self):
+        """Creating several variants with an image in one batch keeps the image."""
+        template = self.env['product.template'].create({'name': 'batch template'})
+        size = self.env['product.attribute'].create({
+            'name': 'Size', 'create_variant': 'dynamic',
+            'value_ids': [Command.create({'name': 'S'}), Command.create({'name': 'M'})],
+        })
+        ptal = self.env['product.template.attribute.line'].create({
+            'attribute_id': size.id,
+            'product_tmpl_id': template.id,
+            'value_ids': [Command.set(size.value_ids.ids)],
+        })
+        template.product_variant_ids.unlink()
+        variants = self.env['product.product'].create([{
+            'product_tmpl_id': template.id,
+            'product_template_attribute_value_ids': [Command.set(ptav.ids)],
+            'image_1920': self.images['red'],
+        } for ptav in ptal.product_template_value_ids])
+        self.assertEqual(template.image_1920.content, self.images['red'].content)
+        self.assertTrue(all(v.image_1920 for v in variants))
+
     def test_update_images_with_archived_variants(self):
         """Update images after variants have been archived"""
         self.variants[1:].write({'active': False})
@@ -1379,6 +1416,31 @@ class TestVariantsArchive(ProductVariantsCommon):
         self._assert_2color_x_0size(archived_variants)
         self.assertEqual(archived_variants, variants_2x0)
 
+    def test_create_archived_attribute_value(self):
+        """Values archived because their variants could not be deleted
+        should be reused when created again"""
+        def unlink_error(self):
+            raise Exception('simulate an issue during unlink')
+        self.patch(self.env.registry['product.product'], 'unlink', unlink_error)
+
+        ptavs = self.ptav_size_s + self.ptav_size_m
+        self._remove_ptal_size()
+        self.assertEqual(ptavs.mapped('ptav_active'), [False, False])
+
+        self.env['product.template.attribute.line'].with_context(update_product_template_attribute_values=False).create({
+            'product_tmpl_id': self.template.id,
+            'attribute_id': self.size_attribute.id,
+            'value_ids': [Command.set((self.size_attribute_s + self.size_attribute_m).ids)],
+        })
+        recreated = self.env['product.template.attribute.value'].create([{
+            'attribute_line_id': self.ptal_size.id,
+            'product_attribute_value_id': pav.id,
+            'price_extra': 7.5,
+        } for pav in self.size_attribute_s + self.size_attribute_m])
+        self.assertEqual(recreated, ptavs)
+        self.assertEqual(recreated.mapped('ptav_active'), [True, True])
+        self.assertEqual(recreated.mapped('price_extra'), [7.5, 7.5])
+
     def test_name_search_dynamic_attributes(self):
         # To be able to test dynamic variant "variants" feature must be set up
         self._enable_variants()
@@ -1543,7 +1605,7 @@ class TestVariantsArchive(ProductVariantsCommon):
         tmpl.barcode = '456'
         tmpl.invalidate_recordset(fnames=['barcode'])
         self.assertEqual(tmpl.barcode, '456')
-        self.assertEqual(self.product.barcode, '456')
+        self.assertEqual(self.product.barcode, '123')
 
     def _update_color_vars(self, ptal):
         self.ptal_color = ptal

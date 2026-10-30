@@ -1,7 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 {
     'name': 'Invoicing',
-    'version': '1.5',
+    'version': '1.6',
     'summary': 'Invoices & Payments',
     'sequence': 10,
     'description': """
@@ -71,6 +71,7 @@ You could use this simplified accounting in case you work with an (external) acc
         'wizard/account_move_send_wizard.xml',
         'wizard/account_move_send_batch_wizard.xml',
         'report/account_hash_integrity_templates.xml',
+        'report/account_stock_valuation_report.xml',
         'views/res_currency.xml',
         'views/res_country_group_view.xml',
         'views/account_menuitem.xml',
@@ -92,6 +93,9 @@ You could use this simplified accounting in case you work with an (external) acc
         'demo/account_demo.xml',
         'demo/res_partner_bank_demo.xml',
     ],
+    'test_data': [
+        'tests/data/account_chart_template.xml',
+    ],
     'application': True,
     'post_init_hook': '_account_post_init',
     'assets': {
@@ -101,15 +105,15 @@ You could use this simplified accounting in case you work with an (external) acc
         'web.assets_backend': [
             'account/static/src/css/account_bank_and_cash.css',
             'account/static/src/css/account.css',
-            'account/static/src/css/account_payment.scss',
-            'account/static/src/scss/account.scss',
-            'account/static/src/scss/account_journal_dashboard.scss',
-            'account/static/src/scss/account_searchpanel.scss',
-            'account/static/src/scss/account_payment_term.scss',
-            'account/static/src/scss/account_reconcile_model.scss',
-            'account/static/src/scss/account_multi_ledger.scss',
-            'account/static/src/scss/account_move_send_wizard.scss',
-            'account/static/src/scss/account_type_selection.scss',
+            'account/static/src/css/account_payment.css',
+            'account/static/src/scss/account.css',
+            'account/static/src/scss/account_journal_dashboard.css',
+            'account/static/src/scss/account_searchpanel.css',
+            'account/static/src/scss/account_payment_term.css',
+            'account/static/src/scss/account_reconcile_model.css',
+            'account/static/src/scss/account_multi_ledger.css',
+            'account/static/src/scss/account_move_send_wizard.css',
+            'account/static/src/scss/account_type_selection.css',
             'account/static/src/components/**/*',
             'account/static/src/services/*.js',
             'account/static/src/views/**/*',
@@ -117,6 +121,10 @@ You could use this simplified accounting in case you work with an (external) acc
             'account/static/src/js/search/search_bar/search_bar.js',
             'account/static/src/helpers/*.js',
             'account/static/src/webclient/**/*',
+            ('remove', 'account/static/src/**/*.dark.css'),
+        ],
+        'web.assets_web_dark': [
+            'account/static/src/**/*.dark.css',
         ],
         # Unit test files
         'web.assets_unit_tests': [

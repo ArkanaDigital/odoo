@@ -55,11 +55,6 @@ export class CalendarSidePanel extends Component {
             value: this.props.model.date,
         };
     }
-    get filterPanelProps() {
-        return {
-            model: this.props.model,
-        };
-    }
 
     get showDatePicker() {
         return this.props.model.showDatePicker && !this.uiService.isSmall;
@@ -83,5 +78,12 @@ export class CalendarSidePanel extends Component {
             res.push(filter);
         }
         return res;
+    }
+
+    /**
+     * Can be overriden to provide custom sorting
+     */
+    get sortedFilterSections() {
+        return this.props.model.filterSections;
     }
 }

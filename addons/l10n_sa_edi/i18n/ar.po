@@ -8,10 +8,10 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 18.4a1+e\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-03 18:12+0000\n"
-"PO-Revision-Date: 2026-01-17 12:51+0000\n"
+"POT-Creation-Date: 2026-09-11 18:14+0000\n"
+"PO-Revision-Date: 2026-09-09 14:12+0000\n"
 "Last-Translator: \"Malaz Siddig Elsayed Abuidris (msea)\" <msea@odoo.com>\n"
-"Language-Team: Arabic <https://translate.odoo.com/projects/odoo-s19-1-l10n/"
+"Language-Team: Arabic <https://translate.odoo.com/projects/odoo-master/"
 "l10n_sa_edi/ar/>\n"
 "Language: ar\n"
 "MIME-Version: 1.0\n"
@@ -19,19 +19,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
 "&& n%100<=10 ? 3 : n%100>=11 ? 4 : 5;\n"
-"X-Generator: Weblate 5.14.3\n"
-
-#. module: l10n_sa_edi
-#. odoo-python
-#: code:addons/l10n_sa_edi/models/account_move.py:0
-msgid ""
-"\n"
-"                    Please set the Identification Scheme as National ID and "
-"Identification Number as the respective\n"
-"                    number on the Customer, as the Tax Exemption Reason is "
-"set either as VATEX-SA-HEA or VATEX-SA-EDU\n"
-"                "
-msgstr ""
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: l10n_sa_edi
 #. odoo-python
@@ -47,9 +35,28 @@ msgstr ""
 "الحي: %(neighborhood)s"
 
 #. module: l10n_sa_edi
+#: model:ir.module.module,description:base.module_l10n_sa_edi
+msgid ""
+"\n"
+"E-invoice implementation for Saudi Arabia; Integration with ZATCA\n"
+msgstr ""
+
+#. module: l10n_sa_edi
 #. odoo-python
 #: code:addons/l10n_sa_edi/models/account_journal.py:0
 msgid "%(code)s Server returned an unexpected error: %(error)s"
+msgstr ""
+
+#. module: l10n_sa_edi
+#. odoo-python
+#: code:addons/l10n_sa_edi/controllers/portal.py:0
+msgid "%s needs to be filled since the VAT is filled"
+msgstr ""
+
+#. module: l10n_sa_edi
+#. odoo-python
+#: code:addons/l10n_sa_edi/controllers/portal.py:0
+msgid "%s needs to be four digits"
 msgstr ""
 
 #. module: l10n_sa_edi
@@ -84,8 +91,8 @@ msgstr ""
 
 #. module: l10n_sa_edi
 #: model_terms:ir.ui.view,arch_db:l10n_sa_edi.res_config_settings_view_form
-msgid "<i class=\"fa fa-warning me-2\"/> Warning"
-msgstr "تحذير <i class=\"fa fa-warning me-2\"/> "
+msgid "<i class=\"oi me-2\" data-icon=\"warning\"/> Warning"
+msgstr ""
 
 #. module: l10n_sa_edi
 #: model_terms:ir.ui.view,arch_db:l10n_sa_edi.view_move_form
@@ -174,13 +181,9 @@ msgid "Attachment Name"
 msgstr ""
 
 #. module: l10n_sa_edi
-#: model_terms:ir.ui.view,arch_db:l10n_sa_edi.view_move_form
-msgid "Blocking Invoice"
-msgstr "الفاتورة المعطلة"
-
-#. module: l10n_sa_edi
 #: model:ir.model.fields,field_description:l10n_sa_edi.field_res_partner__l10n_sa_edi_building_number
 #: model:ir.model.fields,field_description:l10n_sa_edi.field_res_users__l10n_sa_edi_building_number
+#: model_terms:ir.ui.view,arch_db:l10n_sa_edi.address_form_fields
 #: model_terms:ir.ui.view,arch_db:l10n_sa_edi.sa_partner_address_form
 #: model_terms:ir.ui.view,arch_db:l10n_sa_edi.view_company_form
 msgid "Building Number"
@@ -211,12 +214,6 @@ msgstr "الشهادة"
 #: code:addons/l10n_sa_edi/models/certificate.py:0
 msgid "Certificate Template Name"
 msgstr ""
-
-#. module: l10n_sa_edi
-#. odoo-python
-#: code:addons/l10n_sa_edi/models/account_move.py:0
-msgid "Chain Head"
-msgstr "بداية السلسلة"
 
 #. module: l10n_sa_edi
 #: model_terms:ir.ui.view,arch_db:l10n_sa_edi.sa_partner_address_form
@@ -318,6 +315,11 @@ msgid "Country Name"
 msgstr ""
 
 #. module: l10n_sa_edi
+#: model:ir.model,website_form_label:l10n_sa_edi.model_res_partner
+msgid "Create a Customer"
+msgstr ""
+
+#. module: l10n_sa_edi
 #: model:ir.model.fields,field_description:l10n_sa_edi.field_l10n_sa_edi_document__create_uid
 #: model:ir.model.fields,field_description:l10n_sa_edi.field_l10n_sa_edi_log__create_uid
 #: model:ir.model.fields,field_description:l10n_sa_edi.field_l10n_sa_edi_otp_wizard__create_uid
@@ -415,6 +417,11 @@ msgid "Document successfully accepted!"
 msgstr ""
 
 #. module: l10n_sa_edi
+#: model:ir.module.module,summary:base.module_l10n_sa_edi
+msgid "E-Invoicing, Universal Business Language"
+msgstr ""
+
+#. module: l10n_sa_edi
 #: model:ir.model,name:l10n_sa_edi.model_account_tax
 msgid "ETA tax codes mixin"
 msgstr ""
@@ -423,12 +430,6 @@ msgstr ""
 #: model:ir.actions.act_window,name:l10n_sa_edi.l10n_sa_edi_otp_wizard_act_window
 msgid "Enter the OTP"
 msgstr "أدخل الرقم السري لمرة واحدة"
-
-#. module: l10n_sa_edi
-#: model:ir.model.fields.selection,name:l10n_sa_edi.selection__l10n_sa_edi_document__state__error
-#: model:ir.model.fields.selection,name:l10n_sa_edi.selection__l10n_sa_edi_log__state__error
-msgid "Error"
-msgstr ""
 
 #. module: l10n_sa_edi
 #. odoo-python
@@ -446,12 +447,6 @@ msgstr "خطأ: لم تتم تهيئة دفتر اليومية"
 #: code:addons/l10n_sa_edi/models/l10n_sa_edi_document.py:0
 msgid "Error: Something went wrong when sending to ZATCA"
 msgstr ""
-
-#. module: l10n_sa_edi
-#. odoo-python
-#: code:addons/l10n_sa_edi/models/l10n_sa_edi_document.py:0
-msgid "Error: This invoice is blocked due to %s. Please check it."
-msgstr "خطأ: هذه الفاتورة محظورة بسبب %s. يرجى التحقق من ذلك."
 
 #. module: l10n_sa_edi
 #: model:ir.model.fields,field_description:l10n_sa_edi.field_account_journal__l10n_sa_production_csid_validity
@@ -507,6 +502,11 @@ msgid "ID"
 msgstr "المعرف"
 
 #. module: l10n_sa_edi
+#: model_terms:ir.ui.view,arch_db:l10n_sa_edi.address_form_fields
+msgid "Identification Number"
+msgstr ""
+
+#. module: l10n_sa_edi
 #: model:ir.model.fields,field_description:l10n_sa_edi.field_res_company__l10n_sa_edi_additional_identification_number
 #: model:ir.model.fields,field_description:l10n_sa_edi.field_res_partner__l10n_sa_edi_additional_identification_number
 #: model:ir.model.fields,field_description:l10n_sa_edi.field_res_users__l10n_sa_edi_additional_identification_number
@@ -514,9 +514,18 @@ msgid "Identification Number (SA)"
 msgstr "رقم التعريف (المملكة العربية السعودية)"
 
 #. module: l10n_sa_edi
+#. odoo-python
+#: code:addons/l10n_sa_edi/controllers/portal.py:0
+msgid ""
+"Identification Number needs to be filled since the Identification Scheme is "
+"filled"
+msgstr ""
+
+#. module: l10n_sa_edi
 #: model:ir.model.fields,field_description:l10n_sa_edi.field_res_company__l10n_sa_edi_additional_identification_scheme
 #: model:ir.model.fields,field_description:l10n_sa_edi.field_res_partner__l10n_sa_edi_additional_identification_scheme
 #: model:ir.model.fields,field_description:l10n_sa_edi.field_res_users__l10n_sa_edi_additional_identification_scheme
+#: model_terms:ir.ui.view,arch_db:l10n_sa_edi.address_form_fields
 msgid "Identification Scheme"
 msgstr "خطة التعريف"
 
@@ -577,6 +586,11 @@ msgstr ""
 #: code:addons/l10n_sa_edi/models/account_journal.py:0
 msgid "Invoice submission to ZATCA returned errors"
 msgstr "حدثت أخطاء عند إرسال الفواتير إلى زاتكا"
+
+#. module: l10n_sa_edi
+#: model:ir.model.fields,field_description:l10n_sa_edi.field_l10n_sa_edi_log__is_latest_log
+msgid "Is Latest Log"
+msgstr ""
 
 #. module: l10n_sa_edi
 #: model:ir.model.fields,field_description:l10n_sa_edi.field_res_company__l10n_sa_edi_is_production
@@ -651,11 +665,6 @@ msgstr "L10N Sa Csr"
 #: model:ir.model.fields,field_description:l10n_sa_edi.field_res_company__l10n_sa_edi_building_number
 msgid "L10N Sa Edi Building Number"
 msgstr "L10N Sa Edi رقم المبنى"
-
-#. module: l10n_sa_edi
-#: model:ir.model.fields,field_description:l10n_sa_edi.field_l10n_sa_edi_log__l10n_sa_edi_chain_head_id
-msgid "L10N Sa Edi Chain Head"
-msgstr ""
 
 #. module: l10n_sa_edi
 #: model:ir.model.fields,field_description:l10n_sa_edi.field_account_bank_statement_line__l10n_sa_edi_document_id
@@ -815,16 +824,6 @@ msgstr ""
 
 #. module: l10n_sa_edi
 #. odoo-python
-#: code:addons/l10n_sa_edi/models/account_journal.py:0
-msgid ""
-"Oops! The journal is stuck. Please submit the pending invoices to ZATCA and "
-"try again."
-msgstr ""
-"عذراً! هناك مشكلة في دفتر اليومية. يرجى إرسال الفواتير المعلقة إلى زاتكا "
-"(ZATCA) ثم إعادة المحاولة."
-
-#. module: l10n_sa_edi
-#. odoo-python
 #: code:addons/l10n_sa_edi/models/certificate.py:0
 msgid "Other"
 msgstr ""
@@ -916,8 +915,9 @@ msgstr ""
 #. odoo-python
 #: code:addons/l10n_sa_edi/models/certificate.py:0
 msgid ""
-"Please make sure the following fields are shorter than %(max_length)d "
-"characters: %(error_fields_msg)s"
+"Please make sure the following fields are shorter than %(max_length)d bytes "
+"(note that Arabic or special characters take more space): %"
+"(error_fields_msg)s"
 msgstr ""
 
 #. module: l10n_sa_edi
@@ -930,9 +930,20 @@ msgstr "يرجى تقديم كلمة المرور لمرة واحدة (OTP) لإ
 #. odoo-python
 #: code:addons/l10n_sa_edi/models/account_move.py:0
 msgid ""
+"Please set the Identification Scheme as National ID and Identification "
+"Number as the respective number on the Customer, as the Tax Exemption Reason "
+"is set either as VATEX-SA-HEA or VATEX-SA-EDU"
+msgstr ""
+
+#. module: l10n_sa_edi
+#. odoo-python
+#: code:addons/l10n_sa_edi/models/account_move.py:0
+msgid ""
 "Please set the Invoice Date to be either less than or equal to today as per "
 "the Asia/Riyadh time zone, since ZATCA does not allow future-dated invoicing."
 msgstr ""
+"يرجى تعيين تاريخ الفوترة بحيث يكون أقل من أو يساوي تاريخ اليوم وفقًا للتوقيت "
+"الزمني لآسيا/الرياض، نظرًا لأن ZATCA لا تسمح بإصدار فواتير بتاريخ مستقبلي."
 
 #. module: l10n_sa_edi
 #. odoo-python
@@ -949,6 +960,11 @@ msgstr ""
 #: code:addons/l10n_sa_edi/models/account_journal.py:0
 msgid "Please set the following on %(company_name)s: %(fields)s"
 msgstr "يُرجى تعيين ما يلي في %(company_name)s: %(fields)s"
+
+#. module: l10n_sa_edi
+#: model_terms:ir.ui.view,arch_db:l10n_sa_edi.address_form_fields
+msgid "Plot Identification"
+msgstr ""
 
 #. module: l10n_sa_edi
 #: model_terms:ir.ui.view,arch_db:l10n_sa_edi.view_move_form
@@ -1011,6 +1027,11 @@ msgid "Sandbox"
 msgstr "Sandbox"
 
 #. module: l10n_sa_edi
+#: model:ir.module.module,shortdesc:base.module_l10n_sa_edi
+msgid "Saudi Arabia - E-invoicing"
+msgstr ""
+
+#. module: l10n_sa_edi
 #: model_terms:ir.ui.view,arch_db:l10n_sa_edi.res_config_settings_view_form
 msgid "Saudi Arabia Electronic Invoicing"
 msgstr "الفوترة الإلكترونية في المملكة العربية السعودية"
@@ -1026,6 +1047,11 @@ msgstr ""
 #. module: l10n_sa_edi
 #: model:ir.model.constraint,message:l10n_sa_edi.constraint_res_partner_check_l10n_sa_edi_plot_number
 msgid "Secondary Number must contain 4 numeric digits."
+msgstr ""
+
+#. module: l10n_sa_edi
+#: model_terms:ir.ui.view,arch_db:l10n_sa_edi.address_form_fields
+msgid "Select Scheme..."
 msgstr ""
 
 #. module: l10n_sa_edi
@@ -1136,12 +1162,6 @@ msgstr ""
 #: model:ir.model.fields,field_description:l10n_sa_edi.field_account_tax__ubl_cii_tax_exemption_reason_code
 msgid "Tax Exemption Reason Code"
 msgstr ""
-
-#. module: l10n_sa_edi
-#: model:ir.model.fields,help:l10n_sa_edi.field_l10n_sa_edi_document__l10n_sa_edi_chain_head_id
-msgid ""
-"Technical field to know if the chain has been stopped by a previous invoice"
-msgstr "حقل تقني لمعرفة ما إذا كانت السلسلة قد توقفت بسبب فاتورة سابقة"
 
 #. module: l10n_sa_edi
 #: model:ir.model.fields,help:l10n_sa_edi.field_account_journal__l10n_sa_csr
@@ -1547,11 +1567,6 @@ msgid "ZATCA chain index"
 msgstr "مؤشر سلسلة زاتكا"
 
 #. module: l10n_sa_edi
-#: model:ir.model.fields,field_description:l10n_sa_edi.field_l10n_sa_edi_document__l10n_sa_edi_chain_head_id
-msgid "ZATCA chain stopping document"
-msgstr ""
-
-#. module: l10n_sa_edi
 #: model_terms:ir.ui.view,arch_db:l10n_sa_edi.sa_partner_address_form
 msgid "ZIP"
 msgstr "ZIP"
@@ -1586,8 +1601,26 @@ msgstr "urn:oasis:names:specification:ubl:signature:1"
 msgid "urn:oasis:names:specification:ubl:signature:Invoice"
 msgstr "urn:oasis:names:specification:ubl:signature:Invoice"
 
-#~ msgid "Create a Customer"
-#~ msgstr "Create a Customer"
+#~ msgid "Blocking Invoice"
+#~ msgstr "الفاتورة المعطلة"
+
+#~ msgid "Chain Head"
+#~ msgstr "بداية السلسلة"
+
+#~ msgid "Error: This invoice is blocked due to %s. Please check it."
+#~ msgstr "خطأ: هذه الفاتورة محظورة بسبب %s. يرجى التحقق من ذلك."
+
+#~ msgid ""
+#~ "Oops! The journal is stuck. Please submit the pending invoices to ZATCA "
+#~ "and try again."
+#~ msgstr ""
+#~ "عذراً! هناك مشكلة في دفتر اليومية. يرجى إرسال الفواتير المعلقة إلى زاتكا "
+#~ "(ZATCA) ثم إعادة المحاولة."
+
+#~ msgid ""
+#~ "Technical field to know if the chain has been stopped by a previous "
+#~ "invoice"
+#~ msgstr "حقل تقني لمعرفة ما إذا كانت السلسلة قد توقفت بسبب فاتورة سابقة"
 
 #~ msgid "700 Number"
 #~ msgstr "700 رقم"
@@ -1601,9 +1634,6 @@ msgstr "urn:oasis:names:specification:ubl:signature:Invoice"
 #~ msgid "GCC ID"
 #~ msgstr "معرّف مجلس التعاون الخليجي"
 
-#~ msgid "Identification Number"
-#~ msgstr "رقم التعريف"
-
 #~ msgid "Iqama Number"
 #~ msgstr "رقم إقامة "
 
@@ -1615,9 +1645,6 @@ msgstr "urn:oasis:names:specification:ubl:signature:Invoice"
 
 #~ msgid "Passport ID"
 #~ msgstr "معرف جواز السفر"
-
-#~ msgid "Plot Identification"
-#~ msgstr "معرّف قطعة الأرض"
 
 #~ msgid "Tax Exemption Reason Code (ZATCA)"
 #~ msgstr "كود سبب الإعفاء (زاتكا)"

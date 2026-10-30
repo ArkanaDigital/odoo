@@ -1,13 +1,19 @@
 import { isRecord, untrackFunctions } from "./misc";
 
-import { markRaw, proxy, signal } from "@odoo/owl";
+import { markRaw, signal } from "@odoo/owl";
 
 /** @typedef {import("./record").Record} Record */
 /** @typedef {import("./record_list").RecordList} RecordList */
 
 export class RecordListInternal {
-    /** @type {Record[]} raw */
-    data;
+    /**
+     * Callback-based reads of many relations capture this array and its initial length.
+     * Replace it when removing, reordering or replacing records so callbacks and synchronous
+     * observers cannot change an ongoing traversal. Appending in place is safe for these reads.
+     *
+     * @type {import("@odoo/owl").Signal<Record[]>}
+     */
+    data = signal.Array();
     /** @type {string} */
     name;
     /** @type {Record} */
@@ -16,18 +22,6 @@ export class RecordListInternal {
     recordList;
 
     constructor() {
-        /**
-         * The records of the list: a signal so a replacement notifies, read
-         * as a proxy so an in-place mutation notifies the touched keys alone.
-         */
-        const data = signal([]);
-        Object.defineProperty(this, "data", {
-            configurable: true,
-            get: () => proxy(data()),
-            set: (val) => {
-                data.set(val);
-            },
-        });
         markRaw(this);
     }
 
@@ -41,45 +35,42 @@ export class RecordListInternal {
     addNoinv(...records) {
         const self = this;
         const recordList = this.recordList;
-        const store = recordList._store;
         if (this.isOne()) {
             const last = records.at(-1);
             if (isRecord(last) && last.in(recordList)) {
                 return;
             }
-            const record = self.insert(
+            self.insert(
                 last,
                 function recordList_AddNoInvOneInsert(record) {
-                    if (record !== self.data[0]) {
+                    if (record !== self.data()[0]) {
                         const old = recordList.at(-1);
-                        self.data.pop();
+                        self.data().pop();
                         old?._.uses.delete(recordList);
-                        self.data.push(record);
+                        self.data().push(record);
                         self.syncLength();
                         record._.uses.add(recordList);
                     }
                 },
                 { inv: false }
             );
-            store._.ADD_QUEUE("onAdd", self.owner, self.name, record);
             return;
         }
         for (const val of records) {
             if (isRecord(val) && val.in(recordList)) {
                 continue;
             }
-            const record = self.insert(
+            self.insert(
                 val,
                 function recordList_AddNoInvManyInsert(record) {
-                    if (self.data.indexOf(record) === -1) {
-                        self.data.push(record);
+                    if (self.data().indexOf(record) === -1) {
+                        self.data().push(record);
                         self.syncLength();
                         record._.uses.add(recordList);
                     }
                 },
                 { inv: false }
             );
-            store._.ADD_QUEUE("onAdd", self.owner, self.name, record);
         }
     }
     /** @param {R[]|any[]} data */
@@ -98,7 +89,6 @@ export class RecordListInternal {
                 self.insert(val, function recordListAssignInsert(record) {
                     if (record.notIn(oldRecords)) {
                         record._.uses.add(recordList);
-                        store._.ADD_QUEUE("onAdd", self.owner, self.name, record);
                     }
                 })
             );
@@ -106,7 +96,6 @@ export class RecordListInternal {
             for (const oldRecord of oldRecords) {
                 if (oldRecord.notIn(newRecords)) {
                     oldRecord._.uses.delete(recordList);
-                    store._.ADD_QUEUE("onDelete", self.owner, self.name, oldRecord);
                     if (inverse) {
                         store._.updateFields(oldRecord, {
                             [inverse]: [["DELETE", self.owner]],
@@ -114,12 +103,12 @@ export class RecordListInternal {
                     }
                 }
             }
-            self.data = newRecords;
+            self.data.set(newRecords);
             self.syncLength();
         });
     }
     computeField() {
-        this.owner._.compute(this.owner, this.name, { fromInNeed: true });
+        this.owner._.compute(this.name, { fromInNeed: true });
     }
     /**
      * Version of delete() that does not update the inverse.
@@ -131,12 +120,11 @@ export class RecordListInternal {
     deleteNoinv(...records) {
         const self = this;
         const recordList = this.recordList;
-        const store = recordList._store;
         for (const val of records) {
-            const record = this.insert(
+            this.insert(
                 val,
                 function recordList_DeleteNoInv_Insert(record) {
-                    const index = self.data.indexOf(record);
+                    const index = self.data().indexOf(record);
                     if (index !== -1) {
                         recordList.splice(index, 1);
                         self.syncLength();
@@ -144,7 +132,6 @@ export class RecordListInternal {
                 },
                 { inv: false }
             );
-            store._.ADD_QUEUE("onDelete", self.owner, self.name, record);
         }
     }
     getInverse() {
@@ -219,12 +206,9 @@ export class RecordListInternal {
      */
     proxyGet(name, recordListProxy) {
         const recordList = this.recordList;
-        if (name === "data") {
-            return this.data;
-        }
         if (
             typeof name === "symbol" ||
-            Object.keys(recordList).includes(name) ||
+            (name !== "length" && Object.hasOwn(recordList, name)) ||
             Object.prototype.hasOwnProperty.call(recordList.constructor.prototype, name)
         ) {
             let res = Reflect.get(recordList, name, recordListProxy);
@@ -233,22 +217,16 @@ export class RecordListInternal {
             }
             return res;
         }
-        if (this.isComputeField() && !this.isEager()) {
-            this.setComputeInNeed();
-            if (this.isComputeOnNeed()) {
-                this.computeField();
-            }
-        }
         if (name === "length") {
-            return this.data.length;
+            return this.records().length;
         }
-        if (typeof name !== "symbol" && !window.isNaN(parseInt(name))) {
+        const index = parseInt(name);
+        if (!window.isNaN(index)) {
             // support for "array[index]" syntax
-            const index = parseInt(name);
-            return this.data[index]?._proxy;
+            return this.records()[index]?._proxy;
         }
         // Attempt an unimplemented array method call
-        const array = [...recordList];
+        const array = this.records().map((record) => record._proxy);
         return array[name]?.bind(array);
     }
     /**
@@ -265,12 +243,15 @@ export class RecordListInternal {
                 // support for "array[index] = r3" syntax
                 const index = parseInt(name);
                 self.insert(val, function recordListSet_Insert(newRecord) {
-                    const oldRecord = self.data[index];
-                    self.data[index] = newRecord;
+                    const oldRecord = self.data()[index];
+                    if (oldRecord !== newRecord) {
+                        const list = self.data().slice();
+                        list[index] = newRecord;
+                        self.data.set(list);
+                    }
                     if (oldRecord && oldRecord.notEq(newRecord)) {
                         oldRecord._.uses.delete(recordList);
                     }
-                    store._.ADD_QUEUE("onDelete", self.owner, self.name, oldRecord);
                     const inverse = self.getInverse();
                     if (inverse) {
                         store._.updateFields(oldRecord, {
@@ -279,7 +260,6 @@ export class RecordListInternal {
                     }
                     if (newRecord) {
                         newRecord._.uses.add(recordList);
-                        store._.ADD_QUEUE("onAdd", self.owner, self.name, newRecord);
                         if (inverse) {
                             store._.updateFields(newRecord, {
                                 [inverse]: [["ADD", self.owner]],
@@ -289,29 +269,41 @@ export class RecordListInternal {
                 });
             } else if (name === "length") {
                 const newLength = parseInt(val);
-                if (newLength !== self.data.length) {
-                    if (newLength < self.data.length) {
+                if (newLength !== self.data().length) {
+                    if (newLength < self.data().length) {
                         recordList.splice(newLength, recordList.length - newLength);
                     }
-                    self.data.length = newLength;
+                    if (self.data().length !== newLength) {
+                        const list = self.data().slice();
+                        list.length = newLength;
+                        self.data.set(list);
+                    }
                     self.syncLength();
                 }
-            } else if (name === "data") {
-                self.data = val;
             } else {
                 return Reflect.set(recordList, name, val, recordListProxy);
             }
             return true;
         });
     }
+    /** @returns {Record[]} */
+    records() {
+        if (this.isComputeField() && !this.isEager()) {
+            this.setComputeInNeed();
+            if (this.isComputeOnNeed()) {
+                this.computeField();
+            }
+        }
+        return this.data();
+    }
     setComputeInNeed() {
         this.owner._.fieldsComputeInNeed.set(this.name, true);
     }
     /**
-     * Sync reclist.data length with array length, as to not introduce confusion while debugging
+     * Sync the data length with the array length, as to not introduce confusion while debugging
      */
     syncLength() {
-        this.recordList.length = this.data.length;
+        this.recordList.length = this.data().length;
     }
 }
 

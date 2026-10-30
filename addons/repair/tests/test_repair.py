@@ -35,12 +35,10 @@ class TestRepairCommon(common.TransactionCase):
         cls.product_storable_no = cls.env['product.product'].create({
             'name': 'Product Storable No Tracking #1',
             'is_storable': True,
-            'tracking': 'none',
         })
         cls.product_storable_no2 = cls.env['product.product'].create({
             'name': 'Product Storable No Tracking #2',
             'is_storable': True,
-            'tracking': 'none',
         })
         cls.product_storable_serial = cls.env['product.product'].create({
             'name': 'Product Storable Serial',
@@ -199,7 +197,7 @@ class TestRepair(TestRepairCommon):
             'group_ids': [Command.set([self.env.ref('stock.group_stock_user').id])],
         })
         self.repair0.invalidate_recordset()
-        self.repair0.with_user(stock_user).read(['invoice_count', 'can_create_sale_or_invoice'])
+        self.repair0.with_user(stock_user).fetch(['invoice_count', 'can_create_sale_or_invoice'])
 
     def test_01_repair_states_transition(self):
         repair = self._create_simple_repair_order()
@@ -287,14 +285,8 @@ class TestRepair(TestRepairCommon):
         repair.action_validate()
         self.assertEqual(repair.state, "confirmed")
 
-        # confirmed -> under_repair (action_repair_start)
-            # Purely informative state
-        repair.action_repair_start()
-        self.assertEqual(repair.state, "under_repair")
-
-        # under_repair -> done (action_repair_end -> action_repair_done)
+        # confirmed -> done (action_repair_end -> action_repair_done)
             # PRE
-                # state == under_repair !-> UserError
                 # lines' quantity >= lines' product_uom_qty !-> Warning
                 # line tracked => line has lot_ids !-> ValidationError
             # POST
@@ -440,7 +432,6 @@ class TestRepair(TestRepairCommon):
         # repair_order.action_repair_end()
         #   -> order_line.qty_delivered == order_line.product_uom_qty
         #   -> "RO Lines"'s SOL.qty_delivered == move.quantity
-        repair_order.action_repair_start()
         for line in repair_order.move_ids:
             line.quantity = line.product_uom_qty
         repair_order.action_repair_end()
@@ -494,7 +485,6 @@ class TestRepair(TestRepairCommon):
         repair_order.user_id = user1
         self.assertEqual(repair_order.location_id, self.stock_location_14)
         self.assertEqual(repair_order.recycle_location_id, self.stock_location_14)
-        repair_order.action_repair_start()
         repair_order.action_repair_end()
         with Form(repair_order) as ro_form:
             ro_form.user_id = user1
@@ -567,7 +557,7 @@ class TestRepair(TestRepairCommon):
             move.quantity = 1.0
             move.repair_line_type = 'add'
         repair = repair_form.save()
-        repair.action_repair_start()
+        repair.action_validate()
         repair.action_repair_end()
         self.assertEqual(repair.state, 'done')
         self.assertEqual(len(return_picking.move_ids), 1, "Parts added to the repair order shoudln't be added to the return picking")
@@ -613,8 +603,6 @@ class TestRepair(TestRepairCommon):
         # Validate and complete the repair order
         repair_order.action_validate()
         self.assertEqual(repair_order.state, 'confirmed')
-        repair_order.action_repair_start()
-        self.assertEqual(repair_order.state, 'under_repair')
         repair_order.move_ids.quantity = 1
         repair_order.action_repair_end()
         self.assertEqual(repair_order.state, 'done')
@@ -709,7 +697,6 @@ class TestRepair(TestRepairCommon):
             ],
         })
         repair_order.action_validate()
-        repair_order.action_repair_start()
         repair_order.action_repair_end()
         repair_order.action_create_sale_order()
         sale_order = repair_order.sale_order_id
@@ -720,8 +707,8 @@ class TestRepair(TestRepairCommon):
         self.assertEqual(len(res), 1, "The invoice should have one line")
         self.assertEqual(res[0]['product_name'], self.product_storable_serial.display_name, "The product name should be the same")
         self.assertEqual(res[0]['lot_name'], quant.lot_id.name, "The lot name should be the same")
-        self.assertEqual(sale_order.order_line[0].name, f'{self.product_storable_serial.display_name}\nPicking Description')
-        self.assertEqual(invoice.line_ids[0].name, f'{self.product_storable_serial.display_name}\nPicking Description')
+        self.assertEqual(sale_order.order_line[0].name, 'Picking Description')
+        self.assertEqual(invoice.line_ids[0].name, 'Picking Description')
 
     def test_create_repair_order_from_cross_company_sn(self):
         """
@@ -742,7 +729,6 @@ class TestRepair(TestRepairCommon):
         """
         repair_order = self._create_repair_order_with_moves_and_services()
         repair_order.action_validate()
-        repair_order.action_repair_start()
         repair_order.action_repair_end()
         self.assertEqual(repair_order.state, 'done')
         self.assertEqual(repair_order.move_ids.quantity, 1.0)
@@ -775,7 +761,6 @@ class TestRepair(TestRepairCommon):
             ],
         })
         repair_order.action_validate()
-        repair_order.action_repair_start()
         self.assertFalse(repair_order.has_uncomplete_moves)
         repair_order.move_ids[0].quantity = 1.0
         self.assertTrue(repair_order.has_uncomplete_moves)
@@ -805,7 +790,6 @@ class TestRepair(TestRepairCommon):
             ],
         })
         repair_order.action_validate()
-        repair_order.action_repair_start()
         self.assertFalse(repair_order.lot_id.name)
         repair_order.action_generate_serial()
         self.assertTrue(repair_order.lot_id.name)
@@ -960,7 +944,6 @@ class TestRepair(TestRepairCommon):
         sale_line = repair_order.move_ids.sale_line_id
         sale_line.discount = 15
         repair_order.action_validate()
-        repair_order.action_repair_start()
         repair_order.action_repair_end()
         self.assertEqual(sale_line.discount, 15)
 
@@ -974,7 +957,6 @@ class TestRepair(TestRepairCommon):
         invoice_line_ids = repair_order.move_ids.invoice_line_ids
         invoice_line_ids.discount = 15
         repair_order.action_validate()
-        repair_order.action_repair_start()
         repair_order.action_repair_end()
         self.assertEqual(invoice_line_ids.discount, 15)
 
@@ -997,7 +979,6 @@ class TestRepair(TestRepairCommon):
             'repair_id': repair_order.id,
         })
         repair_order.action_validate()
-        repair_order.action_repair_start()
         repair_order.action_repair_end()
         repair_order.action_create_invoice()
         invoice = repair_order.invoice_ids
@@ -1108,10 +1089,26 @@ class TestRepair(TestRepairCommon):
         repair_order.under_warranty = True
 
         repair_order.action_validate()
-        repair_order.action_repair_start()
         repair_order.action_repair_end()
 
         self.assertEqual(repair_order.repair_service_line_ids.sale_line_id.price_unit, 0.0)
+
+    def test_repair_order_from_sale_order_in_branch(self):
+        """ The RO created on SO confirmation must belong to the SO's company, even when confirming
+        from another company (e.g. a branch SO confirmed by the payment post-processing cron).
+        """
+        main_company = self.env.company
+        branch = self.env['res.company'].create({
+            'name': 'Branch Company',
+            'parent_id': main_company.id,
+        })
+        sale_order = self.env['sale.order'].create({
+            'partner_id': self.res_partner_1.id,
+            'company_id': branch.id,
+            'order_line': [Command.create({'product_id': self.product_order_repair.id})],
+        })
+        sale_order.with_company(main_company).action_confirm()
+        self.assertEqual(sale_order.repair_order_ids.company_id, branch)
 
 
 @tagged('post_install', '-at_install')

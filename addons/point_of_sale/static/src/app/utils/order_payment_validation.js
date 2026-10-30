@@ -148,11 +148,13 @@ export default class OrderPaymentValidation {
 
         this.pos.addPendingOrder([this.order.id]);
         this.order.state = "paid";
-        this.pos.data.localUnsyncedPaidOrderUuids.add(this.order.uuid);
+        this.pos.data.localUnsyncedPaidOrderUuids().add(this.order.uuid);
 
         this.pos.customerDisplay.send({ processingValidation: true });
         try {
-            // 1. Save order to server.
+            // 1. Ensure pos is set as the source when paid from the PoS.
+            // If the order came from Self Order and was paid from the PoS.
+            this.order.source = "pos";
             const syncOrderResult = await this.pos.syncAllOrders({ throw: true });
             if (!syncOrderResult) {
                 return false;
@@ -359,11 +361,11 @@ export default class OrderPaymentValidation {
                 body:
                     _t("Are you sure that the customer wants to  pay") +
                     " " +
-                    this.pos.env.utils.formatCurrency(this.order.amountPaid) +
+                    this.pos.formatCurrency(this.order.amountPaid) +
                     " " +
                     _t("for an order of") +
                     " " +
-                    this.pos.env.utils.formatCurrency(this.order.priceIncl) +
+                    this.pos.formatCurrency(this.order.priceIncl) +
                     " " +
                     _t('? Clicking "Confirm" will validate the payment.'),
                 confirm: () => this.validateOrder(true),

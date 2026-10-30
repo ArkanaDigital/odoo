@@ -108,6 +108,45 @@ class TestPaymentProvider(PaymentCommon):
         new_brand = new_provider.payment_method_ids.filtered(lambda pm: pm.code == brand_pm.code)
         self.assertEqual(new_brand.primary_payment_method_id, new_primary)
 
+    def test_copy_for_companies_preserves_payment_method_mapping(self):
+        """Each provider copy keeps its source's methods and links brands to its own primary PM."""
+        other_provider = self.dummy_provider.copy({"name": "Other Provider"})
+        other_provider.primary_payment_method_ids.code = "other_dummy"
+        providers = self.dummy_provider + other_provider
+        self.env["payment.method"].create([
+            {
+                "name": f"Brand {provider.name}",
+                "code": f"brand_{provider.primary_payment_method_ids.code}",
+                "provider_id": provider.id,
+                "primary_payment_method_id": provider.primary_payment_method_ids.id,
+            }
+            for provider in providers
+        ])
+        companies = self.env["res.company"].create([
+            {"name": "New Company 1"},
+            {"name": "New Company 2"},
+        ])
+
+        new_providers = providers._copy_for_companies(companies)
+
+        self.assertEqual(len(new_providers), 4)
+        for provider in providers:
+            for company in companies:
+                with self.subTest(provider=provider.name, company=company.name):
+                    new_provider = new_providers.filtered(
+                        lambda p: p.name == provider.name and p.company_id == company
+                    )
+                    self.assertEqual(len(new_provider), 1)
+                    self.assertEqual(
+                        set(new_provider.payment_method_ids.mapped("code")),
+                        set(provider.payment_method_ids.mapped("code")),
+                    )
+                    new_primary = new_provider.primary_payment_method_ids
+                    new_brand = new_provider.payment_method_ids - new_primary
+                    self.assertEqual(len(new_primary), 1)
+                    self.assertEqual(len(new_brand), 1)
+                    self.assertEqual(new_brand.primary_payment_method_id, new_primary)
+
     def test_installing_provider_activates_default_pms(self):
         self.provider.payment_method_ids.active = False
         PaymentProvider = self.registry["payment.provider"]
@@ -154,7 +193,7 @@ class TestPaymentProvider(PaymentCommon):
 
     def test_installing_provider_activates_post_processing_cron(self):
         """Test that the post-processing cron is activated when a provider is installed."""
-        post_processing_cron = self.env.ref("payment.cron_post_process_payment_tx")
+        post_processing_cron = self.env.ref("payment.post_processing_cron")
         post_processing_cron.active = False
         self.provider._setup_provider("none")
         self.assertTrue(post_processing_cron.active)
@@ -172,7 +211,7 @@ class TestPaymentProvider(PaymentCommon):
 
     def test_uninstalling_provider_deactivates_post_processing_cron(self):
         """Test that the post-processing cron is deactivated when a provider is uninstalled."""
-        post_processing_cron = self.env.ref("payment.cron_post_process_payment_tx")
+        post_processing_cron = self.env.ref("payment.post_processing_cron")
         post_processing_cron.active = True
         with patch(
             "odoo.addons.payment.models.payment_provider.PaymentProvider.search_count",

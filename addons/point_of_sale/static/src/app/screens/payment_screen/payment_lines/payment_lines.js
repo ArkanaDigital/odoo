@@ -7,7 +7,6 @@ import { parseFloat } from "@web/views/fields/parsers";
 import { enhancedButtons } from "@point_of_sale/app/components/numpad/numpad";
 import { PriceFormatter } from "@point_of_sale/app/components/price_formatter/price_formatter";
 import { PosPayment } from "@point_of_sale/app/models/pos_payment";
-import { formatCurrency } from "@web/core/currency";
 
 export const paymentScreenPaymentLinesProps = {
     paymentLines: t.array(t.instanceOf(PosPayment)).optional(),
@@ -36,9 +35,8 @@ export class PaymentScreenPaymentLines extends Component {
     }
 
     getFormattedPrice(line) {
-        const currency = line.currency;
         const amount = line.amount_currency || line.amount;
-        return formatCurrency(amount, currency.id);
+        return this.pos.formatCurrency(amount, line.currency.id);
     }
 
     async selectLine(paymentline) {
@@ -47,7 +45,11 @@ export class PaymentScreenPaymentLines extends Component {
             this.dialog.add(NumberPopup, {
                 title: _t("New amount"),
                 buttons: enhancedButtons(),
-                startingValue: this.env.utils.formatCurrency(paymentline.getAmount(), false),
+                startingValue: this.pos.formatCurrency(
+                    paymentline.getAmount(),
+                    this.pos.config.currency_id.id,
+                    { noSymbol: true }
+                ),
                 getPayload: (num) => {
                     this.props.updateSelectedPaymentline(parseFloat(num));
                 },
@@ -117,6 +119,7 @@ export class PaymentScreenPaymentLines extends Component {
                 label: _t("Force done"),
                 action: () => this.props.sendForceDone(line),
                 severity: "warning",
+                show: line.isForceDoneAllowed(),
             },
 
             cancel: {
@@ -133,6 +136,7 @@ export class PaymentScreenPaymentLines extends Component {
                 label: _t("Force Cancel"),
                 action: () => this.props.sendForceCancel(line),
                 severity: "danger",
+                show: line.isForceDoneAllowed(),
             },
         };
         const state = { id: "unknown", title: "", actions: [] };
@@ -155,7 +159,7 @@ export class PaymentScreenPaymentLines extends Component {
         else if (status === "force_done") {
             state.id = "force_done";
             state.title = _t("Connection error");
-            state.actions = [ACTIONS.forceDone];
+            state.actions = [{ ...ACTIONS.forceDone, show: true }];
         }
 
         // --- Waiting customer action
@@ -179,8 +183,11 @@ export class PaymentScreenPaymentLines extends Component {
             state.icon = SPINNER_ICON;
             state.iconClass = SPINNER_ICON_CLASS;
             state.actions = [
-                { ...ACTIONS.forceDone, show: status === "waiting" },
-                { ...ACTIONS.forceCancel, show: status === "waitingCancel" },
+                { ...ACTIONS.forceDone, show: ACTIONS.forceDone.show && status === "waiting" },
+                {
+                    ...ACTIONS.forceCancel,
+                    show: ACTIONS.forceCancel.show && status === "waitingCancel",
+                },
             ];
         }
 

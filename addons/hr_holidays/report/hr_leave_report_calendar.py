@@ -1,6 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from odoo import api, fields, models, tools
+from odoo.fields import Domain
 
 from odoo.addons.base.models.res_partner import _tz_get
 from odoo.exceptions import ValidationError
@@ -9,16 +10,24 @@ from odoo.exceptions import ValidationError
 class HrLeaveReportCalendar(models.Model):
     _name = 'hr.leave.report.calendar'
     _description = 'Time Off Calendar'
+    _inherit = 'hr.leave.display.name.mixin'
     _auto = False
-    _order = "start_datetime DESC, employee_id"
+    _order = "request_date_from DESC, employee_id"
 
     name = fields.Char(string='Name', readonly=True, compute="_compute_name")
-    start_datetime = fields.Datetime(string='From', readonly=True)
-    stop_datetime = fields.Datetime(string='To', readonly=True)
+    request_date_from = fields.Date(string='Request Start Date', readonly=True)
+    request_date_to = fields.Date(string='Request End Date', readonly=True)
+    # what the views draw: see hr.leave request_date_hour_from
+    request_date_hour_from = fields.Datetime(
+        compute='_compute_request_date_hours', compute_sudo=True,
+        search='_search_request_date_hour_from')
+    request_date_hour_to = fields.Datetime(
+        compute='_compute_request_date_hours', compute_sudo=True,
+        search='_search_request_date_hour_to')
     duration_display = fields.Char(related='leave_id.duration_display', readonly=True)
     tz = fields.Selection(_tz_get, string="Timezone", readonly=True)
     duration = fields.Float(string='Duration', readonly=True)
-    employee_id = fields.Many2one('hr.employee', readonly=True)
+    employee_id = fields.Many2one('hr.employee', readonly=True, required=True)
     user_id = fields.Many2one('res.users', readonly=True)
     department_id = fields.Many2one('hr.department', readonly=True)
     job_id = fields.Many2one('hr.job', readonly=True)
@@ -49,8 +58,8 @@ class HrLeaveReportCalendar(models.Model):
         (SELECT
             hl.id AS id,
             hl.id AS leave_id,
-            hl.date_from AS start_datetime,
-            hl.date_to AS stop_datetime,
+            hl.request_date_from AS request_date_from,
+            hl.request_date_to AS request_date_to,
             hl.employee_id AS employee_id,
             hl.state AS state,
             hl.department_id AS department_id,
@@ -79,19 +88,60 @@ class HrLeaveReportCalendar(models.Model):
                 ON p.id = u.partner_id
         WHERE
             hl.state IN ('confirm', 'validate', 'validate1', 'refuse')
+            AND hl.time_rule_id IS NULL
         );
         """)
 
+    @api.depends(
+        'tz', 'leave_id.date_from', 'leave_id.date_to', 'employee_id',
+        'leave_id.work_entry_type_id', 'leave_id.number_of_hours',
+        'leave_id.work_entry_type_request_unit', 'leave_id.number_of_days',
+    )
+    @api.depends_context('short_name', 'hide_employee_name', 'group_by', 'scale')
     def _compute_display_name(self):
-        if self.env.context.get('hide_employee_name') and 'employee_id' in self.env.context.get('group_by', []):
-            for record in self:
-                record.display_name = record.name.removeprefix(f"{record.employee_id.name}").lstrip(": ")
-        else:
-            super()._compute_display_name()
+        is_hr_user = self.env.user.has_group('hr_holidays.group_hr_holidays_user')
+        for record in self:
+            leave = record.sudo().leave_id
+            work_entry_type_display = ''
+
+            # Only show work_entry_type if user has access rights
+            if is_hr_user:
+                work_entry_type_display = (
+                    leave.work_entry_type_id.display_code
+                    or leave.work_entry_type_id.name
+                )
+
+            record.display_name = self._build_leave_display_name(
+                tz=record.tz,
+                leave=leave,
+                employee_name=record.employee_id.name or "",
+                work_entry_type_display=work_entry_type_display,
+                duration_display=record.duration_display,
+            )
 
     @api.model
     def get_unusual_days(self, date_from, date_to=None):
         return self.env.user.employee_id._get_unusual_days(date_from, date_to)
+
+    @api.depends('leave_id.request_date_hour_from', 'leave_id.request_date_hour_to')
+    @api.depends_context('uid', 'tz')
+    def _compute_request_date_hours(self):
+        for report in self:
+            report.request_date_hour_from = report.leave_id.request_date_hour_from
+            report.request_date_hour_to = report.leave_id.request_date_hour_to
+
+    def _search_request_date_hour_from(self, operator, value):
+        return self._search_on_request('request_date_hour_from', operator, value)
+
+    def _search_request_date_hour_to(self, operator, value):
+        return self._search_on_request('request_date_hour_to', operator, value)
+
+    @api.model
+    def _search_on_request(self, field_name, operator, value):
+        """ Asked of the request as superuser: this report says on its own which of its
+        rows the reader may see. """
+        return Domain('id', 'in', self.env['hr.leave'].sudo()._search(
+            Domain(field_name, operator, value)))
 
     @api.depends('employee_id.name', 'leave_id')
     def _compute_name(self):

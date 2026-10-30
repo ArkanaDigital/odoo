@@ -91,9 +91,9 @@ export class FilePlugin extends Plugin {
 
     setup() {
         this.attachmentViewer = this.services.fileViewer();
-        this.editable.addEventListener("click", this.onClick.bind(this));
-        this.editable.addEventListener("keydown", this.onKeyDown.bind(this));
-        this.document.addEventListener("pointerdown", this.onPointerDown.bind(this));
+        this.addDomListener(this.editable, "click", this.onClick);
+        this.addDomListener(this.editable, "keydown", this.onKeyDown);
+        this.addDomListener(this.document, "pointerdown", this.onPointerDown);
     }
 
     onClick(ev) {
@@ -232,9 +232,12 @@ export class FilePlugin extends Plugin {
 
     onClickFileImage(fileImage) {
         const fileBox = closestElement(fileImage, ".o_file_box");
+        // We use the url text content as file name.
+        const fileName =
+            fileBox.querySelector(".o_file_name_container")?.textContent || fileImage.title;
         const fileModel = Object.assign(new FileModel(), {
             id: fileBox.dataset.attachmentId,
-            name: fileImage.title,
+            name: fileName,
             mimetype: fileImage.dataset.mimetype,
         });
         if (fileModel.isViewable) {

@@ -1,14 +1,15 @@
+import { usePlugin } from "@odoo/owl";
+
 import { COMPOSER_TYPES } from "@mail/core/common/composer";
 import { partnerCompareRegistry } from "@mail/core/common/partner_compare";
-import { SUGGESTION_DELIMITERS } from "@mail/core/common/suggestion_hook";
+import { SUGGESTION_DELIMITERS } from "@mail/core/common/plugin/suggestion_plugin";
 
 import { compareDatetime } from "@mail/utils/common/misc";
-import { emojiLoader } from "@web/core/emoji_picker/emoji_loader";
 import { localeCompare, normalize } from "@web/core/l10n/utils";
+import { ORM } from "@web/core/orm_plugin";
 import { registry } from "@web/core/registry";
-import { fuzzyLookup } from "@web/core/utils/search";
 
-/** @typedef {import("@mail/core/common/suggestion_hook").SuggestionDelimiter} SuggestionDelimiter */
+/** @typedef {import("@mail/core/common/plugin/suggestion_plugin").SuggestionDelimiter} SuggestionDelimiter */
 
 export class SuggestionService {
     /**
@@ -16,32 +17,22 @@ export class SuggestionService {
      * @param {import("services").ServiceFactories} services
      */
     constructor(env, services) {
-        this.env = env;
-        this.orm = services.orm;
+        this.orm = usePlugin(ORM);
         this.store = services["mail.store"];
-        this.composer = services["mail.composer"];
     }
 
     /**
      * Returns list of supported delimiters, each supported
-     * delimiter is in an array [a, b, c] where:
+     * delimiter is in an array [a, b] where:
      * - a: chars to trigger
-     * - b: (optional) if set, the exact position in composer text input to allow using this delimiter
-     * - c: (optional) if set, this is the minimum amount of extra char after delimiter to allow using this delimiter
+     * - b: (optional) if set, the exact position in the composer text node to allow using this delimiter
      *
      * @param {import('models').Thread} thread
-     * @returns {Array<[SuggestionDelimiter, number, number]>}
+     * @param {Readonly<Record<string, any>>} [ancestors] named ancestors of the composer, @see useAncestors
+     * @returns {Array<[SuggestionDelimiter, number?]>}
      */
-    getSupportedDelimiters(thread, env) {
-        const delimiters = [
-            [SUGGESTION_DELIMITERS.PARTNER],
-            [SUGGESTION_DELIMITERS.CANNED_RESPONSE],
-        ];
-        // the emoji plugin handles the emoji suggestions already
-        if (!this.composer.htmlEnabled) {
-            delimiters.push([SUGGESTION_DELIMITERS.EMOJI, undefined, 2]);
-        }
-        return delimiters;
+    getSupportedDelimiters(thread, ancestors) {
+        return [[SUGGESTION_DELIMITERS.PARTNER], [SUGGESTION_DELIMITERS.CANNED_RESPONSE]];
     }
 
     /**
@@ -66,10 +57,6 @@ export class SuggestionService {
             case SUGGESTION_DELIMITERS.CANNED_RESPONSE:
                 await this.store.cannedReponses.fetch();
                 break;
-            case SUGGESTION_DELIMITERS.EMOJI: {
-                await emojiLoader.load();
-                break;
-            }
         }
     }
 
@@ -125,7 +112,7 @@ export class SuggestionService {
     }
 
     searchCannedResponseSuggestions(cleanedSearchTerm) {
-        const cannedResponses = Object.values(this.store["mail.canned.response"].records).filter(
+        const cannedResponses = [...this.store["mail.canned.response"].records.values()].filter(
             (cannedResponse) => normalize(cannedResponse.source).includes(cleanedSearchTerm)
         );
         const sortFunc = (c1, c2) => {
@@ -152,21 +139,6 @@ export class SuggestionService {
         return {
             type: "mail.canned.response",
             suggestions: cannedResponses.sort(sortFunc),
-        };
-    }
-
-    searchEmojisSuggestions(cleanedSearchTerm) {
-        let emojis = [];
-        if (emojiLoader.loaded && cleanedSearchTerm) {
-            emojis = fuzzyLookup(
-                cleanedSearchTerm,
-                emojiLoader.emojis,
-                (emoji) => emoji.shortcodes
-            );
-        }
-        return {
-            type: "emoji",
-            suggestions: emojis,
         };
     }
 
@@ -198,8 +170,6 @@ export class SuggestionService {
             }
             case SUGGESTION_DELIMITERS.CANNED_RESPONSE:
                 return this.searchCannedResponseSuggestions(cleanedSearchTerm);
-            case SUGGESTION_DELIMITERS.EMOJI:
-                return this.searchEmojisSuggestions(cleanedSearchTerm);
         }
         return {
             type: undefined,
@@ -208,7 +178,7 @@ export class SuggestionService {
     }
 
     searchRoleSuggestions(cleanedSearchTerm) {
-        const roles = Object.values(this.store["res.role"].records).filter((role) =>
+        const roles = [...this.store["res.role"].records.values()].filter((role) =>
             normalize(role.name).includes(cleanedSearchTerm)
         );
         const sortFunc = (r1, r2) => {
@@ -255,7 +225,7 @@ export class SuggestionService {
      * @param {import("models").Thread} [options.thread]
      */
     getPartnerSuggestions({ composerType, thread } = {}) {
-        return Object.values(this.store["res.partner"].records).filter((partner) =>
+        return [...this.store["res.partner"].records.values()].filter((partner) =>
             this.isPartnerSuggestionValid(partner, {
                 composerType,
                 thread,
@@ -298,7 +268,7 @@ export class SuggestionService {
     }
 
     /**
-     * @param {[import("models").Persona | import("@mail/core/common/store_service").SpecialMention]} [partners]
+     * @param {[import("models").Persona | import("@mail/core/common/store_plugin").SpecialMention]} [partners]
      * @param {String} [searchTerm]
      * @param {import("models").Thread} thread
      * @returns {[import("models").Persona]}
@@ -339,7 +309,7 @@ export class SuggestionService {
 }
 
 export const suggestionService = {
-    dependencies: ["orm", "mail.store", "mail.composer"],
+    dependencies: ["mail.store"],
     /**
      * @param {import("@web/env").OdooEnv} env
      * @param {import("services").ServiceFactories} services

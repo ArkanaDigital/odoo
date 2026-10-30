@@ -236,13 +236,16 @@ export class CustomizeWebsitePlugin extends Plugin {
     }
     reloadBundles = debounce(this._reloadBundles.bind(this), 0);
     async _reloadBundles() {
-        const bundles = await rpc("/website/theme_customize_bundle_reload");
+        const { font_urls: fontURLs = [], ...bundles } = await rpc(
+            "/website/theme_customize_bundle_reload"
+        );
+        const documents = [this.document, this.config.extraPreviewDocument].filter(Boolean);
         const allLinksIframeEls = [];
         const proms = [];
-        const createLinksProms = (bundleURLs, insertionEl) => {
+        const createLinksProms = (bundleURLs, insertionEl, document, position = "afterend") => {
             const newLinkEls = [];
             for (const url of bundleURLs) {
-                const linkEl = this.document.createElement("link");
+                const linkEl = document.createElement("link");
                 linkEl.setAttribute("type", "text/css");
                 linkEl.setAttribute("rel", "stylesheet");
                 linkEl.setAttribute("href", `${url}#t=${new Date().getTime()}`); // Ensures that the css will be reloaded.
@@ -255,15 +258,27 @@ export class CustomizeWebsitePlugin extends Plugin {
                 );
             }
             for (const el of newLinkEls) {
-                insertionEl.insertAdjacentElement("afterend", el);
+                insertionEl.insertAdjacentElement(position, el);
             }
         };
-        for (const [bundleName, bundleURLs] of Object.entries(bundles)) {
-            const selector = `link[href*="${bundleName}"]`;
-            const linksIframeEls = this.document.querySelectorAll(selector);
-            if (linksIframeEls.length) {
-                allLinksIframeEls.push(...linksIframeEls);
-                createLinksProms(bundleURLs, linksIframeEls[linksIframeEls.length - 1]);
+        for (const document of documents) {
+            const fontLinkEls = document.head.querySelectorAll(
+                'link[rel="stylesheet"][href^="https://fonts.googleapis.com/css"], ' +
+                    'link[rel="stylesheet"][href*="/google-font-"]'
+            );
+            allLinksIframeEls.push(...fontLinkEls);
+            createLinksProms(fontURLs, document.head, document, "beforeend");
+            for (const [bundleName, bundleURLs] of Object.entries(bundles)) {
+                const selector = `link[href*="${bundleName}"]`;
+                const linksIframeEls = document.querySelectorAll(selector);
+                if (linksIframeEls.length) {
+                    allLinksIframeEls.push(...linksIframeEls);
+                    createLinksProms(
+                        bundleURLs,
+                        linksIframeEls[linksIframeEls.length - 1],
+                        document
+                    );
+                }
             }
         }
         await Promise.all(proms).then(() => {
@@ -431,7 +446,7 @@ export class SwitchThemeAction extends BuilderAction {
         const save = await new Promise((resolve) => {
             this.services.dialog.add(ConfirmationDialog, {
                 body: _t(
-                    "Changing theme requires to leave the editor. This will save all your changes, are you sure you want to proceed? Be careful that changing the theme will reset all your color customizations."
+                    "Changing the theme requires leaving the editor. This will save all your changes. Are you sure you want to proceed? Be aware that changing the theme will reset some layout, color, and style customizations."
                 ),
                 confirm: () => resolve(true),
                 cancel: () => resolve(false),

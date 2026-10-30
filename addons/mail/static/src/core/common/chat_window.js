@@ -1,13 +1,13 @@
-import { useSubEnv } from "@web/owl2/utils";
 import { ActionList } from "@mail/core/common/action_list";
 import { Composer } from "@mail/core/common/composer";
 import { DiscussAvatar } from "@mail/core/common/discuss_avatar";
 import { Thread } from "@mail/core/common/thread";
 import { AutoresizeInput } from "@mail/core/common/autoresize_input";
 import { CountryFlag } from "@mail/core/common/country_flag";
+import { MessageHighlightPlugin } from "@mail/core/common/message_highlight_plugin";
 import { RenameThreadPlugin } from "@mail/core/common/rename_thread_plugin";
 import { useThreadActions } from "@mail/core/common/thread_actions";
-import { useHover, useMessageScrolling } from "@mail/utils/common/hooks";
+import { useHover } from "@mail/utils/common/hooks";
 import { isEventHandled } from "@web/core/utils/misc";
 
 import {
@@ -24,8 +24,10 @@ import {
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { localization } from "@web/core/l10n/localization";
 import { _t } from "@web/core/l10n/translation";
+import { UIPlugin } from "@web/core/ui/ui_plugin";
 import { useBackButton, useService } from "@web/core/utils/hooks";
 import { Typing } from "@mail/discuss/typing/common/typing";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 import { getActiveHotkey } from "@web/core/hotkeys/hotkey_utils";
 import { isMobileOS } from "@web/core/browser/feature_detection";
 
@@ -49,29 +51,29 @@ export class ChatWindow extends Component {
 
     setup() {
         super.setup(...arguments);
+        this.ancestors = useAncestors({ inChatWindow: true });
         this.store = useService("mail.store");
         this.props = useProps({
             chatWindow: t.instanceOf(this.store.ChatWindow),
             right: t.number().optional(),
         });
-        useSubEnv({ inChatWindow: true });
-        this.messageHighlight = useMessageScrolling({ thread: () => this.channel?.thread });
         providePlugins([RenameThreadPlugin]);
+        providePlugins([MessageHighlightPlugin], { thread: () => this.channel?.thread });
         this.editingName = usePlugin(RenameThreadPlugin).editingName;
         this.state = proxy({
             actionsMenuOpened: false,
             jumpThreadPresent: 0,
             editingGuestName: false,
         });
-        this.ui = useService("ui");
+        this.ui = usePlugin(UIPlugin);
         this.chatWindowContentRef = signal.ref(HTMLDivElement);
         this.threadActions = useThreadActions({ thread: () => this.channel?.thread });
         this.quickActionsList = computed(() =>
-            this.threadActions.partition.quick.slice(0, this.ui.isSmall ? 2 : 4).reverse()
+            this.threadActions.partition.quick.slice(0, this.ui.isSmall() ? 2 : 4).reverse()
         );
         this.dropdownActionsList = computed(() => {
             const partition = this.threadActions.partition;
-            const quickInDropdown = partition.quick.slice(this.ui.isSmall ? 2 : 4);
+            const quickInDropdown = partition.quick.slice(this.ui.isSmall() ? 2 : 4);
             return [quickInDropdown, partition.other, ...partition.group];
         });
         this.actionsMenuButtonHover = useHover(this.actionsMenuButtonRef);
@@ -79,9 +81,11 @@ export class ChatWindow extends Component {
         this.isMobileOS = isMobileOS();
         this.selfGuestName = computed(() => this.store.self_guest?.name);
         this.channelDisplayName = computed(() => this.props.chatWindow.channel?.displayName);
-        useSubEnv({ messageHighlight: this.messageHighlight });
         useBackButton(() => this.close());
     }
+
+    /** @type {import("@mail/core/common/action_list").GetActionComponent} */
+    getActionComponent() {}
 
     get autofocusComposer() {
         if (this.isMobileOS || this.channel.composerDisabled || this.channel.composerHidden) {
@@ -102,8 +106,8 @@ export class ChatWindow extends Component {
         return (
             partition.group.length > 0 ||
             partition.other.length > 0 ||
-            (this.ui.isSmall && partition.quick.length > 2) ||
-            (!this.ui.isSmall && partition.quick.length > 3)
+            (this.ui.isSmall() && partition.quick.length > 2) ||
+            (!this.ui.isSmall() && partition.quick.length > 3)
         );
     }
 
@@ -113,8 +117,8 @@ export class ChatWindow extends Component {
 
     get attClass() {
         return {
-            "w-100 h-100 o-mobile": this.ui.isSmall,
-            "o-rounded-bubble border border-dark o-border-opacity-7_5 mb-2": !this.ui.isSmall,
+            "w-100 h-100 o-mobile": this.ui.isSmall(),
+            "mb-2": !this.ui.isSmall(),
             "o-highlighted": this.props.chatWindow.highlighted,
         };
     }
@@ -127,17 +131,29 @@ export class ChatWindow extends Component {
         };
     }
 
+    /** Whether an extra line is shown below the display name in the header. */
+    get hasNameSubline() {
+        return false;
+    }
+
+    get displayNameFontSizeClass() {
+        if (this.hasNameSubline) {
+            return this.ui.isSmall() ? "fs-5" : "fs-6";
+        }
+        return this.ui.isSmall() ? "fs-4" : "fs-5";
+    }
+
     get style() {
         const textDirection = localization.direction;
         const offsetFrom = textDirection === "rtl" ? "left" : "right";
-        const visibleOffset = this.ui.isSmall ? 0 : this.props.right;
+        const visibleOffset = this.ui.isSmall() ? 0 : this.props.right;
         const oppositeFrom = offsetFrom === "right" ? "left" : "right";
         return `${offsetFrom}: ${visibleOffset}px; ${oppositeFrom}: auto;`;
     }
 
     onKeydown(ev) {
-        if (ev.key === "Escape" && this.threadActions.activeAction) {
-            this.threadActions.activeAction.actionPanelClose();
+        if (ev.key === "Escape" && this.threadActions.panelAction) {
+            this.threadActions.panelAction.closePanel();
             ev.stopPropagation();
             return;
         }
@@ -179,7 +195,7 @@ export class ChatWindow extends Component {
 
     onClickHeader(ev) {
         if (
-            this.ui.isSmall ||
+            this.ui.isSmall() ||
             this.editingName() ||
             this.props.chatWindow.actionsDisabled ||
             isEventHandled(ev, "Action.onSelected")

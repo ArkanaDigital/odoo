@@ -1,4 +1,4 @@
-import { Component, status } from "@odoo/owl";
+import { Component, t, useProps, useScope } from "@odoo/owl";
 import { standardWidgetProps } from "@web/views/widgets/standard_widget_props";
 import { localization } from "@web/core/l10n/localization";
 import { registry } from '@web/core/registry';
@@ -7,21 +7,24 @@ import { useService } from "@web/core/utils/hooks";
 
 
 export class CrmPlsTooltip extends Component {
-    static props = {
-        close: { optional: true, type: Function },
-        dashArrayVals: {type: String},
-        low3Data: { optional: true, type: Object },
-        probability: { type: Number },
-        teamName: { optional: true, type: String },
-        top3Data: { optional: true, type: Object },
-    };
     static template = "crm.PlsTooltip";
+
+    props = useProps({
+        close: t.function().optional(),
+        dashArrayVals: t.string(),
+        low3Data: t.array().optional(),
+        probability: t.number(),
+        teamName: t.string().optional(),
+        top3Data: t.array().optional(),
+    });
 }
 
 
 export class CrmPlsTooltipButton extends Component {
     static template = "crm.PlsTooltipButton";
-    static props = {...standardWidgetProps};
+
+    props = useProps(standardWidgetProps);
+    scope = useScope();
 
     setup() {
         super.setup();
@@ -41,7 +44,7 @@ export class CrmPlsTooltipButton extends Component {
         } else {
             // Apply pending changes. They may change probability
             await this.props.record.save();
-            if (status(this) === "destroyed" || !this.props.record.resId) {
+            if (this.scope.isDestroyed() || !this.props.record.resId) {
                 return;
             }
 

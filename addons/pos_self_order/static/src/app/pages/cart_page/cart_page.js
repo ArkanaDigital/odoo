@@ -14,6 +14,8 @@ import { makeAwaitable } from "@point_of_sale/app/utils/make_awaitable_dialog";
 import { PillsSelectionPopup } from "@pos_self_order/app/components/pills_selection_popup/pills_selection_popup";
 import { ChooseComboPopup } from "@pos_self_order/app/components/choose_combo_popup/choose_combo_popup";
 import { getOrderLineValues } from "@pos_self_order/app/services/card_utils";
+import { formatCurrency } from "@web/core/currency";
+
 const { DateTime } = luxon;
 
 export class CartPage extends Component {
@@ -100,7 +102,7 @@ export class CartPage extends Component {
             return null;
         }
 
-        if (hasPayment) {
+        if (hasPayment && this.selfOrder.currentOrder.priceIncl > 0) {
             return { label: _t("Pay") };
         } else if (order.unsentLines.length) {
             return { label: _t("Order") };
@@ -125,21 +127,16 @@ export class CartPage extends Component {
         const payAfter = this.selfOrder.config.self_ordering_pay_after;
         let lines = [];
         if (this.isCheckout) {
-            const sourceLines = payAfter === "each" ? order.lines : order.unsentLines;
+            const sourceLines = payAfter === "each" ? order.getOrderlines() : order.unsentLines;
             lines = sourceLines.filter((line) => !line.combo_parent_id && !line.isTipLine());
         } else {
-            lines = order.lines.filter(
-                (l) => order.uiState.lineChanges[l.uuid] && !l.combo_parent_id && !l.isTipLine()
-            );
+            lines = order
+                .getOrderlines()
+                .filter(
+                    (l) => order.uiState.lineChanges[l.uuid] && !l.combo_parent_id && !l.isTipLine()
+                );
         }
-
-        const regularLines = [];
-        const serviceFeeLines = [];
-        for (const line of lines) {
-            (line.isServiceFeeLine() ? serviceFeeLines : regularLines).push(line);
-        }
-
-        return [...regularLines, ...serviceFeeLines];
+        return lines;
     }
 
     getLineDisplayQty(line) {
@@ -395,7 +392,8 @@ export class CartPage extends Component {
         const payload = await makeAwaitable(this.dialog, NumberPopup, {
             title: _t("Add a Tip"),
             startingValue: this.isCustomTip ? this.tipUiState.value || "" : "",
-            formatDisplayedValue: (value) => this.env.utils.formatCurrency(parseFloat(value) || 0),
+            formatDisplayedValue: (value) =>
+                formatCurrency(parseFloat(value) || 0, this.selfOrder.currency.id),
         });
         if (!payload) {
             return;
@@ -420,9 +418,8 @@ export class CartPage extends Component {
     }
 
     getLineChangeQty(line) {
-        const currentQty = line.qty;
         const lastChange = this.selfOrder.currentOrder.uiState.lineChanges[line.uuid];
-        return !lastChange ? currentQty : currentQty - lastChange.qty;
+        return !lastChange ? line.qty : line.getPendingQtyDelta();
     }
 
     async pay() {
@@ -433,12 +430,18 @@ export class CartPage extends Component {
             config.use_presets && presets.length > 1
                 ? this.selfOrder.currentOrder.preset_id?.service_at
                 : config.self_ordering_service_mode;
+        const isTableService = orderingMode === "table" || orderingMode === "dynamic_qr";
         const useTiming =
             config.use_presets &&
             presets.length > 0 &&
             this.selfOrder.currentOrder.preset_id?.use_timing;
 
         if (this.selfOrder.rpcLoading || !this.selfOrder.verifyCart()) {
+            return;
+        }
+
+        const canProceed = await this.selfOrder.canProceedToPay();
+        if (!canProceed) {
             return;
         }
 
@@ -464,11 +467,12 @@ export class CartPage extends Component {
             zip: partner.zip,
         });
 
-        if (!isValidRequiredInfo && orderingMode !== "table") {
+        if (!isValidRequiredInfo && !isTableService) {
             let result = null;
 
             // Show timing selection popup only if preset uses timing
             if (useTiming) {
+                await this.selfOrder.syncPresetSlotAvaibility(order.preset_id);
                 result = await makeAwaitable(this.dialog, PillsSelectionPopup, {
                     options: this.presetTimingOptions,
                     title: _t("Select a hour"),

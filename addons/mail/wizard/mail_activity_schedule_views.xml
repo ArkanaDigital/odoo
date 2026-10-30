@@ -6,21 +6,16 @@
             <field name="model">mail.activity.schedule</field>
             <field name="arch" type="xml">
                 <form>
-                    <field name="activity_category" invisible="1"/>
-                    <field name="company_id" invisible="1"/>
-                    <field name="has_error" invisible="1"/>
-                    <field name="has_warning" invisible="1"/>
-                    <field name="plan_has_user_on_demand" invisible="1"/>
-                    <field name="res_ids" invisible="1"/>
-                    <field name="plan_available_ids" invisible="1"/>
+                    <field name="company_id" invisible="1"/> <!-- used in _get_plan_available_base_domain to filter plan_available_ids -->
+                    <field name="res_ids" invisible="1"/> <!-- used by action_schedule_activities/_get_applied_on_records to resolve target records -->
+                    <field name="plan_available_ids" invisible="1"/> <!-- drives invisible on plan_id widget and feeds its domain -->
                     <sheet class="o_mail_activity_schedule_wizard">
                         <field name="plan_id"
                             widget="badges_many2one"
                             invisible="not plan_available_ids"
                             nolabel="1"
-                            classname="pb-2"
+                            class="d-block"
                         />
-                        <br/>
                         <field name="activity_type_id"
                             class="mb-3"
                             domain="[('id', 'in', activity_type_available_ids)]"
@@ -92,6 +87,11 @@
                                 <i class="oi" data-icon="label" title="Summary"/>
                                 <field name="summary" nolabel="1" class="w-100" placeholder="Summary"/>
                             </div>
+                            <div class="o_outlined d-flex align-items-baseline mb-2 gap-2"
+                                 invisible="activity_category != 'phonecall' or is_batch_mode or not res_model">
+                                <i class="oi oi-filled" data-icon="phone" title="Phone number"/>
+                                <field name="phone" nolabel="1" class="w-100" placeholder="Phone number"/>
+                            </div>
                             <div class="o_outlined d-flex align-items-baseline mb-2 gap-2">
                                 <i class="oi oi-filled" data-icon="calendar_today" title="Due date"/>
                                 <field name="date_deadline" nolabel="1" class="w-100" placeholder="Due on"/>
@@ -99,7 +99,7 @@
                             <div class="o_outlined d-flex align-items-center mb-2 gap-2">
                                 <i class="oi oi-filled mb-2" data-icon="person" title="Assigned to"/>
                                 <field name="activity_user_id" widget="many2one_avatar_user" nolabel="1" class="w-100"
-                                    placeholder="Assigned to" domain="[('share', '=', False)]"
+                                    placeholder="Assigned to"
                                     options="{'no_create': True}" required="not activity_role_id and not res_model"/>
                             </div>
                             <div class="o_outlined d-flex align-items-center mb-2 gap-2">

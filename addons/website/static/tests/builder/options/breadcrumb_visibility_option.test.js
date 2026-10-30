@@ -1,10 +1,11 @@
 import { redo, undo } from "@html_editor/../tests/_helpers/user_actions";
 import { beforeEach, describe, expect, test } from "@odoo/hoot";
 import { queryOne, waitFor } from "@odoo/hoot-dom";
-import { contains, onRpc, patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { contains, onRpc } from "@web/../tests/web_test_helpers";
 import { defineWebsiteModels, setupWebsiteBuilder } from "../website_helpers";
 import { Builder } from "@html_builder/builder";
 import { useService } from "@web/core/utils/hooks";
+import { patch } from "@web/core/utils/patch";
 
 defineWebsiteModels();
 
@@ -82,7 +83,7 @@ test("undo/redo Breadcrumb visibility options", async () => {
 
 describe("save breadcrumb visibility", () => {
     beforeEach(async () => {
-        patchWithCleanup(Builder.prototype, {
+        patch(Builder.prototype, {
             setup() {
                 super.setup();
                 const metadata = useService("website").currentWebsite.metadata;
@@ -105,8 +106,8 @@ describe("save breadcrumb visibility", () => {
             return true;
         });
         await contains(".o-overlay-container [data-action-value='overTheContent']").click();
-        await contains(".o-snippets-top-actions button:contains(Save)").click();
-        expect(".o-website-builder_sidebar").not.toHaveClass("o_builder_sidebar_open");
+        await contains(".o_hb_snippets_top_actions button:contains(Save)").click();
+        expect(".o_website_builder_sidebar").not.toHaveClass("o_builder_sidebar_open");
         expect.verifySteps(["save breadcrumbs visibility"]);
     });
 
@@ -115,8 +116,8 @@ describe("save breadcrumb visibility", () => {
             throw "we only preview, it should not be saved";
         });
         await contains(".o-overlay-container [data-action-value='overTheContent']").hover();
-        await contains(".o-snippets-top-actions button:contains(Save)").click();
-        expect(".o-website-builder_sidebar").not.toHaveClass("o_builder_sidebar_open");
+        await contains(".o_hb_snippets_top_actions button:contains(Save)").click();
+        expect(".o_website_builder_sidebar").not.toHaveClass("o_builder_sidebar_open");
     });
 });
 
@@ -138,7 +139,7 @@ test("Breadcrumb over the content displays background and text color options", a
     await waitFor("[data-label='Text Color']");
     expect("[data-label='Background']").toBeVisible();
     expect("[data-label='Text Color']").toBeVisible();
-    await contains("[data-label='Background'].hb-row-sublevel-1 .o_we_color_preview").click();
+    await contains("[data-label='Background'].o_hb_row_sublevel_1 .o_we_color_preview").click();
     await contains("[data-color='600']").click();
     const precedentBreadcrumb = queryOne(":iframe .o_page_breadcrumb").outerHTML;
     await contains("[data-label='Breadcrumb Position'] .dropdown").click();

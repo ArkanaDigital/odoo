@@ -2,16 +2,16 @@ import { addLink, inlineElement, parseAndTransform } from "@mail/utils/common/fo
 import { useSequential } from "@mail/utils/common/hooks";
 import { createElementFromContent, getInnerHtml } from "@mail/utils/common/html";
 import {
-    contains,
+    contains as mailContains,
     defineMailModels,
-    insertText,
     openDiscuss,
     start,
     startServer,
-} from "./mail_test_helpers";
+} from "@mail/../tests/mail_test_helpers";
+import { insertTextInComposer } from "@mail/../tests/mail_test_helpers_composer";
 
 import { describe, expect, test } from "@odoo/hoot";
-import { press } from "@odoo/hoot-dom";
+import { press, waitFor } from "@odoo/hoot-dom";
 import { markup } from "@odoo/owl";
 
 describe.current.tags("desktop");
@@ -131,7 +131,7 @@ test("addLink: linkify inside text node (1 occurrence)", async () => {
     fragment.appendChild(div);
     div.innerHTML = linkified;
     expect(div).toHaveText("some text https://somelink.com");
-    await contains("a", { target: div });
+    await mailContains("a", { target: div });
     expect(div.querySelector(":scope a")).toHaveText("https://somelink.com");
 });
 
@@ -160,9 +160,9 @@ test("url", async () => {
     await openDiscuss(channelId);
     // see: https://www.ietf.org/rfc/rfc1738.txt
     const messageBody = "https://odoo.com?test=~^|`{}[]#";
-    await insertText(".o-mail-Composer-input", messageBody);
+    await insertTextInComposer(".o-mail-Composer", messageBody);
     await press("Enter");
-    await contains(`.o-mail-Message a:contains(${messageBody})`);
+    await waitFor(`.o-mail-Message a:contains(${messageBody}):count(1)`);
 });
 
 test("url with comma at the end", async () => {
@@ -171,10 +171,10 @@ test("url with comma at the end", async () => {
     await start();
     await openDiscuss(channelId);
     const messageBody = "Go to https://odoo.com, it's great!";
-    await insertText(".o-mail-Composer-input", messageBody);
+    await insertTextInComposer(".o-mail-Composer", messageBody);
     await press("Enter");
-    await contains(".o-mail-Message a:contains(https://odoo.com)");
-    await contains(`.o-mail-Message-content:contains(${messageBody}`);
+    await waitFor(".o-mail-Message a:contains(https://odoo.com):count(1)");
+    await waitFor(`.o-mail-Message-content:contains("${messageBody}"):count(1)`);
 });
 
 test("url with dot at the end", async () => {
@@ -183,10 +183,10 @@ test("url with dot at the end", async () => {
     await start();
     await openDiscuss(channelId);
     const messageBody = "Go to https://odoo.com. It's great!";
-    await insertText(".o-mail-Composer-input", messageBody);
+    await insertTextInComposer(".o-mail-Composer", messageBody);
     await press("Enter");
-    await contains(".o-mail-Message a:contains(https://odoo.com)");
-    await contains(`.o-mail-Message-content:contains(${messageBody})`);
+    await waitFor(".o-mail-Message a:contains(https://odoo.com):count(1)");
+    await waitFor(`.o-mail-Message-content:contains("${messageBody}"):count(1)`);
 });
 
 test("url with semicolon at the end", async () => {
@@ -195,10 +195,10 @@ test("url with semicolon at the end", async () => {
     await start();
     await openDiscuss(channelId);
     const messageBody = "Go to https://odoo.com; it's great!";
-    await insertText(".o-mail-Composer-input", messageBody);
+    await insertTextInComposer(".o-mail-Composer", messageBody);
     await press("Enter");
-    await contains(".o-mail-Message a:contains(https://odoo.com)");
-    await contains(`.o-mail-Message-content:contains(${messageBody})`);
+    await waitFor(".o-mail-Message a:contains(https://odoo.com):count(1)");
+    await waitFor(`.o-mail-Message-content:contains("${messageBody}"):count(1)`);
 });
 
 test("url with ellipsis at the end", async () => {
@@ -207,10 +207,10 @@ test("url with ellipsis at the end", async () => {
     await start();
     await openDiscuss(channelId);
     const messageBody = "Go to https://odoo.com... it's great!";
-    await insertText(".o-mail-Composer-input", messageBody);
+    await insertTextInComposer(".o-mail-Composer", messageBody);
     await press("Enter");
-    await contains(".o-mail-Message a:contains(https://odoo.com)");
-    await contains(`.o-mail-Message-content:contains(${messageBody})`);
+    await waitFor(".o-mail-Message a:contains(https://odoo.com):count(1)");
+    await waitFor(`.o-mail-Message-content:contains("${messageBody}"):count(1)`);
 });
 
 test("url with number in subdomain", async () => {
@@ -219,10 +219,10 @@ test("url with number in subdomain", async () => {
     await start();
     await openDiscuss(channelId);
     const messageBody = "https://www.45017478-master-all.runbot134.odoo.com/odoo";
-    await insertText(".o-mail-Composer-input", messageBody);
+    await insertTextInComposer(".o-mail-Composer", messageBody);
     await press("Enter");
-    await contains(
-        ".o-mail-Message a:contains(https://www.45017478-master-all.runbot134.odoo.com/odoo)"
+    await waitFor(
+        ".o-mail-Message a:contains(https://www.45017478-master-all.runbot134.odoo.com/odoo):count(1)"
     );
 });
 
@@ -262,4 +262,29 @@ test("inlineElement copies rel and target attributes from links", () => {
     ).toBe(
         '<a href="https://odoo.com" target="_blank" rel="noreferrer noopener">https://odoo.com</a>'
     );
+});
+
+test("inlineElement keeps the text formats of the composer", () => {
+    expect(
+        inlineHtml(
+            markup`<p><strong style="color: red;">bold</strong> <em>italic</em> <u>underline</u> <s>strike</s> <code class="o_inline_code" id="c">code</code></p>`
+        ).toString()
+    ).toBe(
+        '<strong>bold</strong> <em>italic</em> <u>underline</u> <s>strike</s> <code class="o_inline_code">code</code>'
+    );
+    expect(
+        inlineHtml(
+            markup`<strong>a <em>b</em> <a href="https://odoo.com">Odoo</a> <a href="#" class="o_mail_redirect">@Bob</a></strong>`
+        ).toString()
+    ).toBe(
+        '<strong>a <em>b</em> <a href="https://odoo.com">https://odoo.com</a> <a href="#" class="o_mail_redirect">@Bob</a></strong>'
+    );
+});
+
+test("inlineHtml keeps only the text of JS-handled links", () => {
+    expect(
+        inlineHtml(
+            markup`<a href="#" data-oe-type="highlight" data-oe-id="1">Pinned.</a> <a href="#" data-oe-type="pin-menu">See all.</a> <a href="/mail/view?model=res.partner&amp;res_id=3" data-oe-model="res.partner" data-oe-id="3">Mitchell</a>`
+        ).toString()
+    ).toBe("Pinned. See all. Mitchell");
 });

@@ -1,7 +1,8 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from odoo import Command
-from odoo.tests import HttpCase, tagged
+from odoo.tests import HttpCase, new_test_user, tagged
+from odoo.tools import file_open
 
 from odoo.addons.product.tests.common import ProductVariantsCommon
 from odoo.addons.website_sale.tests.common import WebsiteSaleCommon
@@ -72,6 +73,40 @@ class TestWebsiteSaleProductPage(HttpCase, ProductVariantsCommon, WebsiteSaleCom
             login=None,
         )
 
+    def test_portal_user_can_upload_attachment_on_product_review(self):
+        """
+        A portal user must be able to attach a file when posting a
+        product review once reviews are enabled for the current website.
+        """
+        portal_user = new_test_user(
+            self.env, login='product_review_portal', groups='base.group_portal',
+            password='product_review_portal',
+        )
+        generic_view = self.env['ir.ui.view'].with_context(active_test=False).search([
+            ('key', '=', 'website_sale.product_comment'),
+        ], limit=1)
+        generic_view.with_context(website_id=self.website.id).write({'active': True})
+
+        self.product_template_sofa.website_published = True
+
+        self.authenticate(portal_user.login, 'product_review_portal')
+        with file_open("addons/web/__init__.py") as file:
+            response = self.url_open(
+                url="/mail/attachment/upload",
+                data={
+                    "csrf_token": self.csrf_token(),
+                    "thread_id": self.product_template_sofa.id,
+                    "thread_model": "product.template",
+                },
+                files={"ufile": file},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertNotIn('error', result, result.get('error'))
+        attachment_id = result['data']['attachment_id']
+        self.assertTrue(self.env['ir.attachment'].sudo().browse(attachment_id).exists())
+
     def test_product_pricelist_qty_change(self):
         """Check that pricelist discounts based on product quantity display when applicable."""
         self.pricelist = self._enable_pricelists()
@@ -79,9 +114,9 @@ class TestWebsiteSaleProductPage(HttpCase, ProductVariantsCommon, WebsiteSaleCom
             Command.clear(),
             Command.create({
                 "categ_id": self.product_category.id,
-                "compute_price": "percentage",
+                "compute_price": "discount",
                 "min_quantity": 5.0,
-                "percent_price": 50.0,
+                "price_discount": 50.0,
             }),
         ]
         self.start_tour(self.product.website_url, "website_sale.product_pricelist_qty_change")
@@ -112,3 +147,11 @@ class TestWebsiteSaleProductPage(HttpCase, ProductVariantsCommon, WebsiteSaleCom
         )
         self.assertTrue(product)
         self.assertTrue(product.website_published)
+
+    def test_open_shop_on_product_with_no_variants(self):
+        self.env['res.config.settings'].sudo().create({
+            "group_show_uom_price": True,
+        }).execute()
+        self.product_template_sofa.product_variant_ids.unlink()
+        response = self.url_open("/shop")
+        self.assertEqual(response.status_code, 200)

@@ -29,7 +29,7 @@ from odoo.addons.mail.models.mail_message import MailMessage
 from odoo.addons.mail.models.mail_notification import MailNotification
 from odoo.addons.mail.models.res_users import ResUsers
 from odoo.addons.mail.tools.discuss import Store
-from odoo.tests import common, RecordCapturer, new_test_user
+from odoo.tests import common, RecordCapturer, new_test_user, tagged
 from odoo.tools import LazyTranslate, mute_logger, mail as mail_lib
 from odoo.tools.mail import email_normalize, email_split_and_format_normalize, formataddr
 from odoo.tools.misc import formatLang, format_amount
@@ -243,8 +243,9 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
                            return_path=return_path, extra=extra,
                            email_from=email_from, msg_id=msg_id,
                            **kwargs)
+        save_original = kwargs.pop('save_original', False)
         # In real use case, fetched mail processing is executed with administrative right.
-        self.env['mail.thread'].with_user(with_user or self.env.user).sudo().message_process(model, mail)
+        self.env['mail.thread'].with_user(with_user or self.env.user).sudo().message_process(model, mail, save_original=save_original)
         return self.env[target_model].search([(target_field, '=', subject)])
 
     def _gateway_mail_reply(self, template, mail=None, email=None,
@@ -1240,8 +1241,8 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
             self.assertEqual(tracking.old_value_char, (old_value and old_value.display_name) or '')
             self.assertEqual(tracking.new_value_char, (new_value and new_value.display_name) or '')
         elif value_type == 'monetary':
-            currency = (additional_info or {})['currency']
-            self.assertEqual(tracking.field_info['currency_id'], currency.id)
+            currency = (additional_info or {}).get('currency')
+            self.assertEqual(tracking.field_info['currency_id'], currency.id if currency else False)
             self.assertEqual(tracking.old_value_float, old_value)
             self.assertEqual(tracking.new_value_float, new_value)
         else:
@@ -1254,6 +1255,13 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
                 self.assertEqual(tracking_field_info[key], val)
 
     def assertTrackingValueInBody(self, tracking, value_type, old_value, new_value, additional_info=None, message_context=None):
+        self.assertIsNotNone(
+            self.env.lang,
+            "Can't check tracking value without a lang configured in the context"
+            "\n\nSeveral field types are localised for tracking, tracking"
+            " assertions need to know the original locale to format correctly"
+            " before checking",
+        )
         input_old_value, input_new_value = tracking[1], tracking[2]
         msg_base = f'Tracking: {tracking[0]} ({value_type})'
         TrackingMixin = self.env['mail.track.mixin']
@@ -1279,15 +1287,19 @@ class MockEmail(common.BaseCase, MockSmtplibCase):
             old_value = TrackingMixin._format_tracking_datetime(old_value) if old_value else 'None'
             new_value = TrackingMixin._format_tracking_datetime(new_value) if new_value is not False else 'None'
         elif value_type == 'float':
-            old_value = formatLang(TrackingMixin.env, old_value) if old_value is not False else '0.00'
-            new_value = formatLang(TrackingMixin.env, new_value) if new_value is not False else '0.00'
+            old_value = formatLang(TrackingMixin.env, old_value or 0)
+            new_value = formatLang(TrackingMixin.env, new_value or 0)
         elif value_type == 'integer':
             old_value = formatLang(TrackingMixin.env, old_value, rounding_unit='units') if old_value is not False else '0'
             new_value = formatLang(TrackingMixin.env, new_value, rounding_unit='units') if new_value is not False else '0'
         elif value_type == 'monetary':
-            currency = (additional_info or {})['currency']
-            old_value = format_amount(TrackingMixin.env, float(old_value or 0.0), currency, trailing_zeroes=True)
-            new_value = format_amount(TrackingMixin.env, float(new_value or 0.0), currency, trailing_zeroes=True)
+            currency = (additional_info or {}).get('currency')
+            if not currency:
+                old_value = formatLang(TrackingMixin.env, old_value or 0)
+                new_value = formatLang(TrackingMixin.env, new_value or 0)
+            else:
+                old_value = format_amount(TrackingMixin.env, float(old_value or 0.0), currency, trailing_zeroes=True)
+                new_value = format_amount(TrackingMixin.env, float(new_value or 0.0), currency, trailing_zeroes=True)
             # TDE to check: &nbsp; versus \xa0
             old_value = old_value.replace('\xa0', ' ')
             new_value = new_value.replace('\xa0', ' ')
@@ -1503,6 +1515,7 @@ class MailCase(common.TransactionCase, MockEmail, BusCase):
              'share': partner.partner_share,
              'type': 'user' if partner.main_user_id and partner.main_user_id._is_internal() else 'customer',
              'uid': partner.main_user_id.id,
+             'uids': partner.user_ids.sorted(lambda user: (user.share, user.id)).ids,
              'ushare': all(user.share for user in partner.user_ids) if partner.user_ids else False,
             } for partner in partners
         ]
@@ -1914,6 +1927,7 @@ class MailCase(common.TransactionCase, MockEmail, BusCase):
             self.assertEqual(recipient_notif.notification_type, rinfo['type'])
 
 
+@tagged('MailCommon')
 class MailCommon(MailCase):
     """ Almost-void class definition setting the savepoint case + mock of mail.
     Used mainly for class inheritance in other applications and test modules. """
@@ -2015,15 +2029,20 @@ class MailCommon(MailCase):
         cls._mc_enabled = True
 
         # new companies
-        cls.company_2 = cls.env['res.company'].create({
+        cls.company_2 = cls.env.ref('base.test_company_template')
+        # TODO add check for potential double use of test_company_template
+        cls.env.user.company_ids |= cls.company_2
+
+        cls.company_2.write({
             'country_id': cls.env.ref('base.ca').id,
             'currency_id': cls.env.ref('base.CAD').id,
             'email': 'company_2@test.example.com',
             'name': 'Company 2',
         })
-        cls.company_3 = cls.env['res.company'].create({
+        cls.company_3 = cls.env.ref('base.test_company')
+
+        cls.company_3.write({
             'country_id': cls.env.ref('base.be').id,
-            'currency_id': cls.env.ref('base.EUR').id,
             'email': 'company_3@test.example.com',
             'name': 'Company 3',
         })

@@ -31,6 +31,46 @@ class TestActivityCommon(ActivityScheduleCase):
         ])
 
 
+@tests.tagged('mail_activity', 'phone_validation')
+class TestActivityPhoneInternals(TestActivityCommon):
+
+    def test_call_activity_phone_uses_declared_phone_field(self):
+        record = self.test_record
+        record.name = '0498707070'
+
+        with patch.object(
+            self.env.registry[record._name],
+            '_phone_get_number_fields',
+            autospec=True,
+            return_value=['name'],
+        ):
+            activity = record.activity_schedule('mail.mail_activity_data_call')
+
+        self.assertNotIn('phone', record)
+        self.assertEqual(activity.phone, record.name)
+
+    def test_call_activity_phone_falls_back_to_partner(self):
+        partner = self.env['res.partner'].create({
+            'name': 'Belgian partner',
+            'country_id': self.env.ref('base.be').id,
+            'phone': '0498707070',
+        })
+        record = self.test_record
+        record.name = 'Partner-only record'
+
+        with patch.object(
+            self.env.registry[record._name],
+            '_mail_get_partners',
+            autospec=True,
+            return_value={record.id: partner},
+        ):
+            activity = record.activity_schedule('mail.mail_activity_data_call')
+
+        self.assertFalse(record._phone_get_number_fields())
+        self.assertEqual(partner.phone_formatted, '+32 498 70 70 70')
+        self.assertEqual(activity.phone, partner.phone_formatted)
+
+
 @tests.tagged('mail_activity')
 class TestActivityRights(TestActivityCommon):
 
@@ -214,7 +254,7 @@ class TestActivityRights(TestActivityCommon):
 
         # cannot read activities if no access to the document
         with self.assertRaises(exceptions.AccessError):
-            test_activity.with_user(self.user_employee).read(['summary'])
+            test_activity.with_user(self.user_employee).fetch(['summary'])
 
         # cannot search_read activities if no access to the document
         result = self.env['mail.activity'].with_user(self.user_employee).search_read(
@@ -245,7 +285,7 @@ class TestActivityRights(TestActivityCommon):
         found = self.env['mail.activity'].with_user(self.user_employee).search(
             [('id', '=', test_activity.id)])
         self.assertEqual(found, test_activity)
-        found.read(['summary'])
+        found.fetch(['summary'])
 
         # user can read_group activities assigned to him even if he has no access to the document
         read_group_result = self.env['mail.activity'].with_user(self.user_employee).formatted_read_group(

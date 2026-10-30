@@ -32,6 +32,7 @@ export class DynamicFieldPlugin extends Plugin {
                 groupId: "dynamic_field",
                 namespaces: ["compact", "expanded"],
                 commandId: "editDynamicField",
+                opensUi: true,
             },
         ],
         user_commands: [
@@ -68,6 +69,14 @@ export class DynamicFieldPlugin extends Plugin {
         normalize_processors: withSequence(11, this.normalizeQwebPlaceholders.bind(this)),
         clipboard_content_processors: withSequence(11, this.cleanQwebExpressionsForCopy.bind(this)),
         clean_for_save_processors: withSequence(11, this.cleanQwebExpressionsForSave.bind(this)),
+
+        /** Predicates */
+        is_selectable_on_click_predicates: (el) => {
+            // Select dynamic field elements on click.
+            if (this.isSelectable(el)) {
+                return true;
+            }
+        },
     };
 
     fieldTagName = "T";
@@ -81,26 +90,6 @@ export class DynamicFieldPlugin extends Plugin {
             editable: this.editable,
             className: "bg-light rounded border shadow",
         });
-
-        this.addDomListener(
-            this.editable,
-            "click",
-            (ev) => {
-                if (ev.detail === 1 && this.isSelectable(ev.target)) {
-                    this.dependencies.selection.selectElement(ev.target);
-                }
-            },
-            true
-        );
-    }
-
-    isValidTargetForDomListener(ev) {
-        return (
-            (ev.type === "click" &&
-                ev.target &&
-                closestElement(ev.target, `[${this.fieldAttribute}]`)) ||
-            super.isValidTargetForDomListener(ev)
-        );
     }
 
     updateDynamicModel(resModel) {
@@ -132,14 +121,17 @@ export class DynamicFieldPlugin extends Plugin {
 
     async editField() {
         if (!this.resModel) {
-            return this.services.notification.add(
+            this.services.notification.add(
                 _t("Oops! Select a model for this template before editing fields."),
                 { type: "danger" }
             );
+            this.dependencies.selection.focusEditable();
+            return;
         }
 
         const target = this.getPopoverTarget(true);
         if (!target) {
+            this.dependencies.selection.focusEditable();
             return;
         }
 
@@ -165,7 +157,10 @@ export class DynamicFieldPlugin extends Plugin {
                 label: initialLabel,
                 filter: this.filter.bind(this),
                 followRelation: this.followRelation.bind(this),
-                close: () => this.fieldPopover.close(),
+                close: () => {
+                    this.fieldPopover.close();
+                    this.dependencies.selection.focusEditable();
+                },
                 validate: async ({ path, label, fieldInfo }) => {
                     if (path !== initialPath) {
                         const fullPath = this.getFieldPath(target, path);
@@ -223,7 +218,10 @@ export class DynamicFieldPlugin extends Plugin {
                 resModel,
                 filter: this.filter.bind(this),
                 followRelation: this.followRelation.bind(this),
-                close: () => this.fieldPopover.close(),
+                close: () => {
+                    this.fieldPopover.close();
+                    this.dependencies.selection.focusEditable();
+                },
                 validate: async ({ path, label, fieldInfo }) => {
                     const doc = this.document;
                     doc.defaultView.focus();
@@ -307,6 +305,7 @@ export class DynamicFieldPlugin extends Plugin {
 
     isSelectable(element) {
         return (
+            element.hasAttribute(this.fieldAttribute) &&
             element.getAttribute("data-oe-expression-readable") &&
             !isContentEditable(element) &&
             this.editable.contains(element)

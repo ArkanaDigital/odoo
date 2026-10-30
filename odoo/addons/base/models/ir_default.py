@@ -50,6 +50,7 @@ class IrDefault(models.Model):
         for record in self:
             if field := record.field_id:
                 model = self.env[field.model]
+                model.check_access('create')
                 model.check_field_access(model._fields[field.name], 'write')
 
     @api.model_create_multi
@@ -69,12 +70,10 @@ class IrDefault(models.Model):
         self._check_accessible_field_id()
         return new_default
 
-    def unlink(self):
-        res = super().unlink()
-        if self:
-            # invalidate all company dependent fields since their fallback value in cache may be changed
-            self.env.invalidate_all()
-        return res
+    @api.ondelete(at_uninstall=True)
+    def _unlink_invalidate_fallbacks(self):
+        # invalidate all company dependent fields since their fallback value in cache may be changed
+        return self.env.invalidate_all
 
     @api.model
     def set(self, model_name, field_name, value, user_id=False, company_id=False, condition=False):

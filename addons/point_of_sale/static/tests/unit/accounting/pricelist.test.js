@@ -27,7 +27,7 @@ test("Nested Pricelists with different currencies", async () => {
     });
     const baseRule = store.models["product.pricelist.item"].create({
         pricelist_id: basePricelist,
-        compute_price: "formula",
+        compute_price: "discount",
         base: "list_price",
         price_discount: 0,
         price_surcharge: 10,
@@ -41,8 +41,8 @@ test("Nested Pricelists with different currencies", async () => {
     });
     const posRule = store.models["product.pricelist.item"].create({
         pricelist_id: posPricelist,
-        compute_price: "percentage",
-        percent_price: 25,
+        compute_price: "discount",
+        price_discount: 25,
         base: "pricelist",
         base_pricelist_id: basePricelist,
     });
@@ -168,8 +168,8 @@ test("Pricelist: Nested Pricelists (Pricelist of Pricelist)", async () => {
     });
     const baseRule = store.models["product.pricelist.item"].create({
         pricelist_id: basePricelist,
-        compute_price: "percentage",
-        percent_price: 10,
+        compute_price: "discount",
+        price_discount: 10,
         base: "list_price",
     });
     basePricelist.update({ item_ids: [baseRule] });
@@ -180,7 +180,7 @@ test("Pricelist: Nested Pricelists (Pricelist of Pricelist)", async () => {
     });
     const nestedRule = store.models["product.pricelist.item"].create({
         pricelist_id: nestedPricelist,
-        compute_price: "formula", // formula to use base + surcharge
+        compute_price: "discount", // discount to use base + surcharge
         base: "pricelist",
         base_pricelist_id: basePricelist,
         price_surcharge: 5,
@@ -249,4 +249,114 @@ test("Pricelist: rule targeting a product missing from the PoS is not applied gl
     const productTmpl = store.models["product.template"].get(5);
     const product = productTmpl.product_variant_ids[0];
     expect(productTmpl.getPrice(pricelist, 1, 0, false, product)).toBe(productTmpl.list_price);
+});
+
+test("Pricelist: fixed price rule still adds attribute extra price", async () => {
+    const store = await setupPosEnv();
+    const pricelist = store.models["product.pricelist"].create({
+        name: "Fixed Price Pricelist",
+    });
+
+    const productTemplate = store.models["product.template"].create({
+        name: "Test Template",
+        list_price: 100,
+    });
+    const product = store.models["product.product"].create({
+        product_tmpl_id: productTemplate,
+        lst_price: 100,
+    });
+
+    const rule = store.models["product.pricelist.item"].create({
+        pricelist_id: pricelist,
+        compute_price: "fixed",
+        fixed_price: 90,
+    });
+    pricelist.update({ item_ids: [rule] });
+
+    expect(product.getPrice(pricelist, 1, 15, false, product)).toBe(105);
+});
+
+test("Pricelist: fixed price rule targeting a specific variant only adds no_variant extra price", async () => {
+    const store = await setupPosEnv();
+    const pricelist = store.models["product.pricelist"].create({
+        name: "Fixed Price Pricelist",
+    });
+
+    const productTemplate = store.models["product.template"].create({
+        name: "Test Template",
+        list_price: 100,
+    });
+    const product = store.models["product.product"].create({
+        product_tmpl_id: productTemplate,
+        lst_price: 150, // 100 (list_price) + 50 (variant's own attribute extra)
+    });
+
+    const rule = store.models["product.pricelist.item"].create({
+        pricelist_id: pricelist,
+        product_id: product,
+        compute_price: "fixed",
+        fixed_price: 90,
+    });
+    pricelist.update({ item_ids: [rule] });
+
+    expect(product.getPrice(pricelist, 1, 15, false, product)).toBe(105);
+});
+
+test("Pricelist: fixed price with currency conversion still adds attribute extra price", async () => {
+    const store = await setupPosEnv();
+
+    const mxn = store.models["res.currency"].create({
+        name: "MXN",
+        symbol: "MX$",
+        position: "before",
+        rounding: 0.01,
+        rate: 2.0,
+        decimal_places: 2,
+    });
+
+    store.config.update({ currency_id: mxn });
+
+    const usd = store.models["res.currency"].get(1);
+    const pricelist = store.models["product.pricelist"].create({
+        name: "USD Fixed Pricelist",
+        currency_id: usd,
+    });
+    const rule = store.models["product.pricelist.item"].create({
+        pricelist_id: pricelist,
+        compute_price: "fixed",
+        fixed_price: 50,
+    });
+    pricelist.update({ item_ids: [rule] });
+
+    const productTemplate = store.models["product.template"].create({
+        name: "Test Product",
+        list_price: 100,
+    });
+    const product = store.models["product.product"].create({
+        product_tmpl_id: productTemplate,
+        lst_price: 100,
+    });
+
+    expect(product.getPrice(pricelist, 1, 10, false, product)).toBe(110);
+});
+
+test("Pricelist: rule whose pricelist is missing from the PoS does not break loading", async () => {
+    const store = await setupPosEnv();
+    const [rule] = store.models.loadConnectedData({
+        "product.pricelist.item": [
+            {
+                id: 902,
+                pricelist_id: 99997,
+                product_tmpl_id: false,
+                product_id: false,
+                categ_id: false,
+                base: "list_price",
+                compute_price: "fixed",
+                fixed_price: 5,
+                min_quantity: 0,
+            },
+        ],
+    })["product.pricelist.item"];
+
+    expect(rule.pricelist_id).toBe(undefined);
 });

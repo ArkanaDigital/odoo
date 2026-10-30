@@ -53,7 +53,7 @@ class BaseDate[T](Field[T | typing.Literal[False]]):
             case 'year_number':
                 return lambda value: value.year
             case 'quarter_number':
-                return lambda value: value.month // 4 + 1
+                return lambda value: (value.month - 1) // 3 + 1
             case 'month_number':
                 return lambda value: value.month
             case 'iso_week_number':
@@ -63,7 +63,7 @@ class BaseDate[T](Field[T | typing.Literal[False]]):
             case 'day_of_month':
                 return lambda value: value.day
             case 'day_of_week':
-                return lambda value: value.timetuple().tm_wday
+                return lambda value: value.isoweekday() % 7
             case 'hour_number' if self.type == 'datetime':
                 return lambda value: value.hour
             case 'minute_number' if self.type == 'datetime':
@@ -194,12 +194,6 @@ class Date(BaseDate[date]):
         return value.strftime(DATE_FORMAT) if value else False
 
     def convert_to_cache(self, value, records, validate=True):
-        if not value:
-            return None
-        if isinstance(value, datetime):
-            # TODO: better fix data files (crm demo data)
-            value = value.date()
-            # raise TypeError("%s (field %s) must be string or date, not datetime." % (value, self))
         return self.to_date(value)
 
     def convert_to_export(self, value, record):
@@ -266,8 +260,8 @@ class Datetime(BaseDate[datetime]):
                 return value
             return datetime.combine(value, time.min)
 
-        # TODO: fix data files
-        return datetime.strptime(value, DATETIME_FORMAT[:len(value)-2])
+        # support providing a partial value like "2020-04"
+        return datetime.strptime(value, DATETIME_FORMAT[:len(value) - 2])
 
     # kept for backwards compatibility, but consider `from_string` as deprecated, will probably
     # be removed after V12

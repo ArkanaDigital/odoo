@@ -34,7 +34,7 @@ class L10nInTestInvoicingCommon(AccountTestInvoicingCommon):
             'street2': "Sala Number 3",
             'city': "Amreli",
             'zip': "365220",
-            'l10n_in_is_gst_registered': True,
+            'l10n_in_gst_registration_type': 'regular',
             'l10n_in_tds_feature': True,
             'l10n_in_tcs_feature': True,
         })
@@ -114,6 +114,9 @@ class L10nInTestInvoicingCommon(AccountTestInvoicingCommon):
             + AccountChartTemplate.ref("cess_5_plus_1591_sale")
         )
         cls.exempt = AccountChartTemplate.ref('exempt_sale')
+        cls.exempt_purchase = AccountChartTemplate.ref('exempt_purchase')
+        cls.sgst_purchase_5_no_itc = AccountChartTemplate.ref('sgst_purchase_5_composition')
+        cls.sgst_purchase_5_rc = AccountChartTemplate.ref('sgst_purchase_5_rc')
 
         # === Products === #
         cls.product_a.write({

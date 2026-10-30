@@ -165,8 +165,8 @@ class TestCustomizeView(common.HttpCase):
     def test_enabling_optional_template_with_editor(self):
         """ Ensure that a non-admin editor can enable a view """
         website = self.env['website'].search([], limit=1)
-        auth = {'login': 'test', 'password': 'testtest'}
-        user = self.env['res.users'].create({'name': 'test', **auth})
+        auth = {'login': 'test', 'password': 'test'}
+        user = self.env.ref('base.test_user')
         user.group_ids += self.env.ref('website.group_website_designer')
         View = self.env['ir.ui.view']
         default = View.create({
@@ -515,7 +515,7 @@ class TestViewSaving(TestViewSavingCommon):
         })
         view.with_context(lang='fr_FR').arch = "<div>Bonjour Monde</div>"
 
-        # delayed translations are enabled by default (SavePlugin.saveView uses it by default)
+        # delayed translations are enabled by default (WebsiteSavePlugin.saveElements uses it by default)
         view.with_context(delay_translations=True).save(value='<div>New World</div>', xpath='/div')
         self.assertEqual(
             view.with_context(lang='fr_FR').arch,

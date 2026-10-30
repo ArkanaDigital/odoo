@@ -1,6 +1,5 @@
 import { EditHeadBodyDialog } from "../edit_head_body_dialog/edit_head_body_dialog";
-import { Component, proxy } from "@odoo/owl";
-import { browser } from "@web/core/browser/browser";
+import { Component, proxy, useProps } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 
 /**
@@ -9,7 +8,7 @@ import { useService } from "@web/core/utils/hooks";
  */
 export class ResourceEditorWarningOverlay extends Component {
     static template = "website.ResourceEditorWarningOverlay";
-    static props = {};
+    props = useProps({});
 
     /**
      * Initializes the component by setting up the necessary services and state.
@@ -18,7 +17,7 @@ export class ResourceEditorWarningOverlay extends Component {
         this.website = useService("website");
         this.dialog = useService("dialog");
 
-        const localStorageValue = browser.localStorage.getItem("website.ace.doNotShowWarning");
+        const localStorageValue = localStorage.getItem("website.ace.doNotShowWarning");
         this.state = proxy({
             visible: !localStorageValue || localStorageValue === "false",
         });
@@ -43,7 +42,7 @@ export class ResourceEditorWarningOverlay extends Component {
      * showing again and hides the overlay.
      */
     onStopAsking() {
-        browser.localStorage.setItem("website.ace.doNotShowWarning", "true");
+        localStorage.setItem("website.ace.doNotShowWarning", "true");
         this.onHideWarning();
     }
 

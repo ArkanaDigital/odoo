@@ -7,6 +7,7 @@ import { omit } from "@web/core/utils/objects";
 import { evaluateBooleanExpr } from "@web/core/py_js/py";
 import { useSetupAction } from "@web/search/action_hook";
 import { ActionMenus, STATIC_ACTIONS_GROUP_NUMBER } from "@web/search/action_menus/action_menus";
+import { CogMenu } from "@web/search/cog_menu/cog_menu";
 import { Layout } from "@web/search/layout";
 import { usePager } from "@web/search/pager_hook";
 import { OfflineSearchBar } from "@web/search/search_bar/offline_search_bar";
@@ -20,9 +21,8 @@ import { MultiRecordViewButton } from "@web/views/view_button/multi_record_view_
 import { useViewButtons } from "@web/views/view_button/view_button_hook";
 import { useExportRecords, useDeleteRecords } from "@web/views/view_hook";
 import { addFieldDependencies, extractFieldsFromArchInfo } from "@web/model/relational_model/utils";
-import { KanbanCogMenu } from "./kanban_cog_menu";
 import { KanbanRenderer } from "./kanban_renderer";
-import { useProgressBar } from "./progress_bar_hook";
+import { ProgressBarState, useProgressBar } from "./progress_bar_hook";
 import { SelectionBox } from "@web/views/view_components/selection_box";
 
 import {
@@ -54,9 +54,10 @@ export class KanbanController extends Component {
         MultiRecordViewButton,
         OfflineSearchBar,
         SearchBar,
-        CogMenu: KanbanCogMenu,
+        CogMenu,
         SelectionBox,
     };
+    static ProgressBarStateClass = ProgressBarState;
     props = useProps({
         ...standardViewProps,
         editable: t.boolean().optional(),
@@ -116,10 +117,13 @@ export class KanbanController extends Component {
         if (archInfo.progressAttributes) {
             const { activeBars } = this.props.state || {};
             this.progressBarState = useProgressBar(
-                archInfo.progressAttributes,
-                this.model,
-                this.progressBarAggregateFields,
-                activeBars
+                {
+                    progressAttributes: archInfo.progressAttributes,
+                    model: this.model,
+                    aggregateFields: this.progressBarAggregateFields,
+                    activeBars: activeBars,
+                },
+                this.constructor.ProgressBarStateClass
             );
         }
         this.headerButtons = archInfo.headerButtons;
@@ -316,10 +320,12 @@ export class KanbanController extends Component {
             groupsLimit: Number.MAX_SAFE_INTEGER, // no limit
             countLimit: archInfo.countLimit,
             defaultOrderBy: archInfo.defaultOrder,
+            defaultGroupBy: archInfo.defaultGroupBy,
             maxGroupByDepth: 1,
             activeIdsLimit: session.active_ids_limit,
             hooks: {
                 onRecordSaved: this.onRecordSaved.bind(this),
+                onSavedMulti: this.onSavedMulti.bind(this),
             },
         };
     }
@@ -438,10 +444,10 @@ export class KanbanController extends Component {
         this.props.selectRecord(record.resId, { activeIds, newWindow });
     }
 
-    async createRecord() {
+    async createRecord(newWindow) {
         const { onCreate } = this.props.archInfo;
         const { root } = this.model;
-        if (this.canQuickCreate && onCreate === "quick_create") {
+        if (this.canQuickCreate && onCreate === "quick_create" && !newWindow) {
             const firstGroup = root.groups.find((group) => !group.isFolded) || root.groups[0];
             if (firstGroup.isFolded) {
                 await firstGroup.toggle();
@@ -457,10 +463,11 @@ export class KanbanController extends Component {
                         render(this, true); // FIXME WOWL reactivity
                     }
                 },
+                newWindow,
             };
             await this.actionService.doAction(onCreate, options);
         } else {
-            await this.props.createRecord();
+            await this.props.createRecord(newWindow);
         }
     }
 
@@ -516,10 +523,16 @@ export class KanbanController extends Component {
 
     onRecordSaved(record) {
         if (this.model.root.isGrouped) {
-            const group = this.model.root.groups.find((l) =>
-                l.records.find((r) => r.id === record.id)
-            );
-            this.progressBarState?.updateCounts(group);
+            this.progressBarState?.updateCounts(record.group);
+        }
+    }
+
+    /**
+     * Records saved together always land in the same group, so one update is enough.
+     */
+    onSavedMulti(records) {
+        if (this.model.root.isGrouped) {
+            this.progressBarState?.updateCounts(records[0].group);
         }
     }
 

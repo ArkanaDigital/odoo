@@ -112,6 +112,10 @@ class TestPointOfSaleHttpCommon(AccountTestInvoicingHttpCommon):
         cls.pos_user.partner_id.email = 'pos_user@test.com'
         cls.pos_admin.partner_id.email = 'pos_admin@test.com'
 
+        # drop stray payment methods (e.g. leftover delivery-provider ones), unlink not archive:
+        # archived ones are still loaded client-side and could get picked as "the first" method
+        env['pos.payment.method'].search([('company_id', '=', main_company.id)]).unlink()
+
         cls.bank_journal = journal_obj.create({
             'name': 'Bank Test',
             'type': 'bank',
@@ -355,18 +359,18 @@ class TestPointOfSaleHttpCommon(AccountTestInvoicingHttpCommon):
         env['product.pricelist'].create({
             'name': 'Percentage',
             'item_ids': [(0, 0, {
-                'compute_price': 'percentage',
-                'percent_price': 100,
+                'compute_price': 'discount',
+                'price_discount': 100,
                 'applied_on': '0_product_variant',
                 'product_id': cls.wall_shelf.product_variant_id.id,
             }), (0, 0, {
-                'compute_price': 'percentage',
-                'percent_price': 99,
+                'compute_price': 'discount',
+                'price_discount': 99,
                 'applied_on': '0_product_variant',
                 'product_id': cls.small_shelf.product_variant_id.id,
             }), (0, 0, {
-                'compute_price': 'percentage',
-                'percent_price': 0,
+                'compute_price': 'discount',
+                'price_discount': 0,
                 'applied_on': '0_product_variant',
                 'product_id': cls.magnetic_board.product_variant_id.id,
             })],
@@ -375,32 +379,32 @@ class TestPointOfSaleHttpCommon(AccountTestInvoicingHttpCommon):
         env['product.pricelist'].create({
             'name': 'Formula',
             'item_ids': [(0, 0, {
-                'compute_price': 'formula',
+                'compute_price': 'discount',
                 'price_discount': 6,
                 'price_surcharge': 5,
                 'applied_on': '0_product_variant',
                 'product_id': cls.wall_shelf.product_variant_id.id,
             }), (0, 0, {
                 # .99 prices
-                'compute_price': 'formula',
+                'compute_price': 'discount',
                 'price_surcharge': -0.01,
                 'price_round': 1,
                 'applied_on': '0_product_variant',
                 'product_id': cls.small_shelf.product_variant_id.id,
             }), (0, 0, {
-                'compute_price': 'formula',
+                'compute_price': 'discount',
                 'price_min_margin': 10,
                 'price_max_margin': 100,
                 'applied_on': '0_product_variant',
                 'product_id': cls.magnetic_board.product_variant_id.id,
             }), (0, 0, {
-                'compute_price': 'formula',
+                'compute_price': 'discount',
                 'price_surcharge': 10,
                 'price_max_margin': 5,
                 'applied_on': '0_product_variant',
                 'product_id': cls.monitor_stand.product_variant_id.id,
             }), (0, 0, {
-                'compute_price': 'formula',
+                'compute_price': 'discount',
                 'price_discount': -100,
                 'price_min_margin': 5,
                 'price_max_margin': 20,
@@ -513,8 +517,8 @@ class TestPointOfSaleHttpCommon(AccountTestInvoicingHttpCommon):
             'name': 'Cost base',
             'item_ids': [(0, 0, {
                 'base': 'standard_price',
-                'compute_price': 'percentage',
-                'percent_price': 55,
+                'compute_price': 'discount',
+                'price_discount': 55,
             })],
         })
 
@@ -523,8 +527,8 @@ class TestPointOfSaleHttpCommon(AccountTestInvoicingHttpCommon):
             'item_ids': [(0, 0, {
                 'base': 'pricelist',
                 'base_pricelist_id': cost_base_pricelist.id,
-                'compute_price': 'percentage',
-                'percent_price': 15,
+                'compute_price': 'discount',
+                'price_discount': 15,
             })],
         })
 
@@ -533,8 +537,8 @@ class TestPointOfSaleHttpCommon(AccountTestInvoicingHttpCommon):
             'item_ids': [(0, 0, {
                 'base': 'pricelist',
                 'base_pricelist_id': pricelist_base_pricelist.id,
-                'compute_price': 'percentage',
-                'percent_price': 3,
+                'compute_price': 'discount',
+                'price_discount': 3,
             })],
         })
 
@@ -543,8 +547,8 @@ class TestPointOfSaleHttpCommon(AccountTestInvoicingHttpCommon):
             'item_ids': [(0, 0, {
                 'base': 'pricelist',
                 'base_pricelist_id': fixed_pricelist.id,
-                'compute_price': 'percentage',
-                'percent_price': 0.01,
+                'compute_price': 'discount',
+                'price_discount': 0.01,
             })],
         })
 
@@ -727,6 +731,11 @@ class TestUi(TestPointOfSaleHttpCommon):
 
         order_tips.sort()
         self.assertEqual(order_tips, [0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 0.8, 1.0, 1.5, 2.0, 10.0])
+
+    def test_ticket_screen_search_suggestions(self):
+        """The search field suggestions must stay above the order list, on mobile too."""
+        self.main_pos_config.with_user(self.pos_user).open_ui()
+        self.start_pos_tour('test_ticket_screen_search_suggestions')
 
     def test_product_information_screen_admin(self):
         '''Consider this test method to contain a test tour with miscellaneous tests/checks that require admin access.
@@ -1406,6 +1415,8 @@ class TestUi(TestPointOfSaleHttpCommon):
 
     def test_customer_popup(self):
         """Verify that the customer popup search & inifnite scroll work properly"""
+        # Preload enough partners to make the list scrollable without loading the new ones yet
+        self.env['ir.config_parameter'].sudo().set_int('point_of_sale.limited_customer_count', 15)
         self.env["res.partner"].create([{"name": "Z partner to search"}, {"name": "Z partner to scroll"}])
         self.main_pos_config.with_user(self.pos_user).open_ui()
         self.start_tour("/pos/ui/%d" % self.main_pos_config.id, 'CustomerPopupTour', login="pos_user")
@@ -1874,8 +1885,8 @@ class TestUi(TestPointOfSaleHttpCommon):
             'pricelist_id': percentage_pricelist.id,
             'base': 'pricelist',
             'base_pricelist_id': test_pricelist.id,
-            'compute_price': 'percentage',
-            'percent_price': 50,
+            'compute_price': 'discount',
+            'price_discount': 50,
             'applied_on': '3_global',
         })
 
@@ -2179,6 +2190,34 @@ class TestUi(TestPointOfSaleHttpCommon):
         })
 
         self.start_tour(f"/pos/ui?config_id={self.main_pos_config.id}", 'test_paid_order_with_archived_product_loads', login="pos_user")
+
+    def test_search_more_skips_archived_variant(self):
+        """ Search more must not load an archived variant matched by its internal reference. """
+        size_attribute = self.env['product.attribute'].create({
+            'name': 'Size',
+            'create_variant': 'always',
+            'value_ids': [
+                Command.create({'name': 'S', 'sequence': 1}),
+                Command.create({'name': 'XL', 'sequence': 2}),
+            ],
+        })
+        product_tmpl = self.env['product.template'].create({
+            'name': 'Archived Variant Shirt',
+            'available_in_pos': True,
+            'list_price': 10,
+            'taxes_id': False,
+            'attribute_line_ids': [Command.create({
+                'attribute_id': size_attribute.id,
+                'value_ids': [Command.set(size_attribute.value_ids.ids)],
+            })],
+        })
+        variant_xl = product_tmpl.product_variant_ids.filtered(
+            lambda v: v.product_template_attribute_value_ids.name == 'XL'
+        )
+        variant_xl.write({'default_code': 'SHIRT-XL-ARCHIVED', 'active': False})
+
+        self.main_pos_config.with_user(self.pos_user).open_ui()
+        self.start_pos_tour('test_search_more_skips_archived_variant')
 
     def test_order_invoice_search(self):
         self.main_pos_config.with_user(self.pos_user).open_ui()
@@ -2569,6 +2608,44 @@ class TestUi(TestPointOfSaleHttpCommon):
 
         self.main_pos_config.with_user(self.pos_user).open_ui()
         self.start_tour("/pos/ui?config_id=%d" % self.main_pos_config.id, 'test_barcode_scan_preselect_always_variant', login="pos_user")
+
+    def test_price_extra_pricelist_based_pricelist(self):
+        """
+        Tests that extra price is carried over when changing to a pricelist based pricelist
+        """
+        extra_attribute = self.env['product.attribute'].create({
+            'name': 'Extra attribute',
+            'create_variant': 'no_variant',
+        })
+        extra_value = self.env['product.attribute.value'].create({
+            'name': 'Extra value',
+            'attribute_id': extra_attribute.id,
+        })
+        attribute_line = self.env['product.template.attribute.line'].create({
+            'product_tmpl_id': self.whiteboard_pen.id,
+            'attribute_id': extra_attribute.id,
+            'value_ids': [Command.set(extra_value.ids)]
+        })
+        attribute_line.product_template_value_ids[0].price_extra = 100
+
+        pricelist_1 = self.env['product.pricelist'].create({'name': 'Pricelist 1'})
+        pricelist_2 = self.env['product.pricelist'].create({
+            'name': 'Pricelist 2',
+            'item_ids': [Command.create({
+                'compute_price': 'discount',
+                'base': 'pricelist',
+                'base_pricelist_id': pricelist_1.id,
+                'price_discount': 50,
+                'applied_on': '3_global',
+            })],
+        })
+
+        self.main_pos_config.write({
+            'pricelist_id': pricelist_1.id,
+            'available_pricelist_ids': [Command.set([pricelist_1.id, pricelist_2.id])],
+        })
+        self.main_pos_config.with_user(self.pos_user).open_ui()
+        self.start_tour("/pos/ui?config_id=%d" % self.main_pos_config.id, 'test_price_extra_pricelist_based_pricelist', login="pos_user")
 
 
 # This class just runs the same tests as above but with mobile emulation

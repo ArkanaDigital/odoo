@@ -1,7 +1,8 @@
 import {
     click,
-    contains,
+    contains as mailContains,
     defineMailModels,
+    hover,
     insertText,
     onRpcBefore,
     openFormView,
@@ -9,9 +10,10 @@ import {
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
-import { describe, expect, test } from "@odoo/hoot";
+import { insertTextInComposer } from "@mail/../tests/mail_test_helpers_composer";
+import { describe, expect, test, waitFor, waitForNone } from "@odoo/hoot";
 import { tick } from "@odoo/hoot-mock";
-import { mockService } from "@web/../tests/web_test_helpers";
+import { contains, mockService, onRpc } from "@web/../tests/web_test_helpers";
 
 describe.current.tags("desktop");
 defineMailModels();
@@ -38,7 +40,9 @@ test("Show 'Followers only' placeholder for recipients input when no recipient",
     await start();
     await openFormView("res.partner", partnerId);
     await click("button:text('Send message')");
-    await contains(".o-mail-RecipientsInput .o-autocomplete--input[placeholder='Followers only']");
+    await waitFor(
+        ".o-mail-RecipientsInput .o-autocomplete--input[placeholder='Followers only']:count(1)"
+    );
 });
 
 test("Opening full composer in 'send message' mode should copy selected suggested recipients", async () => {
@@ -72,8 +76,8 @@ test("Opening full composer in 'send message' mode should copy selected suggeste
     await start();
     await openFormView("res.fake", fakeId);
     await click("button:text('Send message')");
-    await contains(".o-mail-RecipientsInput .o_tag_badge_text:contains(John Jane)");
-    await contains(".o-mail-RecipientsInput .o_tag_badge_text:contains(john@test.be)");
+    await waitFor(".o-mail-RecipientsInput .o_tag_badge_text:contains(John Jane):count(1)");
+    await waitFor(".o-mail-RecipientsInput .o_tag_badge_text:contains(john@test.be):count(1)");
     await click("button[title='Open Full Composer']");
     await doActionCalled;
     await expect.waitForSteps(["do-action"]);
@@ -105,9 +109,10 @@ test("Opening full composer in 'log note' mode should not copy selected suggeste
     await start();
     await openFormView("res.fake", fakeId);
     await click("button:text('Send message')");
-    await contains(".o-mail-RecipientsInput .o_tag_badge_text:contains(John Jane)");
-    await contains(".o-mail-RecipientsInput .o_tag_badge_text:contains(john@test.be)");
+    await waitFor(".o-mail-RecipientsInput .o_tag_badge_text:contains(John Jane):count(1)");
+    await waitFor(".o-mail-RecipientsInput .o_tag_badge_text:contains(john@test.be):count(1)");
     await click("button:text('Log note')");
+    await waitFor(".o-mail-Composer [o-we-hint-text='Log an internal note…']:count(1)");
     await click("button[title='Open Full Composer']");
     await doActionCalled;
     await expect.waitForSteps(["do-action"]);
@@ -133,16 +138,16 @@ test("Check that a partner is created for new followers when sending a message",
     registerArchs(archs);
     await start();
     await openFormView("res.fake", fakeId);
-    await contains(".o-mail-Followers-counter:text('1')");
-    await click("button:text('Send message')");
-    await contains(".o-mail-RecipientsInput .o_tag_badge_text:contains(John Jane)");
-    await contains(".o-mail-RecipientsInput .o_tag_badge_text:contains(john@test.be)");
+    await waitFor(".o-mail-Followers-counter:text('1'):count(1)");
+    await contains("button:text('Send message'):enabled:count(1)").click();
+    await waitFor(".o-mail-RecipientsInput .o_tag_badge_text:contains(John Jane):count(1)");
+    await waitFor(".o-mail-RecipientsInput .o_tag_badge_text:contains(john@test.be):count(1)");
     // Ensure that partner `john@test.be` is created while sending the message (not before)
     const partners = pyEnv["res.partner"].search_read([["email", "=", "john@test.be"]]);
     expect(partners).toHaveLength(0);
-    await insertText(".o-mail-Composer-input", "Dummy Message");
-    await click(".o-mail-Composer-send:enabled");
-    await contains(".o-mail-Followers-counter:text('1')");
+    await insertTextInComposer(".o-mail-Composer", "Dummy Message");
+    await contains(".o-mail-Composer-send:enabled:count(1)").click();
+    await waitFor(".o-mail-Followers-counter:text('1'):count(1)");
 });
 
 test("suggest recipient on 'Send message' composer", async () => {
@@ -162,16 +167,16 @@ test("suggest recipient on 'Send message' composer", async () => {
     registerArchs(archs);
     await start();
     await openFormView("res.fake", fakeId);
-    await contains(".o-mail-Followers-counter:text('1')");
-    await click("button:text('Send message')");
-    await contains(".o-mail-RecipientsInput .o_tag_badge_text:contains(john@test.be)");
+    await waitFor(".o-mail-Followers-counter:text('1'):count(1)");
+    await contains("button:text('Send message'):enabled:count(1)").click();
+    await waitFor(".o-mail-RecipientsInput .o_tag_badge_text:contains(john@test.be):count(1)");
     // Ensure that partner `john@test.be` is created before sending the message
     expect(pyEnv["res.partner"].search_read([["email", "=", "john@test.be"]])).toHaveLength(0);
-    await insertText(".o-mail-Composer-input", "Dummy Message");
-    await click(".o-mail-Composer-send:enabled");
+    await insertTextInComposer(".o-mail-Composer", "Dummy Message");
+    await contains(".o-mail-Composer-send:enabled:count(1)").click();
     await tick();
     expect(pyEnv["res.partner"].search_read([["email", "=", "john@test.be"]])).toHaveLength(1);
-    await contains(".o-mail-Followers-counter:text('1')");
+    await waitFor(".o-mail-Followers-counter:text('1'):count(1)");
 });
 
 test("suggested recipients should not be notified when posting an internal note", async () => {
@@ -188,9 +193,9 @@ test("suggested recipients should not be notified when posting an internal note"
     await start();
     await openFormView("res.fake", fakeId);
     await click("button:text('Log note')");
-    await insertText(".o-mail-Composer-input", "Dummy Message");
+    await insertTextInComposer(".o-mail-Composer", "Dummy Message");
     await click(".o-mail-Composer-send:enabled");
-    await contains(".o-mail-Message");
+    await waitFor(".o-mail-Message:count(1)");
     await expect.waitForSteps(["message_post"]);
 });
 
@@ -208,7 +213,9 @@ test("suggested recipients without name should show display_name instead", async
     await start();
     await openFormView("res.fake", fakeId);
     await click("button", { text: "Send message" });
-    await contains(".o-mail-RecipientsInput .o_tag_badge_text", { text: "Test Partner, Invoice" });
+    await mailContains(".o-mail-RecipientsInput .o_tag_badge_text", {
+        text: "Test Partner, Invoice",
+    });
 });
 
 test("update email for the partner on the fly", async () => {
@@ -224,10 +231,10 @@ test("update email for the partner on the fly", async () => {
     await insertText(".o-mail-RecipientsInputTagsListPopover input", "john@jane.be");
     await click(".o-mail-RecipientsInputTagsListPopover .btn-primary");
 
-    await insertText(".o-mail-Composer-input", "Dummy Message");
+    await insertTextInComposer(".o-mail-Composer", "Dummy Message");
     await click(".o-mail-Composer-send:enabled");
-    await contains(".o-mail-Message");
-    await contains(".o-mail-Followers-counter:text('0')");
+    await waitFor(".o-mail-Message:count(1)");
+    await waitFor(".o-mail-Followers-counter:text('0'):count(1)");
 });
 
 test("recipients dropdown only offers 'Create' when the input has text", async () => {
@@ -238,9 +245,9 @@ test("recipients dropdown only offers 'Create' when the input has text", async (
     await openFormView("res.fake", fakeId);
     await click("button", { text: "Send message" });
     await insertText(".o-mail-RecipientsInput .o-autocomplete--input", "New");
-    await contains(".o_m2o_dropdown_option_create", { text: "Create New" });
+    await mailContains(".o_m2o_dropdown_option_create", { text: "Create New" });
     await insertText(".o-mail-RecipientsInput .o-autocomplete--input", "", { replace: true });
-    await contains(".o_m2o_dropdown_option_create", { count: 0 });
+    await waitForNone(".o_m2o_dropdown_option_create");
 });
 
 test("suggested recipients should not be added as follower when posting a message", async () => {
@@ -253,12 +260,12 @@ test("suggested recipients should not be added as follower when posting a messag
     registerArchs(archs);
     await start();
     await openFormView("res.fake", fakeId);
-    await contains(".o-mail-Followers-counter:text('0')");
-    await click("button:text('Send message')");
-    await insertText(".o-mail-Composer-input", "Dummy Message");
-    await click(".o-mail-Composer-send:enabled");
-    await contains(".o-mail-Message");
-    await contains(".o-mail-Followers-counter:text('0')");
+    await waitFor(".o-mail-Followers-counter:text('0'):count(1)");
+    await contains("button:text('Send message'):enabled:count(1)").click();
+    await insertTextInComposer(".o-mail-Composer", "Dummy Message");
+    await contains(".o-mail-Composer-send:enabled:count(1)").click();
+    await waitFor(".o-mail-Message:count(1)");
+    await waitFor(".o-mail-Followers-counter:text('0'):count(1)");
 });
 
 test("closing full composer in 'log note' mode should preserve suggested recipients", async () => {
@@ -276,12 +283,38 @@ test("closing full composer in 'log note' mode should preserve suggested recipie
     await openFormView("res.fake", fakeId);
     await click("button:text('Log note')");
     await click("button[title='Open Full Composer']");
-    await contains(".o_dialog .o_form_view");
+    await waitFor(".o_dialog .o_form_view:count(1)");
     // close the full composer dialog
     await click(".o_dialog header .btn-close");
-    await contains(".o_dialog", { count: 0 });
+    await waitForNone(".o_dialog");
     // suggested recipients should still be present when clicking on send message
     await click("button:text('Send message')");
-    await contains(".o-mail-RecipientsInput .o_tag_badge_text:contains(John Jane)");
-    await contains(".o-mail-RecipientsInput .o_tag_badge_text:contains(john@test.be)");
+    await waitFor(".o-mail-RecipientsInput .o_tag_badge_text:contains(John Jane):count(1)");
+    await waitFor(".o-mail-RecipientsInput .o_tag_badge_text:contains(john@test.be):count(1)");
+});
+
+test("Hovering a recipient tag opens its avatar card", async () => {
+    const pyEnv = await startServer();
+    const partnerId = pyEnv["res.partner"].create({
+        name: "John Jane",
+        email: "john@jane.be",
+        phone: "+32 470 00 00 00",
+    });
+    const fakeId = pyEnv["res.fake"].create({ partner_ids: [partnerId] });
+    registerArchs(archs);
+    const { promise: readHeld, resolve: releaseRead } = Promise.withResolvers();
+    onRpc("res.partner", "read", async () => {
+        await readHeld;
+    });
+    await start();
+    await openFormView("res.fake", fakeId);
+    await click("button:text('Send message')");
+    await hover(".o-mail-RecipientsInput .o_tag:contains(John Jane)");
+    // The card does not wait for the partner read: only the phone does.
+    await waitFor(".o_avatar_card:contains(John Jane):contains(john@jane.be):count(1)");
+    await waitForNone(".o-mail-avatar-card-tel");
+    releaseRead();
+    await waitFor(".o-mail-avatar-card-tel:contains(+32 470 00 00 00)");
+    await hover(".o-mail-Composer-html");
+    await waitForNone(".o_avatar_card");
 });

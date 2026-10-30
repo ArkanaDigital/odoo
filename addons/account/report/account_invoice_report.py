@@ -26,6 +26,8 @@ class AccountInvoiceReport(models.Model):
         ('in_invoice', 'Vendor Bill'),
         ('out_refund', 'Customer Credit Note'),
         ('in_refund', 'Vendor Credit Note'),
+        ('out_receipt', 'Sales Receipt'),
+        ('in_receipt', 'Purchase Receipt'),
         ], readonly=True)
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -43,7 +45,7 @@ class AccountInvoiceReport(models.Model):
     product_categ_id = fields.Many2one('product.category', string='Product Category', readonly=True)
     invoice_date_due = fields.Date(string='Due Date', readonly=True)
     account_id = fields.Many2one('account.account', string='Revenue/Expense Account', readonly=True)
-    price_subtotal_currency = fields.Float(string='Untaxed Amount in Currency', readonly=True)
+    price_subtotal_currency = fields.Monetary(string='Untaxed Amount in Currency', readonly=True, currency_field='currency_id')
     price_subtotal = fields.Monetary(
         string='Untaxed Amount',
         readonly=True,
@@ -56,7 +58,7 @@ class AccountInvoiceReport(models.Model):
         currency_field='company_currency_id',
         aggregator='sum_currency',
     )
-    price_total_currency = fields.Float(string='Total in Currency', readonly=True)
+    price_total_currency = fields.Monetary(string='Total in Currency', readonly=True, currency_field='currency_id')
     price_average = fields.Monetary(
         string='Average Price',
         readonly=True,
@@ -82,10 +84,11 @@ class AccountInvoiceReport(models.Model):
         today = fields.Date.context_today(self)
         self.env['account.move.line'].check_access('read')
         query = self.env['account.move.line'].sudo().with_context(date_to=today)._search([
-            ('move_type', 'in', ('out_invoice', 'out_refund', 'in_invoice', 'in_refund', 'out_receipt', 'in_receipt')),
+            ('move_type', 'in', self._fields['move_type'].get_values(self.env)),
             ('account_id', '!=', False),
             ('display_type', '=', 'product'),
         ])
+        query.add_where(SQL("%s = %s", query.table._sudo().move_id.company_id, query.table.company_id))
         return query.subselect(*self._select_list(query.table))
 
     def _select_list(self, table: TableSQL):

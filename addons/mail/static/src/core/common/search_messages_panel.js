@@ -17,10 +17,10 @@ export class SearchMessagesPanel extends Component {
             close: t.function([]).optional(),
             thread: t.instanceOf(this.store["mail.thread"]),
         });
-        this.messageSearch = this.env.messageSearch ?? useMessageSearch(this.props.thread);
+        this.messageSearch = useMessageSearch(this.props.thread);
         useOnChange(
             () => [this.props.thread],
-            () => this.env.searchMenu?.close(),
+            () => this.props.close?.(),
             { initialRun: false }
         );
     }

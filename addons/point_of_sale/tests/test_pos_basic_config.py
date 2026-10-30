@@ -1,10 +1,12 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
+from dateutil.relativedelta import relativedelta
+
 import odoo
+from odoo import Command, fields
+from odoo.exceptions import UserError, ValidationError
 
 from odoo.addons.point_of_sale.tests.common import TestPoSCommon
-from odoo.exceptions import ValidationError, UserError
-from datetime import datetime, timedelta
 
 
 @odoo.tests.tagged('post_install', '-at_install')
@@ -79,36 +81,92 @@ class TestPoSBasicConfig(TestPoSCommon):
 
             self.assertEqual(response['pos.config'][0]['_base_url'], company_website.domain)
 
-    def test_limited_products_loading(self):
-        self.env['ir.config_parameter'].sudo().set_int('point_of_sale.limited_product_count', 3)
+    def _get_loaded_product_ids(self, session):
+        data = session.load_data()
+        special_product = session.config_id._get_special_products().ids
+        return [p['product_variant_ids'][0] for p in data['product.template']['records']
+                if p['active'] and p['product_variant_ids'][0] not in special_product]
 
-        # Make the service products that are available in the pos inactive.
-        # We don't need them to test the loading of 'consu' products.
-        self.env['product.template'].search([('available_in_pos', '=', True), ('type', '=', 'service')]).write({'available_in_pos': False})
+    def test_limited_products_loading(self):
+        """
+        This test makes sure that the limited products loading feature loads
+        at most `point_of_sale.limited_product_count` product templates,
+        regardless of which specific criteria decides which ones make the
+        cut. That ordering is a separate concern which can be overridden by
+        other modules.
+        """
+        # Restrict the loaded-product domain to our own POS category so any
+        # other available_in_pos product (demo data, combos, setUp fixtures)
+        # never competes for the limited slots.
+        test_categ = self.env['pos.category'].create({'name': 'Limited Loading Test Category'})
+        self.config.write({
+            'limit_categories': True,
+            'iface_available_categ_ids': [(6, 0, test_categ.ids)],
+        })
+        products = self.env['product.product']
+        for i in range(5):
+            products |= self.create_product(f'Count Product {i}', self.categ_basic, 10)
+        products.product_tmpl_id.write({'pos_categ_ids': [(6, 0, test_categ.ids)]})
+        self.env['ir.config_parameter'].sudo().set_int('point_of_sale.limited_product_count', 3)
+        self.env.flush_all()
+        session = self.open_new_session(0)
+
+        self.assertEqual(len(self._get_loaded_product_ids(session)), 3)
+
+    def test_limited_products_loading_priority(self):
+        """
+        This test makes sure that our limited products loading feature
+        prioritizes product templates in this order, with ties being broken
+        by the next trait:
+        1st. "Favorited" products (is_favorite)
+        2nd. "Service" type products (type)
+        3rd. Recently written to products (write_date)
+        """
+        if 'pos_stock' in self.env['ir.module.module']._installed():
+            self.skipTest(
+                "The module pos_stock is installed and defines a conflicting ordering.")
+        # Restrict the loaded-product domain to our own POS category so any
+        # other available_in_pos product (demo data, combos, setUp fixtures)
+        # never competes for the limited spots.
+        test_categ = self.env['pos.category'].create({'name': 'Priority Test Category'})
+        self.config.write({
+            'limit_categories': True,
+            'iface_available_categ_ids': [(6, 0, test_categ.ids)],
+        })
+        product0 = self.create_product('Priority Product 0', self.categ_basic, 10)
+        product1 = self.create_product('Priority Product 1', self.categ_basic, 10)
+        product2 = self.create_product('Priority Product 2', self.categ_basic, 10)
+        product3 = self.create_product('Priority Product 3', self.categ_basic, 10)
+        product4 = self.create_product('Priority Product 4', self.categ_basic, 10)
+        (product0 | product1 | product2 | product3 | product4).product_tmpl_id.write({
+            'pos_categ_ids': [(6, 0, test_categ.ids)],
+        })
+        product2.product_tmpl_id.write({"is_favorite": True, "type": "consu"})
+        product3.product_tmpl_id.write({"is_favorite": False, "type": "service"})
+        product4.product_tmpl_id.write({"is_favorite": False, "type": "consu"})
+
+        # product0 and product1 are tied on (is_favorite, type); only
+        # write_date should decide between them.
+        now = fields.Datetime.now()
+        self.patch(self.env.cr, 'now', lambda: now - relativedelta(minutes=1))
+        product1.product_tmpl_id.write({"is_favorite": True, "type": "service"})
+        self.env.flush_all()
+        self.patch(self.env.cr, 'now', lambda: now)
+        product0.product_tmpl_id.write({"is_favorite": True, "type": "service"})
+        self.env.flush_all()
 
         session = self.open_new_session(0)
-        self.product1.write({'company_id': False})
-        self.product2.write({'company_id': False})
-        self.product3.write({'company_id': False})
 
-        def get_top_product_ids(count):
-            session.config_id.iface_tipproduct = True
-            data = session.load_data()
-            special_product = session.config_id._get_special_products().ids
-            available_top_product = [product for product in data['product.template']['records'] if product['product_variant_ids'][0] not in special_product]
-            return [p['product_variant_ids'][0] for p in available_top_product[:count]]
+        def loaded_ids(limit):
+            self.env['ir.config_parameter'].sudo().set_int('point_of_sale.limited_product_count', limit)
+            return self._get_loaded_product_ids(session)
 
-        self.patch(self.env.cr, 'now', lambda: datetime.now() + timedelta(days=1))
-        self.env['pos.order'].sync_from_ui([self.create_ui_order_data([(self.product1, 1)])])
-        self.assertEqual(get_top_product_ids(1), [self.product1.id])
-
-        self.patch(self.env.cr, 'now', lambda: datetime.now() + timedelta(days=2))
-        self.env['pos.order'].sync_from_ui([self.create_ui_order_data([(self.product2, 1)])])
-        self.assertEqual(get_top_product_ids(2), [self.product1.id, self.product2.id])
-
-        self.patch(self.env.cr, 'now', lambda: datetime.now() + timedelta(days=3))
-        self.env['pos.order'].sync_from_ui([self.create_ui_order_data([(self.product3, 1)])])
-        self.assertEqual(get_top_product_ids(3), [self.product1.id, self.product2.id, self.product3.id])
+        # write_date breaks the tie between product0 and product1.
+        self.assertCountEqual(loaded_ids(1), [product0.id])
+        # is_favorite outranks type: both favorited products beat any non-favorite.
+        self.assertCountEqual(loaded_ids(3), [product0.id, product1.id, product2.id])
+        # type breaks ties among non-favorited products too.
+        self.assertCountEqual(loaded_ids(4), [product0.id, product1.id, product2.id, product3.id])
 
     def test_pos_payment_method_copy(self):
         """
@@ -160,7 +218,7 @@ class TestPoSBasicConfig(TestPoSCommon):
         self.assertEqual(len(pos_orders.account_move), 1)
         self.assertEqual(pos_orders.account_move.partner_id, self.customer)
         self.assertEqual(pos_orders.account_move.amount_total, sum(pos_orders.mapped('amount_total')))
-        self.assertEqual(pos_orders.account_move.payment_state, pos_orders.account_move._get_invoice_in_payment_state())
+        self.assertEqual(pos_orders.account_move.payment_state, 'paid')
         self.assertEqual(pos_orders.account_move.state, 'posted')
         self.assertEqual(pos_orders.account_move.amount_residual, 0)
 
@@ -209,9 +267,28 @@ class TestPoSBasicConfig(TestPoSCommon):
         self.assertNotEqual(self.pos_session.move_ids, pos_orders.account_move)
         self.assertEqual(pos_orders.account_move.partner_id, self.customer)
         self.assertEqual(pos_orders.account_move.amount_total, round(sum(pos_orders.mapped('amount_total')), 2))
-        self.assertEqual(pos_orders.account_move.payment_state, pos_orders.account_move._get_invoice_in_payment_state())
+        self.assertEqual(pos_orders.account_move.payment_state, 'paid')
         self.assertEqual(pos_orders.account_move.state, 'posted')
         self.assertEqual(pos_orders.account_move.amount_residual, 0)
+
+    def test_invoice_paid_with_cash_change_same_receivable_account(self):
+        """ Test that when the PoS receivable account and the partner
+        account_receivable are the same, an invoiced order paid in cash
+        with change is correctly marked as paid.
+        """
+        self.config.default_partner_id.property_account_receivable_id = self.customer.property_account_receivable_id
+        self.open_new_session()
+
+        order_data = self.create_ui_order_data(
+            [(self.product1, 1)],
+            pos_order_ui_args={'amount_return': -5},
+            payments=[(self.cash_pm1, 15)],
+            customer=self.customer,
+            is_invoiced=True,
+        )
+        res = self.env['pos.order'].sync_from_ui([order_data])
+        order = self.env['pos.order'].browse(res['pos.order'][0]['id'])
+        self.assertEqual(order.account_move.payment_state, 'paid')
 
     def test_pos_archived_combination(self):
         product = self.env['product.template'].create({
@@ -283,6 +360,60 @@ class TestPoSBasicConfig(TestPoSCommon):
         self.assertEqual(len(product_data['_archived_combinations']), 1, "There should be one archived combination for the product")
         self.assertEqual(len(product_data['_archived_combinations'][0]), 2, "Archived combination should have two values")
         self.assertTrue(all(value in product_data['_archived_combinations'][0] for value in first_variant.product_template_attribute_value_ids.ids), "Archived combination should match the first variant's attribute values")
+
+    def test_load_product_from_pos_archived_attribute_line(self):
+        """ Loading the archived variant of a past order must not link the archived
+        attribute line and variants to the template used for new sales. """
+        size_attribute, color_attribute = self.env['product.attribute'].create([{
+            'name': 'Size',
+            'create_variant': 'dynamic',
+            'value_ids': [(0, 0, {'name': 'S'}), (0, 0, {'name': 'M'})],
+        }, {
+            'name': 'Color',
+            'create_variant': 'always',
+            'value_ids': [(0, 0, {'name': 'Red'}), (0, 0, {'name': 'Blue'})],
+        }])
+        product = self.env['product.template'].create({
+            'name': 'Product Test',
+            'available_in_pos': True,
+            'list_price': 10,
+            'taxes_id': False,
+            'attribute_line_ids': [(0, 0, {
+                'attribute_id': size_attribute.id,
+                'value_ids': [(6, 0, size_attribute.value_ids.ids)],
+            }), (0, 0, {
+                'attribute_id': color_attribute.id,
+                'value_ids': [(6, 0, color_attribute.value_ids.ids)],
+            })],
+        })
+        size_line = product.attribute_line_ids.filtered(lambda l: l.attribute_id == size_attribute)
+        color_line = product.attribute_line_ids - size_line
+        sold_variant = product._create_product_variant(
+            product.attribute_line_ids.product_template_value_ids.filtered(lambda v: v.name in ('S', 'Red'))
+        )
+
+        self.open_new_session()
+        self._create_orders([{'pos_order_lines_ui_args': [(sold_variant, 1)]}])
+
+        # The sold variant can't be deleted, so removing the line archives both
+        product.write({'attribute_line_ids': [(2, size_line.id)]})
+        self.assertFalse(size_line.active)
+        self.assertFalse(sold_variant.active)
+
+        # Same call as when the POS loads a past order containing the archived variant
+        result = self.pos_session.load_data({
+            'models': ['product.template', 'product.product', 'product.template.attribute.line', 'product.template.attribute.value'],
+            'search_params': {
+                'product.product': {'domain': [('id', 'in', sold_variant.ids)], 'context': {'active_test': False}},
+                'product.template': {'domain': [('product_variant_ids', 'in', sold_variant.ids)], 'context': {'active_test': False}},
+            },
+            'only_records': True,
+        })
+        product_data = next(item for item in result['product.template'] if item['id'] == product.id)
+        self.assertEqual(product_data['attribute_line_ids'], color_line.ids, "The archived attribute line should not be linked to the template")
+        self.assertNotIn(sold_variant.id, product_data['product_variant_ids'], "The archived variant should not be linked to the template")
+        # The archived variant is still loaded so that the past order can be displayed
+        self.assertIn(sold_variant.id, [p['id'] for p in result['product.product']])
 
     def test_refunded_order_id(self):
         """
@@ -429,3 +560,27 @@ class TestPoSBasicConfig(TestPoSCommon):
 
         with self.assertRaisesRegex(UserError, "currently in use in a point of sale"):
             category1.unlink()
+
+    def test_set_journal_on_bank_payment_method_with_open_session(self):
+        bank_pm = self.env['pos.payment.method'].create({
+            'name': 'Bank without journal',
+            'type': 'bank',
+            'receivable_account_id': self.pos_receivable_bank.id,
+            'config_ids': [Command.link(self.config.id)],
+        })
+        self.open_new_session()
+        self.assertTrue(bank_pm.open_session_ids)
+
+        # Other protected fields remain locked
+        with self.assertRaisesRegex(UserError, "close and validate"):
+            bank_pm.receivable_account_id = self.cash_pm1.receivable_account_id
+
+        bank_pm.write({
+            'journal_id': self.company_data['default_journal_bank'].id,
+            'outstanding_account_id': self.outstanding_bank.id,
+        })
+        self.assertEqual(bank_pm.journal_id, self.company_data['default_journal_bank'])
+        self.assertEqual(bank_pm.outstanding_account_id, self.outstanding_bank)
+
+        with self.assertRaisesRegex(UserError, "close and validate"):
+            bank_pm.journal_id = False

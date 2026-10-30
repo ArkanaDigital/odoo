@@ -2,6 +2,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 from . import account_analytic_account
+from . import account_analytic_line
 from . import mail_activity
 from . import mail_message
 from . import project_project_stage
@@ -22,3 +23,5 @@ from . import res_users_settings
 from . import res_users
 from . import digest_digest
 from . import ir_ui_menu
+
+from . import res_groups

@@ -1,7 +1,6 @@
-import { Component, onMounted, onPatched, proxy, signal, t, useProps } from "@odoo/owl";
+import { Component, onMounted, onPatched, proxy, signal, t, useEffect, useProps } from "@odoo/owl";
 import { useTransition } from "@web/core/transition";
 import { uniqueId } from "@web/core/utils/functions";
-import { useLayoutEffect } from "@web/owl2/utils";
 import {
     basicContainerBuilderComponentProps,
     useApplyVisibility,
@@ -60,52 +59,48 @@ export class BuilderRow extends Component {
         this.transition = useTransition({
             initialVisibility: this.props.expand,
             leaveDuration: 350,
-            name: "hb-collapse-content",
+            name: "o_hb_collapse_content",
         });
 
-        useLayoutEffect(
-            (stage) => {
-                const isFirstMount = !isMounted;
-                isMounted = true;
-                const contentEl = this.collapseContentRef();
-                if (!contentEl) {
-                    return;
-                }
+        useEffect(() => {
+            const expanded = this.state.expanded;
+            const contentEl = this.collapseContentRef();
+            if (!contentEl) {
+                return;
+            }
+            const isFirstMount = !isMounted;
+            isMounted = true;
 
-                const setHeightAuto = () => {
-                    contentEl.style.height = "auto";
-                };
+            const setHeightAuto = () => {
+                contentEl.style.height = "auto";
+            };
 
-                // Skip transition on first mount if expand=true.
-                if (isFirstMount && this.props.expand) {
-                    setHeightAuto();
-                    return;
-                }
+            // Skip transition on first mount if expand=true.
+            if (isFirstMount && this.props.expand) {
+                setHeightAuto();
+                return;
+            }
 
-                switch (stage) {
-                    case "enter-active": {
-                        contentEl.style.height = contentEl.scrollHeight + "px";
-                        contentEl.addEventListener("transitionend", setHeightAuto, { once: true });
-                        break;
-                    }
-                    case "leave": {
-                        // Collapse from current height to 0
-                        contentEl.style.height = contentEl.scrollHeight + "px";
-                        void contentEl.offsetHeight; // force reflow
-                        contentEl.style.height = "0px";
-                        break;
-                    }
-                }
-            },
-            () => [this.transition.stage]
-        );
+            if (expanded) {
+                contentEl.classList.remove("d-none");
+                contentEl.style.height = "0px";
+                void contentEl.offsetHeight; // force reflow
+                contentEl.style.height = contentEl.scrollHeight + "px";
+                contentEl.addEventListener("transitionend", setHeightAuto, { once: true });
+                return () => contentEl.removeEventListener("transitionend", setHeightAuto);
+            }
+            // Collapse from current height to 0
+            contentEl.style.height = contentEl.scrollHeight + "px";
+            void contentEl.offsetHeight; // force reflow
+            contentEl.style.height = "0px";
+        });
 
         onMounted(() => refreshSublevelLines(this.rootRef()));
         onPatched(() => refreshSublevelLines(this.rootRef()));
     }
 
     getLevelClass() {
-        return this.props.level ? `hb-row-sublevel hb-row-sublevel-${this.props.level}` : "";
+        return this.props.level ? `o_hb_row_sublevel o_hb_row_sublevel_${this.props.level}` : "";
     }
 
     onRowContentClick() {
@@ -130,7 +125,7 @@ export class BuilderRow extends Component {
 }
 
 function refreshSublevelLines(rowEl) {
-    const optionsContainerEl = rowEl?.closest(".options-container");
+    const optionsContainerEl = rowEl?.closest(".o_hb_options_container");
     if (!optionsContainerEl) {
         return;
     }
@@ -143,13 +138,13 @@ function refreshSublevelLines(rowEl) {
 // - When a row comes back to a shallower level after deeper rows, stretch its
 //   line up to the last visible sibling of the same level.
 function alignSublevelLines(optionsContainerEl) {
-    const rowEls = [...optionsContainerEl.querySelectorAll(".hb-row")];
+    const rowEls = [...optionsContainerEl.querySelectorAll(".o_hb_row")];
     if (!rowEls.length) {
         return;
     }
     const visibleRowEls = [];
     for (const rowEl of rowEls) {
-        const labelEl = rowEl.querySelector(":scope > .hb-row-label");
+        const labelEl = rowEl.querySelector(":scope > .o_hb_row_label");
         if (labelEl) {
             labelEl.style.removeProperty("--o-hb-row-sublevel-top");
         }
@@ -178,8 +173,8 @@ function alignSublevelLines(optionsContainerEl) {
 }
 
 function applyLineOffset(rowEl, previousRowEl) {
-    const labelEl = rowEl.querySelector(":scope > .hb-row-label");
-    const previousLabelEl = previousRowEl.querySelector(":scope > .hb-row-label");
+    const labelEl = rowEl.querySelector(":scope > .o_hb_row_label");
+    const previousLabelEl = previousRowEl.querySelector(":scope > .o_hb_row_label");
     if (!labelEl || !previousLabelEl) {
         return;
     }
@@ -192,12 +187,12 @@ function applyLineOffset(rowEl, previousRowEl) {
 
 function getRowLevel(rowEl) {
     const sublevelClass = [...rowEl.classList].find((className) =>
-        className.startsWith("hb-row-sublevel-")
+        className.startsWith("o_hb_row_sublevel_")
     );
     if (!sublevelClass) {
         return 0;
     }
-    return parseInt(sublevelClass.replace("hb-row-sublevel-", ""), 10) || 0;
+    return parseInt(sublevelClass.replace("o_hb_row_sublevel_", ""), 10) || 0;
 }
 
 export { refreshSublevelLines };

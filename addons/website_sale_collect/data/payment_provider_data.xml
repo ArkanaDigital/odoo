@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<odoo>
+<odoo noupdate="1">
 
     <record id="payment_provider_on_site" model="payment.provider">
         <field name="name">Pay on Site</field>
@@ -15,7 +15,7 @@
             file="website_sale_collect/static/description/icon.png"
         />
         <field name="redirect_form_view_id" ref="payment.generic_redirect_form"/>
-        <field name="done_msg" type="html">
+        <field name="pending_msg" type="html">
             <p>Your order will be ready soon.</p>
         </field>
     </record>

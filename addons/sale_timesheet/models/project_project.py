@@ -147,9 +147,8 @@ class ProjectProject(models.Model):
 
     @api.depends('sale_line_employee_ids.sale_line_id', 'allow_billable')
     def _compute_sale_order_count(self):
-        billable_projects = self.filtered('allow_billable')
+        billable_projects, non_billable_projects = self.partitioned('allow_billable')
         super(ProjectProject, billable_projects)._compute_sale_order_count()
-        non_billable_projects = self - billable_projects
         non_billable_projects.sale_order_line_count = 0
         non_billable_projects.sale_order_count = 0
         non_billable_projects.sale_order_amount_total = 0
@@ -181,7 +180,7 @@ class ProjectProject(models.Model):
                 continue
             for employee_id in project.sale_line_employee_ids.filtered(lambda l: l.project_id == project).employee_id:
                 sale_line_id = project.sale_line_employee_ids.filtered(lambda l: l.project_id == project and l.employee_id == employee_id).sale_line_id
-                timesheet_ids.filtered(lambda t: t.employee_id == employee_id).sudo().so_line = sale_line_id
+                timesheet_ids.filtered(lambda t: t.employee_id == employee_id and t.so_line != sale_line_id).sudo().so_line = sale_line_id
 
     def action_view_timesheet(self):
         self.ensure_one()

@@ -13,24 +13,48 @@
 # Martin Trigaux, 2022
 # Amin Cheloh <amincheloh@gmail.com>, 2022
 # "Tiffany Chang (tic)" <tic@odoo.com>, 2025.
-# Weblate <noreply-mt-weblate@weblate.org>, 2025, 2026.
+# Weblate <noreply-mt-weblate@weblate.org>, 2025.
 # Odoo Translation Bot <c3p@odoo.com>, 2026.
 # Nusara Boonma <nuboo@odoo.com>, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0+e\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-26 19:10+0000\n"
-"PO-Revision-Date: 2026-06-30 08:57+0000\n"
+"POT-Creation-Date: 2026-09-11 17:43+0000\n"
+"PO-Revision-Date: 2026-08-31 17:04+0000\n"
 "Last-Translator: Nusara Boonma <nuboo@odoo.com>\n"
-"Language-Team: Thai <https://translate.odoo.com/projects/odoo-master/product/"
+"Language-Team: Thai <https://translate.odoo.com/projects/odoo-s19-4/product/"
 "th/>\n"
 "Language: th\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: product
+#: model:ir.module.module,description:base.module_product
+msgid ""
+"\n"
+"This is the base module for managing products and pricelists in Odoo.\n"
+"========================================================================\n"
+"\n"
+"Products support variants, different pricing methods, vendors information,\n"
+"make to stock/order, different units of measure, packaging and properties.\n"
+"\n"
+"Pricelists support:\n"
+"-------------------\n"
+"    * Multiple-level of discount (by product, category, quantities)\n"
+"    * Compute price based on different criteria:\n"
+"        * Other pricelist\n"
+"        * Cost price\n"
+"        * List price\n"
+"        * Vendor price\n"
+"\n"
+"Pricelists preferences by product and/or partners.\n"
+"\n"
+"Print product labels with barcode.\n"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__product_variant_count
@@ -48,22 +72,8 @@ msgstr "# สินค้า"
 #. odoo-python
 #: code:addons/product/models/product_pricelist_item.py:0
 msgid ""
-"%(base)s with a %(discount)s %% %(discount_type)s and %(surcharge)s extra "
-"fee\n"
-"Example: %(amount)s * %(discount_charge)s + %(price_surcharge)s → "
-"%(total_amount)s"
-msgstr ""
-"%(base)s ที่มี%(discount)s %% %(discount_type)s และค่าธรรมเนียมพิเศษ "
-"%(surcharge)s\n"
-"ตัวอย่าง: %(amount)s * %(discount_charge)s + %(price_surcharge)s → "
-"%(total_amount)s"
-
-#. module: product
-#. odoo-python
-#: code:addons/product/models/product_pricelist_item.py:0
-msgid ""
-"%(item_name)s: end date (%(end_date)s) should be after start date "
-"(%(start_date)s)"
+"%(item_name)s: end date (%(end_date)s) should be after start date (%"
+"(start_date)s)"
 msgstr ""
 "%(item_name)s: วันที่สิ้นสุด (%(end_date)s) ควรอยู่หลังวันที่เริ่มต้น (%(start_date)s)"
 
@@ -71,28 +81,7 @@ msgstr ""
 #. odoo-python
 #: code:addons/product/models/product_pricelist_item.py:0
 msgid "%(percentage)s %% %(discount_type)s on %(base)s %(extra)s"
-msgstr ""
-
-#. module: product
-#. odoo-python
-#: code:addons/product/models/product_pricelist_item.py:0
-msgid "%(percentage)s %% discount on %(pricelist)s"
-msgstr ""
-
-#. module: product
-#. odoo-python
-#: code:addons/product/models/product_pricelist_item.py:0
-msgid "%(percentage)s %% discount on sales price"
-msgstr ""
-
-#. module: product
-#. odoo-python
-#: code:addons/product/models/product_category.py:0
-#: code:addons/product/models/product_pricelist.py:0
-#: code:addons/product/models/product_tag.py:0
-#: code:addons/product/models/product_template.py:0
-msgid "%s (copy)"
-msgstr "%s (สำเนา)"
+msgstr "%(percentage)s %% %(discount_type)s จาก %(base)s %(extra)s"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.report_label_contour_marks
@@ -101,7 +90,6 @@ msgstr "%s (สำเนา)"
 #: model_terms:ir.ui.view,arch_db:product.report_simple_label4x12_gs1
 #: model_terms:ir.ui.view,arch_db:product.report_simple_label4x7
 #: model_terms:ir.ui.view,arch_db:product.report_simple_label_dymo
-#, fuzzy
 msgid "&amp;nbsp;"
 msgstr "&amp;nbsp;"
 
@@ -116,7 +104,7 @@ msgstr "'ฉลากสินค้า - %s' % (object.name)"
 #. module: product
 #: model:ir.actions.report,print_report_name:product.report_product_packaging
 msgid "'Products packaging - %s' % (object.uom_id.name)"
-msgstr ""
+msgstr "'บรรจุภัณฑ์สินค้า - %s'% (object.uom_id.name)"
 
 #. module: product
 #. odoo-python
@@ -128,26 +116,25 @@ msgstr "(เช่น รายละเอียดสินค้า, eBook, �
 #: model_terms:ir.ui.view,arch_db:product.alternative_zpl_label
 #: model_terms:ir.ui.view,arch_db:product.normal_zpl_label
 msgid ")^FS"
-msgstr ""
+msgstr ")^FS"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_pricelist_item.py:0
 msgid "+ %(amount)s extra fee"
-msgstr ""
+msgstr "+ %(amount)s ค่าธรรมเนียมเพิ่มเติม"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_pricelist_item.py:0
 msgid "- %(amount)s rebate"
-msgstr ""
+msgstr "- ส่วนลด %(amount)s "
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_product.py:0
-msgid ""
-"- Barcode \"%(barcode)s\" already assigned to product(s): %(product_list)s"
-msgstr "- บาร์โค้ด \"%(barcode)s\" ถูกกำหนดให้กับผลิตภัณฑ์แล้ว: %(product_list)s"
+msgid "- Barcode \"%(barcode)s\" already assigned to %(product_list)s"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_attribute__create_variant
@@ -159,12 +146,11 @@ msgid ""
 "        - Never: Variants are never created for the attribute.\n"
 "        Note: this cannot be changed once the attribute is used on a product."
 msgstr ""
-"- แบบทันที: ตัวแปรที่เป็นไปได้ทั้งหมดจะถูกสร้างขึ้นทันทีที่มีการเพิ่มแอตทริบิวต์และค่าต่างๆ "
-"ลงในผลิตภัณฑ์\n"
+"- แบบทันที: ตัวแปรที่เป็นไปได้ทั้งหมดจะถูกสร้างขึ้นทันทีที่มีการเพิ่มคุณลักษณะและค่าต่างๆ ลงในสินค้า\n"
 "        - แบบไดนามิก: "
 "แต่ละตัวแปรจะถูกสร้างขึ้นเมื่อมีการเพิ่มคุณลักษณะและค่าที่สอดคล้องกันลงในใบสั่งขายเท่านั้น\n"
-"        - ไม่เคย: ไม่มีการสร้างตัวแปรสำหรับแอตทริบิวต์\n"
-"        หมายเหตุ: ไม่สามารถเปลี่ยนแปลงได้เมื่อใช้แอตทริบิวต์กับผลิตภัณฑ์แล้ว"
+"        - ไม่เคย: ไม่มีการสร้างตัวแปรสำหรับคุณลักษณะ\n"
+"        หมายเหตุ: ไม่สามารถเปลี่ยนแปลงได้เมื่อใช้คุณลักษณะกับสินค้าแล้ว"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_duration_month_1
@@ -184,12 +170,12 @@ msgstr "10 หน่วย"
 #. module: product
 #: model:product.template,description_sale:product.product_product_4_product_template
 msgid "160x80cm, with large legs"
-msgstr ""
+msgstr "160x80ซม พร้อมกับขาขนาดใหญ่"
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_label_layout__print_format__2x7
 msgid "2 x 7"
-msgstr ""
+msgstr "2 x 7"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_duration_year_2
@@ -199,7 +185,7 @@ msgstr "2 ปี"
 #. module: product
 #: model:product.attribute.value,name:product.pav_size_2xl
 msgid "2XL"
-msgstr ""
+msgstr "2XL"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_duration_year_3
@@ -209,7 +195,7 @@ msgstr "3 ปี"
 #. module: product
 #: model:product.attribute.value,name:product.pav_size_3xl
 msgid "3XL"
-msgstr ""
+msgstr "3XL"
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_label_layout__print_format__4x12
@@ -219,17 +205,17 @@ msgstr "4 x 12"
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_label_layout__print_format__4x7
 msgid "4 x 7"
-msgstr ""
+msgstr "4 x 7"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_size_4xl
 msgid "4XL"
-msgstr ""
+msgstr "4XL"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_size_5xl
 msgid "5XL"
-msgstr ""
+msgstr "5XL"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_duration_month_6
@@ -242,11 +228,8 @@ msgid ""
 "<a href=\"/contactus\" class=\"mb-2 btn btn-primary "
 "o_translate_inline\">Contact Us</a>"
 msgstr ""
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "<b>Tip: want to round at 9.99?</b>"
-msgstr ""
+"<a href=\"/contactus\" class=\"mb-2 btn btn-primary "
+"o_translate_inline\">ติดต่อเรา</a>"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
@@ -272,50 +255,47 @@ msgid "<span class=\"o_stat_text\"> Products</span>"
 msgstr "<span class=\"o_stat_text\"> สินค้า</span>"
 
 #. module: product
+#: model_terms:ir.ui.view,arch_db:product.product_pricelist_view
+msgid "<span class=\"o_stat_text\">Daily Rates</span>"
+msgstr ""
+
+#. module: product
 #: model_terms:ir.ui.view,arch_db:product.uom_uom_view_form
 msgid "<span class=\"o_stat_text\">Packaging Barcodes</span>"
-msgstr ""
+msgstr "<span class=\"o_stat_text\">บาร์โค้ดบนสินค้า</span>"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_attribute_view_form
 msgid "<span class=\"o_stat_text\">Products</span>"
-msgstr ""
+msgstr "<span class=\"o_stat_text\">สินค้า</span>"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_only_form_view
-#, fuzzy
 msgid ""
 "<span class=\"text-muted\" invisible=\"product_variant_count &lt;= 1\">Based "
 "on variants</span>"
 msgstr ""
 "<span class=\"text-muted\" invisible=\"product_variant_count &lt;= "
-"1\">ขึ้นอยู่กับตัวแปร</span>"
+"1\">ตามรูปแบบต่าง ๆ</span>"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_kanban_view
 #: model_terms:ir.ui.view,arch_db:product.product_template_kanban_view
 msgid "<span class=\"text-muted\">On Hand</span>"
+msgstr "<span class=\"text-muted\">มีในมือ</span>"
+
+#. module: product
+#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
+msgid "<span class=\"text-nowrap\">% on</span>"
 msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.report_pricelist_page
-#, fuzzy
 msgid "<span> - </span>"
 msgstr "<span> - </span>"
 
 #. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "<span>%</span>"
-msgstr "<span>%</span>"
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "<span>on</span>"
-msgstr "<span>บน</span>"
-
-#. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_form_view
-#, fuzzy
 msgid "<span>per</span>"
 msgstr "<span>ต่อ</span>"
 
@@ -328,7 +308,7 @@ msgstr "สามารถกำหนดบาร์โค้ดให้กั
 #. odoo-python
 #: code:addons/product/models/product_combo.py:0
 msgid "A combo choice can't contain duplicate products."
-msgstr ""
+msgstr "ตัวเลือกชุดคอมโบไม่สามารถมีสินค้าที่ซ้ำกันได้"
 
 #. module: product
 #. odoo-python
@@ -384,7 +364,7 @@ msgstr ""
 msgid ""
 "A pricelist item with \"Other Pricelist\" as base must have a "
 "base_pricelist_id."
-msgstr ""
+msgstr "รายการในตารางราคาที่มี \"รายการราคาต่างๆ\" เป็นฐานต้องมี base_pricelist_id"
 
 #. module: product
 #. odoo-python
@@ -401,9 +381,13 @@ msgstr "สินค้าคอมโบที่ขายได้นั้น
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__is_storable
 #: model:ir.model.fields,help:product.field_product_template__is_storable
-#, fuzzy
 msgid "A storable product is a product for which you manage stock."
 msgstr "สินค้าที่จัดเก็บได้คือสินค้าที่คุณจัดการสต็อกไว้"
+
+#. module: product
+#: model:ir.model,name:product.model_res_groups
+msgid "Access Groups"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_document__access_token
@@ -466,7 +450,6 @@ msgstr "การตกแต่งข้อยกเว้นกิจกรร
 #: model:ir.model.fields,field_description:product.field_product_pricelist__activity_plans_ids
 #: model:ir.model.fields,field_description:product.field_product_product__activity_plans_ids
 #: model:ir.model.fields,field_description:product.field_product_template__activity_plans_ids
-#, fuzzy
 msgid "Activity Plans"
 msgstr "แผนกิจกรรม"
 
@@ -487,14 +470,13 @@ msgstr "ไอคอนประเภทกิจกรรม"
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/order_line/order_line.xml:0
-#, fuzzy
+#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
 msgid "Add"
 msgstr "เพิ่ม"
 
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
-#, fuzzy
 msgid "Add Products"
 msgstr "เพิ่มสินค้า"
 
@@ -502,7 +484,7 @@ msgstr "เพิ่มสินค้า"
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.js:0
 msgid "Add Products to pricelist report"
-msgstr ""
+msgstr "เพิ่มสินค้าลงในรายงานราคา"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_form_view
@@ -518,19 +500,18 @@ msgstr "เพิ่มปริมาณ"
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
-#, fuzzy
 msgid ""
 "Add products using the \"Add Products\" button at the top right to\n"
 "                                include them in the report."
 msgstr ""
-"เพิ่มผลิตภัณฑ์โดยใช้ปุ่ม \"เพิ่มผลิตภัณฑ์\" ที่ด้านบนขวา\n"
-"                                เพื่อรวมไว้ในรายงาน"
+"เพิ่มสินค้าโดยใช้ปุ่ม \"เพิ่มสินค้า\" ที่มุมขวาบนเพื่อ\n"
+"                                รวมสินค้าเหล่านั้นไว้ในรายงาน"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_attribute_value.py:0
 msgid "Add to all products"
-msgstr ""
+msgstr "เพิ่มไปยังทุกสินค้า"
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__update_product_attribute_value__mode__add
@@ -540,18 +521,18 @@ msgstr "เพิ่มเข้าในผลิตภัณฑ์ที่ม
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_attribute_view_form
 msgid "Add to products"
-msgstr ""
+msgstr "เพิ่มไปยังสินค้า"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__uom_ids
 #: model:ir.model.fields,help:product.field_product_template__uom_ids
 msgid "Additional packagings for this product which can be used for sales"
-msgstr ""
+msgstr "แพ็กเกจเพิ่มเติมสำหรับสินค้านี้ที่สามารถใช้สำหรับการขาย"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_adidas
 msgid "Adidas"
-msgstr ""
+msgstr "Adidas"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_document_search
@@ -559,15 +540,9 @@ msgid "All"
 msgstr "ทั้งหมด"
 
 #. module: product
-#. odoo-python
-#: code:addons/product/models/product_pricelist_item.py:0
-msgid "All Categories"
-msgstr "ทุกหมวดหมู่"
-
-#. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_category_form_view
 msgid "All Companies"
-msgstr ""
+msgstr "บริษัททั้งหมด"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__all_product_tag_ids
@@ -611,24 +586,24 @@ msgstr "สินค้าทั้งหมด"
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_tree_view_from_product
 msgid "All variants"
-msgstr ""
+msgstr "รูปแบบทั้งหมด"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_attribute_value__is_custom
 #: model:ir.model.fields,help:product.field_product_template_attribute_value__is_custom
 msgid "Allow customers to set their own value"
-msgstr ""
+msgstr "ให้ลูกค้าสามารถกำหนดค่าของตนเองได้"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__allowed_uom_ids
 #: model:ir.model.fields,field_description:product.field_product_uom__allowed_uom_ids
 msgid "Allowed Uom"
-msgstr ""
+msgstr "หน่วยวัดที่อนุญาต"
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_label_layout__zpl_template__alternative
 msgid "Alternative (2.00\" x 1.00\")"
-msgstr ""
+msgstr "ทางเลือกอื่น (2.00\" x 1.00\")"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_legs_aluminium
@@ -646,14 +621,19 @@ msgid "Applied On"
 msgstr "นำไปใช้เมื่อ"
 
 #. module: product
-#: model:ir.model.fields,field_description:product.field_product_pricelist_item__applied_on
-msgid "Apply On"
-msgstr "ใช้เมื่อ"
+#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_calendar
+msgid "Applied on"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "Apply To"
+msgid "Apply"
 msgstr ""
+
+#. module: product
+#: model:ir.model.fields,field_description:product.field_product_pricelist_item__applied_on
+msgid "Apply On"
+msgstr "ใช้เมื่อ"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_view
@@ -673,20 +653,19 @@ msgstr "เก็บถาวรแล้ว"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_supplierinfo_search_view
-#, fuzzy
 msgid "Archived Products"
-msgstr "เก็บถาวรสินค้า"
+msgstr "สินค้าที่ถูกเก็บถาวร"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_ariel
 msgid "Ariel"
-msgstr ""
+msgstr "Ariel"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_res_partner__specific_property_product_pricelist
 #: model:ir.model.fields,field_description:product.field_res_users__specific_property_product_pricelist
 msgid "Assigned Pricelist"
-msgstr ""
+msgstr "ราคาที่กำหนด"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_supplierinfo__sequence
@@ -725,18 +704,18 @@ msgstr "แนบไฟล์ URL"
 #: model:ir.model.fields,field_description:product.field_product_template_attribute_line__attribute_id
 #: model:ir.model.fields,field_description:product.field_product_template_attribute_value__attribute_id
 msgid "Attribute"
-msgstr "คุณสมบัติ"
+msgstr "คุณลักษณะ"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_template_attribute_value__attribute_line_id
 msgid "Attribute Line"
-msgstr "รายการคุณสมบัติ"
+msgstr "รายการคุณลักษณะ"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_attribute_view_form
 #: model_terms:ir.ui.view,arch_db:product.product_template_attribute_line_form
 msgid "Attribute Name"
-msgstr "ชื่อคุณสมบัติ"
+msgstr "ชื่อคุณลักษณะ"
 
 #. module: product
 #: model:ir.model,name:product.model_product_attribute_value
@@ -745,19 +724,19 @@ msgstr "ชื่อคุณสมบัติ"
 #: model:ir.model.fields,field_description:product.field_update_product_attribute_value__attribute_value_id
 #: model_terms:ir.ui.view,arch_db:product.product_attribute_value_form
 msgid "Attribute Value"
-msgstr "ค่าคุณสมบัติ"
+msgstr "ค่าคุณลักษณะ"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__product_template_attribute_value_ids
 #: model_terms:ir.ui.view,arch_db:product.product_attribute_value_list
 #: model_terms:ir.ui.view,arch_db:product.product_attribute_view_form
 msgid "Attribute Values"
-msgstr "ค่าคุณสมบัติ"
+msgstr "ค่าคุณลักษณะ"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_only_form_view
 msgid "Attribute name (e.g. Color, Size, ... )"
-msgstr ""
+msgstr "ชื่อคุณลักษณะ (เช่น สี, ขนาด, ... )"
 
 #. module: product
 #: model:ir.actions.act_window,name:product.attribute_action
@@ -765,16 +744,15 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:product.product_template_attribute_value_view_tree
 #: model_terms:ir.ui.view,arch_db:product.product_template_search_view
 msgid "Attributes"
-msgstr "คุณสมบัติ"
+msgstr "คุณลักษณะ"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_only_form_view
 msgid "Attributes & Variants"
-msgstr "คุณสมบัติและตัวเลือกย่อยสินค้า"
+msgstr "คุณลักษณะและตัวเลือกย่อยสินค้า"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__free_qty
-#, fuzzy
 msgid ""
 "Available quantity (computed as Quantity On Hand - reserved quantity - "
 "quantity to remove)\n"
@@ -819,11 +797,17 @@ msgstr "บาร์โค้ด"
 #: model:ir.model.fields,field_description:product.field_res_config_settings__module_product_barcodelookup
 #: model_terms:ir.ui.view,arch_db:product.res_config_settings_view_form
 msgid "Barcode Database"
+msgstr "ฐานข้อมูลบาร์โค้ด"
+
+#. module: product
+#: model_terms:ir.ui.view,arch_db:product.res_config_settings_view_form
+msgid "Barcode Lookup"
 msgstr ""
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_product.py:0
+#: code:addons/product/models/product_template.py:0
 msgid ""
 "Barcode(s) already assigned:\n"
 "\n"
@@ -842,31 +826,28 @@ msgstr "บาร์โค้ด"
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.uom_uom_view_form
 msgid "Barcodes can be configured on"
-msgstr ""
+msgstr "สามารถกำหนดค่าบาร์โค้ดได้ที่"
 
 #. module: product
 #: model:ir.model,name:product.model_report_product_label_base
 msgid "Base Product Label Report"
-msgstr ""
+msgstr "รายงานฉลากสินค้าพื้นฐาน"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__base_unit_name
 #: model:ir.model.fields,field_description:product.field_product_template__base_unit_name
-#, fuzzy
 msgid "Base Unit Name"
-msgstr "ชื่อหน่วยฐาน"
+msgstr "ชื่อหน่วยพื้นฐาน"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_res_config_settings__group_show_uom_price
-#, fuzzy
 msgid "Base Unit Price"
-msgstr "ราคาต่อหน่วยฐาน"
+msgstr "ราคาต่อหน่วยพื้นฐาน"
 
 #. module: product
 #: model:ir.actions.act_window,name:product.base_unit_action
-#, fuzzy
 msgid "Base Units"
-msgstr "หน่วยฐาน"
+msgstr "หน่วยพื้นฐาน"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_pricelist_item__base
@@ -887,11 +868,6 @@ msgid "Based on"
 msgstr "อิงตาม"
 
 #. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "Based price"
-msgstr ""
-
-#. module: product
 #: model:res.groups,name:product.group_product_pricelist
 msgid "Basic Pricelists"
 msgstr "รายการราคาพื้นฐาน"
@@ -899,12 +875,12 @@ msgstr "รายการราคาพื้นฐาน"
 #. module: product
 #: model:product.attribute.value,name:product.pav_color_beige
 msgid "Beige"
-msgstr ""
+msgstr "สีเบจ"
 
 #. module: product
 #: model:product.template,description_sale:product.consu_delivery_02_product_template
 msgid "Big table seats 10–12 for team discussions"
-msgstr ""
+msgstr "โต๊ะใหญ่มีที่นั่ง 10–12 ที่ สำหรับการสนทนาของทีม"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_color_black
@@ -919,7 +895,7 @@ msgstr "สีฟ้า"
 #. module: product
 #: model:product.template,description_sale:product.product_product_7_product_template
 msgid "Blue plastic bin for flexible office storage"
-msgstr ""
+msgstr "ถังพลาสติกสีฟ้าสำหรับการจัดเก็บของในสำนักงานอย่างยืดหยุ่น"
 
 #. module: product
 #: model:product.attribute,name:product.pa_brand
@@ -956,6 +932,11 @@ msgstr "สามารถขยายภาพตัวเลือกย่อ
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_canon
 msgid "Canon"
+msgstr "Canon"
+
+#. module: product
+#: model:ir.model.fields,field_description:product.field_product_product__catalog_is_in_order
+msgid "Catalog Is In Order"
 msgstr ""
 
 #. module: product
@@ -972,7 +953,6 @@ msgstr "หมวดหมู่"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__categ_id
-#: model:ir.model.fields.selection,name:product.selection__product_pricelist_item__display_applied_on__2_product_category
 #: model_terms:ir.ui.view,arch_db:product.product_category_form_view
 #: model_terms:ir.ui.view,arch_db:product.product_template_form_view
 msgid "Category"
@@ -981,20 +961,20 @@ msgstr "หมวดหมู่"
 #. module: product
 #: model:product.combo,name:product.chairs_combo
 msgid "Chairs Combo"
-msgstr ""
+msgstr "ชุดเก้าอี้"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_product.py:0
 #: code:addons/product/models/product_template.py:0
 msgid ""
-"Changing the unit of measure for your product will apply a conversion 1 "
-"%(old_uom_name)s = 1 %(new_uom_name)s.\n"
+"Changing the unit of measure for your product will apply a conversion 1 %"
+"(old_uom_name)s = 1 %(new_uom_name)s.\n"
 "All existing records (Sales orders, Purchase orders, etc.) using this "
 "product will be updated by replacing the unit name."
 msgstr ""
-"การเปลี่ยนหน่วยวัดของสินค้าจะมีการแปลงค่าในอัตรา 1 %(old_uom_name)s = 1 "
-"%(new_uom_name)s\n"
+"การเปลี่ยนหน่วยวัดของสินค้าจะมีการแปลงค่าในอัตรา 1 %(old_uom_name)s = 1 %"
+"(new_uom_name)s\n"
 "ข้อมูลเดิมทั้งหมด (เช่น ใบสั่งขาย ใบสั่งซื้อ อื่นๆ) "
 "ที่ใช้สินค้านี้จะถูกอัปเดตโดยเปลี่ยนชื่อหน่วยวัดให้เป็นหน่วยใหม่"
 
@@ -1021,7 +1001,7 @@ msgstr "โคคา-โคล่า"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_colgate
 msgid "Colgate"
-msgstr ""
+msgstr "Colgate"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_attribute_value__html_color
@@ -1083,7 +1063,7 @@ msgstr "ราคาคอมโบ"
 #. odoo-python
 #: code:addons/product/models/product_template.py:0
 msgid "Combo products can't have attributes."
-msgstr ""
+msgstr "สินค้าคอมโบไม่สามารถมีคุณลักษณะได้"
 
 #. module: product
 #. odoo-python
@@ -1096,7 +1076,7 @@ msgstr "คอมโบช่วยให้คุณสามารถเลื
 #. module: product
 #: model:product.template,description_sale:product.product_delivery_01_product_template
 msgid "Comfortable yellow chair for daily work"
-msgstr ""
+msgstr "เก้าอี้สีเหลืองที่นั่งสบายสำหรับงานประจำวัน"
 
 #. module: product
 #: model:ir.model,name:product.model_res_company
@@ -1158,7 +1138,7 @@ msgstr "ติดต่อ"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_label_layout__custom_quantity
 msgid "Copies"
-msgstr ""
+msgstr "สำเนา"
 
 #. module: product
 #: model:product.template,name:product.product_product_13_product_template
@@ -1216,7 +1196,6 @@ msgstr "สร้างสินค้าใหม่"
 
 #. module: product
 #: model_terms:ir.actions.act_window,help:product.product_category_action_form
-#, fuzzy
 msgid "Create a new product category"
 msgstr "สร้างหมวดหมู่สินค้าใหม่"
 
@@ -1239,9 +1218,8 @@ msgstr "สร้างคำสั่ง"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.res_config_settings_view_form
-#, fuzzy
 msgid "Create products by scanning using"
-msgstr "สร้างผลิตภัณฑ์โดยการสแกนโดยใช้"
+msgstr "สร้างสินค้าด้วยการสแกนโดยใช้"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_attribute__create_uid
@@ -1292,7 +1270,7 @@ msgstr "สร้างเมื่อ"
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__res_config_settings__product_volume_volume_in_cubic_feet__1
 msgid "Cubic Feet (ft³)"
-msgstr ""
+msgstr "ลูกบาศก์ฟุต (ft³)"
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__res_config_settings__product_volume_volume_in_cubic_feet__0
@@ -1314,7 +1292,6 @@ msgstr "สกุลเงิน"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__qty_available
-#, fuzzy
 msgid ""
 "Current quantity of products.\n"
 "In a context with a single Stock Location, this includes goods stored at "
@@ -1327,12 +1304,11 @@ msgid ""
 "type."
 msgstr ""
 "จำนวนสินค้าในปัจจุบัน\n"
-"ในบริบทที่มีตำแหน่งสต็อกแห่งเดียว ซึ่งรวมถึงสินค้าที่จัดเก็บไว้ที่ตำแหน่งนั้นด้วย "
-"หรือรายการย่อย                                                                                                                                                                                                                                                                                                                                                                                                                                         \n"
-"ในบริบทของคลังสินค้าแห่งเดียว ซึ่งรวมถึงสินค้าที่จัดเก็บไว้ในตำแหน่งสต็อกของคลังสินค้านี้ "
-"หรือรายการย่อย \n"
-"ที่จัดเก็บไว้ที่ตำแหน่งสต็อกของคลังสินค้าในร้านค้านี้หรือรายการย่อยอื่นๆ \n"
-"ไม่เช่นนั้น จะรวมถึงรายการสินค้าที่จัดเก็บไว้ในตำแหน่งสต็อกที่มีประเภท 'ภายใน'"
+"ในกรณีที่มีตำแหน่งสต็อกอยู่แห่งเดียว ซึ่งรวมถึงสินค้าที่จัดเก็บไว้ที่ตำแหน่งนั้นด้วย หรือรายการย่อยอื่นๆ\n"
+"ในกรณีของโกดังที่มีอยู่แห่งเดียว ซึ่งรวมถึงสินค้าที่จัดเก็บไว้ในตำแหน่งสต็อกของโกดังสินค้านี้ "
+"หรือรายการย่อยอื่นๆ \n"
+"ที่จัดเก็บไว้ที่ตำแหน่งสต็อกโกดังสินค้าของร้านค้านี้หรือรายการย่อยอื่นๆ\n"
+"ไม่เช่นนั้น จะรวมถึงรายการสินค้าที่จัดเก็บไว้ในตำแหน่งสต็อกใดที่มีประเภทเป็น 'ภายใน'"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_custom
@@ -1344,7 +1320,6 @@ msgstr "กำหนดเอง"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__base_unit_id
 #: model:ir.model.fields,field_description:product.field_product_template__base_unit_id
-#, fuzzy
 msgid "Custom Unit of Measure"
 msgstr "หน่วยวัดแบบกำหนดเอง"
 
@@ -1371,7 +1346,14 @@ msgstr "เครื่องมือการปรับแต่ง"
 #. module: product
 #: model:product.attribute.value,name:product.pav_color_cyan
 msgid "Cyan"
-msgstr "สีฟ้า"
+msgstr "สีฟ้าอมเขียว"
+
+#. module: product
+#. odoo-python
+#: code:addons/product/models/product_pricelist.py:0
+#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_calendar
+msgid "Daily Rates"
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_document__db_datas
@@ -1381,7 +1363,6 @@ msgstr "ฐานข้อมูล"
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
-#, fuzzy
 msgid "Date"
 msgstr "วันที่"
 
@@ -1389,7 +1370,7 @@ msgstr "วันที่"
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/order_line/order_line.xml:0
 msgid "Decrease quantity"
-msgstr ""
+msgstr "ลดปริมาณ"
 
 #. module: product
 #. odoo-python
@@ -1405,7 +1386,7 @@ msgstr "ราคาเพิ่มเติมเริ่มต้น"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_attribute_value__default_extra_price_changed
 msgid "Default Extra Price Changed"
-msgstr ""
+msgstr "ราคาเพิ่มตามค่าเริ่มต้นได้เปลี่ยนแปลงแล้ว"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__uom_id
@@ -1417,9 +1398,8 @@ msgstr "หน่วยวัดเริ่มต้นที่ใช้สำ
 #: model:ir.model.fields,help:product.field_product_base_unit__name
 #: model:ir.model.fields,help:product.field_product_product__base_unit_id
 #: model:ir.model.fields,help:product.field_product_template__base_unit_id
-#, fuzzy
 msgid "Define a custom unit to display in the price per unit of measure field."
-msgstr "กำหนดหน่วยแบบกำหนดเองเพื่อแสดงราคาต่อหน่วยของฟิลด์หน่วยวัด"
+msgstr "กำหนดหน่วยที่กำหนดเองเพื่อแสดงในช่องราคาต่อหน่วยวัด"
 
 #. module: product
 #: model_terms:ir.actions.act_window,help:product.product_tag_action
@@ -1446,7 +1426,7 @@ msgstr "ลบ"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_dell
 msgid "Dell"
-msgstr ""
+msgstr "Dell"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_document__description
@@ -1458,12 +1438,12 @@ msgstr "คำอธิบาย"
 #. module: product
 #: model:product.template,description_sale:product.product_order_01_product_template
 msgid "Design and plan smart offices with ease"
-msgstr ""
+msgstr "ออกแบบและวางแผนสำนักงานอัจฉริยะได้อย่างง่ายดาย"
 
 #. module: product
 #: model:product.combo,name:product.desk_accessories_combo
 msgid "Desk Accessories Combo"
-msgstr ""
+msgstr "ชุดอุปกรณ์โต๊ะทำงาน"
 
 #. module: product
 #: model:product.template,name:product.product_product_3_product_template
@@ -1488,12 +1468,12 @@ msgstr "ขาตั้งโต๊ะพร้อมฉากกั้น"
 #. module: product
 #: model:product.template,description_sale:product.product_product_3_product_template
 msgid "Desk combination, black-brown: chair + desk + drawer"
-msgstr ""
+msgstr "ชุดโต๊ะทำงาน, น้ำตาลดำ: เก้าอี้ + โต๊ะ + ลิ้นชัก"
 
 #. module: product
 #: model:product.combo,name:product.desks_combo
 msgid "Desks Combo"
-msgstr ""
+msgstr "ชุดโต๊ะทำงาน"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_attribute__sequence
@@ -1503,7 +1483,7 @@ msgid "Determine the display order"
 msgstr "กำหนดลำดับการแสดงผล"
 
 #. module: product
-#: model:ir.model.fields.selection,name:product.selection__product_pricelist_item__compute_price__percentage
+#: model:ir.model.fields.selection,name:product.selection__product_pricelist_item__compute_price__discount
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
 msgid "Discount"
 msgstr "ส่วนลด"
@@ -1517,11 +1497,6 @@ msgstr "ส่วนลด (%)"
 #: model:ir.model.fields,field_description:product.field_product_supplierinfo__price_discounted
 msgid "Discounted Price"
 msgstr "ลดราคา"
-
-#. module: product
-#: model:ir.model.fields,field_description:product.field_product_pricelist_item__display_applied_on
-msgid "Display Applied On"
-msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_ir_attachment__display_name
@@ -1557,6 +1532,7 @@ msgstr ""
 #: model:ir.model.fields,field_description:product.field_res_config_settings__display_name
 #: model:ir.model.fields,field_description:product.field_res_country_group__display_name
 #: model:ir.model.fields,field_description:product.field_res_currency__display_name
+#: model:ir.model.fields,field_description:product.field_res_groups__display_name
 #: model:ir.model.fields,field_description:product.field_res_partner__display_name
 #: model:ir.model.fields,field_description:product.field_uom_uom__display_name
 #: model:ir.model.fields,field_description:product.field_update_product_attribute_value__display_name
@@ -1574,16 +1550,15 @@ msgstr "ประเภทการแสดง"
 #: model:ir.model.fields,help:product.field_product_product__base_unit_count
 #: model:ir.model.fields,help:product.field_product_template__base_unit_count
 msgid "Display base unit price. Set to 0 to hide it for this product."
-msgstr ""
+msgstr "แสดงราคาต่อหน่วยพื้นฐาน ตั้งเป็น 0 เพื่อซ่อนราคาสำหรับสินค้านี้"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__base_unit_name
 #: model:ir.model.fields,help:product.field_product_template__base_unit_name
-#, fuzzy
 msgid ""
 "Displays the custom unit for the products if defined or the selected unit of "
 "measure otherwise."
-msgstr "แสดงหน่วยที่กำหนดเองสำหรับผลิตภัณฑ์หากมีการกำหนดไว้หรือหน่วยวัดที่เลือกเป็นอย่างอื่น"
+msgstr "แสดงหน่วยที่กำหนดเองสำหรับสินค้าหากมีการกำหนดไว้หรือหน่วยวัดที่เลือกเป็นอย่างอื่น"
 
 #. module: product
 #. odoo-python
@@ -1603,7 +1578,7 @@ msgstr "จำนวนเอกสาร"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_dove
 msgid "Dove"
-msgstr ""
+msgstr "Dove"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_document_kanban
@@ -1623,7 +1598,7 @@ msgstr "ลิ้นชัก สีดำ"
 #. module: product
 #: model_terms:product.template,description:product.product_product_27_product_template
 msgid "Drawer with two routing possiblities"
-msgstr ""
+msgstr "การกำหนดเส้นทางสองแบบที่เป็นไปได้สำหรับลิ้นชัก"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_options_drawers
@@ -1634,7 +1609,7 @@ msgstr "ลิ้นชัก"
 #. odoo-python
 #: code:addons/product/models/product_product.py:0
 msgid "Duplicate values in attribute values are not allowed: %s"
-msgstr ""
+msgstr "ค่าของคุณลักษณะไม่สามารถซ้ำกันได้: %s"
 
 #. module: product
 #: model:product.attribute,name:product.pa_duration
@@ -1654,12 +1629,12 @@ msgstr "ไดนามิก"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_dyson
 msgid "Dyson"
-msgstr ""
+msgstr "Dyson"
 
 #. module: product
 #: model:ir.model.constraint,message:product.constraint_product_template_attribute_value_attribute_value_unique
 msgid "Each value should be defined only once per attribute per product."
-msgstr "ควรกำหนดค่าแต่ละค่าเพียงครั้งเดียวต่อคุณสมบัติต่อสินค้า"
+msgstr "ควรกำหนดค่าแต่ละค่าเพียงครั้งเดียวต่อคุณลักษณะต่อสินค้า"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_document_kanban
@@ -1679,7 +1654,7 @@ msgstr "วันที่สิ้นสุด"
 msgid ""
 "End date can't be earlier than the start date. Please check dates for vendor "
 "pricelist: %s"
-msgstr ""
+msgstr "วันที่สิ้นสุดไม่สามารถเป็นวันที่ก่อนวันที่เริ่มต้นได้ โปรดตรวจสอบวันที่ในใบราคาของผู้ขาย:%s"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_supplierinfo__date_end
@@ -1704,16 +1679,20 @@ msgstr "ตามหลักสรีรศาสตร์"
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.js:0
 msgid "Error exporting file. Please try again."
+msgstr "เกิดข้อผิดพลาดขณะส่งออกไฟล์ โปรดลองอีกครั้ง"
+
+#. module: product
+#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
+msgid "Example:"
 msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_template_attribute_value__excluded_value_ids
 msgid "Exclude For"
-msgstr ""
+msgstr "ยกเว้นสำหรับ"
 
 #. module: product
 #: model:product.category,name:product.product_category_expenses
-#, fuzzy
 msgid "Expenses"
 msgstr "บัญชีรายจ่าย"
 
@@ -1736,7 +1715,7 @@ msgstr "ค่าธรรมเนียมเพิ่มเติม"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__extra_uom_ids
 msgid "Extra Packagings"
-msgstr ""
+msgstr "แพ็กเกจเสริม"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_combo_item__extra_price
@@ -1750,8 +1729,8 @@ msgid ""
 "Extra price for the variant with this attribute value on sale price. eg. 200 "
 "price extra, 1000 + 200 = 1200."
 msgstr ""
-"ราคาเพิ่มเติมสำหรับตัวเลือกย่อยสินค้าพร้อมค่าของคุณสมบัตินี้ในราคาขาย เช่น ราคาเพิ่มเติม 200 เป็น "
-"1,000 + 200 = 1,200"
+"ราคาเพิ่มเติมสำหรับตัวเลือกย่อยสินค้าพร้อมค่าของคุณลักษณะนี้ในราคาขาย เช่น ราคาเพิ่มเติม 200 "
+"เป็น 1,000 + 200 = 1,200"
 
 #. module: product
 #: model:product.attribute,name:product.pa_fabric
@@ -1788,7 +1767,7 @@ msgstr "ขนาดไฟล์"
 #. module: product
 #: model:product.attribute.value,name:product.pav_options_file_cabinets
 msgid "File cabinets"
-msgstr ""
+msgstr "ตู้เก็บเอกสาร"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__fixed_price
@@ -1800,7 +1779,7 @@ msgstr "ราคาคงที่"
 #: model:ir.model.fields,field_description:product.field_product_product__fixed_pricelist_rule_ids
 #: model:ir.model.fields,field_description:product.field_product_template__fixed_pricelist_rule_ids
 msgid "Fixed Pricelist Rule"
-msgstr ""
+msgstr "กฎราคาคงที่"
 
 #. module: product
 #: model:product.template,name:product.product_product_20_product_template
@@ -1835,7 +1814,6 @@ msgstr ""
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__virtual_available
-#, fuzzy
 msgid ""
 "Forecast quantity (computed as Quantity On Hand - Outgoing + Incoming - "
 "Quantity to Remove)\n"
@@ -1849,33 +1827,24 @@ msgstr ""
 "จำนวนที่คาดการณ์ (คำนวณเป็นจำนวนในมือ - ขาออก + ขาเข้า - ปริมาณที่ต้องการเอาออก)\n"
 "ในบริบทที่มีสถานที่เก็บสินค้าแห่งเดียว ซึ่งรวมถึงสินค้าที่จัดเก็บไว้ในสถานที่นี้ หรือสถานที่ย่อยอื่นๆ\n"
 "ในบริบทของคลังสินค้าเดียวเดียว ซึ่งรวมถึงสินค้าที่จัดเก็บไว้ในสถานที่เก็บสินค้าของคลังสินค้านี้ "
-"หรือสถานที่ย่อยอื่น ๆ \n"
+"หรือสถานที่ย่อยอื่นๆ\n"
 "มิเช่นนั้น จะรวมถึงสินค้าที่จัดเก็บไว้ในสถานที่เก็บสินค้าที่มีประเภท 'ภายใน'"
 
 #. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_product_tree_view
-#: model_terms:ir.ui.view,arch_db:product.product_template_tree_view
 #: model_terms:ir.ui.view,arch_db:product.product_view_list_qty
-#, fuzzy
 msgid "Forecasted"
 msgstr "พยากรณ์"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__virtual_available
 #: model:ir.model.fields,field_description:product.field_product_template__virtual_available
-#, fuzzy
 msgid "Forecasted Quantity"
-msgstr "ปริมาณพยากรณ์"
+msgstr "ปริมาณที่คาดการณ์"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_label_layout__print_format
 msgid "Format"
 msgstr "รูปแบบ"
-
-#. module: product
-#: model:ir.model.fields.selection,name:product.selection__product_pricelist_item__compute_price__formula
-msgid "Formula"
-msgstr "สูตร"
 
 #. module: product
 #: model:product.template,name:product.consu_delivery_03_product_template
@@ -1885,11 +1854,10 @@ msgstr "โต๊ะสี่คน"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_template__free_qty
 msgid "Free To Use"
-msgstr ""
+msgstr "ใช้งานได้"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__free_qty
-#, fuzzy
 msgid "Free To Use Quantity "
 msgstr "จำนวนที่พร้อมใช้งาน "
 
@@ -1897,11 +1865,10 @@ msgstr "จำนวนที่พร้อมใช้งาน "
 #: model:ir.model.fields,field_description:product.field_product_attribute_value__is_custom
 #: model:ir.model.fields,field_description:product.field_product_template_attribute_value__is_custom
 msgid "Free text"
-msgstr ""
+msgstr "ข้อความอิสระ"
 
 #. module: product
 #: model:product.category,name:product.product_category_furniture
-#, fuzzy
 msgid "Furniture"
 msgstr "เฟอร์นิเจอร์"
 
@@ -1923,7 +1890,7 @@ msgstr "ข้อมูลทั่วไป"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_gillette
 msgid "Gillette"
-msgstr ""
+msgstr "Gillette"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__sequence
@@ -1934,12 +1901,12 @@ msgstr "ให้ลำดับเมื่อแสดงรายการส
 #. module: product
 #: model:product.attribute.value,name:product.pav_fabric_glass
 msgid "Glass"
-msgstr ""
+msgstr "แก้ว"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_color_gold
 msgid "Gold"
-msgstr "Gold"
+msgstr "สีทอง"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.report_pricelist_page
@@ -1977,7 +1944,7 @@ msgstr "สีเขียว"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_h_m
 msgid "H&M"
-msgstr ""
+msgstr "H&M"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_template_attribute_value__html_color
@@ -1995,17 +1962,22 @@ msgstr "มีข้อความ"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_document__has_thumbnail
 msgid "Has Thumbnail"
-msgstr ""
+msgstr "มีภาพตัวอย่าง"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_head_shoulders
 msgid "Head & Shoulders"
-msgstr ""
+msgstr "Head & Shoulders"
 
 #. module: product
 #: model:product.attribute,name:product.pa_height
 msgid "Height"
 msgstr "ความสูง"
+
+#. module: product
+#: model:res.groups.privilege,description:product.res_groups_privilege_product
+msgid "Helps you manage your product catalog."
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_attribute_value__html_color
@@ -2014,16 +1986,16 @@ msgid ""
 "Here you can set a specific HTML color index (e.g. #ff0000) to display the "
 "color if the attribute type is 'Color'."
 msgstr ""
-"ที่นี่คุณสามารถตั้งค่าดัชนีสี HTML เฉพาะ (เช่น #ff0000) เพื่อแสดงสีหากประเภทคุณสมบัติเป็น 'สี' ได้"
+"ที่นี่คุณสามารถตั้งค่าดัชนีสี HTML เฉพาะ (เช่น #ff0000) เพื่อแสดงสีหากประเภทคุณลักษณะเป็น 'สี' "
+"ได้"
 
 #. module: product
 #: model:product.template,description_sale:product.product_product_12_product_template
 msgid "High-back office chair with great support"
-msgstr ""
+msgstr "เก้าอี้สำนักงานพิงสูงที่ให้การรองรับอย่างยอดเยี่ยม"
 
 #. module: product
 #: model:product.category,name:product.product_category_construction
-#, fuzzy
 msgid "Home Construction"
 msgstr "การก่อสร้างบ้าน"
 
@@ -2031,6 +2003,16 @@ msgstr "การก่อสร้างบ้าน"
 #: model:product.template,name:product.expense_hotel_product_template
 msgid "Hotel Accommodation"
 msgstr "ที่พักโรงแรม"
+
+#. module: product
+#: model:ir.model.fields,help:product.field_product_pricelist_item__compute_price
+msgid ""
+"How the price is derived from the base price.\n"
+"Discount: a percentage taken off it.\n"
+"Surcharge: a percentage added on top of it.\n"
+"Fixed Price: a set amount, ignoring the base price entirely.\n"
+"Activate the discount settings to show the discount to the customer."
+msgstr ""
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_ir_attachment__id
@@ -2066,6 +2048,7 @@ msgstr "ที่พักโรงแรม"
 #: model:ir.model.fields,field_description:product.field_res_config_settings__id
 #: model:ir.model.fields,field_description:product.field_res_country_group__id
 #: model:ir.model.fields,field_description:product.field_res_currency__id
+#: model:ir.model.fields,field_description:product.field_res_groups__id
 #: model:ir.model.fields,field_description:product.field_res_partner__id
 #: model:ir.model.fields,field_description:product.field_uom_uom__id
 #: model:ir.model.fields,field_description:product.field_update_product_attribute_value__id
@@ -2112,7 +2095,7 @@ msgstr "หากไม่ได้กำหนด ราคาของผู�
 #: model:ir.model.fields,help:product.field_product_attribute__active
 msgid ""
 "If unchecked, it will allow you to hide the attribute without removing it."
-msgstr "หากไม่เลือกไว้ คุณสามารถซ่อนแอตทริบิวต์ได้โดยไม่ต้องลบออก"
+msgstr "หากไม่เลือกไว้ คุณสามารถซ่อนคุณลักษณะได้โดยไม่ต้องลบออก"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_pricelist__active
@@ -2186,7 +2169,6 @@ msgstr "ปิดใช้งาน"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__incoming_qty
 #: model:ir.model.fields,field_description:product.field_product_template__incoming_qty
-#, fuzzy
 msgid "Incoming"
 msgstr "ขาเข้า"
 
@@ -2194,7 +2176,7 @@ msgstr "ขาเข้า"
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/order_line/order_line.xml:0
 msgid "Increase quantity"
-msgstr ""
+msgstr "เพิ่มจำนวน"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_document__index_content
@@ -2239,13 +2221,13 @@ msgstr "การดำเนินการไม่ถูกต้อง"
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_form_view
 msgid "Inventory"
-msgstr "สินค้าคงคลัง"
+msgstr "คลังสินค้า"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__is_dynamically_created
 #: model:ir.model.fields,field_description:product.field_product_template__is_dynamically_created
 msgid "Is Dynamically Created"
-msgstr ""
+msgstr "ถูกสร้างขึ้นแบบไดนามิก"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_category__message_is_follower
@@ -2256,20 +2238,15 @@ msgid "Is Follower"
 msgstr "เป็นผู้ติดตาม"
 
 #. module: product
-#: model:ir.model.fields,field_description:product.field_product_product__is_in_selected_section_of_order
-msgid "Is In Selected Section Of Order"
-msgstr ""
-
-#. module: product
 #: model:ir.model.fields,field_description:product.field_res_partner__is_pricelist_manually_set
 #: model:ir.model.fields,field_description:product.field_res_users__is_pricelist_manually_set
 msgid "Is Pricelist Manually Set"
-msgstr ""
+msgstr "ราคาถูกกำหนดเองหรือไม่"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__is_pricelist_required
 msgid "Is Pricelist Required"
-msgstr ""
+msgstr "จำเป็นต้องมีรายการราคาหรือไม่"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__is_product_variant
@@ -2297,40 +2274,39 @@ msgstr "เป็นเอกสารสาธารณะ"
 #: code:addons/product/models/product_product.py:0
 msgid ""
 "It is not possible to import different values for the same attribute: %s"
-msgstr ""
+msgstr "ไม่สามารถนำเข้าค่าที่ต่างกันสำหรับคุณลักษณะเดียวกันได้:%s"
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_label_layout__zpl_template__jewelry
 msgid "Jewelry (2.20\" x 0.50\")"
-msgstr ""
+msgstr "เครื่องประดับ (2.20\" x 0.50\")"
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__res_config_settings__product_weight_in_lbs__0
 msgid "Kilograms (kg)"
-msgstr ""
+msgstr "กิโลกรัม (กก.)"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_size_l
-#, fuzzy
 msgid "L"
 msgstr "L"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_loreal
 msgid "L'Oréal"
-msgstr ""
+msgstr "L'Oréal"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_LG
 msgid "LG"
-msgstr ""
+msgstr "LG"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_product.py:0
 #: code:addons/product/models/product_template.py:0
 msgid "Labels cannot be printed for products of service type"
-msgstr ""
+msgstr "ไม่สามารถพิมพ์ป้ายชื่อได้สำหรับสินค้าประเภทบริการ"
 
 #. module: product
 #: model:product.template,name:product.product_product_6_product_template
@@ -2420,7 +2396,7 @@ msgstr "หนัง"
 #. module: product
 #: model:product.template,description_sale:product.product_product_13_product_template
 msgid "Left-sided workspace with storage"
-msgstr ""
+msgstr "พื้นที่ทำงานด้านซ้ายพร้อมพื้นที่เก็บของ"
 
 #. module: product
 #: model:product.attribute,name:product.pa_legs
@@ -2435,16 +2411,15 @@ msgstr "ความยาว"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_lenovo
 msgid "Lenovo"
-msgstr ""
+msgstr "Lenovo"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_levis
 msgid "Levi's"
-msgstr ""
+msgstr "Levi's"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_fabric_linen
-#, fuzzy
 msgid "Linen"
 msgstr "ผ้าลินิน"
 
@@ -2455,6 +2430,11 @@ msgid "Lines"
 msgstr "รายการ"
 
 #. module: product
+#: model_terms:ir.ui.view,arch_db:product.product_document_kanban
+msgid "Link"
+msgstr ""
+
+#. module: product
 #: model:ir.model,name:product.model_product_uom
 msgid "Link between products and their UoMs"
 msgstr "เชื่อมโยงระหว่างสินค้าและหน่วยวัดของแต่ละสินค้า"
@@ -2462,7 +2442,7 @@ msgstr "เชื่อมโยงระหว่างสินค้าแล
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_only_form_view
 msgid "List of possible values (e.g. Blue, Green, White, ... )"
-msgstr ""
+msgstr "รายชื่อค่าที่เป็นไปได้ (เช่น ฟ้า, เขียว, ขาว, ... )"
 
 #. module: product
 #: model:product.template,name:product.product_product_local_delivery_product_template
@@ -2490,7 +2470,6 @@ msgstr ""
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_size_m
-#, fuzzy
 msgid "M"
 msgstr "M"
 
@@ -2498,7 +2477,7 @@ msgstr "M"
 #: model:ir.model.fields,help:product.field_product_template_attribute_value__excluded_value_ids
 msgid ""
 "Make this attribute value not compatible with other values of the product."
-msgstr ""
+msgstr "ตั้งค่าให้ค่าของคุณลักษณะนี้ให้ไม่เข้ากันกับค่าอื่นๆ ของสินค้า"
 
 #. module: product
 #: model:res.groups,name:product.group_product_variant
@@ -2511,19 +2490,12 @@ msgid "Margins"
 msgstr "มาร์จิ้น"
 
 #. module: product
-#: model:ir.model.fields,field_description:product.field_product_pricelist_item__price_markup
-#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "Markup"
-msgstr ""
-
-#. module: product
 #: model:product.attribute.value,name:product.pav_color_maroon
 msgid "Maroon"
-msgstr ""
+msgstr "สีแดงเลือดหมู"
 
 #. module: product
 #: model:product.attribute,name:product.pa_material
-#, fuzzy
 msgid "Material"
 msgstr "วัสดุ"
 
@@ -2547,7 +2519,7 @@ msgstr "ราคามาร์จิ้นสูงสุด"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_maybelline
 msgid "Maybelline"
-msgstr ""
+msgstr "Maybelline"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_update_product_attribute_value__message
@@ -2582,11 +2554,6 @@ msgstr "ประเภท Mime"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "Min Qty"
-msgstr ""
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
 msgid "Min. Margin"
 msgstr "มาร์จิ้นขั้นต่ำ"
 
@@ -2603,6 +2570,11 @@ msgstr "จำนวนขั้นต่ำ"
 #. module: product
 #: model:product.template,description_sale:product.product_product_8_product_template
 msgid "Minimalist wooden desk for executive use"
+msgstr "โต๊ะไม้สไตล์มินิมัล สำหรับผู้บริหาร"
+
+#. module: product
+#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
+msgid "Minimum Quantity"
 msgstr ""
 
 #. module: product
@@ -2618,7 +2590,7 @@ msgstr "ขาตั้งจอมอนิเตอร์"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_montblanc
 msgid "Montblanc"
-msgstr ""
+msgstr "Montblanc"
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_attribute__display_type__multi
@@ -2660,12 +2632,12 @@ msgstr "ชื่อ"
 #. module: product
 #: model:product.attribute.value,name:product.pav_color_navy
 msgid "Navy"
-msgstr ""
+msgstr "สีกรมท่า"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_nestle
 msgid "Nestlé"
-msgstr ""
+msgstr "Nestlé"
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_attribute__create_variant__no_variant
@@ -2714,17 +2686,17 @@ msgstr "ประเภทกิจกรรมถัดไป"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_nike
 msgid "Nike"
-msgstr ""
+msgstr "Nike"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_nikon
 msgid "Nikon"
-msgstr ""
+msgstr "Nikon"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_nivea
 msgid "Nivea"
-msgstr ""
+msgstr "Nivea"
 
 #. module: product
 #. odoo-python
@@ -2737,7 +2709,6 @@ msgstr "ไม่มีสินค้าที่จะพิมพ์ หา�
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/kanban_renderer.xml:0
-#, fuzzy
 msgid "No products could be found."
 msgstr "ไม่พบสินค้า"
 
@@ -2745,7 +2716,7 @@ msgstr "ไม่พบสินค้า"
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
 msgid "No products found in the report"
-msgstr ""
+msgstr "ไม่พบสินค้าใดในรายงาน"
 
 #. module: product
 #: model_terms:ir.actions.act_window,help:product.product_supplierinfo_type_action
@@ -2761,17 +2732,17 @@ msgstr "ไม่ เก็บมันไว้"
 #. module: product
 #: model:product.template,description_sale:product.product_template_acoustic_bloc_screens
 msgid "Noise-reducing panels for open spaces"
-msgstr ""
+msgstr "แผงลดเสียงสำหรับพื้นที่เปิด"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_category_form_view
 msgid "None"
-msgstr ""
+msgstr "ไม่มี"
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_label_layout__zpl_template__normal
 msgid "Normal (2.25\" x 1.25\")"
-msgstr ""
+msgstr "ปกติ (2.25\" x 1.25\")"
 
 #. module: product
 #. odoo-python
@@ -2784,7 +2755,7 @@ msgstr "บันทึกภายใน:"
 #. odoo-python
 #: code:addons/product/models/product_product.py:0
 msgid "Note: Some products may be hidden due to access restrictions."
-msgstr ""
+msgstr "หมายเหตุ: สินค้าบางรายการอาจถูกซ่อนไว้เนื่องจากข้อจำกัดในการเข้าถึง"
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_template__service_tracking__no
@@ -2830,9 +2801,8 @@ msgstr "จํานวนข้อความที่มีข้อผิด
 
 #. module: product
 #: model:product.category,name:product.product_category_office
-#, fuzzy
 msgid "Office"
-msgstr "สำนักงาน"
+msgstr "ออฟฟิศ"
 
 #. module: product
 #: model:product.template,name:product.product_delivery_01_product_template
@@ -2847,7 +2817,7 @@ msgstr "เก้าอี้สำนักงาน สีดำ"
 #. module: product
 #: model:product.template,name:product.office_combo_product_template
 msgid "Office Combo"
-msgstr ""
+msgstr "คอมโบออฟฟิศ"
 
 #. module: product
 #: model:product.template,name:product.product_order_01_product_template
@@ -2862,18 +2832,17 @@ msgstr "โคมไฟสำนักงาน"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_olay
 msgid "Olay"
-msgstr ""
+msgstr "Olay"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_color_olive
 msgid "Olive"
-msgstr ""
+msgstr "สีเขียวมะกอก"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_product_tree_view
 #: model_terms:ir.ui.view,arch_db:product.product_template_tree_view
 #: model_terms:ir.ui.view,arch_db:product.product_view_list_qty
-#, fuzzy
 msgid "On Hand"
 msgstr "ที่มีอยู่"
 
@@ -2884,18 +2853,18 @@ msgid ""
 "On the product %(product)s you cannot associate the value %(value)s with the "
 "attribute %(attribute)s because they do not match."
 msgstr ""
-"ในสินค้า %(product)s คุณไม่สามารถเชื่อมโยงค่า %(value)s กับคุณสมบัติ %(attribute)s ได้ "
+"ในสินค้า %(product)s คุณไม่สามารถเชื่อมโยงค่า %(value)s กับคุณลักษณะ %(attribute)s ได้ "
 "เนื่องจากค่าไม่ตรงกัน"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_template_attribute_line.py:0
 msgid ""
-"On the product %(product)s you cannot transform the attribute "
-"%(attribute_src)s into the attribute %(attribute_dest)s."
+"On the product %(product)s you cannot transform the attribute %"
+"(attribute_src)s into the attribute %(attribute_dest)s."
 msgstr ""
-"ในสินค้า %(product)s คุณไม่สามารถแปลงคุณสมบัติ %(attribute_src)s ให้เป็นคุณสมบัติ "
-"%(attribute_dest)s ได้"
+"ในสินค้า %(product)s คุณไม่สามารถแปลงคุณสมบัติ %(attribute_src)s ให้เป็นคุณสมบัติ %"
+"(attribute_dest)s ได้"
 
 #. module: product
 #. odoo-javascript
@@ -2912,12 +2881,12 @@ msgstr "ตัวเลือก"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_oral_b
 msgid "Oral-B"
-msgstr ""
+msgstr "Oral-B"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_color_orange
 msgid "Orange"
-msgstr "ส้ม"
+msgstr "สีส้ม"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_document__original_id
@@ -2939,7 +2908,7 @@ msgstr "รายการราคาอื่นๆ"
 #. module: product
 #: model:product.category,name:product.product_category_outdoor_furniture
 msgid "Outdoor"
-msgstr ""
+msgstr "กลางแจ้ง"
 
 #. module: product
 #: model:product.template,name:product.product_template_dining_table
@@ -2949,18 +2918,16 @@ msgstr "โต๊ะทานอาหารกลางแจ้ง"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__outgoing_qty
 #: model:ir.model.fields,field_description:product.field_product_template__outgoing_qty
-#, fuzzy
 msgid "Outgoing"
 msgstr "ขาออก"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_options_overhead_shelves
 msgid "Overhead shelves"
-msgstr ""
+msgstr "ชั้นวางของเหนือศีรษะ"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__uom_id
-#, fuzzy
 msgid "Packaging"
 msgstr "บรรจุภัณฑ์"
 
@@ -2969,12 +2936,12 @@ msgstr "บรรจุภัณฑ์"
 #: model_terms:ir.ui.view,arch_db:product.product_template_form_view
 #: model_terms:ir.ui.view,arch_db:product.product_uom_list_view
 msgid "Packaging Barcodes"
-msgstr ""
+msgstr "บาร์โค้ดบนบรรจุภัณฑ์"
 
 #. module: product
 #: model:ir.actions.report,name:product.report_product_packaging
 msgid "Packaging Barcodes (PDF)"
-msgstr ""
+msgstr "บาร์โค้ดบนบรรจุภัณฑ์ (PDF)"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__uom_ids
@@ -2985,17 +2952,17 @@ msgstr "บรรจุภัณฑ์"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_panasonic
 msgid "Panasonic"
-msgstr ""
+msgstr "Panasonic"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_pantene
 msgid "Pantene"
-msgstr ""
+msgstr "Pantene"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_category_form_view
 msgid "Parent"
-msgstr ""
+msgstr "หลัก"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_category__parent_id
@@ -3009,9 +2976,8 @@ msgstr "เส้นทางหลัก"
 
 #. module: product
 #: model:product.attribute,name:product.pa_pattern
-#, fuzzy
 msgid "Pattern"
-msgstr "แบบแผน"
+msgstr "แพทเทิร์น"
 
 #. module: product
 #: model:product.template,name:product.product_product_9_product_template
@@ -3021,27 +2987,27 @@ msgstr "ถังเหยียบ"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_pepsi
 msgid "Pepsi"
-msgstr ""
-
-#. module: product
-#: model:ir.model.fields,field_description:product.field_product_pricelist_item__percent_price
-msgid "Percentage Price"
-msgstr "ราคาร้อยละ"
+msgstr "เป๊ปซี่"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_philips
 msgid "Philips"
-msgstr ""
+msgstr "Philips"
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_attribute__display_type__pills
 msgid "Pills"
-msgstr "ทรงยา"
+msgstr "ปุ่มขอบมน"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_color_pink
 msgid "Pink"
 msgstr "สีชมพู"
+
+#. module: product
+#: model:ir.model.fields,field_description:product.field_product_pricelist_item__is_plain_discount
+msgid "Plain Discount"
+msgstr ""
 
 #. module: product
 #. odoo-javascript
@@ -3067,7 +3033,7 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.js:0
 msgid "Please select some products first."
-msgstr ""
+msgstr "โปรดเลือกสินค้าบางรายการก่อน"
 
 #. module: product
 #. odoo-python
@@ -3091,7 +3057,7 @@ msgstr "โปรดระบุตัวเลือกย่อยสินค
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__res_config_settings__product_weight_in_lbs__1
 msgid "Pounds (lb)"
-msgstr ""
+msgstr "ปอนด์ (lb)"
 
 #. module: product
 #: model_terms:product.template,website_description:product.product_product_4_product_template
@@ -3101,6 +3067,7 @@ msgid ""
 msgstr "กดปุ่มและดูโต๊ะทำงานของคุณเลื่อนไปมาได้อย่างง่ายดายจากความสูงสำหรับนั่งไปจนถึงยืนในไม่กี่วินาที"
 
 #. module: product
+#: model:ir.model.fields,field_description:product.field_product_pricelist_item__price
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_tree_view_from_product
 msgid "Price"
 msgstr "ราคา"
@@ -3113,7 +3080,6 @@ msgstr "ราคาลด"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__base_unit_price
 #: model:ir.model.fields,field_description:product.field_product_template__base_unit_price
-#, fuzzy
 msgid "Price Per Unit"
 msgstr "ราคาต่อหนึ่งหน่วย"
 
@@ -3127,11 +3093,6 @@ msgstr "การปัดเศษราคา"
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_tree_view
 msgid "Price Rules"
 msgstr "กฎราคา"
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "Price Type"
-msgstr "ประเภทราคา"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__list_price
@@ -3156,7 +3117,6 @@ msgstr "รายการราคา"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_pricelist_item__applied_on
-#: model:ir.model.fields,help:product.field_product_pricelist_item__display_applied_on
 msgid "Pricelist Item applicable on selected option"
 msgstr "รายการราคาใช้ได้กับตัวเลือกที่เลือก"
 
@@ -3178,7 +3138,7 @@ msgstr "รายงานของรายการราคา"
 #. odoo-python
 #: code:addons/product/models/product_pricelist.py:0
 msgid "Pricelist Report Preview"
-msgstr ""
+msgstr "ดูตัวอย่างรายงานราคา"
 
 #. module: product
 #: model:ir.model,name:product.model_product_pricelist_item
@@ -3225,12 +3185,12 @@ msgstr "พิมพ์ฉลาก"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_label_layout__with_price
 msgid "Print With Price"
-msgstr ""
+msgstr "พิมพ์พร้อมราคา"
 
 #. module: product
 #: model:product.template,description_sale:product.product_product_24_product_template
 msgid "Private pod with desk and chair"
-msgstr ""
+msgstr "ห้องส่วนตัวพร้อมโต๊ะและเก้าอี้"
 
 #. module: product
 #. odoo-python
@@ -3243,7 +3203,6 @@ msgstr ""
 #: model:ir.model.fields,field_description:product.field_product_template__product_variant_id
 #: model:ir.model.fields,field_description:product.field_product_uom__product_id
 #: model:ir.model.fields.selection,name:product.selection__product_pricelist_item__applied_on__1_product
-#: model:ir.model.fields.selection,name:product.selection__product_pricelist_item__display_applied_on__1_product
 #: model_terms:ir.ui.view,arch_db:product.product_kanban_view
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_view_search
 #: model_terms:ir.ui.view,arch_db:product.product_search_form_view
@@ -3265,28 +3224,28 @@ msgstr "สินค้า"
 #: model_terms:ir.ui.view,arch_db:product.product_attribute_view_form
 #: model_terms:ir.ui.view,arch_db:product.product_template_attribute_value_view_form
 msgid "Product Attribute"
-msgstr "คุณสมบัติสินค้า"
+msgstr "คุณลักษณะสินค้า"
 
 #. module: product
 #: model:ir.model,name:product.model_product_attribute_custom_value
 msgid "Product Attribute Custom Value"
-msgstr "ค่าคุณสมบัติของสินค้าที่กำหนดเอง"
+msgstr "ค่าคุณลักษณะของสินค้าที่กำหนดเอง"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_template_attribute_line__product_template_value_ids
 msgid "Product Attribute Values"
-msgstr "ค่าคุณสมบัติของสินค้า"
+msgstr "ค่าคุณลักษณะของสินค้า"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_attribute_line_form
 msgid "Product Attribute and Values"
-msgstr "คุณสมบัติและมูลค่าของสินค้า"
+msgstr "คุณลักษณะและมูลค่าของสินค้า"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__attribute_line_ids
 #: model:ir.model.fields,field_description:product.field_product_template__attribute_line_ids
 msgid "Product Attributes"
-msgstr "คุณสมบัติของสินค้า"
+msgstr "คุณลักษณะของสินค้า"
 
 #. module: product
 #: model:ir.model,name:product.model_product_catalog_line_mixin
@@ -3343,9 +3302,8 @@ msgstr "ฉลากสินค้า (PDF)"
 
 #. module: product
 #: model:ir.actions.report,name:product.report_product_template_label_zpl
-#, fuzzy
 msgid "Product Label (ZPL)"
-msgstr "ฉลากผลิตภัณฑ์ (ZPL)"
+msgstr "ฉลากสินค้า (ZPL)"
 
 #. module: product
 #: model:ir.actions.report,name:product.report_product_template_label_2x7
@@ -3385,7 +3343,7 @@ msgstr "รายงานฉลากสินค้า 4x7"
 #. module: product
 #: model:ir.model,name:product.model_report_product_report_producttemplatelabel_zpl
 msgid "Product Label Report ZPL"
-msgstr ""
+msgstr "รายงานฉลากสินค้า ZPL"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_tree_view
@@ -3395,7 +3353,7 @@ msgstr "ชื่อสินค้า"
 #. module: product
 #: model:ir.model,name:product.model_report_product_report_packagingbarcode
 msgid "Product Packaging Barcode Report"
-msgstr ""
+msgstr "รายงานบาร์โค้ดบนบรรจุภัณฑ์สินค้า"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_category__product_properties_definition
@@ -3428,12 +3386,12 @@ msgstr "เทมเพลตสินค้า"
 #. module: product
 #: model:ir.model,name:product.model_product_template_attribute_line
 msgid "Product Template Attribute Line"
-msgstr "รายการคุณสมบัติเทมเพลตสินค้า"
+msgstr "รายการคุณลักษณะเทมเพลตสินค้า"
 
 #. module: product
 #: model:ir.model,name:product.model_product_template_attribute_value
 msgid "Product Template Attribute Value"
-msgstr "ค่าคุณสมบัติของเทมเพลตสินค้า"
+msgstr "ค่าคุณลักษณะของเทมเพลตสินค้า"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_tag__product_template_ids
@@ -3468,9 +3426,8 @@ msgstr "หน่วยวัดสินค้า"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__import_attribute_values
 #: model:ir.model.fields,field_description:product.field_product_template__import_attribute_values
-#, fuzzy
 msgid "Product Values"
-msgstr "ค่าสินค้า"
+msgstr "ค่าของสินค้า"
 
 #. module: product
 #: model:ir.model,name:product.model_product_product
@@ -3509,6 +3466,11 @@ msgstr "ไม่ได้กำหนดรุ่นสินค้า โป�
 #: model_terms:ir.ui.view,arch_db:product.report_pricelist_page
 msgid "Products"
 msgstr "สินค้า"
+
+#. module: product
+#: model:ir.module.module,shortdesc:base.module_product
+msgid "Products & Pricelists"
+msgstr ""
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_view_search
@@ -3551,7 +3513,7 @@ msgstr "คุณสมบัติ"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_puma
 msgid "Puma"
-msgstr ""
+msgstr "Puma"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__purchase_ok
@@ -3575,7 +3537,6 @@ msgstr "สีม่วง"
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
-#, fuzzy
 msgid "Quantities"
 msgstr "ปริมาณ"
 
@@ -3593,12 +3554,11 @@ msgstr "ปริมาณ"
 #. odoo-python
 #: code:addons/product/controllers/pricelist_report.py:0
 msgid "Quantity (%s UoM)"
-msgstr ""
+msgstr "ปริมาณ (%s หน่วยวัด)"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__qty_available
 #: model:ir.model.fields,field_description:product.field_product_template__qty_available
-#, fuzzy
 msgid "Quantity On Hand"
 msgstr "ปริมาณในมือ"
 
@@ -3610,7 +3570,6 @@ msgstr "จำนวนที่มีอยู่แล้ว (%s)"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__incoming_qty
-#, fuzzy
 msgid ""
 "Quantity of planned incoming products.\n"
 "In a context with a single Stock Location, this includes goods arriving to "
@@ -3620,16 +3579,15 @@ msgid ""
 "Otherwise, this includes goods arriving to any Stock Location with "
 "'internal' type."
 msgstr ""
-"ปริมาณของสินค้าขาเข้าที่วางแผนไว้\n"
-"ในบริบทที่มีสถานที่ตั้งคลังสินค้าแห่งเดียว "
-"ซึ่งรวมถึงสินค้าที่มาถึงสถานที่นี้หรือรายการย่อยของสถานที่นั้นด้วย\n"
-"ในบริบทของคลังสินค้าแห่งเดียว "
-"ซึ่งรวมถึงสินค้าที่มาถึงที่ตั้งสต็อกของคลังสินค้านี้หรือรายการย่อยของคลังสินค้า\n"
-"ไม่เช่นนั้น จะรวมถึงสินค้าที่มาถึงที่ตั้งสต็อกด้วยประเภท 'ภายใน'"
+"ปริมาณสินค้าที่คาดว่าจะเข้าคลัง\n"
+"ในกรณีที่มีจุดเก็บสินค้าเพียงแห่งเดียว นี่รวมถึงสินค้าที่เข้าจุดเก็บสินค้าดังกล่าว "
+"หรือจุดเก็บสินค้าลูกใดก็ตาม\n"
+"ในกรณีที่มีคลังสินค้าเพียงแห่งเดียว นี่รวมถึงสินค้าที่เข้าจุดเก็บสินค้าของคลังสินค้าดังกล่าว "
+"หรือจุดเก็บสินค้าลูกใดก็ตาม\n"
+"ในกรณีอื่น นี่รวมถึงสินค้าที่เข้าจุดเก็บสินค้าใดก็ตามที่มีประเภท 'ภายใน'"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__outgoing_qty
-#, fuzzy
 msgid ""
 "Quantity of planned outgoing products.\n"
 "In a context with a single Stock Location, this includes goods leaving this "
@@ -3640,31 +3598,36 @@ msgid ""
 "type."
 msgstr ""
 "ปริมาณของสินค้าขาออกที่วางแผนไว้\n"
-"ในบริบทที่มีที่ตั้งสต็อกแห่งเดียว ซึ่งรวมถึงสินค้าที่ออกจากสถานที่นี้หรือรายการย่อยของสถานที่นั้นด้วย\n"
-"ในบริบทที่มีคลังสินค้าแห่งเดียว "
+"ในกรณีที่มีที่ตั้งสต็อกแห่งเดียว ซึ่งรวมถึงสินค้าที่ออกจากสถานที่นี้หรือรายการย่อยของสถานที่นั้นด้วย\n"
+"ในกรณีที่มีคลังสินค้าแห่งเดียว "
 "ซึ่งรวมถึงสินค้าที่ออกจากที่ตั้งสต็อกของคลังสินค้านี้หรือรายการย่อยของคลังสินค้า\n"
 "ไม่เช่นนั้น จะรวมถึงสินค้าที่ออกจากตำแหน่งสต็อกด้วยประเภท 'ภายใน'"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_template__free_qty
 msgid "Quantity on hand minus outgoing quantity."
-msgstr ""
+msgstr "ปริมาณที่มีอยู่ ลบด้วยปริมาณที่ส่งออก"
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_attribute__display_type__radio
 msgid "Radio"
-msgstr "คลื่นวิทยุ"
+msgstr "ปุ่มตัวเลือก"
+
+#. module: product
+#: model:ir.model.fields.selection,name:product.selection__product_attribute__display_type__range
+msgid "Range"
+msgstr ""
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_rayban
 msgid "Ray-Ban"
-msgstr ""
+msgstr "Ray-Ban"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_pricelist_item.py:0
 msgid "Recursive pricelist rules detected: %s"
-msgstr ""
+msgstr "ตรวจพบกฎราคาแบบเรียกซ้ำ: %s"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_color_red
@@ -3674,7 +3637,7 @@ msgstr "สีแดง"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_reebok
 msgid "Reebok"
-msgstr ""
+msgstr "Reebok"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__code
@@ -3686,7 +3649,7 @@ msgstr "การอ้างอิง"
 #: model:ir.model.fields,field_description:product.field_product_product__base_unit_count
 #: model:ir.model.fields,field_description:product.field_product_template__base_unit_count
 msgid "Reference Unit"
-msgstr ""
+msgstr "หน่วยอ้างอิง"
 
 #. module: product
 #: model_terms:ir.actions.act_window,help:product.product_supplierinfo_type_action
@@ -3712,13 +3675,6 @@ msgstr "ไฟล์แนบที่เกี่ยวข้อง"
 
 #. module: product
 #. odoo-javascript
-#: code:addons/product/static/src/product_catalog/order_line/order_line.xml:0
-#, fuzzy
-msgid "Remove"
-msgstr "นำออก"
-
-#. module: product
-#. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
 msgid "Remove quantity"
 msgstr "ลบปริมาณ"
@@ -3726,12 +3682,12 @@ msgstr "ลบปริมาณ"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_document__res_access_read
 msgid "Res Access Read"
-msgstr ""
+msgstr "สิทธิ์การอ่านข้อมูลระบบ"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_document__res_access_write
 msgid "Res Access Write"
-msgstr ""
+msgstr "สิทธิ์การแก้ไขข้อมูลระบบ"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_document__res_field
@@ -3768,17 +3724,17 @@ msgstr "ค่าใช้จ่ายร้านอาหาร"
 #. module: product
 #: model:product.template,description_sale:product.product_product_5_product_template
 msgid "Right-aligned desk with storage"
-msgstr ""
+msgstr "โต๊ะทำงานจัดวางด้านขวาพร้อมพื้นที่เก็บของ"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_rolex
 msgid "Rolex"
-msgstr ""
+msgstr "Rolex"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
 msgid "Round off to"
-msgstr ""
+msgstr "ปัดเศษเป็น"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_label_layout__rows
@@ -3792,13 +3748,11 @@ msgstr "เคล็ดลับของกฎ"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_view
-#, fuzzy
 msgid "Rules"
 msgstr "กฏ"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_size_s
-#, fuzzy
 msgid "S"
 msgstr "S"
 
@@ -3834,7 +3788,7 @@ msgstr "ราคาขาย"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_samsung
 msgid "Samsung"
-msgstr ""
+msgstr "Samsung"
 
 #. module: product
 #. odoo-javascript
@@ -3845,7 +3799,7 @@ msgstr "ค้นหาผลิตภัณฑ์"
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_attribute__display_type__select
 msgid "Select"
-msgstr "เลือก"
+msgstr "เมนูดร็อปดาวน์"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_attribute__sequence
@@ -3893,14 +3847,13 @@ msgstr "ขนาดรองเท้า"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_form_view
-#, fuzzy
 msgid "Short Description"
-msgstr "คำอธิบายสั้น ๆ"
+msgstr "คำอธิบายสั้นๆ"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_template_attribute_value__show_price_extra
 msgid "Show Extra Price"
-msgstr ""
+msgstr "แสดงราคาเพิ่มเติม"
 
 #. module: product
 #. odoo-javascript
@@ -3912,13 +3865,13 @@ msgstr "แสดงชื่อ"
 #: model:ir.model.fields,field_description:product.field_product_product__show_qty_update_button
 #: model:ir.model.fields,field_description:product.field_product_template__show_qty_update_button
 msgid "Show Qty Update Button"
-msgstr ""
+msgstr "แสดงปุ่มอัปเดตจำนวน"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__show_sales_price_page
 #: model:ir.model.fields,field_description:product.field_product_template__show_sales_price_page
 msgid "Show Sales Price Page"
-msgstr ""
+msgstr "แสดงหน้าราคาขาย"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_search_view
@@ -3928,17 +3881,17 @@ msgstr "แสดงบันทึกทั้งหมดที่มีวั
 #. module: product
 #: model:ir.model.fields,help:product.field_product_template_attribute_value__show_price_extra
 msgid "Show separately the extra price for this attribute value."
-msgstr ""
+msgstr "แสดงแยกต่างหากสำหรับราคาเพิ่มเติมของค่าคุณลักษณะนี้"
 
 #. module: product
 #: model:product.attribute,name:product.pa_sides
 msgid "Sides"
-msgstr ""
+msgstr "ด้านข้าง"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_color_silver
 msgid "Silver"
-msgstr "Silver"
+msgstr "สีเงิน"
 
 #. module: product
 #: model:product.attribute,name:product.pa_size
@@ -3948,17 +3901,17 @@ msgstr "ไซส์"
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_label_layout__zpl_template__small
 msgid "Small (1.25\" x 1.00\")"
-msgstr ""
+msgstr "ขนาดเล็ก (1.25\" x 1.00\")"
 
 #. module: product
 #: model:product.template,description_sale:product.product_product_9_product_template
 msgid "Soft-close pedal bin for office use"
-msgstr ""
+msgstr "ถังขยะแบบปิดนุ่มด้วยเท้า สำหรับใช้ในสำนักงาน"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_sony
 msgid "Sony"
-msgstr ""
+msgstr "Sony"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_pricelist_item__categ_id
@@ -4002,7 +3955,6 @@ msgstr "ระบุจำนวนมาร์จิ้นขั้นต่ำ
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_normal_form_view
 #: model_terms:ir.ui.view,arch_db:product.product_template_only_form_view
-#, fuzzy
 msgid "Specify unit"
 msgstr "ระบุหน่วย"
 
@@ -4062,6 +4014,13 @@ msgid "Supplier Pricelist"
 msgstr "รายการราคาซัพพลายเออร์"
 
 #. module: product
+#: model:ir.model.fields,field_description:product.field_product_pricelist_item__price_markup
+#: model:ir.model.fields.selection,name:product.selection__product_pricelist_item__compute_price__markup
+#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
+msgid "Surcharge"
+msgstr ""
+
+#. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_tag_form_view
 msgid "Tag"
 msgstr "แท็ก"
@@ -4088,12 +4047,12 @@ msgstr "แท็กใช้เพื่อค้นหาสินค้าส
 #. module: product
 #: model:product.attribute.value,name:product.pav_color_tan
 msgid "Tan"
-msgstr ""
+msgstr "สีน้ำตาลอ่อน"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_color_teal
 msgid "Teal"
-msgstr "นกเป็ดน้ำ"
+msgstr "สีเขียวอมฟ้า"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_attribute__template_value_ids
@@ -4104,19 +4063,19 @@ msgstr "ค่าเทมเพลต"
 #. odoo-python
 #: code:addons/product/models/product_pricelist.py:0
 msgid "Template for Pricelists"
-msgstr ""
+msgstr "เทมเพลตสำหรับรายการราคา"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_template.py:0
 msgid "Template for Products"
-msgstr ""
+msgstr "เทมเพลตสำหรับสินค้า"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_supplierinfo.py:0
 msgid "Template for Vendor Pricelists"
-msgstr ""
+msgstr "เทมเพลตสำหรับรายการราคาของผู้ขาย"
 
 #. module: product
 #. odoo-python
@@ -4128,29 +4087,29 @@ msgstr "รหัสอ้างอิงภายใน '%s' มีอยู่
 #. odoo-python
 #: code:addons/product/models/product_product.py:0
 msgid "The Reference '%s' already exists."
-msgstr ""
+msgstr "การอ้างอิง '%s' มีอยู่แล้ว"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_template_attribute_line.py:0
 msgid ""
-"The attribute %(attribute)s must have at least one value for the product "
-"%(product)s."
-msgstr "คุณสมบัติ %(attribute)s ต้องมีค่าอย่างน้อยหนึ่งค่าสำหรับสินค้า %(product)s"
+"The attribute %(attribute)s must have at least one value for the product %"
+"(product)s."
+msgstr "คุณลักษณะ %(attribute)s ต้องมีค่าอย่างน้อยหนึ่งค่าสำหรับสินค้า %(product)s"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_attribute_value__attribute_id
 msgid ""
 "The attribute cannot be changed once the value is used on at least one "
 "product."
-msgstr "ไม่สามารถเปลี่ยนคุณสมบัติได้เมื่อมีการใช้ค่ากับสินค้าอย่างน้อยหนึ่งรายการ"
+msgstr "ไม่สามารถเปลี่ยนคุณลักษณะได้เมื่อมีการใช้ค่ากับสินค้าอย่างน้อยหนึ่งรายการ"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_product.py:0
 #: code:addons/product/models/product_template.py:0
 msgid "The cost of a product can't be negative."
-msgstr ""
+msgstr "ราคาของสินค้าไม่สามารถเป็นค่าลบได้"
 
 #. module: product
 #: model:product.template,description_sale:product.desk_organizer_product_template
@@ -4174,9 +4133,11 @@ msgstr "ประเภทการแสดงผลที่ใช้ในเ
 #: code:addons/product/models/product_product.py:0
 msgid ""
 "The exitings product has different attribute value. \"%(imported_values)s\" "
-"is not equivalent to \"%(existing_values)s\" for \"%(external_id)s\", "
-"\"%(id)s\""
+"is not equivalent to \"%(existing_values)s\" for \"%(external_id)s\", \"%"
+"(id)s\""
 msgstr ""
+"สินค้าที่มีอยู่มีค่าคุณลักษณะที่แตกต่างกัน \"%(imported_values)s\" ไม่เท่ากันกับ \"%"
+"(existing_values)s\" สำหรับ \"%(external_id)s\", \"%(id)s\""
 
 #. module: product
 #: model_terms:product.template,website_description:product.product_product_4_product_template
@@ -4221,7 +4182,7 @@ msgid ""
 msgstr ""
 "จำนวนตัวเลือกสินค้าที่จะสร้างเกินขีดจำกัดที่ได้รับอนุญาต "
 "คุณไม่ควรสร้างตัวเลือกสินค้าสำหรับชุดแต่ละชุดหรือสร้างตามความต้องการจากใบสั่งขาย "
-"โดยเปิดมุมมองแบบฟอร์มของคุณสมบัติและเปลี่ยนโหมดของ *สร้างตัวเลือกสินค้า*"
+"โดยเปิดมุมมองแบบฟอร์มของคุณลักษณะและเปลี่ยนโหมดของ *สร้างตัวเลือกสินค้า*"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_supplierinfo__price
@@ -4258,6 +4219,8 @@ msgid ""
 "The sale price can be set manually or computed from the product template. "
 "Click on the 'Configure Variants' button to set the extra attribute prices."
 msgstr ""
+"ราคาขายสามารถตั้งได้ด้วยตนเองหรือคำนวณจากเทมเพลตสินค้า คลิกปุ่ม 'กำหนดค่าตัวเลือก' "
+"เพื่อตั้งราคาสำหรับคุณลักษณะเพิ่มเติม"
 
 #. module: product
 #. odoo-python
@@ -4265,16 +4228,15 @@ msgstr ""
 msgid ""
 "The value %(value)s is not defined for the attribute %(attribute)s on the "
 "product %(product)s."
-msgstr "ไม่ได้กำหนดค่า %(value)s สำหรับคุณสมบัติ %(attribute)s บนสินค้า %(product)s"
+msgstr "ไม่ได้กำหนดค่า %(value)s สำหรับคุณลักษณะ %(attribute)s บนสินค้า %(product)s"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_product.py:0
-#, fuzzy
 msgid ""
 "The value of Base Unit Count must be greater than 0. Use 0 to hide the price "
 "per unit on this product."
-msgstr "ค่าของจำนวนหน่ายฐาน ต้องมากกว่า 0 ใช้ 0 เพื่อซ่อนราคาต่อหน่วยสำหรับสินค้านี้"
+msgstr "ค่าของจำนวนหน่ายพื้นฐานต้องมากกว่า 0 เลือกใช้ 0 เพื่อซ่อนราคาต่อหน่วยสำหรับสินค้านี้"
 
 #. module: product
 #. odoo-python
@@ -4310,14 +4272,14 @@ msgid ""
 "to no possible variant. Please archive or delete your product directly if "
 "intended."
 msgstr ""
-"การกำหนดค่าคุณสมบัติ ค่า "
+"การกำหนดค่าคุณลักษณะ ค่า "
 "และการยกเว้นของสินค้านี้จะทำให้ไม่มีรายละเอียดตัวเลือกย่อยสินค้าที่เป็นไปได้ "
 "โปรดเก็บถาวรหรือลบสินค้าของคุณโดยตรงหากต้องการ"
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_product__price_extra
 msgid "This is the sum of the extra price of all attributes"
-msgstr "นี่คือผลรวมของราคาเพิ่มเติมของคุณสมบัติทั้งหมด"
+msgstr "นี่คือผลรวมของราคาเพิ่มเติมของคุณลักษณะทั้งหมด"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_form_view
@@ -4361,7 +4323,7 @@ msgstr "ภาพขนาดย่อ"
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_tide
 msgid "Tide"
-msgstr ""
+msgstr "Tide"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_search_view
@@ -4369,43 +4331,32 @@ msgid "Today Activities"
 msgstr "กิจกรรมวันนี้"
 
 #. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_product_tree_view
-#: model_terms:ir.ui.view,arch_db:product.product_template_tree_view
 #: model_terms:ir.ui.view,arch_db:product.product_view_list_qty
-#, fuzzy
 msgid "Total Forecasted"
-msgstr "คาดการณ์ทั้งหมด"
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_product_tree_view
-#: model_terms:ir.ui.view,arch_db:product.product_template_tree_view
-msgid "Total Free To Use"
-msgstr ""
+msgstr "การคาดการณ์ทั้งหมด"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_product_tree_view
 #: model_terms:ir.ui.view,arch_db:product.product_template_tree_view
 #: model_terms:ir.ui.view,arch_db:product.product_view_list_qty
-#, fuzzy
 msgid "Total On Hand"
 msgstr "ปริมาณที่มีอยู่ทั้งหมด"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__is_storable
 #: model:ir.model.fields,field_description:product.field_product_template__is_storable
-#, fuzzy
 msgid "Track Inventory"
-msgstr "ติดตามสินค้าคงคลัง"
+msgstr "ติดตามสต็อก"
 
 #. module: product
 #: model:product.template,name:product.consu_delivery_01_product_template
 msgid "Two-Seat Sofa"
-msgstr ""
+msgstr "โซฟาสองที่นั่ง"
 
 #. module: product
 #: model:product.template,description_sale:product.consu_delivery_01_product_template
 msgid "Two-Seater Sofa with Oak Wood Frame"
-msgstr ""
+msgstr "โซฟาสองที่นั่งที่มีโครงไม้โอ๊ค"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_document__type
@@ -4429,7 +4380,7 @@ msgstr "UOM"
 #. module: product
 #: model:res.groups,name:product.group_show_uom_price
 msgid "UOM price display"
-msgstr ""
+msgstr "การแสดงราคาหน่วยวัด"
 
 #. module: product
 #. odoo-python
@@ -4443,7 +4394,7 @@ msgstr "ไม่พบเทมเพลตรายงานสำหรับ
 msgid ""
 "Unable to import products with attribute value without attribute name "
 "(defined as: attribute:value): %s"
-msgstr ""
+msgstr "ไม่สามารถนำเข้าสินค้าที่มีค่าคุณลักษณะโดยไม่มีชื่อคุณลักษณะ (กำหนดเป็น: คุณลักษณะ:ค่า):%s"
 
 #. module: product
 #. odoo-python
@@ -4451,22 +4402,22 @@ msgstr ""
 msgid ""
 "Unable to import products with attribute values but without name of product "
 "set"
-msgstr ""
+msgstr "ไม่สามารถนำเข้าสินค้าที่มีค่าคุณลักษณะ แต่ยังไม่ได้กำหนดชื่อสินค้า"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_underarmour
 msgid "Under Armour"
-msgstr ""
+msgstr "Under Armour"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_options_under_desk_pedestals
 msgid "Under-desk pedestals"
-msgstr ""
+msgstr "ตู้เก็บของใต้โต๊ะ"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_uniqlo
 msgid "Uniqlo"
-msgstr ""
+msgstr "Uniqlo"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__uom_id
@@ -4479,7 +4430,7 @@ msgstr "หน่วย"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__product_uom_ids
 msgid "Unit Barcode"
-msgstr ""
+msgstr "บาร์โค้ดของหน่วย"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_pricelist_item__product_uom_name
@@ -4489,7 +4440,6 @@ msgid "Unit Name"
 msgstr "ชื่อหน่วย"
 
 #. module: product
-#: model:ir.model.fields,field_description:product.field_product_pricelist_item__price
 #: model:ir.model.fields,field_description:product.field_product_supplierinfo__price
 #: model_terms:ir.ui.view,arch_db:product.product_supplierinfo_form_view
 #: model_terms:ir.ui.view,arch_db:product.product_template_form_view
@@ -4499,7 +4449,7 @@ msgstr "ราคาต่อหน่วย"
 #. module: product
 #: model:ir.model,name:product.model_product_base_unit
 msgid "Unit of Measure for price per unit on products."
-msgstr ""
+msgstr "หน่วยวัดราคาต่อหน่วยของสินค้าอีคอมเมิร์ซ"
 
 #. module: product
 #. odoo-javascript
@@ -4516,34 +4466,33 @@ msgstr "หน่วยวัด"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_res_config_settings__group_uom
 msgid "Units of Measure & Packagings"
-msgstr ""
+msgstr "หน่วยวัดและบรรจุภัณฑ์"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_view_list_qty
-#, fuzzy
 msgid "Update Quantities"
 msgstr "อัปเดตปริมาณ"
 
 #. module: product
 #: model:ir.actions.act_window,name:product.product_variant_edit_qty_action
 msgid "Update Variant Quantities"
-msgstr ""
+msgstr "อัปเดตจำนวนรูปแบบ"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_attribute_view_form
 msgid "Update extra prices"
-msgstr ""
+msgstr "อัปเดตราคาเพิ่มเติม"
 
 #. module: product
 #: model:ir.model,name:product.model_update_product_attribute_value
 msgid "Update product attribute value"
-msgstr ""
+msgstr "อัปเดตค่าคุณลักษณะของสินค้า"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_attribute_value.py:0
 msgid "Update product extra prices"
-msgstr ""
+msgstr "อัปเดตราคาส่วนเพิ่มของสินค้า"
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__update_product_attribute_value__mode__update_extra_price
@@ -4553,7 +4502,6 @@ msgstr "อัพเดทราคาพิเศษสินค้าที่
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/product_document_kanban/upload_button/upload_button.xml:0
-#, fuzzy
 msgid "Upload"
 msgstr "อัปโหลด"
 
@@ -4572,13 +4520,6 @@ msgstr "การขายต่อยอดและการขายสิน
 #: model:ir.model.fields,field_description:product.field_product_document__url
 msgid "Url"
 msgstr "Url"
-
-#. module: product
-#: model:ir.model.fields,help:product.field_product_pricelist_item__compute_price
-msgid ""
-"Use the discount rules and activate the discount settings in order to show "
-"discount to customer."
-msgstr "ใช้กฎส่วนลดและเปิดใช้งานการตั้งค่าส่วนลดเพื่อแสดงส่วนลดให้กับลูกค้า"
 
 #. module: product
 #. odoo-python
@@ -4608,13 +4549,13 @@ msgstr "ชื่อผู้ใช้"
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.report_pricelist_page
 msgid "VINT_1000"
-msgstr ""
+msgstr "VINT_1000"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__valid_product_template_attribute_line_ids
 #: model:ir.model.fields,field_description:product.field_product_template__valid_product_template_attribute_line_ids
 msgid "Valid Product Attribute Lines"
-msgstr "รายการคุณสมบัติของสินค้าที่ถูกต้อง"
+msgstr "รายการคุณลักษณะของสินค้าที่ถูกต้อง"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
@@ -4646,7 +4587,7 @@ msgid ""
 "        Used to compute margins on sale orders."
 msgstr ""
 "มูลค่าของสินค้า (คำนวณโดยอัตโนมัติใน AVCO)\n"
-"       ใช้เพื่อประเมินมูลค่าสินค้าเมื่อไม่ทราบต้นทุนการซื้อ (เช่น การปรับปรุงสินค้าคงคลัง)\n"
+"       ใช้เพื่อประเมินมูลค่าสินค้าเมื่อไม่ทราบต้นทุนการซื้อ (เช่น การปรับปรุงคลังสินค้า)\n"
 "       ใช้เพื่อคำนวณอัตรากำไรจากคำสั่งซื้อขาย"
 
 #. module: product
@@ -4677,7 +4618,7 @@ msgstr "จำนวนตัวเลือกย่อยสินค้า"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_attribute__create_variant
 msgid "Variant Creation"
-msgstr ""
+msgstr "การสร้างรูปแบบตัวเลือกย่อย"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__image_variant_1920
@@ -4718,7 +4659,7 @@ msgstr "ผู้ขายตัวเลือกย่อยสินค้า
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_product__additional_product_tag_ids
 msgid "Variant Tags"
-msgstr ""
+msgstr "แท็กตัวเลือกย่อย"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.attribute_tree_view
@@ -4730,7 +4671,7 @@ msgstr "มูลค่าตัวเลือกย่อยสินค้า
 msgid ""
 "Variant-specific additional packagings for this product which can be used "
 "for sales"
-msgstr ""
+msgstr "แพ็กเกจเพิ่มเติมเฉพาะสำหรับแต่ละเวอร์ชันของสินค้านี้ ซึ่งสามารถใช้สำหรับการขาย"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_res_config_settings__group_product_variant
@@ -4742,7 +4683,7 @@ msgstr "ตัวเลือกย่อย"
 #. module: product
 #: model:product.attribute.value,name:product.pav_fabric_velvet
 msgid "Velvet"
-msgstr ""
+msgstr "กำมะหยี่"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_supplierinfo__partner_id
@@ -4785,6 +4726,11 @@ msgid "Vendors"
 msgstr "ผู้ขาย"
 
 #. module: product
+#: model:res.groups.privilege,placeholder:product.res_groups_privilege_product
+msgid "View"
+msgstr ""
+
+#. module: product
 #: model:product.template,name:product.product_product_2_product_template
 msgid "Virtual Home Staging"
 msgstr "การจัดเตรียมบ้านเสมือนจริง"
@@ -4806,7 +4752,7 @@ msgstr "มองเห็นได้ทุกคน"
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_tag__visible_to_customers
 msgid "Visible to customers"
-msgstr ""
+msgstr "แสดงให้ลูกค้าเห็น"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_document__voice_ids
@@ -4867,22 +4813,27 @@ msgstr "หน่วยฉลากน้ำหนัก"
 #: code:addons/product/models/product_product.py:0
 #: code:addons/product/models/product_template.py:0
 msgid "What to expect ?"
+msgstr "ควรคาดหวังอะไร?"
+
+#. module: product
+#: model:ir.model.fields,help:product.field_product_pricelist_item__is_plain_discount
+msgid "Whether the rule lowers the price by exactly its discount percentage."
 msgstr ""
 
 #. module: product
 #: model:ir.model.fields,help:product.field_product_tag__visible_to_customers
 msgid "Whether the tag is displayed to customers."
-msgstr ""
+msgstr "กำหนดว่าแท็กนี้จะแสดงให้ลูกค้าเห็นหรือไม่"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_whirlpool
 msgid "Whirlpool"
-msgstr ""
+msgstr "Whirlpool"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_color_white
 msgid "White"
-msgstr "ขาว"
+msgstr "สีขาว"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_fabric_wood
@@ -4922,7 +4873,7 @@ msgstr "สีเหลือง"
 msgid ""
 "You are about to add the value \"%(attribute_value)s\" to %(product_count)s "
 "products."
-msgstr "คุณกำลังจะเพิ่มค่า \"%(attribute_value)s\" ให้กับผลิตภัณฑ์ %(product_count)s"
+msgstr "คุณกำลังจะเพิ่มค่า \"%(attribute_value)s\" ให้กับสินค้า %(product_count)s"
 
 #. module: product
 #. odoo-python
@@ -4937,17 +4888,6 @@ msgid ""
 "You are deactivating the pricelist feature. Every active pricelist will be "
 "archived."
 msgstr "คุณกำลังปิดการใช้งานฟีเจอร์รายการราคา รายการราคาที่ใช้งานอยู่ทั้งหมดจะถูกเก็บถาวร"
-
-#. module: product
-#: model:ir.model.fields,help:product.field_product_pricelist_item__percent_price
-#: model:ir.model.fields,help:product.field_product_pricelist_item__price_discount
-msgid "You can apply a mark-up by setting a negative discount."
-msgstr "คุณสามารถใช้ส่วนเพิ่มได้โดยการตั้งค่าส่วนลดที่ติดลบ"
-
-#. module: product
-#: model:ir.model.fields,help:product.field_product_pricelist_item__price_markup
-msgid "You can apply a mark-up on the cost"
-msgstr "คุณสามารถทำการบวกกำไรจากต้นทุนได้"
 
 #. module: product
 #: model_terms:ir.actions.act_window,help:product.product_pricelist_action2
@@ -4970,12 +4910,11 @@ msgstr ""
 msgid ""
 "You can upload an image that will be used as the color of the attribute "
 "value."
-msgstr "คุณสามารถอัปโหลดรูปภาพที่จะใช้เป็นสีของค่าแอตทริบิวต์ได้"
+msgstr "คุณสามารถอัปโหลดรูปภาพที่จะใช้เป็นสีของค่าคุณลักษณะได้"
 
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/order_line/order_line.xml:0
-#, fuzzy
 msgid "You can't edit this product in the catalog."
 msgstr "คุณไม่สามารถแก้ไขสินค้านี้ในแค็ตตาล็อกได้"
 
@@ -4993,13 +4932,14 @@ msgid ""
 "You cannot archive a product that is part of a combo. Please remove it from "
 "the following combos first: %s"
 msgstr ""
+"คุณไม่สามารถเก็บสินค้าที่เป็นส่วนหนึ่งของชุดสินค้าได้ โปรดลบสินค้านั้นออกจากชุดสินค้าต่อไปนี้ก่อน:%s"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_attribute.py:0
 msgid ""
 "You cannot archive this attribute as there are still products linked to it"
-msgstr "คุณไม่สามารถเก็บคุณลักษณะนี้ถาวรได้ เนื่องจากยังมีผลิตภัณฑ์ที่เชื่อมโยงอยู่"
+msgstr "คุณไม่สามารถเก็บคุณลักษณะนี้ถาวรได้ เนื่องจากยังมีสินค้าที่เชื่อมโยงอยู่"
 
 #. module: product
 #. odoo-python
@@ -5009,8 +4949,8 @@ msgid ""
 "because it is used on the following products:\n"
 "%(products)s"
 msgstr ""
-"คุณไม่สามารถเปลี่ยนโหมดการสร้างตัวเลือกย่อยสินค้าของคุณสมบัติ %(attribute)s ได้ "
-"เนื่องจากมีการใช้กับผลิตภัณฑ์ต่อไปนี้:\n"
+"คุณไม่สามารถเปลี่ยนโหมดการสร้างตัวเลือกย่อยสินค้าของคุณลักษณะ %(attribute)s ได้ "
+"เนื่องจากมีการใช้กับสินค้าต่อไปนี้:\n"
 "%(products)s"
 
 #. module: product
@@ -5020,8 +4960,8 @@ msgid ""
 "You cannot change the attribute of the value %(value)s because it is used on "
 "the following products: %(products)s"
 msgstr ""
-"คุณไม่สามารถเปลี่ยนคุณสมบัติของค่า %(value)s ได้ เนื่องจากมีการใช้กับผลิตภัณฑ์ต่อไปนี้: "
-"%(products)s"
+"คุณไม่สามารถเปลี่ยนคุณลักษณะของค่า %(value)s ได้ เนื่องจากมีการใช้กับสินค้าต่อไปนี้: %"
+"(products)s"
 
 #. module: product
 #. odoo-python
@@ -5030,6 +4970,8 @@ msgid ""
 "You cannot change the company of %(categories)s as they hold products shared "
 "between companies or belonging to other companies."
 msgstr ""
+"คุณไม่สามารถเปลี่ยนบริษัทของ%(categories)sได้ "
+"เนื่องจากบริษัทดังกล่าวถือครองสินค้าที่ใช้ร่วมกันระหว่างบริษัทต่างๆ หรือเป็นของบริษัทอื่น"
 
 #. module: product
 #. odoo-python
@@ -5038,21 +4980,23 @@ msgid ""
 "You cannot change the company of %(category)s as it holds products shared "
 "between companies or belonging to other companies."
 msgstr ""
+"คุณไม่สามารถเปลี่ยนบริษัทของ%(category)s ได้ เนื่องจากมันเก็บสินค้าที่ใช้ร่วมกันระหว่างบริษัทต่างๆ "
+"หรือเป็นของบริษัทอื่น"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_template_attribute_value.py:0
 msgid ""
-"You cannot change the product of the value %(value)s set on product "
-"%(product)s."
+"You cannot change the product of the value %(value)s set on product %"
+"(product)s."
 msgstr "คุณไม่สามารถเปลี่ยนผลคูณของค่า %(value)s ที่ตั้งไว้ในผลิตภัณฑ์ %(product)s ได้"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_template_attribute_value.py:0
 msgid ""
-"You cannot change the value of the value %(value)s set on product "
-"%(product)s."
+"You cannot change the value of the value %(value)s set on product %"
+"(product)s."
 msgstr "คุณไม่สามารถเปลี่ยนค่าของค่า %(value)s ที่ตั้งไว้ในผลิตภัณฑ์ %(product)s ได้"
 
 #. module: product
@@ -5077,7 +5021,7 @@ msgid ""
 "following products:\n"
 "%(products)s"
 msgstr ""
-"คุณไม่สามารถลบคุณสมบัติ %(attribute)s ได้ เนื่องจากมีการใช้กับผลิตภัณฑ์ต่อไปนี้:\n"
+"คุณไม่สามารถลบคุณลักษณะ %(attribute)s ได้ เนื่องจากมีการใช้กับสินค้าต่อไปนี้:\n"
 "%(products)s"
 
 #. module: product
@@ -5098,8 +5042,8 @@ msgid ""
 "You cannot move the attribute %(attribute)s from the product %(product_src)s "
 "to the product %(product_dest)s."
 msgstr ""
-"คุณไม่สามารถย้ายคุณสมบัติ %(attribute)s จากผลิตภัณฑ์ %(product_src)s ไปยังผลิตภัณฑ์ "
-"%(product_dest)s ได้"
+"คุณไม่สามารถย้ายคุณลักษณะ %(attribute)s จากสินค้า %(product_src)s ไปยังสินค้า %"
+"(product_dest)s ได้"
 
 #. module: product
 #. odoo-python
@@ -5113,7 +5057,6 @@ msgstr ""
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/product_catalog/kanban_renderer.xml:0
-#, fuzzy
 msgid ""
 "You must define a product for everything you sell or purchase,\n"
 "                            whether it's a storable product, a consumable or "
@@ -5161,81 +5104,79 @@ msgstr "คุณต้องกำหนดปริมาณที่เป็
 
 #. module: product
 #: model:ir.model.fields.selection,name:product.selection__product_label_layout__print_format__zpl
-#, fuzzy
 msgid "ZPL Labels"
 msgstr "ฉลาก ZPL"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_label_layout__zpl_preview
 msgid "ZPL Preview"
-msgstr ""
+msgstr "ดูตัวอย่าง ZPL"
 
 #. module: product
 #: model:ir.model.fields,field_description:product.field_product_label_layout__zpl_template
 msgid "ZPL Template"
-msgstr ""
+msgstr "เทมเพลต ZPL"
 
 #. module: product
 #: model:product.attribute.value,name:product.pav_brand_zara
 msgid "Zara"
-msgstr ""
+msgstr "Zara"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.small_zpl_label
 msgid "^FO150,165 ^A0N,25^FH ^FD"
-msgstr ""
+msgstr "^FO150,165 ^A0N,25^FH ^FD"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.normal_zpl_label
 msgid "^FO150,210 ^A0N,25^FH ^FD("
-msgstr ""
+msgstr "^FO150,210 ^A0N,25^FH ^FD("
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.alternative_zpl_label
 msgid "^FO160,185 ^A0N,18^FH ^FD("
-msgstr ""
+msgstr "^FO160,185 ^A0N,18^FH ^FD("
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.alternative_zpl_label
 msgid "^FO290,165 ^A0N,30^FH ^FD"
-msgstr ""
+msgstr "^FO290,165 ^A0N,30^FH ^FD"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.jewelry_zpl_label
 msgid "^FO290,50 ^A0N,30^FH ^FD"
-msgstr ""
+msgstr "^FO290,50 ^A0N,30^FH ^FD"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.normal_zpl_label
 msgid "^FO300,200 ^A0N,40^FH ^FD"
-msgstr ""
+msgstr "^FO300,200 ^A0N,40^FH ^FD"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.small_zpl_label
 msgid "^FO35,50^BY1 ^BCN,80,Y,N,N ^FD"
-msgstr ""
+msgstr "^FO35,50^BY1 ^BCN,80,Y,N,N ^FD"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.alternative_zpl_label
 msgid "^FO35,55^BY2 ^BCN,100,Y,N,N ^FD"
-msgstr ""
+msgstr "^FO35,55^BY2 ^BCN,100,Y,N,N ^FD"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.jewelry_zpl_label
 msgid "^FO35,5^BY1 ^BCN,80,Y,N,N ^FD"
-msgstr ""
+msgstr "^FO35,5^BY1 ^BCN,80,Y,N,N ^FD"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.normal_zpl_label
 msgid "^FO35,77^BY2 ^BCN,100,Y,N,N ^FD"
-msgstr ""
+msgstr "^FO35,77^BY2 ^BCN,100,Y,N,N ^FD"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.alternative_zpl_label
 #: model_terms:ir.ui.view,arch_db:product.jewelry_zpl_label
 #: model_terms:ir.ui.view,arch_db:product.normal_zpl_label
 #: model_terms:ir.ui.view,arch_db:product.small_zpl_label
-#, fuzzy
 msgid "^FS"
 msgstr "^FS"
 
@@ -5245,6 +5186,8 @@ msgid ""
 "^FS\n"
 "^FT35,48^A0N,15^FD"
 msgstr ""
+"^FS\n"
+"^FT35,48^A0N,15^FD"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.normal_zpl_label
@@ -5252,44 +5195,40 @@ msgid ""
 "^FS\n"
 "^FT35,65^A0N,20^FD"
 msgstr ""
+"^FS\n"
+"^FT35,65^A0N,20^FD"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.jewelry_zpl_label
 msgid "^FT210,30^A0N,25^FD"
-msgstr ""
+msgstr "^FT210,30^A0N,25^FD"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.small_zpl_label
 msgid "^FT35,30^A0N,15^FD"
-msgstr ""
+msgstr "^FT35,30^A0N,15^FD"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.alternative_zpl_label
 msgid "^FT35,30^A0N,20^FD"
-msgstr ""
+msgstr "^FT35,30^A0N,20^FD"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.normal_zpl_label
 msgid "^FT35,40^A0N,25^FD"
-msgstr ""
+msgstr "^FT35,40^A0N,25^FD"
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_attribute.py:0
 msgid "attribute_id"
-msgstr ""
-
-#. module: product
-#: model_terms:ir.ui.view,arch_db:product.res_config_settings_view_form
-#, fuzzy
-msgid "barcodelookup.com"
-msgstr "barcodelookup.com"
+msgstr "attribute_id"
 
 #. module: product
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
 msgid "csv"
-msgstr ""
+msgstr "csv"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_supplierinfo_form_view
@@ -5306,12 +5245,12 @@ msgstr "ส่วนลด"
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_product_view_form_normalized
 msgid "e.g. 1234567890"
-msgstr ""
+msgstr "เช่น 1234567890"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_combo_view_form
 msgid "e.g. Burger Choice"
-msgstr ""
+msgstr "เช่น Burger Choice"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_product_view_form_normalized
@@ -5327,7 +5266,7 @@ msgstr "เช่น หลอดไฟ"
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_template_form_view
 msgid "e.g. Starter - Meal - Desert"
-msgstr ""
+msgstr "เช่น อาหารเรียกน้ำย่อย - อาหารจานหลัก - ของหวาน"
 
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_view
@@ -5337,13 +5276,7 @@ msgstr "เช่น ผู้ค้าปลีก USD"
 #. module: product
 #: model_terms:ir.ui.view,arch_db:product.uom_uom_view_form
 msgid "each variant"
-msgstr ""
-
-#. module: product
-#. odoo-python
-#: code:addons/product/models/product_pricelist_item.py:0
-msgid "markup"
-msgstr ""
+msgstr "แต่ละรูปแบบย่อย"
 
 #. module: product
 #. odoo-javascript
@@ -5368,18 +5301,37 @@ msgstr "สินค้า"
 #. odoo-python
 #: code:addons/product/models/product_pricelist_item.py:0
 msgid "product cost"
+msgstr "ต้นทุนสินค้า"
+
+#. module: product
+#. odoo-python
+#: code:addons/product/models/product_product.py:0
+msgid "product: %(name)s"
 msgstr ""
 
 #. module: product
-#: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
-msgid "round off to 10.00 and set an extra at -0.01"
-msgstr "ปัดเศษเป็น 10.00 และตั้งค่าพิเศษที่ -0.01"
+#. odoo-python
+#: code:addons/product/models/product_product.py:0
+msgid "product: %(product_name)s"
+msgstr ""
+
+#. module: product
+#. odoo-python
+#: code:addons/product/models/product_product.py:0
+msgid "product: %(product_name)s with variant: %(variant_name)s"
+msgstr ""
 
 #. module: product
 #. odoo-python
 #: code:addons/product/models/product_pricelist_item.py:0
 #: model_terms:ir.ui.view,arch_db:product.product_pricelist_item_form_view
 msgid "sales price"
+msgstr "ราคาขาย"
+
+#. module: product
+#. odoo-python
+#: code:addons/product/models/product_pricelist_item.py:0
+msgid "surcharge"
 msgstr ""
 
 #. module: product
@@ -5391,4 +5343,81 @@ msgstr "ถึง"
 #. odoo-javascript
 #: code:addons/product/static/src/js/pricelist_report/product_pricelist_report.xml:0
 msgid "xlsx"
-msgstr ""
+msgstr "xlsx"
+
+#~ msgid ""
+#~ "%(base)s with a %(discount)s %% %(discount_type)s and %(surcharge)s extra "
+#~ "fee\n"
+#~ "Example: %(amount)s * %(discount_charge)s + %(price_surcharge)s → %"
+#~ "(total_amount)s"
+#~ msgstr ""
+#~ "%(base)s ที่มี%(discount)s %% %(discount_type)s และค่าธรรมเนียมพิเศษ %"
+#~ "(surcharge)s\n"
+#~ "ตัวอย่าง: %(amount)s * %(discount_charge)s + %(price_surcharge)s → %"
+#~ "(total_amount)s"
+
+#~ msgid "%(percentage)s %% discount on %(pricelist)s"
+#~ msgstr "%(percentage)s %% ส่วนลดสำหรับ %(pricelist)s"
+
+#~ msgid "%(percentage)s %% discount on sales price"
+#~ msgstr "%(percentage)s %% ส่วนลดจากราคาขาย"
+
+#~ msgid ""
+#~ "- Barcode \"%(barcode)s\" already assigned to product(s): %(product_list)s"
+#~ msgstr "- บาร์โค้ด \"%(barcode)s\" ถูกกำหนดให้กับผลิตภัณฑ์แล้ว: %(product_list)s"
+
+#~ msgid "<b>Tip: want to round at 9.99?</b>"
+#~ msgstr "<b>เคล็ดลับ: ต้องการปัดเศษที่ 9.99 หรือไม่?</b>"
+
+#~ msgid "<span>%</span>"
+#~ msgstr "<span>%</span>"
+
+#~ msgid "<span>on</span>"
+#~ msgstr "<span>บน</span>"
+
+#~ msgid "All Categories"
+#~ msgstr "ทุกหมวดหมู่"
+
+#~ msgid "Apply To"
+#~ msgstr "ใช้กับ"
+
+#~ msgid "Based price"
+#~ msgstr "ราคาตามเกณฑ์"
+
+#~ msgid "Display Applied On"
+#~ msgstr "แสดงผลที่ใช้"
+
+#~ msgid "Formula"
+#~ msgstr "สูตร"
+
+#~ msgid "Markup"
+#~ msgstr "ราคาบวกเพิ่ม"
+
+#~ msgid "Min Qty"
+#~ msgstr "จำนวนขั้นต่ำ"
+
+#~ msgid "Percentage Price"
+#~ msgstr "ราคาร้อยละ"
+
+#~ msgid "Price Type"
+#~ msgstr "ประเภทราคา"
+
+#~ msgid "Total Free To Use"
+#~ msgstr "ใช้งานได้ทั้งหมด"
+
+#~ msgid ""
+#~ "Use the discount rules and activate the discount settings in order to "
+#~ "show discount to customer."
+#~ msgstr "ใช้กฎส่วนลดและเปิดใช้งานการตั้งค่าส่วนลดเพื่อแสดงส่วนลดให้กับลูกค้า"
+
+#~ msgid "You can apply a mark-up by setting a negative discount."
+#~ msgstr "คุณสามารถใช้ส่วนเพิ่มได้โดยการตั้งค่าส่วนลดที่ติดลบ"
+
+#~ msgid "You can apply a mark-up on the cost"
+#~ msgstr "คุณสามารถทำการบวกกำไรจากต้นทุนได้"
+
+#~ msgid "markup"
+#~ msgstr "ราคาบวกเพิ่ม"
+
+#~ msgid "round off to 10.00 and set an extra at -0.01"
+#~ msgstr "ปัดเศษเป็น 10.00 และตั้งค่าพิเศษที่ -0.01"

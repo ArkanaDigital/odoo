@@ -1,7 +1,8 @@
 import { MessagingMenuEmpty } from "@mail/core/public_web/messaging_menu/messaging_menu_empty";
 
-import { Component, types, untrack, useEffect, useProps } from "@odoo/owl";
+import { Component, types, untrack, useEffect, usePlugin, useProps } from "@odoo/owl";
 
+import { UIPlugin } from "@web/core/ui/ui_plugin";
 import { useService } from "@web/core/utils/hooks";
 
 export class MessagingMenuEmptyChannel extends Component {
@@ -13,7 +14,7 @@ export class MessagingMenuEmptyChannel extends Component {
         this.props = useProps({ title: types.string(), subtitle: types.string().optional() });
         this.close = useProps.static("close", types.function().optional());
         this.store = useService("mail.store");
-        this.ui = useService("ui");
+        this.ui = usePlugin(UIPlugin);
         useEffect(() => {
             untrack(() => this.store.fetchMostPopularChannelsFetcher.fetch());
         });
@@ -30,12 +31,6 @@ export class MessagingMenuEmptyChannel extends Component {
             channel.pinRpc();
             return;
         }
-        const params = { channel_id: channel.id };
-        if (this.store.self_user) {
-            params.user_ids = [this.store.self_user.id];
-        } else {
-            params.guest_ids = [this.store.self_guest.id];
-        }
-        this.store.fetchStoreData("/discuss/channel/add_members", params);
+        channel.joinRpc();
     }
 }

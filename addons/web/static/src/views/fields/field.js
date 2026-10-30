@@ -242,6 +242,7 @@ export class Field extends Component {
             decorations: {},
             attrs: {},
             domain: undefined,
+            group_expand: !!fields[name].group_expand,
         };
 
         for (const attr of ["invisible", "column_invisible", "readonly", "required"]) {
@@ -487,11 +488,5 @@ export class Field extends Component {
             }
         }
         return false;
-    }
-    onFieldFocus(isActive) {
-        const formLabelSelector = `.o_cell:has(+ .o_cell .o_field_widget[name=${this.props.name}]) .o_form_label`;
-        document
-            .querySelector(`label[for=${this.fieldComponentProps.id}], ${formLabelSelector}`)
-            ?.classList.toggle("o_label_active", isActive);
     }
 }

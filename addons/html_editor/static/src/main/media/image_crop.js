@@ -10,8 +10,9 @@ import {
     onMounted,
     onWillDestroy,
     signal,
-    status,
+    t,
     useListener,
+    useProps,
 } from "@odoo/owl";
 import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
 import { _t } from "@web/core/l10n/translation";
@@ -31,12 +32,13 @@ const IMAGE_SHAPES = ["rounded", "rounded-circle", "shadow", "img-thumbnail"];
 
 export class ImageCrop extends Component {
     static template = "html_editor.ImageCrop";
-    static props = {
-        document: { validate: (p) => p.nodeType === Node.DOCUMENT_NODE },
-        media: { optional: true },
-        onClose: { type: Function, optional: true },
-        onSave: { type: Function, optional: true },
-    };
+
+    props = useProps({
+        document: t.customValidator(t.object(), (p) => p.nodeType === Node.DOCUMENT_NODE),
+        media: t.any().optional(),
+        onClose: t.function().optional(),
+        onSave: t.function().optional(),
+    });
 
     elRef = signal.ref();
     imageRef = signal.ref();
@@ -157,7 +159,7 @@ export class ImageCrop extends Component {
         await this.scrollToInvisibleImage();
         // Replacing the src with the original's so that the layout is correct.
         await loadImage(this.originalSrc, this.media);
-        if (status(this) !== "mounted") {
+        if (!this.elRef()) {
             // Abort if the component has been destroyed in the meantime
             // since `this.imageRef()` is `null` when it is not mounted.
             return;
@@ -196,7 +198,7 @@ export class ImageCrop extends Component {
         this.cropperWrapperRef().style.top = `${offset.top}px`;
 
         await loadImage(this.originalSrc, cropperImage);
-        if (status(this) !== "mounted") {
+        if (!this.elRef()) {
             return;
         }
 
@@ -230,15 +232,6 @@ export class ImageCrop extends Component {
             ...cropperData,
         });
         this.closeCropper();
-    }
-    /**
-     * Resets the crop box to prevent it going outside the image.
-     *
-     * @private
-     */
-    resetCropBox() {
-        this.cropper.clear();
-        this.cropper.crop();
     }
     /**
      * Make sure the targeted image is in the visible viewport before crop.
@@ -325,15 +318,5 @@ export class ImageCrop extends Component {
                 .map((field) => [field, cropper.getData()[field]])
                 .filter(([, value]) => value)
         );
-    }
-    /**
-     * Resets the cropbox on zoom to prevent crop box overflowing.
-     *
-     * @private
-     */
-    async onCropZoom() {
-        // Wait for the zoom event to be fully processed before reseting.
-        await new Promise((res) => setTimeout(res, 0));
-        this.resetCropBox();
     }
 }

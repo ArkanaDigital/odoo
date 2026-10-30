@@ -24,9 +24,10 @@ class StockPicking(models.Model):
         copy=False,
     )
     l10n_vn_edi_symbol_id = fields.Many2one(
-        comodel_name='l10n_vn_edi_viettel.sinvoice.symbol',
+        comodel_name='l10n_vn.symbol',
         string='SInvoice Symbol',
         compute='_compute_l10n_vn_edi_symbol_id',
+        domain="[('company_id', '=', company_id), ('usage', '=', 'delivery_document')]",
         readonly=False,
         store=True,
     )
@@ -181,7 +182,7 @@ class StockPicking(models.Model):
         company = self.company_id
         if not company._l10n_vn_edi_get_credentials_company():
             errors.append(_('SInvoice credentials are missing on company %s.', company.display_name))
-        if not company.vat:
+        if not company.has_vat:
             errors.append(_('VAT number is missing on company %s.', company.display_name))
         if not self.l10n_vn_edi_symbol_id:
             errors.append(_('The transfer note symbol must be provided. Set it on the warehouse or in the Inventory settings.'))

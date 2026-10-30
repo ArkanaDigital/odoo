@@ -19,20 +19,16 @@ from odoo.tools.image import image_process
 from odoo.tools.mimetypes import guess_mimetype
 
 from ..models.ir_attachment import SUPPORTED_IMAGE_MIMETYPES
-from .ms_icons import MS_ICONS
+from ..tools import search_icons
 from .svg_utils import get_shape_svg, make_shaped_image, update_svg_colors
 from odoo.addons.iap.tools import iap_tools
 from odoo.addons.mail.tools import link_preview
+from odoo.addons.web.icons import ICONS
 
 DEFAULT_LIBRARY_ENDPOINT = 'https://media-api.odoo.com'
 DEFAULT_OLG_ENDPOINT = 'https://olg.api.odoo.com'
 DEFAULT_OTS_ENDPOINT = 'https://ots.api.odoo.com'
 API_WEBSITE_IMAGES_URL = 'https://website-image.api.odoo.com/images/'
-
-MS_ICONS_INDEX = [
-    (name, icon['has_fill'], f"{name} {icon['tags']}".lower())
-    for name, icon in MS_ICONS.items()
-]
 
 # Regex definitions to apply speed modification in SVG files
 # Note : These regex patterns are duplicated on the server side for
@@ -404,6 +400,9 @@ class HTML_Editor(Controller):
         Creates a modified copy of an attachment and returns its image_src to be
         inserted into the DOM.
         """
+        format_error_msg = _("Uploaded image's format is not supported. Try with: %s", ', '.join(SUPPORTED_IMAGE_MIMETYPES.values()))
+        if mimetype and mimetype not in SUPPORTED_IMAGE_MIMETYPES:
+            return {'error': format_error_msg}
 
         def prepare_attachment_url(attachment):
             # Don't keep url if modifying static attachment because static images
@@ -447,6 +446,12 @@ class HTML_Editor(Controller):
                 # Rights check works with res_id=0 because browse(0) returns an
                 # empty record set.
                 request.env[fields['res_model']].browse(fields['res_id']).check_access('write')
+
+                mimetype_exempt = any(
+                    request.env.user.has_group(group) for group in attachment._get_mimetype_exempt_groups()
+                )
+                if not mimetype_exempt:
+                    request.env['ir.ui.view'].sudo(False).check_access('write')
 
                 # Sudo because restricted editor will not be able to copy the record
                 attachment = attachment.sudo().copy(fields).sudo(False)
@@ -670,6 +675,8 @@ class HTML_Editor(Controller):
 
     @route(["/web_editor/generate_text", "/html_editor/generate_text"], type="jsonrpc", auth="user")
     def generate_text(self, prompt, conversation_history):
+        if not request.env.user._is_internal():
+            raise AccessError(_("Only internal users can use AI text generation."))
         try:
             IrConfigParameter = request.env['ir.config_parameter'].sudo()
             olg_api_endpoint = IrConfigParameter.get_str('html_editor.olg_api_endpoint') or DEFAULT_OLG_ENDPOINT
@@ -710,7 +717,7 @@ class HTML_Editor(Controller):
                 raise UserError(_("The text you are trying to translate is too long. Please select less text and try it again."))
             raise UserError(_("Sorry, we could not translate the text. Please try again later."))
         except requests.RequestException:
-            raise UserError(_("Oops, it looks like google translation service is unreachable!"))
+            raise UserError(_("Oops, it looks like the Google translation service is unreachable!"))
 
     @route(["/web_editor/get_ice_servers", "/html_editor/get_ice_servers"], type='jsonrpc', auth="user")
     def get_ice_servers(self):
@@ -726,9 +733,14 @@ class HTML_Editor(Controller):
             document.check_field_access(field, 'read')
             document.check_field_access(field, 'write')
 
-        channel = (request.db, 'editor_collaboration', model_name, field_name, int(res_id))
-        bus_data.update({'model_name': model_name, 'field_name': field_name, 'res_id': res_id})
-        request.env['bus.bus']._sendone(channel, 'editor_collaboration', bus_data)
+        base_channel = (request.db, 'editor_collaboration', model_name, field_name, int(res_id))
+        for data in bus_data if isinstance(bus_data, list) else [bus_data]:
+            data.update({'model_name': model_name, 'field_name': field_name, 'res_id': res_id})
+            if to_peer_id := data.get('toPeerId'):
+                channel = (*base_channel, str(to_peer_id))
+            else:
+                channel = base_channel
+            request.env['bus.bus']._sendone(channel, 'editor_collaboration', data)
 
     @route('/html_editor/link_preview_external', type="jsonrpc", auth="public", methods=['POST'])
     def link_preview_metadata(self, preview_url):
@@ -780,14 +792,16 @@ class HTML_Editor(Controller):
 
             record = model.browse(record_id)
 
-            result = {}
-            if 'description' in record:
-                result['description'] = html.fromstring(record.description).text_content() if record.description else ""
+            description_field = 'description' if 'description' in record else None
+            name_field = 'link_preview_name' if 'link_preview_name' in record else 'display_name'
 
-            if 'link_preview_name' in record:
-                result['link_preview_name'] = record.link_preview_name
-            elif 'display_name' in record:
-                result['display_name'] = record.display_name
+            record.read([field for field in (description_field, name_field) if field])
+
+            result = {name_field: record[name_field]}
+
+            if description_field:
+                description = record[description_field]
+                result[description_field] = html.fromstring(description).text_content() if description else ""
 
             return result
         except (MissingError) as e:
@@ -807,17 +821,15 @@ class HTML_Editor(Controller):
         else:
             return {'error': response.status_code}
 
-    @route('/html_editor/material_symbols_search', type='jsonrpc', auth='user', readonly=True)
-    def material_symbols_search(self, needle=''):
-        """Search the Material Symbols icons by name and tags.
+    @route('/html_editor/icons_search', type='jsonrpc', auth='user', replica=True)
+    def icons_search(self, needle=''):
+        """Search icons by name and tags.
 
         :param str needle: the search term. When empty, every icon is returned,
             which also provides a plain list of all available icons.
         :returns: a list of ``{name, has_fill}`` dicts, tags excluded.
         """
-        needle = (needle or '').strip().lower()
         return [
-            {'name': name, 'has_fill': has_fill}
-            for name, has_fill, haystack in MS_ICONS_INDEX
-            if not needle or needle in haystack
+            {'name': name, 'has_fill': ICONS[name]['has_fill']}
+            for name in search_icons(self.env, needle or '')
         ]

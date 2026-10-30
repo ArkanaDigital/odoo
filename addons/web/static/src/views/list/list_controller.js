@@ -21,6 +21,7 @@ import { extractFieldsFromArchInfo } from "@web/model/relational_model/utils";
 import { onWillRender, render, useLayoutEffect, useSubEnv } from "@web/owl2/utils";
 import { useSetupAction } from "@web/search/action_hook";
 import { ActionMenus, STATIC_ACTIONS_GROUP_NUMBER } from "@web/search/action_menus/action_menus";
+import { CogMenu } from "@web/search/cog_menu/cog_menu";
 import { Layout } from "@web/search/layout";
 import { usePager } from "@web/search/pager_hook";
 import { OfflineSearchBar } from "@web/search/search_bar/offline_search_bar";
@@ -34,7 +35,6 @@ import { ViewButton } from "@web/views/view_button/view_button";
 import { executeButtonCallback, useViewButtons } from "@web/views/view_button/view_button_hook";
 import { SelectionBox } from "@web/views/view_components/selection_box";
 import { useDeleteRecords, useExportRecords } from "@web/views/view_hook";
-import { ListCogMenu } from "./list_cog_menu";
 import { ListConfirmationDialog } from "./list_confirmation_dialog";
 
 // -----------------------------------------------------------------------------
@@ -49,7 +49,7 @@ export class ListController extends Component {
         MultiRecordViewButton,
         SearchBar,
         OfflineSearchBar,
-        CogMenu: ListCogMenu,
+        CogMenu,
         DropdownItem,
         SelectionBox,
     };
@@ -229,6 +229,7 @@ export class ListController extends Component {
             limit: this.archInfo.limit || this.props.limit,
             countLimit: this.archInfo.countLimit,
             defaultOrderBy: this.archInfo.defaultOrder,
+            defaultGroupBy: this.archInfo.defaultGroupBy,
             groupsLimit: this.archInfo.groupsLimit,
             multiEdit: !this.props.readonly && this.archInfo.multiEdit,
             activeIdsLimit: session.active_ids_limit,
@@ -353,14 +354,14 @@ export class ListController extends Component {
      */
     async onWillSaveRecord(record) {}
 
-    async createRecord({ group } = {}) {
+    async createRecord({ group, newWindow } = {}) {
         if (!this.model.isReady() && !this.model.config.groupBy.length && this.editable) {
             // If the view isn't grouped and the list is editable, a new record row will be added,
             // in edition. In this situation, we must wait for the model to be ready.
             await this.model.whenReady.promise;
         }
         const list = (group && group.list) || this.model.root;
-        if (this.editable && !list.isGrouped) {
+        if (this.editable && !list.isGrouped && !newWindow) {
             if (!(list instanceof DynamicRecordList)) {
                 throw new Error("List should be a DynamicRecordList");
             }
@@ -370,7 +371,7 @@ export class ListController extends Component {
             }
             render(this);
         } else {
-            await this.props.createRecord();
+            await this.props.createRecord(newWindow);
         }
     }
 
@@ -402,8 +403,8 @@ export class ListController extends Component {
         }
     }
 
-    async onClickCreate() {
-        return executeButtonCallback(this.rootRef(), () => this.createRecord());
+    async onClickCreate(_ev, newWindow) {
+        return executeButtonCallback(this.rootRef(), () => this.createRecord({ newWindow }));
     }
 
     async onClickDiscard() {
@@ -453,7 +454,7 @@ export class ListController extends Component {
             export: {
                 isAvailable: () => this.isExportEnable,
                 sequence: 10,
-                icon: "upload",
+                icon: "download",
                 description: _t("Export"),
                 callback: () => this.exportRecords(),
             },
@@ -497,8 +498,8 @@ export class ListController extends Component {
     get actionMenuItems() {
         const { actionMenus } = this.props.info;
         const staticActionItems = Object.entries(this.getStaticActionMenuItems())
-            .filter(([key, item]) => item.isAvailable === undefined || item.isAvailable())
-            .sort(([k1, item1], [k2, item2]) => (item1.sequence || 0) - (item2.sequence || 0))
+            .filter(([, item]) => item.isAvailable === undefined || item.isAvailable())
+            .sort(([, item1], [, item2]) => (item1.sequence || 0) - (item2.sequence || 0))
             .map(([key, item]) =>
                 Object.assign(
                     { key, groupNumber: STATIC_ACTIONS_GROUP_NUMBER },

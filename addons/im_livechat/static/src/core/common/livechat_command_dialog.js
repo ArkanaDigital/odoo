@@ -1,6 +1,6 @@
 import { ActionPanel } from "@mail/discuss/core/common/action_panel";
 
-import { Component, proxy, signal } from "@odoo/owl";
+import { Component, proxy, signal, t, useProps } from "@odoo/owl";
 
 import { useAutofocus, useService } from "@web/core/utils/hooks";
 import { registry } from "@web/core/registry";
@@ -8,9 +8,18 @@ import { registry } from "@web/core/registry";
 const commandRegistry = registry.category("discuss.channel_commands");
 
 export class LivechatCommandDialog extends Component {
+    /** @see PanelDefinition: small content, shown in a popover by a place with a large panel */
+    static compact = true;
     static template = "im_livechat.LivechatCommandDialog";
     static components = { ActionPanel };
-    static props = ["thread", "close", "commandName", "placeholderText", "title", "icon"];
+    props = useProps({
+        thread: t.object(),
+        close: t.function(),
+        commandName: t.string(),
+        placeholderText: t.string(),
+        title: t.string(),
+        icon: t.string(),
+    });
 
     autofocusRef = signal.ref();
 

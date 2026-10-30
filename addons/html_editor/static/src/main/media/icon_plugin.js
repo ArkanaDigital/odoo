@@ -127,37 +127,16 @@ export class IconPlugin extends Plugin {
                 id: "icon_replace",
                 groupId: "icon_replace",
                 commandId: "replaceIcon",
+                opensUi: true,
                 icon: "image",
             },
         ],
-        click_overrides: this.onClickIcon.bind(this),
-        would_feff_be_legit_predicates: (node) => {
-            if (
-                (node.previousSibling && isIconElement(closestElement(node.previousSibling))) ||
-                (node.nextSibling && isIconElement(closestElement(node.nextSibling)))
-            ) {
-                return true;
-            }
-        },
         /** Providers */
         selected_background_color_providers: withSequence(
             5,
             this.computeBackgroundColorForIcon.bind(this)
         ),
     };
-
-    onClickIcon(ev) {
-        const node = ev.target;
-        if (
-            isIconElement(closestElement(node)) &&
-            !this.dependencies.selection.isNodeEditable(node)
-        ) {
-            // We select around an icon inside non editable.
-            // This might, in case icon inside link, show the link
-            // popover to be able to open link.
-            this.dependencies.selection.selectElement(node);
-        }
-    }
 
     getTargetedIcon() {
         const targetedNodes = this.dependencies.selection.getTargetedNodes();

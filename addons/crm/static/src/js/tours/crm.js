@@ -32,8 +32,9 @@ registry.category("web_tour.tours").add('crm_tour', {
     tooltipPosition: "top",
     run: "edit Brandon Freeman",
 }, {
-    isActive: ["auto"],
-    trigger: ".ui-menu-item > a:contains('Brandon Freeman')",
+    trigger: ".o_kanban_quick_create .o_m2o_dropdown_option_create",
+    content: _t("Create your new contact."),
+    tooltipPosition: "top",
     run: "click",
 }, {
     trigger: ".o_kanban_quick_create .o_field_widget[name='name'] input:value('Brandon Freeman')",
@@ -86,10 +87,10 @@ registry.category("web_tour.tours").add('crm_tour', {
     tooltipPosition: "bottom",
     run: "click",
 }, {
-    trigger: ".breadcrumb-item:not(.active):first",
+    trigger: ".breadcrumb-item:not(.active):last",
     content: _t("Click on the breadcrumbs to go back to your Pipeline. Odoo will save all your changes as you navigate."),
     tooltipPosition: "bottom",
-    run: "click .breadcrumb-item:not(.active):last",
+    run: "click",
 }, {
     id: "drag_opportunity_to_won_step",
     trigger: ".o_opportunity_kanban .o_kanban_record:last-of-type",

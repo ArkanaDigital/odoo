@@ -1,22 +1,26 @@
 import { AttachmentDeleteDialog } from "@mail/core/common/attachment_delete_dialog";
 import { Gif } from "@mail/core/common/gif";
+import { MessageHighlightPlugin } from "@mail/core/common/message_highlight_plugin";
 import { MessageSearchState } from "@mail/core/common/message_search_hook";
+import { propSignal, useMaybePlugin } from "@mail/utils/common/hooks";
 
-import { Component, signal, t, useProps } from "@odoo/owl";
+import { Component, signal, t, usePlugin, useProps } from "@odoo/owl";
 import { isMobileOS } from "@web/core/browser/feature_detection";
 
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
-import { download } from "@web/core/network/download";
+import { downloadFile } from "@web/core/network/download";
 import { Dropdown } from "@web/core/dropdown/dropdown";
 import { useDropdownState } from "@web/core/dropdown/dropdown_hooks";
 import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { useFileViewer } from "@web/core/file_viewer/file_viewer_hook";
 import { formatDate, formatDateTime } from "@web/core/l10n/dates";
 import { _t } from "@web/core/l10n/translation";
+import { UIPlugin } from "@web/core/ui/ui_plugin";
 import { useService } from "@web/core/utils/hooks";
 import { url } from "@web/core/utils/urls";
 
 import { attClassObjectToString } from "@mail/utils/common/format";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 
 class Actions extends Component {
     static components = { Dropdown, DropdownItem };
@@ -38,15 +42,20 @@ class Actions extends Component {
 }
 
 export class AttachmentList extends Component {
-    static components = { Actions, Dropdown, Gif };
+    static components = { Actions, Dropdown, DropdownItem, Gif };
     static template = "mail.AttachmentList";
 
     rootRef = signal.ref();
 
     setup() {
         super.setup();
+        this.ancestors = useAncestors();
         Object.assign(this, { attClassObjectToString, formatDate, formatDateTime });
         this.store = useService("mail.store");
+        this.messageHighlight = useMaybePlugin(MessageHighlightPlugin);
+        this.thread = propSignal("thread", t.instanceOf(this.store["mail.thread"]), {
+            optional: true,
+        });
         this.props = useProps({
             attachmentGroups: t.array(
                 t.object({
@@ -63,7 +72,7 @@ export class AttachmentList extends Component {
                 t.or([t.promise(), t.literal(undefined)])
             ),
         });
-        this.ui = useService("ui");
+        this.ui = usePlugin(UIPlugin);
         this.dialog = useService("dialog");
         this.fileViewer = useFileViewer(this.rootRef);
         this.actionsMenuState = useDropdownState();
@@ -93,17 +102,14 @@ export class AttachmentList extends Component {
      * @param {import("models").Attachment} attachment
      */
     canDownload(attachment) {
-        return !attachment.uploading && !this.env.inComposer;
+        return !attachment.uploading && !this.ancestors.inComposer;
     }
 
     /**
      * @param {import("models").Attachment} attachment
      */
     onClickDownload(attachment) {
-        download({
-            data: {},
-            url: attachment.downloadUrl,
-        });
+        downloadFile(attachment.downloadUrl);
     }
 
     hasUnlinkConfirmation(attachment) {
@@ -116,7 +122,7 @@ export class AttachmentList extends Component {
      *  clicked one stands for, itself alone most of the time
      */
     onClickUnlink(attachment, duplicates = [attachment]) {
-        if (this.env.inComposer) {
+        if (this.ancestors.inComposer) {
             this.props.unlinkAttachments(duplicates);
             return true;
         }
@@ -158,9 +164,26 @@ export class AttachmentList extends Component {
         });
     }
 
-    /**
-     * @param {import("models").Attachment} attachment
-     */
+    /** @param {import("models").Attachment} attachment */
+    canShowInConversation(attachment) {
+        return this.thread?.() && attachment.message_ids.some((m) => m.thread?.eq(this.thread()));
+    }
+
+    /** @param {import("models").Attachment} attachment */
+    async onClickShowInConversation(attachment) {
+        if (this.ui.isSmall() || this.ancestors.inChatWindow || this.ancestors.inMeetingView) {
+            this.ancestors.inActionPanel?.close({ closeAll: true });
+            this.ancestors.inMeetingView?.openChat();
+        }
+        // Give the time for menus to close before scrolling to the message.
+        await new Promise((resolve) => setTimeout(() => requestAnimationFrame(resolve)));
+        const message = attachment.message_ids.find((m) => m.thread?.eq(this.thread()));
+        if (message) {
+            await this.messageHighlight?.highlightMessage(message);
+        }
+    }
+
+    /** @param {import("models").Attachment} attachment */
     onClickAttachment(attachment) {
         if (this.props.isSelecting) {
             this.props.onToggleSelected?.(attachment);
@@ -181,15 +204,11 @@ export class AttachmentList extends Component {
     }
 
     onImageLoaded() {
-        this.env.onImageLoaded?.();
+        this.ancestors.inThread?.onImageLoaded();
     }
 
     get isInChatWindowAndIsAlignedRight() {
-        return this.env.inChatWindow && this.env.alignedRight;
-    }
-
-    get isInChatWindowAndIsAlignedLeft() {
-        return this.env.inChatWindow && !this.env.alignedRight;
+        return this.ancestors.inChatWindow && this.ancestors.inMessage?.isAlignedRight;
     }
 
     /**
@@ -197,7 +216,7 @@ export class AttachmentList extends Component {
      *
      * @param {import("models").Attachment} attachment - The representative attachment for the actions.
      * @param {import("models").Attachment[]} [duplicates] - Array of duplicate attachments the action may operate on.
-     * @returns {{label: string, icon: string, icon_class?: string, onSelect: function}[]} Array of action descriptors.
+     * @returns {{label: TranslatedString, icon: string, icon_class?: string, onSelect: function}[]} Array of action descriptors.
      */
     getActions(attachment, duplicates = [attachment]) {
         const res = [];
@@ -216,29 +235,30 @@ export class AttachmentList extends Component {
                 onSelect: () => this.onClickDownload(attachment),
             });
         }
+        if (this.canShowInConversation(attachment)) {
+            res.push({
+                label: this.showInConversationTooltip,
+                icon: "chat_paste_go_2",
+                onSelect: () => this.onClickShowInConversation(attachment),
+            });
+        }
         return res;
     }
 
     showDelete(attachment) {
         // in the composer they should all be implicitly deletable
-        if (this.env.inComposer) {
+        if (this.ancestors.inComposer) {
             return true;
         }
         if (!attachment.isDeletable) {
             return false;
         }
         // in messages users are expected to delete the message instead of just the attachment
-        return (
-            !this.env.message ||
-            this.env.message.hasTextContent ||
-            (this.env.message && this.props.attachmentGroups.length > 1)
-        );
+        const message = this.ancestors.inMessage?.message;
+        return !message || message.hasTextContent || this.props.attachmentGroups.length > 1;
     }
 
-    /**
-     * @param {import("models").Attachment} attachment
-     */
-    showUploaded(attachment) {
-        return !attachment.isImage && !attachment.uploading && this.env.inComposer;
+    get showInConversationTooltip() {
+        return _t("Show in Conversation");
     }
 }

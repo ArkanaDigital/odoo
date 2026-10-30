@@ -45,6 +45,7 @@
         'views/project_task_templates.xml',
         'views/project_sharing_project_task_templates.xml',
         'report/project_report_views.xml',
+        'report/project_time_by_stage_report_views.xml',
         'data/ir_cron_data.xml',
         'data/mail_message_subtype_data.xml',
         'data/mail_template_data.xml',
@@ -73,8 +74,8 @@
             'project/static/src/components/**/*',
             'project/static/src/views/**/*',
             'project/static/src/js/tours/project.js',
-            'project/static/src/scss/project_dashboard.scss',
-            'project/static/src/scss/project_form.scss',
+            'project/static/src/scss/project_dashboard.css',
+            'project/static/src/scss/project_form.css',
             'project/static/src/scss/project_widgets.scss',
             'project/static/src/xml/**/*',
             'project/static/src/webclient/**/*',
@@ -99,8 +100,7 @@
             'project/static/src/views/project_project_activity/**',
         ],
         'web.assets_frontend': [
-            'project/static/src/scss/portal_rating.scss',
-            'project/static/src/interactions/*',
+            'project/static/src/scss/portal_rating.css',
         ],
         'web.assets_unit_tests': [
             'project/static/tests/mock_server/**/*',
@@ -167,16 +167,18 @@
 
             'base/static/src/css/modules.css',
 
-            'web/static/src/core/utils/transitions.scss',
             'web/static/src/core/**/*',
+            ('remove', 'web/static/src/core/**/*.dark.scss'),
+            'web/static/src/css/**/*',
             'web/static/src/model/**/*',
             'web/static/src/search/**/*',
             'web/static/src/webclient/icons.scss', # variables required in list_controller.scss
             'web/static/src/views/**/*.js',
             'web/static/src/views/*.xml',
-            'web/static/src/views/*.scss',
+            'web/static/src/views/*.css',
             'web/static/src/views/fields/**/*',
             'web/static/src/views/form/**/*',
+            ('remove', 'web/static/src/views/form/**/*.dark.css'),
             'web/static/src/views/card/**/*',
             'web/static/src/views/kanban/**/*',
             'web/static/src/views/list/**/*',
@@ -196,7 +198,7 @@
 
             'web/static/src/env.js',
 
-            'base/static/src/scss/res_partner.scss',
+            'base/static/src/scss/res_partner.css',
 
             # Form style should be computed before
             'web/static/src/views/form/button_box/*.scss',
@@ -204,9 +206,8 @@
             'bus/static/src/**/*.js',
 
             # To be able to launch tour js in project sharing
-            'web_tour/static/src/js/**/*',
-            'web_tour/static/src/tour_utils.js',
-            'web/static/lib/hoot-dom/**/*',
+            ('include', 'web_tour.assets'),
+            'web_tour/static/src/tour_pointer/tour_pointer.scss',
 
             ('include', 'html_editor.assets_editor'),
             'html_editor/static/src/backend/**/*',
@@ -215,14 +216,14 @@
             'html_editor/static/src/scss/base_style.scss',
 
             'mail/static/src/scss/variables/*.scss',
-            'mail/static/src/chatter/web/form_renderer.scss',
+            'mail/static/src/chatter/web/form_renderer.css',
             'mail/static/src/views/fields/**/*',
 
             'project/static/src/components/project_task_name_with_subtask_count_char_field/*',
             'project/static/src/components/project_task_state_selection/*',
             'project/static/src/components/project_many2one_field/*',
-            'project/static/src/views/project_task_form/*.scss',
-            'project/static/src/views/project_task_kanban/*.scss',
+            'project/static/src/views/project_task_form/*.css',
+            'project/static/src/views/project_task_kanban/*.css',
             'project/static/src/views/project_task_control_panel/*',
             'project/static/src/views/project_task_model_mixin.js',
             'project/static/src/views/project_task_relational_model.js',

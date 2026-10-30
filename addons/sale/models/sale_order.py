@@ -2,6 +2,7 @@
 # ruff: noqa: PLW0642
 
 import json
+import math
 from datetime import timedelta
 from itertools import groupby
 
@@ -167,7 +168,8 @@ class SaleOrder(models.Model):
 
     validity_date = fields.Date(
         string="Expiration",
-        help="Validity of the quotation. After this date, you will no longer be able to sign and pay it.",
+        help="Validity of the quotation. After this date, you will no longer be able to sign and"
+        " pay it.",
         compute="_compute_validity_date",
         store=True,
         readonly=False,
@@ -276,6 +278,7 @@ class SaleOrder(models.Model):
         comodel_name="res.currency",
         compute="_compute_currency_id",
         store=True,
+        readonly=False,
         precompute=True,
         ondelete="restrict",
     )
@@ -407,6 +410,12 @@ class SaleOrder(models.Model):
         " 'done' or 'authorized' and linked to this order.",
         compute="_compute_amount_paid",
         compute_sudo=True,
+    )
+    amount_unpaid = fields.Monetary(
+        string="Amount Remaining",
+        help="Amount left to pay to avoid double payment or double invoicing.",
+        compute="_compute_amount_unpaid",
+        store=True,
     )
 
     # UTMs - enforcing the fact that we want to 'set null' when relation is unlinked
@@ -826,18 +835,20 @@ class SaleOrder(models.Model):
                 if len(value) == 1:
                     return falsy_domain
             self.env.cr.execute(
-                """
-                SELECT array_agg(so.id)
-                    FROM sale_order so
-                    JOIN sale_order_line sol ON sol.order_id = so.id
-                    JOIN sale_order_line_invoice_rel soli_rel ON soli_rel.order_line_id = sol.id
-                    JOIN account_move_line aml ON aml.id = soli_rel.invoice_line_id
-                    JOIN account_move am ON am.id = aml.move_id
-                WHERE
-                    am.move_type in ('out_invoice', 'out_refund') AND
-                    am.id = ANY(%s)
-            """,
-                (list(value),),
+                SQL(
+                    """
+                    SELECT array_agg(so.id)
+                        FROM sale_order so
+                        JOIN sale_order_line sol ON sol.order_id = so.id
+                        JOIN sale_order_line_invoice_rel soli_rel ON soli_rel.order_line_id = sol.id
+                        JOIN account_move_line aml ON aml.id = soli_rel.invoice_line_id
+                        JOIN account_move am ON am.id = aml.move_id
+                    WHERE
+                        am.move_type in ('out_invoice', 'out_refund') AND
+                        am.id = ANY(%s)
+                    """,
+                    list(value),
+                )
             )
             so_ids = self.env.cr.fetchone()[0] or []
             return [("id", "in", so_ids)] + falsy_domain
@@ -914,12 +925,32 @@ class SaleOrder(models.Model):
             )
             trans.has_authorized_transaction_ids = bool(trans.authorized_transaction_ids)
 
-    @api.depends("transaction_ids")
+    @api.depends("transaction_ids.state", "transaction_ids.amount")
     def _compute_amount_paid(self):
         """Sum of the amount paid through all transactions for this SO."""
         for order in self:
             order.amount_paid = sum(
                 tx.amount for tx in order.transaction_ids if tx.state in ("authorized", "done")
+            )
+
+    @api.depends("amount_total", "amount_paid", "amount_invoiced", "transaction_ids.invoice_ids")
+    def _compute_amount_unpaid(self):
+        for order in self:
+            online_payments_invoices = order.transaction_ids.filtered(
+                lambda tx: tx.state in {"authorized", "done"}
+            ).invoice_ids
+            offline_invoice_lines = order.order_line.invoice_lines.filtered(
+                lambda line: (
+                    line.parent_state in {"draft", "posted"}
+                    and line.move_id not in online_payments_invoices
+                )
+            )
+            offline_invoice_amount = sum(
+                math.copysign(line.price_total, -line.balance) for line in offline_invoice_lines
+            )
+
+            order.amount_unpaid = max(
+                order.amount_total - order.amount_paid - offline_invoice_amount, 0
             )
 
     def _get_advantages(self):
@@ -1327,6 +1358,11 @@ class SaleOrder(models.Model):
         # DO NOT ADD the `pricelist_id` as dependency to the order lines compute methods as it
         # would trigger unwanted recomputations as the orm recomputes all depending fields
         # regardless of whether the field was effectively modified.
+        if self.order_line and not self.env.context.get("sale_onchange_first_call"):
+            self._recompute_prices()
+
+    @api.onchange("currency_id")
+    def _onchange_currency_id_recompute_prices(self):
         if self.order_line:
             self._recompute_prices()
 
@@ -1478,6 +1514,7 @@ class SaleOrder(models.Model):
             "name": self.env._("Discount"),
             "type": "ir.actions.act_window",
             "res_model": "sale.order.discount",
+            "views": [(False, "form")],
             "view_mode": "form",
             "target": "new",
         }
@@ -1799,6 +1836,9 @@ class SaleOrder(models.Model):
             "res_id": self.id,
             "views": [(False, "form")],
         }
+
+    def _get_order_creation_context(self):
+        return {}
 
     # INVOICING #
 
@@ -2312,16 +2352,15 @@ class SaleOrder(models.Model):
         self.ensure_one()
 
         prepayment_amount = self._get_prepayment_required_amount()
-        remaining_balance = self.amount_total - self.amount_paid
         if self.state in ("draft", "sent") and self.prepayment_percent > 0:
-            suggested_amount = prepayment_amount  # Suggest the amount needed to confirm the quote.
+            # Suggest the amount needed to confirm the quote.
+            suggested_amount = max(prepayment_amount - self.amount_paid, 0)
         else:  # The order is confirmed or doesn't require payment.
-            suggested_amount = remaining_balance
+            suggested_amount = max(self.amount_total - self.amount_paid, 0.0)
         return {
             "currency_id": self.currency_id.id,
             "partner_id": self.partner_invoice_id.id,
             "amount": suggested_amount,
-            "amount_max": remaining_balance,
             "amount_paid": self.amount_paid,
             "prepayment_amount": prepayment_amount,
         }
@@ -2376,10 +2415,9 @@ class SaleOrder(models.Model):
         """Determine whether a sale order has to be paid.
 
         A sale order has to be paid when:
-        - its state is 'draft' or `sent`;
-        - it's not expired;
+        - its state is 'draft' or 'sent';
+        - it is not expired;
         - the prepayment percent is strictly positive;
-        - the last transaction's state isn't `done`;
         - the total amount is strictly positive.
         - confirmation amount is not reached
 
@@ -2578,11 +2616,9 @@ class SaleOrder(models.Model):
         }
 
     def _get_prepayment_required_amount(self):
-        """Return the minimum amount needed to automatically confirm the quotation.
+        """Return the default prepayment amount.
 
-        Note: self.ensure_one()
-
-        :return: The minimum amount needed to automatically confirm the quotation.
+        :return: The default prepayment amount.
         :rtype: float
         """
         self.ensure_one()
@@ -2616,8 +2652,8 @@ class SaleOrder(models.Model):
         for order in self:
             downpayment_wizard = order.env["sale.advance.payment.inv"].create({
                 "sale_order_ids": order,
-                "advance_payment_method": "fixed",
-                "fixed_amount": self.env.context.get("downpayment_fixed_amount", order.amount_paid),
+                "advance_payment_method": "downpayment",
+                "amount": self.env.context.get("downpayment_fixed_amount", order.amount_paid),
             })
             generated_invoices |= downpayment_wizard._create_invoices(order)
 
@@ -2663,27 +2699,15 @@ class SaleOrder(models.Model):
     def _get_catalog_currency(self):
         return self.currency_id or super()._get_catalog_currency()
 
-    def _get_product_catalog_domain(self):
-        return super()._get_product_catalog_domain() & Domain("sale_ok", "=", True)
-
-    def _get_product_price_type(self) -> str:
-        """Specify the price type that should be computed as product 'price' in the catalog."""
-        self.ensure_one()
-        # Disable the default price computation as the pricelist should be considered instead
-        return ""
-
-    def _get_product_catalog_order_data(self, products, **kwargs):
-        res = super()._get_product_catalog_order_data(products, **kwargs)
-        prices = self.pricelist_id._get_products_price(
+    def _get_product_catalog_default_prices(self, products, **kwargs) -> dict:
+        # Override the default price computation to consider the pricelist prices instead.
+        return self.pricelist_id._get_products_price(
             quantity=1.0,
             products=products,
-            currency=self.currency_id,
+            currency=self._get_catalog_currency(),
             date=self.date_order,
             **kwargs,
         )
-        for product in products:
-            res[product.id]["price"] = prices.get(product.id)
-        return res
 
     def _is_readonly(self) -> bool:
         """Return whether the sale order is read-only or not based on the state or the lock status.
@@ -2699,16 +2723,6 @@ class SaleOrder(models.Model):
         if product.sale_line_warn_msg and has_warning_group:
             product_data.update(warning=product.sale_line_warn_msg)
         return product_data
-
-    def _get_product_catalog_default_unit_price(self, product, uom, **kwargs):
-        return self.pricelist_id._get_product_price(
-            product=product,
-            quantity=1.0,
-            currency=self.currency_id,
-            uom=uom,
-            date=self.date_order,
-            **kwargs,
-        )
 
     def _has_sections(self) -> bool:
         return True
@@ -2734,17 +2748,49 @@ class SaleOrder(models.Model):
 
     # === TOOLING ===#
 
+    def _is_partially_paid(self):
+        """Return whether the sales order has a confirmed partial payment.
+
+        The order is not considered "partially" paid if it's fully paid.
+
+        :return: Whether the order is partially paid
+        :rtype: bool
+        """
+        self.ensure_one()
+
+        if self.state == "cancel":
+            return False  # Allow resetting the cart when it's canceled from the backend
+
+        if self._is_paid():
+            return False
+
+        return any(self.transaction_ids.filtered(lambda tx: tx.state in {"authorized", "done"}))
+
     def _is_paid(self):
         """Return whether the sale order is paid or not based on the linked transactions.
 
-        A sale order is considered paid if the sum of all the linked transaction is equal to or
-        higher than `self.amount_total`.
+        A sales order is considered paid if the sum of all the paid (i.e., `authorized` or `done`)
+        transactions' amount is equal to or higher than `self.amount_total`.
 
-        :return: Whether the sale order is paid or not.
+        :return: Whether the order is considered paid
         :rtype: bool
         """
         self.ensure_one()
         return self.currency_id.compare_amounts(self.amount_paid, self.amount_total) >= 0
+
+    def _check_not_partially_paid(self):
+        """Check if the order is partially paid, and raises an error if so.
+
+        :rtype: None
+        :raise UserError: If the error is partially paid
+        """
+        if self._is_partially_paid():
+            raise UserError(
+                self.env._(
+                    "It seems that there is already a payment in progress for your order; you can't"
+                    " modify it anymore."
+                )
+            )
 
     def _get_lang(self):
         self.ensure_one()
@@ -2762,28 +2808,6 @@ class SaleOrder(models.Model):
                 "template": "/sale/static/xls/quotations_import_template.xlsx",
             }
         ]
-
-    @api.model
-    def batch_onchange_sol(self, lines_data, order_changes, fields_spec):
-        """Batch `sale.order.line` onchange calls into a single RPC.
-
-        :param dict lines_data: {line_id: {"ids", "changes", "field_name"}}, one entry per line
-        :param dict fields_spec: onchange fields spec, shared by every line
-        :return: {line_id: recomputed values}
-        :rtype: dict
-        """
-        SaleOrderLine = self.env["sale.order.line"]
-        result = {}
-        for line_id, data in lines_data.items():
-            onchange_values = {**data["changes"], **order_changes}
-            values = (
-                SaleOrderLine
-                .browse(data["ids"])
-                .onchange(onchange_values, data["changed_fields"], fields_spec)
-                .get("value", {})
-            )
-            result[line_id] = values
-        return result
 
     # For `sale_management`, to control optional products on portal
     def _can_be_edited_on_portal(self):

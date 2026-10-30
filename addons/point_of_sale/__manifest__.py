@@ -6,7 +6,18 @@
     'category': 'Sales/Point of Sale',
     'sequence': 40,
     'summary': 'Handle checkouts and payments for shops and restaurants.',
-    'depends': ['resource', 'product', 'account', 'barcodes_gs1_nomenclature', 'html_editor', 'digest', 'phone_validation', 'google_address_autocomplete', 'base_report_wkhtmltox'],
+    'depends': [
+        'resource',
+        'product',
+        'account',
+        'barcodes_gs1_nomenclature',
+        'html_editor',
+        'digest',
+        'phone_validation',
+        'google_address_autocomplete',
+        'base_report_wkhtmltox',
+        'iot_webserial',
+    ],
     'data': [
         'security/point_of_sale_security.xml',
         'data/default_barcode_patterns.xml',
@@ -94,6 +105,7 @@
             'point_of_sale/static/src/scss/pos_dashboard.scss',
             'point_of_sale/static/src/backend/tours/point_of_sale.js',
             'point_of_sale/static/src/backend/pos_kanban_view/*',
+            ('remove', 'point_of_sale/static/src/backend/pos_kanban_view/*.dark.css'),
             'point_of_sale/static/src/backend/lna_checklist/*',
             'point_of_sale/static/src/backend/pos_payment_provider_cards/*',
             'point_of_sale/static/src/app/hooks/hooks.js',
@@ -102,18 +114,19 @@
             ('remove', 'point_of_sale/static/src/backend/views/pivot/*'),
             ('remove', 'point_of_sale/static/src/backend/views/graph/*'),
             'point_of_sale/static/src/backend/test_epos/*',
-            'point_of_sale/static/src/backend/connect_web_serial_scale/*',
             'point_of_sale/static/src/app/utils/init_lna.js',
-            'point_of_sale/static/src/app/utils/scale/*.js',
             'point_of_sale/static/src/backend/pos_open_ui_button/*',
+            'point_of_sale/static/src/backend/print_receipt/*',
+            'point_of_sale/static/src/app/utils/printer/base_printer.js',
+            'point_of_sale/static/src/app/utils/printer/epson_printer.js',
         ],
         'web.assets_backend_lazy': [
             'point_of_sale/static/src/backend/views/pivot/*',
             'point_of_sale/static/src/backend/views/graph/*',
         ],
         "web.assets_web_dark": [
-            'point_of_sale/static/src/scss/pos_dashboard.dark.scss',
-            'point_of_sale/static/src/backend/pos_kanban_view/pos_kanban_view.dark.scss',
+            'point_of_sale/static/src/scss/pos_dashboard.dark.css',
+            'point_of_sale/static/src/backend/pos_kanban_view/pos_kanban_view.dark.css',
         ],
         'web.assets_tests': [
             'point_of_sale/static/tests/pos/tours/**/*',
@@ -126,16 +139,17 @@
 
             # Remove CSS files since we're not testing the UI with hoot in PoS
             # CSS files make html_editor tests fail
-            ('remove', 'point_of_sale/static/src/**/*.css'),
+            ('remove', 'point_of_sale/static/src/css/*.css'),
 
             # Adding error handler back since they are removed in the prod bundle
             'web/static/src/core/errors/error_handlers.js',
             'web/static/src/core/dialog/dialog.scss',
             'point_of_sale/static/src/backend/views/**/*',
+            'point_of_sale/static/src/backend/print_receipt/**/*',
 
             'point_of_sale/static/src/customer_display/**/*',
             ('remove', 'point_of_sale/static/src/customer_display/root.js'),
-            ('remove', 'point_of_sale/static/src/customer_display/styles.scss'),
+            ('remove', 'point_of_sale/static/src/customer_display/styles.css'),
         ],
         'web.assets_unit_tests': [
             'point_of_sale/static/tests/unit/**/*',
@@ -190,12 +204,13 @@
             ('include', 'point_of_sale.base_app'),
 
             'web/static/src/core/colorlist/colorlist.scss',
-            'web/static/src/webclient/webclient_layout.scss',
+            'web/static/src/webclient/webclient_layout.css',
 
             'web/static/src/webclient/icons.scss',
 
             # scss variables and utilities
             'point_of_sale/static/src/scss/pos_variables_extra.scss',
+            'point_of_sale/static/src/scss/css_variables.scss',
             'web/static/src/scss/bootstrap_overridden.scss',
             'web/static/fonts/fonts.scss',
             "web/static/src/scss/ui.scss",
@@ -204,10 +219,10 @@
             ('remove', '/web/static/src/core/dialog/dialog.scss'),
             'web/static/src/core/currency.js',
             # barcode scanner
-            'barcodes/static/src/barcode_service.js',
+            'barcodes/static/src/barcode_plugin.js',
             'barcodes/static/src/js/barcode_parser.js',
             'barcodes_gs1_nomenclature/static/src/js/barcode_parser.js',
-            'barcodes_gs1_nomenclature/static/src/js/barcode_service.js',
+            'barcodes_gs1_nomenclature/static/src/js/barcode_plugin.js',
             'barcodes_gs1_nomenclature/static/src/js/epc_model.js',
             'barcodes_gs1_nomenclature/static/src/js/epc_utils.js',
             # report download utils
@@ -229,17 +244,17 @@
             "web/static/src/core/debug/**/*",
             'web/static/src/model/**/*',
             'web/static/src/views/**/*',
+            ('remove', 'web/static/src/views/**/*.dark.css'),
             'web/static/src/search/**/*',
             'web/static/src/webclient/actions/**/*',
             ('remove', 'web/static/src/webclient/actions/reports/report_layouts.scss'),
             ('remove', 'web/static/src/webclient/actions/**/*css'),
             'google_address_autocomplete/static/src/**/*',
             'point_of_sale/static/src/backend/pos_res_partner_view/*',
+            'iot_webserial/static/src/web_serial_*.js',
         ],
         'point_of_sale.base_tests': [
-            "web/static/lib/hoot-dom/**/*",
-            "web_tour/static/src/js/**/*",
-            'web_tour/static/src/tour_utils.js',
+            ('include', 'web_tour.assets'),
         ],
         # Bundle that starts the pos, loaded on /pos/ui
         'point_of_sale.assets_prod': [
@@ -255,9 +270,10 @@
             "point_of_sale/static/src/app/utils/use_timed_press.js",
             "point_of_sale/static/src/utils.js",
             "point_of_sale/static/src/scss/pos_variables_extra.scss",
+            "point_of_sale/static/src/scss/css_variables.scss",
             "point_of_sale/static/src/customer_display/**/*",
             "point_of_sale/static/src/app/hooks/time_hook.js",
-            "point_of_sale/static/src/app/pos_app.scss",
+            "point_of_sale/static/src/app/pos_app.css",
             "point_of_sale/static/src/app/screens/login_screen/login_screen.scss",
             "point_of_sale/static/src/app/components/price_formatter/**/*",
             "point_of_sale/static/src/app/components/validation_animation/**/*",

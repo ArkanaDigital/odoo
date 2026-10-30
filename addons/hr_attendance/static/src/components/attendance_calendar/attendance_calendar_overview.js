@@ -1,38 +1,46 @@
-import { Component, proxy, useEffect } from "@odoo/owl";
-import { registry } from "@web/core/registry";
+import { Component, proxy, t, useEffect, useProps } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
+import { user } from "@web/core/user";
+import { formatDuration } from "@web/views/fields/formatters";
 
 export class AttendanceCalendarOverview extends Component {
     static template = "hr_attendance.AttendanceCalendarOverview";
-    static props = {
-        dateRange: Object,
-    };
+
+    props = useProps({
+        dateRange: t.object(),
+    });
 
     setup() {
         this.orm = useService("orm");
-        this.floatTime = registry.category("formatters").get("float_time");
+        this.formatDuration = formatDuration;
         this.state = proxy({
-            workedHours: 0,
-            extraHours: 0,
+            entries: [],
         });
         useEffect(() => {
             this.loadData();
         });
     }
 
-    get displayExtraHours() {
-        return this.env.searchModel.context.display_extra_hours ?? false;
-    }
-
     async loadData() {
         const { start, end } = this.props.dateRange;
-        const employeeId = this.env.searchModel.context.active_id;
+        let employeeId = this.env.searchModel.context.active_id;
+        if (!employeeId) {
+            const employees = await this.orm.searchRead(
+                "hr.employee",
+                [["user_id", "=", user.userId]],
+                ["id"],
+                { limit: 1 },
+            );
+            if (!employees.length) return;
+            employeeId = employees[0].id;
+        }
         const attendace_data = await this.orm.call(
             "hr.employee",
-            "get_attendace_data_by_employee",
+            "get_attendance_data_by_employee",
             [employeeId, start, end]
         );
-        this.state.workedHours = attendace_data[employeeId].worked_hours;
-        this.state.extraHours = attendace_data[employeeId].overtime_hours;
+        const data = attendace_data[employeeId];
+        if (!data) return;
+        this.state.entries = data.entries || [];
     }
 }

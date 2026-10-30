@@ -5,21 +5,31 @@
 # "Dylan Kiss (dyki)" <dyki@odoo.com>, 2025.
 # "Abe Manyo (abem)" <abem@odoo.com>, 2025, 2026.
 # Weblate <noreply-mt-weblate@weblate.org>, 2025.
+# "Nurul Aini Akrima Sabila (nuaas)" <nuaas@odoo.com>, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 18.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-17 17:38+0000\n"
-"PO-Revision-Date: 2026-06-21 19:57+0000\n"
+"POT-Creation-Date: 2026-09-11 17:42+0000\n"
+"PO-Revision-Date: 2026-08-31 16:41+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Indonesian <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Indonesian <https://translate.odoo.com/projects/odoo-s19-4/"
 "html_editor/id/>\n"
 "Language: id\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: html_editor
+#: model:ir.module.module,description:base.module_html_editor
+msgid ""
+"\n"
+"Html Editor\n"
+"==========================\n"
+"This addon provides an extensible, maintainable editor.\n"
+msgstr ""
 
 #. module: html_editor
 #. odoo-javascript
@@ -68,6 +78,11 @@ msgstr "4 kolom"
 #: code:addons/html_editor/static/src/main/star_plugin.js:0
 msgid "5 Stars"
 msgstr "5 Stars"
+
+#. module: html_editor
+#: model:ir.module.module,summary:base.module_html_editor
+msgid "A Html Editor component and plugin system."
+msgstr ""
 
 #. module: html_editor
 #. odoo-javascript
@@ -630,6 +645,18 @@ msgstr ""
 
 #. module: html_editor
 #. odoo-javascript
+#: code:addons/html_editor/static/src/others/embedded_components/plugins/date_plugin/date_plugin.js:0
+msgid "Date"
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
+#: code:addons/html_editor/static/src/others/embedded_components/plugins/date_plugin/date_plugin.js:0
+msgid "Date and Time"
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
 #: code:addons/html_editor/static/src/backend/dynamic_field/field_selector_popover.xml:0
 #: code:addons/html_editor/static/src/main/media/image_plugin.js:0
 msgid "Default"
@@ -826,7 +853,7 @@ msgstr ""
 #. module: html_editor
 #: model:ir.model,name:html_editor.model_html_field_history_mixin
 msgid "Field html History"
-msgstr "Sejarah Field html"
+msgstr "Riwayat Field html"
 
 #. module: html_editor
 #. odoo-javascript
@@ -869,6 +896,11 @@ msgstr ""
 #: code:addons/html_editor/static/src/components/color_picker/tabs/gradient/color_picker_gradient_tab.js:0
 msgid "Gradient"
 msgstr "Gradient"
+
+#. module: html_editor
+#: model:ir.module.module,shortdesc:base.module_html_editor
+msgid "HTML Editor"
+msgstr ""
 
 #. module: html_editor
 #: model:ir.model,name:html_editor.model_ir_http
@@ -986,12 +1018,18 @@ msgstr "Riwayat"
 #. module: html_editor
 #: model:ir.model.fields,field_description:html_editor.field_html_field_history_mixin__html_field_history
 msgid "History data"
-msgstr "Data sejarah"
+msgstr "Data riwayat"
 
 #. module: html_editor
 #: model:ir.model.fields,field_description:html_editor.field_html_field_history_mixin__html_field_history_metadata
 msgid "History metadata"
-msgstr "Metadata sejarah"
+msgstr "Metadata riwayat"
+
+#. module: html_editor
+#. odoo-javascript
+#: code:addons/html_editor/static/src/others/embedded_components/plugins/date_plugin/date_plugin.js:0
+msgid "Hour"
+msgstr ""
 
 #. module: html_editor
 #. odoo-javascript
@@ -1158,6 +1196,18 @@ msgstr "Masukkan info banner"
 
 #. module: html_editor
 #. odoo-javascript
+#: code:addons/html_editor/static/src/others/embedded_components/plugins/date_plugin/date_plugin.js:0
+msgid "Insert any date"
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
+#: code:addons/html_editor/static/src/others/embedded_components/plugins/date_plugin/date_plugin.js:0
+msgid "Insert any date and time"
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
 #: code:addons/html_editor/static/src/main/table/table_menu.js:0
 msgid "Insert below"
 msgstr "Masukkan di bawah"
@@ -1194,6 +1244,18 @@ msgstr "Masukkan di kanan"
 
 #. module: html_editor
 #. odoo-javascript
+#: code:addons/html_editor/static/src/others/embedded_components/plugins/date_plugin/date_plugin.js:0
+msgid "Insert the current time"
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
+#: code:addons/html_editor/static/src/others/embedded_components/plugins/date_plugin/date_plugin.js:0
+msgid "Insert today's date"
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
 #: code:addons/html_editor/static/src/main/user_signature_plugin.js:0
 msgid "Insert your email signature"
 msgstr ""
@@ -1221,6 +1283,11 @@ msgstr "Italik (Ctrl + I)"
 #: code:addons/html_editor/static/src/main/align/align_plugin.js:0
 msgid "Justify"
 msgstr "Justifikasi"
+
+#. module: html_editor
+#: model:ir.model.fields.selection,name:html_editor.selection__html_editor_converter_test__selection_str__d
+msgid "La réponse D"
+msgstr ""
 
 #. module: html_editor
 #. odoo-javascript
@@ -1300,12 +1367,6 @@ msgstr "Memuat..."
 
 #. module: html_editor
 #. odoo-javascript
-#: code:addons/html_editor/static/src/main/link/link_popover.js:0
-msgid "Logout"
-msgstr "Logout"
-
-#. module: html_editor
-#. odoo-javascript
 #: code:addons/html_editor/static/src/main/media/media_dialog/video_selector.xml:0
 msgid "Loom"
 msgstr ""
@@ -1343,8 +1404,14 @@ msgstr "Heading bagian medium"
 
 #. module: html_editor
 #. odoo-javascript
-#: code:addons/html_editor/static/src/main/table/table_menu.js:0
+#: code:addons/html_editor/static/src/main/table/table_plugin.js:0
 msgid "Merge Cells"
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
+#: code:addons/html_editor/static/src/main/table/table_plugin.js:0
+msgid "Merge selected table cells"
 msgstr ""
 
 #. module: html_editor
@@ -1455,7 +1522,7 @@ msgstr "Tidak ada dokumen yang ditemukan."
 #. odoo-javascript
 #: code:addons/html_editor/static/src/components/history_dialog/history_dialog.xml:0
 msgid "No history"
-msgstr "Tidak ada sejarah"
+msgstr "Tidak ada riwayat"
 
 #. module: html_editor
 #. odoo-javascript
@@ -1520,8 +1587,14 @@ msgstr ""
 
 #. module: html_editor
 #. odoo-javascript
-#: code:addons/html_editor/static/src/main/table/table_menu.js:0
-msgid "Only rows or cells selection can be merged"
+#: code:addons/html_editor/static/src/backend/dynamic_field/dynamic_field_plugin.js:0
+msgid "Oops! Select a model for this template before editing fields."
+msgstr ""
+
+#. module: html_editor
+#. odoo-javascript
+#: code:addons/html_editor/static/src/backend/dynamic_field/dynamic_field_plugin.js:0
+msgid "Oops! Select a model for this template before inserting fields."
 msgstr ""
 
 #. module: html_editor
@@ -1634,11 +1707,6 @@ msgstr "Qu'est-ce qu'il fout ce maudit pancake, tabernacle ?"
 #: model:ir.model.fields.selection,name:html_editor.selection__html_editor_converter_test__selection_str__a
 msgid "Qu'il n'est pas arrivé à Toronto"
 msgstr "Qu'il n'est pas arrivé à Toronto"
-
-#. module: html_editor
-#: model:ir.model.fields.selection,name:html_editor.selection__html_editor_converter_test__selection_str__b
-msgid "Qu'il était supposé arriver à Toronto"
-msgstr "Qu'il était supposé arriver à Toronto"
 
 #. module: html_editor
 #. odoo-javascript
@@ -1865,7 +1933,7 @@ msgstr "Ubah ukuran gambar"
 #. odoo-javascript
 #: code:addons/html_editor/static/src/components/history_dialog/history_dialog.xml:0
 msgid "Restore history"
-msgstr "Pulihkan sejarah"
+msgstr "Pulihkan riwayat"
 
 #. module: html_editor
 #. odoo-javascript
@@ -2214,7 +2282,7 @@ msgid ""
 "The document was already saved from someone with a different history for "
 "model \"%(model)s\", field \"%(field)s\" with id \"%(id)d\"."
 msgstr ""
-"Dokumen sudah disimpan oleh orang lain dengan sejarah yang berbeda untuk "
+"Dokumen sudah disimpan oleh orang lain dengan riwayat yang berbeda untuk "
 "model \"%(model)s\", field \"%(field)s\" dengan id \"%(id)d\"."
 
 #. module: html_editor
@@ -2287,6 +2355,12 @@ msgstr ""
 "Tipe gambar ini tidak didukung untuk di-crop.<br/>Bila Anda ingin crop "
 "gambar ini, mohon unduh terlebih dahulu dari sumber aslinya dan unggah ke "
 "Odoo."
+
+#. module: html_editor
+#. odoo-javascript
+#: code:addons/html_editor/static/src/others/embedded_components/plugins/date_plugin/date_plugin.js:0
+msgid "Today"
+msgstr ""
 
 #. module: html_editor
 #. odoo-javascript
@@ -2431,12 +2505,6 @@ msgstr "Undo"
 #: code:addons/html_editor/static/src/components/history_dialog/history_dialog.xml:0
 msgid "Unified"
 msgstr "Disatukan"
-
-#. module: html_editor
-#. odoo-javascript
-#: code:addons/html_editor/static/src/main/table/table_menu.js:0
-msgid "Unmerge Cells"
-msgstr ""
 
 #. module: html_editor
 #. odoo-javascript
@@ -2750,11 +2818,8 @@ msgstr "penanganan pesan websocket"
 msgid "x"
 msgstr ""
 
-#~ msgid "No pictograms found."
-#~ msgstr "Tidak ada pictogram yang ditemukan."
-
-#~ msgid "Try searching with other keywords."
-#~ msgstr "Coba mencari dengan kata kunci lainnya."
+#~ msgid "Qu'il était supposé arriver à Toronto"
+#~ msgstr "Qu'il était supposé arriver à Toronto"
 
 #~ msgid "Insert your signature"
 #~ msgstr "Masukkan tanda tangan Anda"

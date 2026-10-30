@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import itertools
 import logging
 import typing
@@ -8,7 +9,6 @@ from operator import attrgetter
 
 from odoo.exceptions import AccessError, MissingError, UserError
 from odoo.tools import SQL, OrderedSet, sql, unique
-from odoo.tools.constants import PREFETCH_MAX
 from odoo.tools.misc import SENTINEL, Sentinel, unquote
 
 from .commands import Command
@@ -63,19 +63,8 @@ class _Relational(Field[BaseModel]):
             try:
                 vals.append(field_cache[record_id])
             except KeyError:
-                if self.store and record_id and len(vals) < len(records) - PREFETCH_MAX:
-                    # a lot of missing records, just fetch that field
-                    remaining = records[len(vals):]
-                    remaining.fetch([self.name])
-                    # fetch does not raise MissingError, check value
-                    if record_id not in field_cache:
-                        raise MissingError("\n".join([
-                            env._("Record does not exist or has been deleted."),
-                            env._("(Record: %(record)s, User: %(user)s)", record=record_id, user=env.uid),
-                        ])) from None
-                else:
-                    remaining = records.__class__(env, (record_id,), records._prefetch_ids)
-                    super().__get__(remaining, owner)
+                remaining = records.__class__(env, (record_id,), records._prefetch_ids)
+                super().__get__(remaining, owner)
                 # we have the record now
                 vals.append(field_cache[record_id])
 
@@ -91,10 +80,10 @@ class _Relational(Field[BaseModel]):
         """
         raise NotImplementedError
 
-    def setup_nonrelated(self, model):
-        super().setup_nonrelated(model)
-        assert self.comodel_name in model.pool, \
-            f"Field {self} with unknown comodel_name {self.comodel_name or '???'!r}"
+    def _setup(self, model):
+        super()._setup(model)
+        if self.comodel_name not in model.pool:
+            raise ValueError(f"Field {self} with unknown comodel_name {self.comodel_name or '???'!r}")
 
     def setup_inverses(self, registry: Registry, inverses: Collector[Field, Field]):
         """ Populate ``inverses`` with ``self`` and its inverse fields. """
@@ -125,9 +114,7 @@ class _Relational(Field[BaseModel]):
         else:
             return validated(self.domain)
 
-    # property used by setup_related() to copy values from related field
     _related_comodel_name = property(attrgetter('comodel_name'))
-
     _related_context = property(attrgetter('context'))
 
     _description_relation = property(attrgetter('comodel_name'))
@@ -150,11 +137,10 @@ class _Relational(Field[BaseModel]):
                 cids = 'company_ids'
                 field_to_check = 'company_ids'
             else:
-                _logger.warning(env._(
-                    "Couldn't generate a company-dependent domain for field %s. "
-                    "The model doesn't have a 'company_id' or 'company_ids' field, and isn't company-dependent either.",
-                    self.model_name + '.' + self.name,
-                ))
+                self._setup_warning(
+                    "Couldn't generate a company-dependent domain for field. "
+                    "The model doesn't have a 'company_id' or 'company_ids' field, and isn't company-dependent either."
+                )
                 return domain
             company_domain = env[self.comodel_name]._check_company_domain(companies=unquote(cids))
             if not field_to_check:
@@ -270,8 +256,10 @@ class Many2one(_Relational):
                 f"_inherits = {{{comodel_name!r}: {name!r}}}"
             )
 
-    def setup_nonrelated(self, model):
-        super().setup_nonrelated(model)
+    def _setup(self, model):
+        super()._setup(model)
+        if self.related:
+            return
         # 3 cases:
         # 1) The ondelete attribute is not defined, we assign it a sensible default
         # 2) The ondelete attribute is defined and its definition makes sense
@@ -307,8 +295,8 @@ class Many2one(_Relational):
             raise ValueError('Many2one %s from Model to TransientModel is forbidden' % self)
         return super().update_db(model, columns)
 
-    def update_db_column(self, model, column):
-        super().update_db_column(model, column)
+    def update_db_column(self, model, column, init_value=None):
+        super().update_db_column(model, column, init_value)
         model.pool.post_init(self.update_db_foreign_key, model, column)
 
     def update_db_foreign_key(self, model, column):
@@ -536,10 +524,16 @@ class Many2one(_Relational):
                     sql = SQL("(%s IS NOT NULL AND %s IS NOT NULL AND %s)", sql_field, cotable.id, sql)
                 else:
                     sql = SQL("(%s IS NULL OR %s)", sql_field, sql)
+            elif positive and table._query._joins[cotable._alias][0]._sql_tuple[0] == 'LEFT JOIN':
+                # PERF: The field is required, but the join could not be turned
+                # into a JOIN because the left table is itself LEFT JOINed.
+                # PostgreSQL does not infer non-nullability from the foreign
+                # key, so reject NULLs on the joined primary key explicitly.
+                sql = SQL("(%s IS NOT NULL AND %s)", cotable.id, sql)
             return sql
 
         if isinstance(value, Domain):
-            value = comodel._search(value, active_test=False, bypass_access=bypass_access)
+            value = comodel._search(value, active_test=False, bypass_access=bypass_access, search_from_field=self)
         if isinstance(value, Query):
             subselect = value.subselect()
         elif isinstance(value, SQL):
@@ -568,7 +562,7 @@ class Many2one(_Relational):
         if self.compute_sudo or self.delegate or model.env.su:
             coquery = None
         else:
-            coquery = comodel.with_context(_generating_sql_for_fields=True)._search(Domain.TRUE, active_test=False)
+            coquery = comodel.with_context(_generating_sql_for_fields=True)._search(Domain.TRUE, active_test=False, search_from_field=self)
             if not coquery.where_clause:
                 coquery = None
         if coquery is None:
@@ -868,10 +862,13 @@ class _RelationalMulti(_Relational):
         if isinstance(value, Domain):
             domain = value & field_domain
             bypass_access = self.bypass_search_access or operator in ('any!', 'not any!')
-            if domain.is_condition('id', operator='any!', value=Query):
+            if (
+                domain.is_condition('id', operator='any!', value=Query)
+                and model._search is BaseModel._search
+                and not (model._active_name and model.env.context.get('active_test', True))
+            ):
                 # ('id', 'any!', Query), so we can just use the query
                 query = domain.value
-                # XXX only when no overwrites? # no active test?
             else:
                 registry = model.env.registry
                 for inverse_field in registry.field_inverses[self]:
@@ -879,16 +876,16 @@ class _RelationalMulti(_Relational):
                     # this is usually the case for one2many
                     if inverse_field.column_type and inverse_field not in comodel.env.registry.not_null_fields:
                         domain &= Domain(inverse_field.name, '!=', False)
-                query = comodel._search(domain, bypass_access=bypass_access)
+                query = comodel._search(domain, bypass_access=bypass_access, search_from_field=self)
             assert isinstance(query, Query)
         elif isinstance(value, Query):
             domain = field_domain.optimize_full(comodel)
             if not domain.is_true():
-                # TODO should clone/copy Query value
+                value = copy.copy(value)
                 value.add_where(domain._to_sql(value.table._with_model(comodel)))
             query = value
         elif isinstance(value, SQL):
-            query = comodel._search(field_domain & Domain('id', 'any!', value), active_test=False, bypass_access=True)
+            query = comodel._search(field_domain & Domain('id', 'any!', value), active_test=False, bypass_access=True, search_from_field=self)
         else:
             assert False, f"Unimplemented condition on {self} for {type(value)}"
 
@@ -907,8 +904,8 @@ class One2many(_RelationalMulti):
 
     :param str comodel_name: name of the target model
 
-    :param str inverse_name: name of the inverse ``Many2one`` field in
-        ``comodel_name``
+    :param str inverse_name: name of the inverse ``Many2one`` or reference field
+        in ``comodel_name``
 
     :param domain: an optional domain to set on candidate values on the
         client side (domain or a python expression that will be evaluated
@@ -937,9 +934,9 @@ class One2many(_RelationalMulti):
             **kwargs
         )
 
-    def setup_nonrelated(self, model):
-        super().setup_nonrelated(model)
-        if self.inverse_name:
+    def _setup(self, model):
+        super()._setup(model)
+        if self.inverse_name and not self.related:
             # link self to its inverse field and vice-versa
             comodel = model.env[self.comodel_name]
             try:
@@ -951,11 +948,17 @@ class One2many(_RelationalMulti):
     def setup_inverses(self, registry, inverses):
         if self.inverse_name:
             # link self to its inverse field and vice-versa
+            if self.manual and self.inverse_name not in registry[self.comodel_name]._fields:
+                # ignore manual fields (e.g. from Studio) that may reference a
+                # non-existent inverse field in the registry to avoid crashing
+                self._setup_warning(f"ignoring manual field with invalid inverse name {self.inverse_name!r}")
+                return
             invf = registry[self.comodel_name]._fields[self.inverse_name]
             if isinstance(invf, (Many2one, Many2oneReference)):
                 # setting one2many fields only invalidates many2one inverses;
-                # integer inverses (res_model/res_id pairs) are not supported
                 inverses.add(self, invf)
+            else:
+                self._setup_warning(f"inverse field {invf} is not a many2one or many2one_reference")
             inverses.add(invf, self)
 
     _description_relation_field = property(attrgetter('inverse_name'))
@@ -1190,7 +1193,7 @@ class One2many(_RelationalMulti):
         model = table._model
         comodel = model.env[self.comodel_name].with_context(**self.context)
         codomain = self.get_comodel_domain(model)
-        coquery = comodel._search(codomain, bypass_access=self.bypass_search_access)
+        coquery = comodel._search(codomain, bypass_access=self.bypass_search_access, search_from_field=self)
 
         coalias = table._make_alias(self.name, comodel)
         condition = SQL(
@@ -1299,8 +1302,9 @@ class Many2many(_RelationalMulti):
             **kwargs
         )
 
-    def setup_nonrelated(self, model: BaseModel) -> None:
-        super().setup_nonrelated(model)
+    def _setup(self, model):
+        super()._setup(model)
+
         # 2 cases:
         # 1) The ondelete attribute is defined and its definition makes sense
         # 2) The ondelete attribute is explicitly defined as 'set null' for a m2m,
@@ -1319,10 +1323,11 @@ class Many2many(_RelationalMulti):
                 comodel = model.env[self.comodel_name]
                 if not self.relation:
                     tables = sorted([model._table, comodel._table])
-                    assert tables[0] != tables[1], \
-                        "%s: Implicit/canonical naming of many2many relationship " \
-                        "table is not possible when source and destination models " \
-                        "are the same" % self
+                    if tables[0] == tables[1]:
+                        raise Exception(
+                            f"{self}: implicit/canonical naming of many2many relationship "
+                            "table is not possible when source and destination models are the same"
+                        )
                     self.relation = '%s_%s_rel' % tuple(tables)
                 # Safe to update shared fields' attributes
                 # because _check_model_extension guarantees model_cls._table is not overridable.
@@ -1471,16 +1476,27 @@ class Many2many(_RelationalMulti):
                 self.read(records.browse(missing_ids))
 
         # determine old and new relation {x: ys}
-        old_relation = {record.id: OrderedSet(record[self.name]._ids) for record in records.sudo()}
+        #
+        # sudo() is only needed to see the full DB relation for a *stored*
+        # field. For a non-stored, context-dependent field (e.g.
+        # depends_context('uid')), it reads/caches a different bucket than
+        # the one being written, which can poison it with a stale empty
+        # value.
+        relation_records = records.sudo() if self.store else records
+        old_relation = {record.id: OrderedSet(record[self.name]._ids) for record in relation_records}
         if records.env.context.get('active_test', True):
             old_inactive_relation = {
                 record.id: OrderedSet(record[self.name]._ids) - old_relation[record.id]
-                for record in records.sudo().with_context(active_test=False)
+                for record in relation_records.with_context(active_test=False)
             }
         else:
             old_inactive_relation = None
         new_relation = {x: OrderedSet(ys) for x, ys in old_relation.items()}
-        inaccessible_coids = OrderedSet() if model.env.su else OrderedSet(records.sudo()[self.name]._ids) - OrderedSet(records[self.name]._ids)
+        inaccessible_coids = (
+            OrderedSet()
+            if not self.store or model.env.su
+            else OrderedSet(records.sudo()[self.name]._ids) - OrderedSet(records[self.name]._ids)
+        )
         added_ids = OrderedSet()
 
         # operations on new relation
@@ -1711,7 +1727,7 @@ class Many2many(_RelationalMulti):
         comodel = model.env[self.comodel_name].with_context(**self.context)
         rel_table, rel_id1, rel_id2 = self.relation, self.column1, self.column2
         codomain = self.get_comodel_domain(model)
-        coquery = comodel._search(codomain, bypass_access=self.bypass_search_access)
+        coquery = comodel._search(codomain, bypass_access=self.bypass_search_access, search_from_field=self)
 
         rel_alias = table._make_alias(f'{self.name}__rel')
         condition = SQL(

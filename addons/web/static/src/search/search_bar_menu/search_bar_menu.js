@@ -1,4 +1,4 @@
-import { Component, proxy, t, useProps } from "@odoo/owl";
+import { Component, proxy, t, useProps, useScope } from "@odoo/owl";
 import { PropertiesGroupByItem } from "@web/search/properties_group_by_item/properties_group_by_item";
 import { SearchBarDropdown } from "../search_bar_dropdown";
 import { dropdownProps } from "@web/core/dropdown/dropdown";
@@ -6,7 +6,8 @@ import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { registry } from "@web/core/registry";
 import { sortBy } from "@web/core/utils/arrays";
 import { useBus, useService } from "@web/core/utils/hooks";
-import { browser } from "@web/core/browser/browser";
+import { location } from "@web/core/browser/browser";
+import { hasTouch } from "@web/core/browser/feature_detection";
 import { useCommand } from "@web/core/commands/command_hook";
 import { AccordionItem } from "@web/core/dropdown/accordion_item";
 import { AlertDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
@@ -17,6 +18,7 @@ import { _t } from "@web/core/l10n/translation";
 import { render } from "@web/owl2/utils";
 import { condition } from "@web/core/tree_editor/condition_tree";
 import { domainFromTree } from "@web/core/tree_editor/domain_from_tree";
+import { constructDateRange } from "@web/search/utils/dates";
 
 const favoriteMenuRegistry = registry.category("favoriteMenu");
 
@@ -35,8 +37,11 @@ export class SearchBarMenu extends Component {
         popoverWillCloseOnClickAway: t.function().optional(() => () => true),
     });
 
+    scope = useScope();
+
     setup() {
         this.facet_icons = FACET_ICONS;
+        this.hasTouch = hasTouch();
         // Filter
         this.actionService = useService("action");
         // GroupBy
@@ -94,8 +99,26 @@ export class SearchBarMenu extends Component {
     }
 
     /** Opens a domain editor dialog for the given item, default to "is in" "today" option */
-    onAddCustomDateFilterClick({ fieldName, fieldType }) {
-        const domain = domainFromTree(condition(fieldName, "in range", [fieldType, "today"]));
+    onAddCustomDateFilterClick(item) {
+        const { fieldName, fieldType, endFieldName, endFieldType } = item;
+        let domain;
+        if (endFieldName) {
+            // The value editors of the dialog cannot read smart dates back
+            // ("today +1d"), so the range is prefilled with the bounds of the
+            // current day instead of with the relative "today" option.
+            const range = constructDateRange({
+                referenceMoment: this.env.searchModel.referenceMoment,
+                fieldName,
+                fieldType,
+                endFieldName,
+                endFieldType,
+                granularity: "day",
+                setParam: {},
+            });
+            domain = range.domain.toString();
+        } else {
+            domain = domainFromTree(condition(fieldName, "in range", [fieldType, "today"]));
+        }
         this.env.searchModel.spawnCustomFilterDialog({ domain });
     }
 
@@ -203,7 +226,7 @@ export class SearchBarMenu extends Component {
     get otherItems() {
         const registryMenus = [];
         for (const item of favoriteMenuRegistry.getAll()) {
-            if ("isDisplayed" in item ? item.isDisplayed(this.env) : true) {
+            if ("isDisplayed" in item ? this.scope.run(() => item.isDisplayed()) : true) {
                 registryMenus.push({
                     Component: item.Component,
                     groupNumber: item.groupNumber,
@@ -235,17 +258,17 @@ export class SearchBarMenu extends Component {
      * clipboard if possible. This url is parsed to reactivate filters if in route.
      */
     async shareViewUrl() {
-        let shareUrl = browser.location.href;
+        let shareUrl = location.href;
         const extra = this.env.searchModel.generateQueryString();
         if (extra) {
-            const [base, hash = ""] = browser.location.href.split("#");
+            const [base, hash = ""] = location.href.split("#");
             shareUrl = base + (base.includes("?") ? "&" : "?") + extra + (hash ? "#" + hash : "");
         }
 
         try {
             await navigator.clipboard.writeText(shareUrl);
         } catch {
-            // Can fail in some context like if the browser is unsafe.
+            // Can fail if the clipboard permission is denied or the document is not focused.
             this.dialogService.add(AlertDialog, {
                 title: _t("Share the current view"),
                 body: _t(

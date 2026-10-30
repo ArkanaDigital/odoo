@@ -19,11 +19,11 @@ registry.category("web_tour.tours").add('apikeys_tour_setup', {
     steps: () => [
     ...openUserPreferenceSecurity(), {
     content: "Open API keys wizard",
-    trigger: 'button:contains("Add API Key")',
+    trigger: 'button:contains("Create API Key")',
     run: "click",
 }, {
     content: "Check that we have to enter enhanced security mode",
-    trigger: ".modal div:contains(Enter your current password)",
+    trigger: ".modal div:contains(Enter your own password)",
 }, {
     content: "Input password",
     trigger: '.modal [name=password] input',
@@ -34,18 +34,18 @@ registry.category("web_tour.tours").add('apikeys_tour_setup', {
     run: "click",
 }, {
     content: "Check that we're now on the key description dialog",
-    trigger: '.modal p:contains("Enter a description of and purpose for the key.")',
+    trigger: '.modal label:contains("Key Name — your only way to identify that key")',
 }, {
     content: "Enter description",
     trigger: '.modal [name=name] input',
     run: "edit my key",
 }, {
     content: "Confirm key creation",
-    trigger: '.modal button:contains("Generate key")',
+    trigger: '.modal button:contains("Create key")',
     run: "click",
 }, {
     content: "Check that we're on the last step & grab key",
-    trigger: '.modal p:contains("Here is your new API key")',
+    trigger: '.modal p:contains("This key won\'t be shown again")',
     run: async () => {
         const key = document.querySelector("code [name=key] span").textContent;
         await rpc('/web/dataset/call_kw', {

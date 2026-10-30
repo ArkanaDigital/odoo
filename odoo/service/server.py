@@ -82,13 +82,31 @@ def set_limit_memory_hard():
         resource.setrlimit(rlimit, (limit_memory_hard, hard))
 
 
+def pipe_new():
+    pipe = os.pipe()
+    for fd in pipe:
+        # non_blocking
+        flags = fcntl.fcntl(fd, fcntl.F_GETFL) | os.O_NONBLOCK
+        fcntl.fcntl(fd, fcntl.F_SETFL, flags)
+        # close_on_exec
+        flags = fcntl.fcntl(fd, fcntl.F_GETFD) | fcntl.FD_CLOEXEC
+        fcntl.fcntl(fd, fcntl.F_SETFD, flags)
+    return pipe
+
+
+def pipe_ping(pipe):
+    try:
+        os.write(pipe[1], b'.')
+    except BlockingIOError:
+        pass
+
+
 def empty_pipe(fd):
     try:
         while os.read(fd, 1):
             pass
-    except OSError as e:
-        if e.errno not in [errno.EAGAIN]:
-            raise
+    except BlockingIOError:
+        pass
 
 
 def cron_database_list():
@@ -662,60 +680,22 @@ class GeventServer(CommonServer):
             self.process_limits()
             gevent.sleep(beat)
 
+    def http_client_greenlet(self, client, address, prelude=b''):
+        try:
+            http_socket = HTTPSocket(client, address, prelude=prelude)
+            http_socket.process_request()
+        except BaseException:  # noqa: BLE001
+            _logger.critical(
+                "Uncaught error in longpolling greenlet, processing request from %s:%s",
+                address[0], address[1], exc_info=True,
+            )
+        finally:
+            client.close()
+
     def start(self):
         import gevent  # noqa: PLC0415
         import gevent.pool  # noqa: PLC0415
-        try:
-            from gevent.pywsgi import WSGIHandler, WSGIServer  # noqa: PLC0415
-        except ImportError:
-            from gevent.wsgi import WSGIHandler, WSGIServer  # noqa: PLC0415
-
-        class ProxyHandler(WSGIHandler):
-            """ When logging requests, try to get the client address from
-            the environment so we get proxyfix's modifications (if any).
-
-            Derived from werzeug.serving.WSGIRequestHandler.log
-            / werzeug.serving.WSGIRequestHandler.address_string
-            """
-            def _connection_upgrade_requested(self):
-                if self.headers.get('Connection', '').lower() == 'upgrade':
-                    return True
-                if self.headers.get('Upgrade', '').lower() == 'websocket':  # noqa: SIM103
-                    return True
-                return False
-
-            def format_request(self):
-                old_address = self.client_address
-                if getattr(self, 'environ', None):
-                    self.client_address = self.environ['REMOTE_ADDR']
-                elif not self.client_address:
-                    self.client_address = '<local>'
-                # other cases are handled inside WSGIHandler
-                try:
-                    return super().format_request()
-                finally:
-                    self.client_address = old_address
-
-            def finalize_headers(self):
-                # We need to make gevent.pywsgi stop dealing with chunks when the connection
-                # Is being upgraded. see https://github.com/gevent/gevent/issues/1712
-                super().finalize_headers()
-                if self.code == 101:
-                    # Switching Protocols. Disable chunked writes.
-                    self.response_use_chunked = False
-
-            def get_environ(self):
-                # Add the TCP socket to environ in order for the websocket
-                # connections to use it.
-                environ = super().get_environ()
-                environ['socket'] = self.socket
-                # Disable support for HTTP chunking on reads which cause
-                # an issue when the connection is being upgraded, see
-                # https://github.com/gevent/gevent/issues/1712
-                if self._connection_upgrade_requested():
-                    environ['wsgi.input'] = self.rfile
-                    environ['wsgi.input_terminated'] = False
-                return environ
+        import gevent.server  # noqa: PLC0415
 
         # Set process memory limit as an extra safeguard
         set_limit_memory_hard()
@@ -743,15 +723,13 @@ class GeventServer(CommonServer):
         if self.port == 0:
             self.port = config['gevent_port'] = port
 
-        self.httpd = WSGIServer(
-            sock, self.app,
-            log=logging.getLogger('longpolling'),
-            error_log=logging.getLogger('longpolling'),
-            handler_class=ProxyHandler,
+        self.httpd = gevent.server.StreamServer(
+            sock,
+            self.http_client_greenlet,
             spawn=gevent.pool.Pool(),
         )
 
-        # override gevent.WSGIServer's `close` to end websocket connections
+        # override StreamServer's `close` to end websocket connections
         # before we wait for all greenlets to finish & kill remaining.
         original_httpd_close = self.httpd.close
         super_stop = super().stop
@@ -768,13 +746,13 @@ class GeventServer(CommonServer):
         except SystemExit:
             raise
         except BaseException as exc:
-            self.logger.critical("Uncaught error in main loop", exc_info=True)
+            self.logger.critical("Evented/WebSocket exception occurred, exitting...", exc_info=True)
             raise SystemExit(1) from exc
 
     def stop(self):
         if self.httpd:
             self.httpd._stop_event.set()
-            # will call super().stop() in WSGIServer.close
+            # will call super().stop() in StreamServer.close
         else:
             super().stop()
 
@@ -784,6 +762,7 @@ class GeventServer(CommonServer):
         self.start()
         self.stop()
         self.logger.info("Stopped")
+        return 0
 
 
 class PreforkServer(CommonServer):
@@ -811,28 +790,10 @@ class PreforkServer(CommonServer):
         self.queue = collections.deque()
         self.servers_gevent = {}
 
-    def pipe_new(self):
-        pipe = os.pipe()
-        for fd in pipe:
-            # non_blocking
-            flags = fcntl.fcntl(fd, fcntl.F_GETFL) | os.O_NONBLOCK
-            fcntl.fcntl(fd, fcntl.F_SETFL, flags)
-            # close_on_exec
-            flags = fcntl.fcntl(fd, fcntl.F_GETFD) | fcntl.FD_CLOEXEC
-            fcntl.fcntl(fd, fcntl.F_SETFD, flags)
-        return pipe
-
-    def pipe_ping(self, pipe):
-        try:
-            os.write(pipe[1], b'.')
-        except OSError as e:
-            if e.errno not in [errno.EAGAIN, errno.EINTR]:
-                raise
-
     def signal_handler(self, sig, frame):
         if len(self.queue) < 5 or sig == signal.SIGCHLD:
             self.queue.append(sig)
-            self.pipe_ping(self.pipe)
+            pipe_ping(self.pipe)
         else:
             self.logger.warning("Dropping signal: %s", sig)
 
@@ -912,7 +873,7 @@ class PreforkServer(CommonServer):
 
     def process_zombie(self):
         # reap dead workers
-        while 1:
+        while True:
             try:
                 wpid, status = os.waitpid(-1, os.WNOHANG)
                 if not wpid:
@@ -934,6 +895,8 @@ class PreforkServer(CommonServer):
                     (now - worker.watchdog_time) >= worker.watchdog_timeout:
                 self.logger.error("%s (%s) timeout after %ss",
                     worker.__class__.__name__, pid, worker.watchdog_timeout)
+                self.worker_kill(pid, signal.SIGQUIT)  # dump stack
+                time.sleep(0.1)
                 self.worker_kill(pid, signal.SIGKILL)
 
     def process_spawn(self):
@@ -987,7 +950,7 @@ class PreforkServer(CommonServer):
         # wakeup pipe, python doesn't throw EINTR when a syscall is interrupted
         # by a signal simulating a pseudo SA_RESTART. We write to a pipe in the
         # signal handler to overcome this behaviour
-        self.pipe = self.pipe_new()
+        self.pipe = pipe_new()
         # set signal handlers
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
@@ -1087,12 +1050,10 @@ class PreforkServer(CommonServer):
             if respawn_time:
                 # gevent servers take a bit longer to start so sleep a bit as a best effort to avoid downtime
                 time.sleep(respawn_time + 1)
-                for pid in self.servers_gevent:
-                    self.worker_kill(pid, signal.SIGINT)
+            for pid in self.servers_gevent:
+                self.worker_kill(pid, signal.SIGINT)
 
-        timeout_gevent = time.monotonic()
-        if respawn_time:
-            timeout_gevent += config['limit_time_real']
+        timeout_gevent = time.monotonic() + config['limit_time_real']
 
         self.beat = 0.1
         while self.workers or self.servers_gevent:
@@ -1157,7 +1118,7 @@ class PreforkServer(CommonServer):
             os.kill(int(os.environ.pop('ODOO_READY_SIGHUP_PID')), signal.SIGHUP)
 
         self.logger.debug("starting")
-        while 1:
+        while True:
             try:
                 # self.logger.debug("Multiprocess beat (%s)",time.time())
                 self.process_signals()
@@ -1184,8 +1145,8 @@ class Worker:
     def __init__(self, multi):
         self.multi = multi
         self.watchdog_time = time.time()
-        self.watchdog_pipe = multi.pipe_new()
-        self.eintr_pipe = multi.pipe_new()
+        self.watchdog_pipe = pipe_new()
+        self.eintr_pipe = pipe_new()
         self.wakeup_fd_r, self.wakeup_fd_w = self.eintr_pipe
         # Can be set to None if no watchdog is desired.
         self.watchdog_timeout = multi.timeout
@@ -1300,7 +1261,7 @@ class Worker:
         try:
             while self.alive:
                 self.check_limits()
-                self.multi.pipe_ping(self.watchdog_pipe)
+                pipe_ping(self.watchdog_pipe)
                 self.sleep()
                 if not self.alive:
                     break

@@ -34,7 +34,6 @@ class AccountMove(models.Model):
             ('6', "6 - Credit Notes"),
             ('7', "7 - Mixed"),
         ],
-        default='2',
     )
 
     def _get_l10n_latam_documents_domain(self):
@@ -43,7 +42,7 @@ class AccountMove(models.Model):
         if self.country_code != 'DO' or not self.l10n_latam_use_documents:
             return domain
         if self.move_type == 'out_invoice' and not self.debit_origin_id:
-            allowed_docs = [self.env.ref('l10n_do.ecf_31').id, self.env.ref('l10n_do.ecf_32').id] if self.partner_id.vat else [self.env.ref('l10n_do.ecf_32').id]
+            allowed_docs = [self.env.ref('l10n_do.ecf_31').id, self.env.ref('l10n_do.ecf_32').id] if self.partner_id._l10n_do_has_rnc() else [self.env.ref('l10n_do.ecf_32').id]
             domain.append(('id', 'in', allowed_docs))
         return domain
 
@@ -53,6 +52,6 @@ class AccountMove(models.Model):
         Tolerates an empty recordset (e.g. the reversed entry of a move
         that is not a credit note), for which it returns ''.
         """
-        if self.l10n_latam_use_documents:
-            return self.l10n_latam_document_number or ''
+        if self.l10n_latam_document_type_id:
+            return self.name or ''
         return self.ref or ''

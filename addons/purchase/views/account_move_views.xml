@@ -5,13 +5,13 @@
         <field name="model">account.move</field>
         <field name="inherit_id" ref="account.view_move_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//field[@name='invoice_line_ids']/list/field[@name='product_id']" position="attributes">
+            <xpath expr="//field[@name='invoice_line_ids']/list//field[@name='product_id']" position="attributes">
                 <attribute name="context">{'partner_id': parent.partner_id}</attribute>
             </xpath>
             <!-- Auto-complete could be done from either a bill either a purchase order -->
             <field name="tax_cash_basis_origin_move_id" position="after">
                 <t groups="purchase.group_purchase_user">
-                    <field name="purchase_id" invisible="1" readonly="state != 'draft'"/>
+                    <field name="purchase_id" invisible="1" readonly="state != 'draft'"/> <!-- kept for onchange in account_invoice.py that loads PO lines when set -->
                     <field name="purchase_vendor_bill_id"
                         string="Auto-Complete"
                         invisible="state != 'draft' or move_type not in ('in_invoice', 'in_refund')"
@@ -28,11 +28,18 @@
                 <field name="purchase_line_id" string="Purchase Order" groups="purchase.group_purchase_user" column_invisible="parent.move_type not in ('in_invoice', 'in_receipt', 'in_refund')" optional="hide"
                        widget="purchase_line_match_field"
                        options="{'no_create': True}"
-                       domain="[('partner_id', 'child_of', parent.partner_id), '|', '|', ('id', '=', purchase_line_id), ('qty_to_invoice_raw', '!=', 0), ('qty_to_invoice', '!=', 0)] + ([('product_id', '=', product_id)] if product_id else [])"
+                       domain="[
+                           ('state', '=', 'purchase'),
+                           ('partner_id', 'child_of', parent.partner_id),
+                           '|', '|',
+                           ('id', '=', purchase_line_id),
+                           ('qty_to_invoice_raw', '!=', 0),
+                           ('qty_to_invoice', '!=', 0),
+                       ] + ([('product_id', '=', product_id)] if product_id else [])"
                        context="{'display_order_name': True, 'partner_id': parent.partner_id, 'list_view_ref': 'purchase.purchase_order_line_list_invoice', 'invoice_qty': quantity, 'invoice_price_unit': price_unit}"/>
             </xpath>
             <xpath expr="//field[@name='line_ids']/list/field[@name='company_id']" position="after">
-                <field name="purchase_line_id" groups="purchase.group_purchase_user" column_invisible="True"/>
+                <field name="purchase_line_id" groups="purchase.group_purchase_user" column_invisible="True"/> <!-- kept on journal_items list for decoration-warning based on purchase_line_warn_msg linkage -->
             </xpath>
             <xpath expr="//div[@name='button_box']" position="inside">
                 <button class="oe_stat_button"

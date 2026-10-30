@@ -35,6 +35,7 @@ import odoo
 from . import tools
 from .release import MIN_PG_VERSION
 from .tools import SQL, config
+from .tools.constants import IN_MAX as IN_MAX_CONST
 from .tools.func import frame_codeinfo, locked
 from .tools.misc import Callbacks, real_time
 
@@ -250,7 +251,7 @@ class Cursor(_CursorProtocol):
             *any* data which may be modified during the life of the cursor.
 
     """
-    IN_MAX = 1000   # decent limit on size of IN queries - guideline = Oracle limit
+    IN_MAX = IN_MAX_CONST   # decent limit on size of IN queries - guideline = Oracle limit
 
     def __init__(self, cnx: PsycoConnection, dbname: str):
         super().__init__()
@@ -381,10 +382,10 @@ class Cursor(_CursorProtocol):
             # (being) collected at this time.
             self._cnx.give_back(keep_in_pool=False)
 
-    def _format(self, query, params=None) -> str:
+    def _format(self, query, params=None, /, color_highlight=True) -> str:
         encoding = psycopg2.extensions.encodings[self.connection.encoding]
         formatted = self.mogrify(query, params).decode(encoding, 'replace')
-        if config.colors['sql']:
+        if color_highlight and config.colors['sql']:
             return highlight_sql(formatted)
         return formatted
 
@@ -561,7 +562,11 @@ class Cursor(_CursorProtocol):
         self.postrollback.clear()
         if self._closing:
             self._close()
+        if not self.postcommit:
+            return
         self.postcommit.run()
+        if not self.closed:
+            self.rollback()
 
     def rollback(self) -> None:
         """ Rollback the current transaction. """
@@ -578,6 +583,8 @@ class Cursor(_CursorProtocol):
             self._now = None
         if self._closing:
             self._close()
+        if not self.postrollback:
+            return
         try:
             self.postrollback.run()
         except Exception:
@@ -589,6 +596,9 @@ class Cursor(_CursorProtocol):
             self.prerollback.clear()
             self.postrollback.clear()
             self.rollback()
+        else:
+            if not self.closed:
+                self.rollback()
 
     def __getattr__(self, name):
         if self._closed and name == '_obj':
@@ -670,8 +680,8 @@ class ConnectionPool:
         """
         # find a connection, free idle and dead connections
         now = time.time()
-        check_all = self._check_free_at < now
-        self._check_free_at = now + MAX_IDLE_TIMEOUT / 10
+        if (check_all := self._check_free_at < now):
+            self._check_free_at = now + MAX_IDLE_TIMEOUT / 10
         close_used_before = now - MAX_IDLE_TIMEOUT
         selected_cnx = None
         for i, cnx in tools.reverse_enumerate(self._free_connections):
@@ -786,13 +796,26 @@ class Connection:
     def dbname(self) -> str:
         return self.__dbname
 
-    def cursor(self) -> Cursor:
+    def cursor(self, *, readonly: bool | None = None) -> Cursor:
+        """
+        Open a cursor.
+
+        :param readonly: Whether to open a read/write cursor or a
+            read-only one. When not set, it uses a read/write cursor on
+            the primary database, and a read-only one on the replica.
+        :raise ValueError: When trying to acquire a read/write cursor on
+            the read-only replica database.
+        """
+        if readonly is None:
+            readonly = self.__pool.readonly
+        elif self.__pool.readonly and not readonly:
+            e = "cannot open a read/write cursor on a read-only connection"
+            raise ValueError(e)
         _logger.debug('create cursor to %r', self.dsn)
         cnx = self.__pool.borrow(self.__dsn)
         cnx.set_session(
-            # See the docstring of this class.
             isolation_level=ISOLATION_LEVEL_REPEATABLE_READ,
-            readonly=self.__pool.readonly,
+            readonly=readonly,
             autocommit=False,
         )
         return Cursor(cnx, self.__dbname)

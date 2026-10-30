@@ -2,12 +2,14 @@ import { DiscussAvatar } from "@mail/core/common/discuss_avatar";
 import { ActionPanel } from "@mail/discuss/core/common/action_panel";
 import { ChannelActionDialog } from "@mail/discuss/core/common/channel_action_dialog";
 
-import { Component, onWillStart, proxy, signal, t, useProps } from "@odoo/owl";
+import { Component, onWillStart, proxy, signal, t, usePlugin, useProps } from "@odoo/owl";
 
 import { useSequential } from "@mail/utils/common/hooks";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { _t } from "@web/core/l10n/translation";
 import { useAutofocus, useService } from "@web/core/utils/hooks";
+import { ORM } from "@web/core/orm_plugin";
 import { useDebounced } from "@web/core/utils/timing";
 
 /**
@@ -30,6 +32,8 @@ export function openChannelInvitationDialog(env, channel) {
 }
 
 export class ChannelInvitation extends Component {
+    /** @see PanelDefinition: small content, shown in a popover by a place with a large panel */
+    static compact = true;
     static components = { ActionPanel, DiscussAvatar };
     static template = "discuss.ChannelInvitation";
 
@@ -37,7 +41,8 @@ export class ChannelInvitation extends Component {
 
     setup() {
         super.setup();
-        this.orm = useService("orm");
+        this.ancestors = useAncestors();
+        this.orm = usePlugin(ORM);
         this.store = useService("mail.store");
         this.props = useProps({
             channel: t.instanceOf(this.store["discuss.channel"]).optional(),
@@ -52,7 +57,6 @@ export class ChannelInvitation extends Component {
                 .optional(),
         });
         this.rtc = useService("discuss.rtc");
-        this.notification = useService("notification");
         this.suggestionService = useService("mail.suggestion");
         this.sequential = useSequential();
         this.state = proxy({
@@ -139,6 +143,10 @@ export class ChannelInvitation extends Component {
                 search_term: this.searchStr,
                 channel_id: this.props.channel?.id ?? false,
                 limit: this.searchLimit,
+                with_portal_users:
+                    this.props.channel &&
+                    (this.props.channel.channel_type === "group" ||
+                        !this.props.channel.group_public_id),
             });
             this.state.hasPendingRequest = false;
             return res;
@@ -229,7 +237,6 @@ export class ChannelInvitation extends Component {
             this.props.close?.();
             return;
         }
-        let channelId = this.props.channel.id;
         if (this.props.channel?.channel_type === "chat") {
             const partnerIds = this.selectedPartners.map((partner) => partner.id);
             if (this.props.channel.correspondent?.partner_id) {
@@ -247,13 +254,16 @@ export class ChannelInvitation extends Component {
                     ]),
                 ];
                 const group = await this.store.createGroupChat({ users_to });
-                channelId = group.id;
+                await this.store.fetchStoreData("/discuss/channel/add_members", {
+                    channel_id: group.id,
+                    emails: this.state.selectedEmails,
+                });
             } else {
                 await this.store.startChat(partnerIds);
             }
         } else if (this.selectedPartners.length || this.state.selectedEmails.length) {
             await this.store.fetchStoreData("/discuss/channel/add_members", {
-                channel_id: channelId,
+                channel_id: this.props.channel.id,
                 partner_ids: this.selectedPartners.map((partner) => partner.id),
                 emails: this.state.selectedEmails,
                 invite_to_rtc_call: this.rtc.localChannel?.eq(this.props.channel),
@@ -292,11 +302,13 @@ export class ChannelInvitation extends Component {
                     return _t("Invite");
                 }
                 if (this.selectedPartners.length === 1) {
-                    const alreadyChat = Object.values(this.store["discuss.channel"].records).some(
-                        (channel) =>
-                            channel.channel_type === "chat" &&
-                            channel.correspondent?.partner_id?.eq(this.selectedPartners[0])
-                    );
+                    const alreadyChat = this.store["discuss.channel"].records
+                        .values()
+                        .some(
+                            (channel) =>
+                                channel.channel_type === "chat" &&
+                                channel.correspondent?.partner_id?.eq(this.selectedPartners[0])
+                        );
                     if (alreadyChat) {
                         return _t("Go to conversation");
                     }

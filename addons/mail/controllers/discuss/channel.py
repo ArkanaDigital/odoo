@@ -33,6 +33,7 @@ class DiscussChannelWebclientController(WebclientController):
             # fetch channels data before messages to benefit from prefetching (channel info might
             # prefetch a lot of data that message format could use)
             store.add(channels._get_last_messages(), "_store_message_fields")
+            store.add(channels, {"last_message_fetched": True})
         if request.env.context["add_channels_last_needaction"] and (
             channels_with_needaction := channels.filtered("message_needaction_counter")
         ):
@@ -55,17 +56,6 @@ class DiscussChannelWebclientController(WebclientController):
             )
             > 0,
         )
-
-    @store_handler("channels_as_member", audience="everyone")
-    def store_channels_as_member(self, store: Store):
-        channels = request.env["discuss.channel"].search_fetch(
-            [("channel_member_ids", "any", [("is_self", "=", True), ("is_pinned", "=", True)])],
-        )
-        request.update_context(
-            channels=request.env.context["channels"] | channels,
-            add_channels_last_message=True,
-        )
-        self.store_has_hidden_channels(store)
 
     @store_handler("discuss.channel", audience="everyone")
     def store_add_discuss_channel_to_context(self, store: Store, ids=(), with_last_message=False):
@@ -118,7 +108,7 @@ class DiscussChannelWebclientController(WebclientController):
             channel.message_post(body=notification, subtype_xmlid="mail.mt_important_notification")
 
     @store_handler("/discuss/channel/messages", audience="everyone", readonly=False)
-    def store_get_discuss_channel_messages(self, store: Store, channel_id, fetch_params=None):
+    def store_get_discuss_channel_messages(self, store: Store, channel_id, fetch_params=None, is_prefetch=False):
         channel = request.env["discuss.channel"].search([("id", "=", channel_id)])
         if channel:
             messages = self._resolve_messages(
@@ -126,7 +116,11 @@ class DiscussChannelWebclientController(WebclientController):
                 thread=channel,
                 fetch_params=fetch_params,
             )
-            messages.set_message_done()
+            # Prefetched messages are not seen yet. They are marked as done when read.
+            if not is_prefetch:
+                messages.set_message_done()
+            if channel._get_last_messages() <= messages:
+                store.add(channel, {"last_message_fetched": True})
 
     @store_handler("/discuss/channel/pin", audience="everyone", readonly=False)
     def store_set_discuss_channel_pin(self, store: Store, channel_id, pinned):
@@ -260,7 +254,7 @@ class ChannelController(http.Controller):
             channel._find_or_create_member_for_self()
         channel.self_member_id._notify_typing(is_typing)
 
-    @mail_route("/discuss/channel/attachments", methods=["POST"], type="jsonrpc", auth="public", readonly=True)
+    @mail_route("/discuss/channel/attachments", methods=["POST"], type="jsonrpc", auth="public", replica=True)
     def load_attachments(self, channel_id, limit=30, before=None):
         """Load attachments of a channel. If before is set, load attachments
         older than the given id.
@@ -277,9 +271,15 @@ class ChannelController(http.Controller):
         ]
         if before:
             domain.append(["id", "<", before])
-        # sudo: ir.attachment - reading attachments of a channel that the current user can access
+        # sudo: ir.attachment - reading attachments (and its messages) of a channel that the current user can access
         attachments = request.env["ir.attachment"].sudo().search(domain, limit=limit, order="id DESC")
-        store = Store().add(attachments, "_store_attachment_fields")
+        store = Store().add(
+            attachments,
+            lambda res: (
+                res.from_method("_store_attachment_fields"),
+                res.from_method("_store_thread_message_fields", thread=channel),
+            ),
+        )
         return {"store_data": store, "count": len(attachments)}
 
     @mail_route("/discuss/channel/sub_channel/create", methods=["POST"], type="jsonrpc", auth="public")

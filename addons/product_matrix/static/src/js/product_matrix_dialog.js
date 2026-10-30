@@ -1,20 +1,22 @@
 import { Dialog } from "@web/core/dialog/dialog";
 import { formatMonetary } from "@web/views/fields/formatters";
 import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
-import { Component, onMounted, markup, signal } from "@odoo/owl";
+import { Component, markup, onMounted, signal, t, useProps } from "@odoo/owl";
 
 export class ProductMatrixDialog extends Component {
     static template = "product_matrix.dialog";
-    static props = {
-        header: { type: Object },
-        rows: { type: Object },
-        dialogTitle: { type: String },
-        editedCellAttributes: { type: String },
-        product_template_id: { type: Number },
-        record: { type: Object },
-        close: { type: Function },
-    };
     static components = { Dialog };
+
+    props = useProps({
+        header: t.array(t.object()),
+        rows: t.array(t.array(t.object())),
+        dialogTitle: t.string(),
+        editedCellAttributes: t.string(),
+        product_template_id: t.number(),
+        record: t.object(),
+        defaultSequence: t.number().optional(),
+        close: t.function(),
+    });
 
     productMatrixRef = signal.ref();
 
@@ -70,7 +72,7 @@ export class ProductMatrixDialog extends Component {
         return markup(`&nbsp;${sign}&nbsp;${formatted}&nbsp;`);
     }
 
-    _onConfirm() {
+    async _onConfirm() {
         const inputs = document.getElementsByClassName("o_matrix_input");
         const matrixChanges = [];
         for (const matrixInput of inputs) {
@@ -85,13 +87,16 @@ export class ProductMatrixDialog extends Component {
         }
         if (matrixChanges.length > 0) {
             // NB: server also removes current line opening the matrix
-            this.props.record.update({
+            await this.props.record.update({
                 grid: JSON.stringify({
                     changes: matrixChanges,
                     product_template_id: this.props.product_template_id,
+                    sequence: this.props.defaultSequence,
                 }),
                 grid_update: true, // to say that the changes to grid have to be applied to the SO.
             });
+
+            await this.props.record.data.order_line._sort();
         }
         this.props.close();
     }

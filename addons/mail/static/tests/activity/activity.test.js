@@ -2,8 +2,9 @@ import { describe, expect, runAllTimers, test } from "@odoo/hoot";
 
 import {
     click,
-    contains,
+    contains as mailContains,
     defineMailModels,
+    focus,
     mailModels,
     inputFiles,
     openFormView,
@@ -11,9 +12,10 @@ import {
     startServer,
     triggerHotkey,
 } from "@mail/../tests/mail_test_helpers";
-import { hover } from "@odoo/hoot-dom";
+import { hover, waitFor, waitForNone } from "@odoo/hoot-dom";
 import { advanceTime, mockDate } from "@odoo/hoot-mock";
-import { mockService, onRpc, serverState } from "@web/../tests/web_test_helpers";
+import { contains, mockService, onRpc, serverState } from "@web/../tests/web_test_helpers";
+import { patch } from "@web/core/utils/patch";
 import { deserializeDateTime, serializeDate, today } from "@web/core/l10n/dates";
 import { getOrigin } from "@web/core/utils/urls";
 
@@ -41,9 +43,9 @@ test("activity upload document is available", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity .btn:text('Upload Document')");
-    await contains(".btn [data-icon='upload']");
-    await contains(".o-mail-Activity .o_input_file");
+    await waitFor(".o-mail-Activity .btn:text('Upload Document'):count(1)");
+    await waitFor(".btn [data-icon='upload']:count(1)");
+    await waitFor(".o-mail-Activity .o_input_file:count(1)");
 });
 
 test("activity can upload a document", async () => {
@@ -65,7 +67,7 @@ test("activity can upload a document", async () => {
                 <chatter/>
             </form>`,
     });
-    await contains(".o-mail-Activity .btn:text('Upload Document')");
+    await waitFor(".o-mail-Activity .btn:text('Upload Document'):count(1)");
     const file = new File(["hello, world"], "text.txt", { type: "text/plain" });
     await inputFiles(".o-mail-Activity .o_input_file", [file]);
 });
@@ -79,16 +81,16 @@ test("activity simplest layout", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity");
-    await contains(".o-mail-Activity-sidebar");
-    await contains(".o-mail-Activity-user");
-    await contains(".o-mail-Activity-note", { count: 0 });
-    await contains(".o-mail-Activity-details", { count: 0 });
-    await contains(".o-mail-Activity-mailTemplates", { count: 0 });
-    await contains(".btn:text('Edit')", { count: 0 });
-    await contains(".o-mail-Activity .btn:text('Cancel')", { count: 0 });
-    await contains(".btn:text('Done')", { count: 0 });
-    await contains(".o-mail-Activity .btn:text('Upload Document')", { count: 0 });
+    await waitFor(".o-mail-Activity:count(1)");
+    await waitFor(".o-mail-Activity-sidebar:count(1)");
+    await waitFor(".o-mail-Activity-user:count(1)");
+    await waitForNone(".o-mail-Activity-note");
+    await waitForNone(".o-mail-Activity-details");
+    await waitForNone(".o-mail-Activity-mailTemplates");
+    await waitForNone(".btn:text('Edit')");
+    await waitForNone(".o-mail-Activity .btn:text('Cancel')");
+    await waitForNone(".btn:text('Done')");
+    await waitForNone(".o-mail-Activity .btn:text('Upload Document')");
 });
 
 test("activity with note layout", async () => {
@@ -101,8 +103,8 @@ test("activity with note layout", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity");
-    await contains(".o-mail-Activity-note:text('There is no good or bad note')");
+    await waitFor(".o-mail-Activity:count(1)");
+    await waitFor(".o-mail-Activity-note:text('There is no good or bad note'):count(1)");
 });
 
 test("activity info layout when planned after tomorrow", async () => {
@@ -117,7 +119,7 @@ test("activity info layout when planned after tomorrow", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity span.text-success:text('Due in 5 days:')");
+    await waitFor(".o-mail-Activity span.text-success:text('Due in 5 days:'):count(1)");
 });
 
 test("activity info layout when planned tomorrow", async () => {
@@ -133,7 +135,7 @@ test("activity info layout when planned tomorrow", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity span.text-success:text('Tomorrow:')");
+    await waitFor(".o-mail-Activity span.text-success:text('Tomorrow:'):count(1)");
 });
 
 test("activity info layout when planned today", async () => {
@@ -148,7 +150,7 @@ test("activity info layout when planned today", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity span.text-warning:text('Today:')");
+    await waitFor(".o-mail-Activity span.text-warning:text('Today:'):count(1)");
 });
 
 test("activity info layout when planned yesterday", async () => {
@@ -164,7 +166,7 @@ test("activity info layout when planned yesterday", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity span.text-danger:text('Yesterday:')");
+    await waitFor(".o-mail-Activity span.text-danger:text('Yesterday:'):count(1)");
 });
 
 test("activity info layout when planned before yesterday", async () => {
@@ -179,7 +181,7 @@ test("activity info layout when planned before yesterday", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity span.text-danger:text('5 days overdue:')");
+    await waitFor(".o-mail-Activity span.text-danger:text('5 days overdue:'):count(1)");
 });
 
 test.skip("activity info layout change at midnight", async () => {
@@ -196,10 +198,10 @@ test.skip("activity info layout change at midnight", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity span.text-success:text('Tomorrow:')");
+    await waitFor(".o-mail-Activity span.text-success:text('Tomorrow:'):count(1)");
     mockDate("2023-12-08 00:00:01");
     await advanceTime(2000);
-    await contains(".o-mail-Activity span.text-warning:text('Today:')");
+    await waitFor(".o-mail-Activity span.text-warning:text('Today:'):count(1)");
 });
 
 test("activity with a summary layout", async () => {
@@ -212,7 +214,64 @@ test("activity with a summary layout", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity .o-mail-Activity-info span:text('test summary')");
+    await waitFor(".o-mail-Activity .o-mail-Activity-info span:text('test summary'):count(1)");
+});
+
+test("call activity displays phone actions", async () => {
+    patch(window, {
+        open(url) {
+            expect.step(url);
+        },
+    });
+    patch(window.navigator.clipboard, {
+        async writeText(text) {
+            expect.step(`copied: ${text}`);
+        },
+    });
+    const pyEnv = await startServer();
+    const partnerId = pyEnv["res.partner"].create({});
+    pyEnv["mail.activity"].create({
+        can_write: true,
+        phone: "+1 202-555-0182",
+        res_id: partnerId,
+        res_model: "res.partner",
+    });
+    await start();
+    await openFormView("res.partner", partnerId);
+
+    await mailContains(".o-mail-Activity-phoneNumber", { text: "+1 202-555-0182" });
+    expect(".o-mail-Activity-phoneNumber > a").toHaveCount(0);
+    expect(".o-mail-Activity-phoneNumber > span.user-select-all").toHaveCount(0);
+    expect(".o-mail-Activity-phoneNumber .o-mail-Activity-call").toHaveCount(0);
+    expect(".o-mail-Activity-call + .o-mail-Activity-markDone").toHaveCount(1);
+    expect(".o-mail-Activity-call").not.toHaveClass("text-action");
+    expect(".o-mail-Activity-call").toHaveAttribute("href", "tel:+12025550182");
+    expect(".o-mail-Activity-copy").toHaveAttribute("aria-label", "Copy");
+    expect(".o-mail-Activity-copy > span").toHaveCount(1);
+    expect(".o-mail-Activity-copy").toHaveStyle({ opacity: "0" });
+    await contains(".o-mail-Activity-call:count(1)").click();
+    expect.verifySteps(["tel:+12025550182"]);
+    await focus(".o-mail-Activity-copy");
+    expect(".o-mail-Activity-copy").toHaveStyle({ opacity: "1" });
+    await contains(".o-mail-Activity-copy:count(1)").click();
+    expect.verifySteps(["copied: +1 202-555-0182"]);
+});
+
+test("call action remains available on a read-only activity", async () => {
+    const pyEnv = await startServer();
+    const partnerId = pyEnv["res.partner"].create({});
+    pyEnv["mail.activity"].create({
+        can_write: false,
+        phone: "+1 202 555 0182",
+        res_id: partnerId,
+        res_model: "res.partner",
+    });
+
+    await start();
+    await openFormView("res.partner", partnerId);
+
+    await waitFor(".o-mail-Activity-call:count(1)[href='tel:+12025550182']");
+    expect(".o-mail-Activity-markDone, .o-mail-Activity-edit").toHaveCount(0);
 });
 
 test("activity without summary layout", async () => {
@@ -225,7 +284,7 @@ test("activity without summary layout", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity-info:has(:text('Email'))");
+    await waitFor(".o-mail-Activity-info:has(:text('Email')):count(1)");
 });
 
 test("activity details toggle", async () => {
@@ -242,7 +301,7 @@ test("activity details toggle", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity i[aria-label='Info']");
+    await waitFor(".o-mail-Activity i[aria-label='Info']:count(1)");
     expect(".o_popover").toHaveCount(0);
 
     await hover(".o-mail-Activity i[aria-label='Info']");
@@ -264,12 +323,12 @@ test("activity with mail template layout", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity");
-    await contains(".o-mail-Activity-sidebar");
-    await contains(".o-mail-Activity-mailTemplates");
-    await contains(".o-mail-ActivityMailTemplate-name:text('Dummy mail template')");
-    await contains(".o-mail-ActivityMailTemplate-preview");
-    await contains(".o-mail-ActivityMailTemplate-send");
+    await waitFor(".o-mail-Activity:count(1)");
+    await waitFor(".o-mail-Activity-sidebar:count(1)");
+    await waitFor(".o-mail-Activity-mailTemplates:count(1)");
+    await waitFor(".o-mail-ActivityMailTemplate-name:text('Dummy mail template'):count(1)");
+    await waitFor(".o-mail-ActivityMailTemplate-preview:count(1)");
+    await waitFor(".o-mail-ActivityMailTemplate-send:count(1)");
 });
 
 test("activity with mail template: preview mail", async () => {
@@ -299,9 +358,9 @@ test("activity with mail template: preview mail", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity");
-    await contains(".o-mail-ActivityMailTemplate-preview");
-    await click(".o-mail-ActivityMailTemplate-preview");
+    await waitFor(".o-mail-Activity:count(1)");
+    await waitFor(".o-mail-ActivityMailTemplate-preview:count(1)");
+    await contains(".o-mail-ActivityMailTemplate-preview:count(1)").click();
     await expect.waitForSteps(["do_action"]);
 });
 
@@ -326,9 +385,9 @@ test("activity with mail template: send mail", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity");
-    await contains(".o-mail-ActivityMailTemplate-send");
-    await click(".o-mail-ActivityMailTemplate-send");
+    await waitFor(".o-mail-Activity:count(1)");
+    await waitFor(".o-mail-ActivityMailTemplate-send:count(1)");
+    await contains(".o-mail-ActivityMailTemplate-send:count(1)").click();
     await expect.waitForSteps(["activity_send_mail"]);
 });
 
@@ -345,11 +404,11 @@ test("activity click on Done", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity");
-    await click(".btn:text('Done')");
-    await contains(".o-mail-ActivityMarkAsDone");
-    await click(".o-mail-Activity-markDone.btn:text('Done')");
-    await contains(".o-mail-ActivityMarkAsDone", { count: 0 });
+    await waitFor(".o-mail-Activity:count(1)");
+    await contains(".btn:text('Done'):count(1)").click();
+    await waitFor(".o-mail-ActivityMarkAsDone:count(1)");
+    await contains(".o-mail-Activity-markDone.btn:text('Done'):count(1)").click();
+    await waitForNone(".o-mail-ActivityMarkAsDone");
 });
 
 test.tags("focus required");
@@ -366,9 +425,11 @@ test("activity mark as done popover should focus feedback input on open", async 
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity");
-    await click(".btn:text('Done')");
-    await contains(".o-mail-ActivityMarkAsDone textarea[placeholder='Write Feedback']:focus");
+    await waitFor(".o-mail-Activity:count(1)");
+    await contains(".btn:text('Done'):count(1)").click();
+    await waitFor(
+        ".o-mail-ActivityMarkAsDone textarea[placeholder='Write Feedback']:focus:count(1)"
+    );
 });
 
 test("activity click on edit", async () => {
@@ -396,7 +457,7 @@ test("activity click on edit", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await click(".o-mail-Activity .btn:text('Edit')");
+    await contains(".o-mail-Activity .btn:text('Edit'):count(1)").click();
     await expect.waitForSteps(["do_action"]);
 });
 
@@ -428,7 +489,7 @@ test("activity click on edit should pass correct context", async () => {
             return super.doAction(...arguments);
         },
     });
-    await click(".o-mail-Activity .btn:text('Edit')");
+    await contains(".o-mail-Activity .btn:text('Edit'):count(1)").click();
     await expect.waitForSteps(["do_action"]);
 });
 
@@ -449,9 +510,9 @@ test("activity click on edit then delete", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await click(".o-mail-Activity .btn:text('Edit')");
-    await click(".modal-dialog .btn:text('Delete')");
-    await contains(".o-mail-Activity", { count: 0 });
+    await contains(".o-mail-Activity .btn:text('Edit'):count(1)").click();
+    await contains(".modal-dialog .btn:text('Delete'):count(1)").click();
+    await waitForNone(".o-mail-Activity");
     await expect.waitForSteps(["unlink"]);
 });
 
@@ -468,10 +529,10 @@ test("activity mark done popover close on ESCAPE", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await click(".btn:text('Done')");
-    await contains(".o-mail-ActivityMarkAsDone");
+    await contains(".btn:text('Done'):count(1)").click();
+    await waitFor(".o-mail-ActivityMarkAsDone:count(1)");
     triggerHotkey("Escape");
-    await contains(".o-mail-ActivityMarkAsDone", { count: 0 });
+    await waitForNone(".o-mail-ActivityMarkAsDone");
 });
 
 test("activity mark done popover click on discard", async () => {
@@ -487,9 +548,9 @@ test("activity mark done popover click on discard", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await click(".btn:text('Done')");
-    await click(".o-mail-ActivityMarkAsDone button:text('Discard')");
-    await contains(".o-mail-ActivityMarkAsDone", { count: 0 });
+    await contains(".btn:text('Done'):count(1)").click();
+    await contains(".o-mail-ActivityMarkAsDone button:text('Discard'):count(1)").click();
+    await waitForNone(".o-mail-ActivityMarkAsDone");
 });
 
 test("Activity are sorted by deadline", async () => {
@@ -518,9 +579,9 @@ test("Activity are sorted by deadline", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity-info:eq(0):has(:text('5 days overdue:'))");
-    await contains(".o-mail-Activity-info:eq(1):has(:text('Today:'))");
-    await contains(".o-mail-Activity-info:eq(2):has(:text('Due in 4 days:'))");
+    await waitFor(".o-mail-Activity-info:eq(0):has(:text('5 days overdue:')):count(1)");
+    await waitFor(".o-mail-Activity-info:eq(1):has(:text('Today:')):count(1)");
+    await waitFor(".o-mail-Activity-info:eq(2):has(:text('Due in 4 days:')):count(1)");
 });
 
 test("chatter 'activity' button open the activity schedule wizard", async () => {
@@ -573,11 +634,11 @@ test("Activity avatar should have a unique timestamp", async () => {
     await start();
     const partner = pyEnv["res.partner"].search_read([["id", "=", serverState.partnerId]])[0];
     await openFormView("res.partner", partnerId);
-    await contains(".o-mail-Activity");
-    await contains(
+    await waitFor(".o-mail-Activity:count(1)");
+    await waitFor(
         `.o-mail-Activity-sidebar img[data-src="${getOrigin()}/web/image/res.partner/${
             serverState.partnerId
-        }/avatar_128?unique=${deserializeDateTime(partner.write_date).ts}`
+        }/avatar_128?unique=${deserializeDateTime(partner.write_date).ts}"]:count(1)`
     );
 });
 
@@ -592,8 +653,8 @@ test("activity with a link to a record", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId1);
-    await click(".o-mail-Activity-note a:text('record')");
-    await contains(".o_form_view input", { value: "Partner 2" });
+    await contains(".o-mail-Activity-note a:text('record'):count(1)").click();
+    await mailContains(".o_form_view input", { value: "Partner 2" });
 });
 
 test("activity with a user mention", async () => {
@@ -608,8 +669,8 @@ test("activity with a user mention", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId1);
-    await click(".o-mail-Activity-note a:text('@Partner 2')");
-    await contains(".o_avatar_card:contains('Partner 2')");
+    await contains(".o-mail-Activity-note a:text('@Partner 2'):count(1)").click();
+    await waitFor(".o_avatar_card:contains('Partner 2'):count(1)");
 });
 
 test("activity with a channel mention", async () => {
@@ -623,6 +684,6 @@ test("activity with a channel mention", async () => {
     });
     await start();
     await openFormView("res.partner", partnerId);
-    await click(".o-mail-Activity-note a:text('#Channel')");
-    await contains(".o-mail-ChatWindow-header:text('Channel')");
+    await contains(".o-mail-Activity-note a:text('#Channel'):count(1)").click();
+    await waitFor(".o-mail-ChatWindow-header:text('Channel'):count(1)");
 });

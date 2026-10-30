@@ -8,6 +8,7 @@ from odoo.fields import Command, Domain
 class SaleOrderTemplate(models.Model):
     _name = "sale.order.template"
     _description = "Order Templates"
+    _inherit = ["product.catalog.mixin"]
     _order = "sequence, id"
 
     active = fields.Boolean(
@@ -17,7 +18,7 @@ class SaleOrderTemplate(models.Model):
     company_id = fields.Many2one(comodel_name="res.company", default=lambda self: self.env.company)
     currency_id = fields.Many2one(string="Currency", comodel_name="res.currency")
 
-    name = fields.Char(string="Template", required=True)
+    name = fields.Char(string="Template", required=True, translate=True)
     note = fields.Html(string="Terms and conditions", translate=True)
     sequence = fields.Integer(default=10)
     template_type = fields.Selection(
@@ -73,9 +74,10 @@ class SaleOrderTemplate(models.Model):
     share_template = fields.Boolean(string="Share", default=True)
     team_ids = fields.Many2many(string="Sales Team", comodel_name="crm.team")
     user_has_access = fields.Boolean(
-        string="Can User access",
+        string="Can User Access",
         compute="_compute_user_has_access",
         search="_search_user_has_access",
+        compute_sudo=True,
     )
     has_productless_lines = fields.Boolean(compute="_compute_has_productless_lines")
 
@@ -101,40 +103,29 @@ class SaleOrderTemplate(models.Model):
     @api.depends_context("uid")
     @api.depends("team_ids", "share_template", "team_ids.member_ids", "team_ids.user_id")
     def _compute_user_has_access(self):
-        for template in self:
-            template.user_has_access = (
-                template.share_template
-                and (
-                    not template.team_ids
-                    or self.env.user in template.team_ids.member_ids
-                    or self.env.user in template.team_ids.user_id
-                )
-            ) or template.create_uid == self.env.user
+        accessible = self.filtered_domain(self._search_user_has_access('in', {True}))
+        accessible.user_has_access = True
+        (self - accessible).user_has_access = False
 
     def _search_user_has_access(self, operator, value):
-        if operator not in {"=", "!="}:
+        if operator != 'in':
             return NotImplemented
 
-        if (operator == "=" and value) or (operator == "!=" and not value):
-            x2many_operator = "in"
-        else:
-            x2many_operator = "not in"
-
         return (
-            Domain("share_template", operator, value)
+            Domain("share_template", '!=', False)
             & (
-                Domain("team_ids", operator, not value)
-                | Domain("team_ids.member_ids", x2many_operator, self.env.user.ids)
-                | Domain("team_ids.user_id", x2many_operator, self.env.user.ids)
+                Domain("team_ids", '=', False)
+                | Domain("team_ids.member_ids", 'in', self.env.user.ids)
+                | Domain("team_ids.user_id", 'in', self.env.user.ids)
             )
-        ) | Domain("create_uid", x2many_operator, self.env.user.ids)
+        ) | Domain("create_uid", 'in', self.env.user.ids)
 
     @api.depends("sale_order_template_line_ids")
     def _compute_has_productless_lines(self):
         for template in self:
             template.has_productless_lines = any(
                 not (line.product_id or line.display_type)
-                for line in self.sale_order_template_line_ids
+                for line in template.sale_order_template_line_ids
             )
 
     # === CONSTRAINT METHODS ===#
@@ -195,28 +186,6 @@ class SaleOrderTemplate(models.Model):
                     self.env._("Prepayment percentage must be a valid percentage.")
                 )
 
-    # === CRUD METHODS ===#
-
-    @api.model_create_multi
-    def create(self, vals_list):
-        records = super().create(vals_list)
-        records._update_product_translations()
-        return records
-
-    def write(self, vals):
-        result = super().write(vals)
-        self._update_product_translations()
-        return result
-
-    def _update_product_translations(self):
-        languages = self.env["res.lang"].search([("active", "=", True)])
-        for lang in languages:
-            for line in self.sale_order_template_line_ids.filtered("product_id"):
-                if line.name == line._get_default_description():
-                    line.with_context(lang=lang.code).name = line.with_context(
-                        lang=lang.code
-                    )._get_default_description()
-
     @api.model
     def _demo_configure_template(self):
         demo_template = self.env.ref(
@@ -234,37 +203,95 @@ class SaleOrderTemplate(models.Model):
         ).product_variant_id
         demo_template.sale_order_template_line_ids = [
             Command.create({
-                "name": self.env._("Regular Section"),
+                "name": self.env._("Open Space Renovation"),
                 "display_type": "line_section",
+                "product_uom_qty": 0,
+                "section_qty": 250,
+                "section_uom_id": self.env.ref("uom.product_uom_square_meter").id,
+            }),
+            Command.create({
+                "name": self.env._("Acoustic wall insulation"),
+                "product_uom_qty": 187.5,
+                "product_uom_id": self.env.ref("uom.product_uom_square_meter").id,
+                "price_unit": 45.0,
+            }),
+            Command.create({
+                "name": self.env._("Acoustic ceiling"),
+                "product_uom_qty": 250,
+                "product_uom_id": self.env.ref("uom.product_uom_square_meter").id,
+                "price_unit": 60.0,
+                "discount": 20,
+            }),
+            Command.create({
+                "name": self.env._("Flooring parquet"),
+                "display_type": "line_subsection",
+                "collapse_composition": True,
                 "product_uom_qty": 0,
             }),
             Command.create({
-                "product_id": self.env.ref(
-                    "product.product_template_dining_table"
-                ).product_variant_id.id
+                "name": self.env._("Subfloor preparation"),
+                "product_uom_qty": 250,
+                "price_unit": 12.0,
             }),
-            Command.create({"product_id": self.env.ref("product.monitor_stand").id}),
             Command.create({
-                "name": self.env._("Hidden Composition Section"),
+                "name": self.env._("Acoustic underlay"),
+                "product_uom_qty": 250,
+                "price_unit": 8.0,
+                "discount": 20,
+            }),
+            Command.create({
+                "name": self.env._("Parquet installation"),
+                "product_uom_qty": 250,
+                "price_unit": 55.0,
+            }),
+            Command.create({
+                "name": self.env._("Conference Room"),
                 "display_type": "line_section",
-                "collapse_composition": True,
                 "product_uom_qty": 0,
             }),
             Command.create({"product_id": self.env.ref("product.consu_delivery_02").id}),
             Command.create({
-                "product_id": self.env.ref("product.product_delivery_01").id,
-                "product_uom_qty": 8,
+                "product_id": self.env.ref(
+                    "product.product_product_11_product_template"
+                ).product_variant_id.id,
+                "product_uom_qty": 10,
             }),
             Command.create({
-                "name": self.env._("Hidden Prices Section"),
+                "name": self.env._("Connectivity"),
+                "display_type": "line_subsection",
+                "product_uom_qty": 0,
+            }),
+            Command.create({
+                "name": self.env._('Display / TV\n65" 4K screen + wall mount + HDMI/USB-C inputs'),
+                "price_unit": 1800.0,
+            }),
+            Command.create({
+                "name": self.env._(
+                    "Microphone system\nCeiling/table array mic with echo cancellation"
+                ),
+                "price_unit": 2500.0,
+            }),
+            Command.create({
+                "name": self.env._("Camera\nPTZ conference camera, auto-framing"),
+                "price_unit": 1500.0,
+            }),
+            Command.create({
+                "name": self.env._("Individual Work Station"),
                 "display_type": "line_section",
                 "collapse_prices": True,
                 "product_uom_qty": 0,
             }),
-            Command.create({"product_id": acoustic_bloc_screen_product.id}),
-            Command.create({"product_id": chair_protection_product.id, "product_uom_qty": 8}),
             Command.create({
-                "name": self.env._("Optional Section"),
+                "product_id": self.env.ref("product.product_product_4c").id,
+                "product_uom_qty": 25,
+            }),
+            Command.create({"product_id": acoustic_bloc_screen_product.id, "product_uom_qty": 25}),
+            Command.create({
+                "product_id": self.env.ref("product.product_delivery_01").id,
+                "product_uom_qty": 25,
+            }),
+            Command.create({
+                "name": self.env._("Options"),
                 "display_type": "line_section",
                 "is_optional": True,
                 "product_uom_qty": 0,
@@ -274,13 +301,24 @@ class SaleOrderTemplate(models.Model):
                 "product_uom_qty": 0,
             }),
             Command.create({
-                "name": self.env._("Subsection"),
+                "product_id": self.env.ref("product.monitor_stand").id,
+                "product_uom_qty": 0,
+            }),
+            Command.create({"product_id": chair_protection_product.id, "product_uom_qty": 0}),
+            Command.create({
+                "name": self.env._("Brainstorm Whiteboard"),
                 "display_type": "line_subsection",
                 "product_uom_qty": 0,
             }),
             Command.create({
-                "product_id": self.env.ref("product.product_product_12").id,
-                "product_uom_qty": 0,
+                "name": self.env._("Whiteboard"),
+                "product_uom_qty": 2,
+                "price_unit": 180.0,
+            }),
+            Command.create({
+                "name": self.env._("Whiteboard Pen"),
+                "product_uom_qty": 20,
+                "price_unit": 1.20,
             }),
         ]
 
@@ -321,11 +359,13 @@ class SaleOrderTemplate(models.Model):
         :rtype: list[dict]
         """
         self.ensure_one()
+        self = self.with_company(self.company_id)  # noqa: PLW0642
+
         result = []
         fiscal_position = self.env["account.fiscal.position"].browse(fiscal_position_id)
         currency = self.env["res.currency"].browse(currency_id)
 
-        for line in self.with_company(company_id).sale_order_template_line_ids:
+        for line in self.sale_order_template_line_ids:
             onchange_values = {
                 **line._prepare_order_line_values(fiscal_position, currency),
                 **order_changes,
@@ -347,3 +387,15 @@ class SaleOrderTemplate(models.Model):
             return self.sudo().unlink()
 
         return False
+
+    # === CATALOG ===#
+
+    def _get_catalog_currency(self):
+        self.ensure_one()
+        return self.currency_id or self.company_id.currency_id or self.env.company.currency_id
+
+    def _show_prices(self) -> bool:
+        return False
+
+    def _has_sections(self) -> bool:
+        return True

@@ -2,7 +2,7 @@
     background: {
         size: cover;
         attachment: fixed;
-        color: var(--homeMenu-bg-color, #{$o-gray-200});
+        color: var(--homeMenu-bg-color, var(--o-gray-200));
         image: var(--homeMenu-bg-image, url("/hr_attendance/static/img/background-light.svg"));
     }
     .timer-hours{
@@ -13,7 +13,7 @@
 .screen-login-header {
     .screen-login-logo {
         img {
-            height: $pos-navbar-height;
+            height: var(--o-pos-navbar-height);
         }
     }
     .fade-effect {

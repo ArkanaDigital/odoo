@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "@odoo/hoot";
-import { contains, patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { contains } from "@web/../tests/web_test_helpers";
+import { patch } from "@web/core/utils/patch";
 import { EditInteractionPlugin } from "@website/builder/plugins/edit_interaction_plugin";
 import {
     addActionOption,
@@ -20,17 +21,17 @@ defineWebsiteModels();
 
 test("dropping a new snippet starts its interaction", async () => {
     const { openBuilderSidebar } = await setupWebsiteBuilder("", { openEditor: false });
-    patchWithCleanup(EditInteractionPlugin.prototype, {
+    patch(EditInteractionPlugin.prototype, {
         setup() {
             super.setup();
             this.websiteEditService.refresh = () => expect.step("refresh");
         },
     });
     await openBuilderSidebar();
-    await waitFor(".o-website-builder_sidebar.o_builder_sidebar_open");
+    await waitFor(".o_website_builder_sidebar.o_builder_sidebar_open");
     expect.verifySteps(["refresh"]);
     await contains(
-        `.o-snippets-menu #snippet_groups .o_snippet[data-snippet-group='text'] .o_snippet_thumbnail_area`
+        `.o_hb_snippets_menu #snippet_groups .o_snippet[data-snippet-group='text'] .o_snippet_thumbnail_area`
     ).click();
     await confirmAddSnippet("s_title");
     await waitForEndOfOperation();
@@ -54,7 +55,7 @@ test("ensure order of operations when hovering an option", async () => {
         selector: ".test-options-target",
         template: xml`<BuilderButton action="'customAction'"/>`,
     });
-    patchWithCleanup(EditInteractionPlugin.prototype, {
+    patch(EditInteractionPlugin.prototype, {
         refreshInteractions(element) {
             expect.step("refreshInteractions");
             return element;
@@ -72,7 +73,7 @@ describe("exit builder", () => {
         const { openBuilderSidebar } = await setupWebsiteBuilderWithSnippet("s_text_block", {
             openEditor: false,
         });
-        patchWithCleanup(EditInteractionPlugin.prototype, {
+        patch(EditInteractionPlugin.prototype, {
             setup() {
                 super.setup();
                 this.websiteEditService.stop = () => expect.step("stop");
@@ -83,13 +84,13 @@ describe("exit builder", () => {
     test("saving stops the interactions", async () => {
         await waitFor(":iframe [data-snippet='s_text_block']");
         await contains("[data-action='save']").click();
-        await waitFor(".o-website-builder_sidebar:not(.o_builder_sidebar_open)");
+        await waitFor(".o_website_builder_sidebar:not(.o_builder_sidebar_open)");
         expect.verifySteps(["stop", "stop"]); // save stops & destroy also stops
     });
     test("discarding stops the interactions", async () => {
         await waitFor(":iframe [data-snippet='s_text_block']");
         await contains("[data-action='cancel']").click();
-        await waitFor(".o-website-builder_sidebar:not(.o_builder_sidebar_open)");
+        await waitFor(".o_website_builder_sidebar:not(.o_builder_sidebar_open)");
         expect.verifySteps(["stop"]);
     });
 });

@@ -131,7 +131,7 @@ class TestSaleProject(TestSaleProjectCommon):
         })
 
         so_line_order_task_in_global = SaleOrderLine.create({
-            'name': f"{self.product_order_service2.display_name}\nDescription for global task.",
+            'name': "Description for global task.",
             'product_id': self.product_order_service2.id,
             'product_uom_qty': 10,
             'order_id': sale_order.id,
@@ -139,7 +139,7 @@ class TestSaleProject(TestSaleProjectCommon):
 
         self.product_order_service3.description_sale = "Task in New Project"
         so_line_order_new_task_new_project = SaleOrderLine.create({
-            'name': f"{self.product_order_service3.display_name}\nDescription for new project task.",
+            'name': "Description for new project task.",
             'product_id': self.product_order_service3.id,
             'product_uom_qty': 10,
             'order_id': sale_order.id,
@@ -729,7 +729,7 @@ class TestSaleProject(TestSaleProjectCommon):
     def test_generated_project_stages(self):
         """ This test checks that when a project is created on SO confirmation, the following stages are automatically
             generated for the new project (assuming there is no project template set on the product):
-            - To Do
+            - New
             - In Progress
             - Done
             - Cancelled
@@ -756,7 +756,7 @@ class TestSaleProject(TestSaleProjectCommon):
             'product_uom_qty': 10,
             'price_unit': product.list_price,
         })
-        names = ['To Do', 'In Progress', 'Done', 'Cancelled']
+        names = ['New', 'In Progress', 'Done', 'Cancelled']
         project = sale_order_line._timesheet_create_project()
         self.assertEqual(names, project.type_ids.mapped('name'), "The project stages' name should be equal to: %s" % names)
 
@@ -890,6 +890,36 @@ class TestSaleProject(TestSaleProjectCommon):
             sale_order_action = multi_company_project.with_company(company).action_view_sos()
             self.assertEqual(sale_order_action["type"], "ir.actions.act_window")
             self.assertEqual(sale_order_action["res_model"], "sale.order")
+
+    def test_sale_order_amount_total_multi_currency(self):
+        eur = self.setup_other_currency('EUR', rates=[('2016-01-01', 2.0)])
+        eur_pricelist = self.env['product.pricelist'].create({
+            'name': 'EUR Pricelist',
+            'currency_id': eur.id,
+        })
+        project = self.env['project.project'].create({
+            'name': 'Multi-currency Project',
+            'allow_billable': True,
+        })
+        product = self.env['product.product'].create({
+            'name': 'Service in multi-currency project',
+            'type': 'service',
+            'service_tracking': 'task_global_project',
+            'project_id': project.id,
+        })
+        sale_orders = self.env['sale.order'].create([{
+            'partner_id': self.partner.id,
+            'pricelist_id': pricelist.id,
+            'order_line': [Command.create({
+                'product_id': product.id,
+                'price_unit': 200,
+                'tax_ids': False,
+            })],
+        } for pricelist in (self.env['product.pricelist'], eur_pricelist)])
+        sale_orders.action_confirm()
+
+        self.assertEqual(project.sale_order_count, 2)
+        self.assertEqual(project.sale_order_amount_total, 300, "The EUR order should be converted to the project currency")
 
     def test_multi_company_so_creation(self):
         # SO with project template with non-superuser company_id able creates project with proper company
@@ -1349,6 +1379,36 @@ class TestSaleProject(TestSaleProjectCommon):
             so2.order_line.project_id,
             "The project of `so1` should be set to the project that was generated at SO confirmation."
         )
+
+    def test_so_confirmation_batch_task_template(self):
+        """
+        Sales order lines from different sales orders should generate 1 task
+        by task template for every sale order when they are confirmed in batch.
+        """
+        product = self.env['product.product'].create({
+            'name': 'Test product with task template',
+            'type': 'service',
+            'service_tracking': 'task_global_project',
+            'project_id': self.project_global.id,
+            'task_template_id': self.task_template.id,
+            'service_policy': 'ordered_prepaid',
+        })
+        so_1, so_2 = self.env['sale.order'].create([
+            {
+                'partner_id': self.partner.id,
+                'order_line': [Command.create({'product_id': product.id, 'product_uom_qty': 1})],
+            },
+            {
+                'partner_id': self.partner.id,
+                'order_line': [
+                    Command.create({'product_id': product.id, 'product_uom_qty': 1}),
+                    Command.create({'product_id': product.id, 'product_uom_qty': 1}),
+                ],
+            },
+        ])
+        (so_1 | so_2).action_confirm()
+        self.assertEqual(len(so_1.tasks_ids), 1)
+        self.assertEqual(len(so_2.tasks_ids), 1, "Only 1 task should be created if multiple SOLs share the same task template")
 
     def test_group_expand_sales_order(self):
         """
@@ -2103,6 +2163,45 @@ class TestSaleProject(TestSaleProjectCommon):
         self.assertEqual(line_vendor_bill.category_report, 'costs')
         self.assertEqual(line_vendor_bill.billable_type, '12_vendor_bill')
 
+    def test_aal_billable_type_service_revenue_per_policy(self):
+        products = {
+            '01_revenues_fixed': self.product_service_ordered_prepaid,
+            '05_revenues_milestones': self.product_service_delivered_milestone,
+            '07_revenues_manual': self.product_service_delivered_manual,
+        }
+        sale_order = self.env['sale.order'].create({
+            'partner_id': self.partner_a.id,
+            'order_line': [Command.create({'product_id': product.id}) for product in products.values()],
+        })
+        vals = {
+            'account_id': self.project_global.account_id.id,
+            'name': 'revenue',
+            'amount': 100,
+            'unit_amount': 1,
+        }
+        from_product = self.env['account.analytic.line'].create([
+            {**vals, 'product_id': product.id} for product in products.values()
+        ])
+        from_so_line = self.env['account.analytic.line'].create([
+            {**vals, 'so_line': so_line.id} for so_line in sale_order.order_line
+        ])
+        self.assertEqual(from_product.mapped('billable_type'), list(products))
+        self.assertEqual(
+            from_so_line.mapped('billable_type'), list(products),
+            "The invoicing policy of the service decides, whether the line carries the product or the sales order item",
+        )
+
+    def test_aal_billable_type_materials(self):
+        line = self.env['account.analytic.line'].create({
+            'account_id': self.project_global.account_id.id,
+            'name': 'materials',
+            'amount': 500,
+            'unit_amount': 1,
+            'product_id': self.product_consumable.id,
+        })
+        self.assertEqual(line.billable_type, '19_materials', "Revenue on a goods product should be reported as materials")
+        self.assertEqual(line.category_report, 'revenues')
+
     def test_compute_project_required(self):
         """
             Ensure a Sales Order doesn't require a project when any order line
@@ -2145,3 +2244,30 @@ class TestSaleProject(TestSaleProjectCommon):
             'product_uom_qty': 1,
         })
         self.assertFalse(sale_order.project_required, "Project should not be required on SO if product in orderline already has project")
+
+    def test_so_with_create_on_order_nothing_milestone_products(self):
+        """
+        Check whether a milestone is linked with the sale order.
+        Steps:
+          - Create a sale order
+          - Use a delivered milestone product
+          - Confirm the sale order
+          - Check the milestone is created and linked
+        """
+        sale_order = self.env['sale.order'].create({
+            'partner_id': self.partner.id,
+            'project_id': self.project_global.id,
+            'order_line': [
+                Command.create({
+                    'product_id': self.product_service_delivered_milestone.id,
+                    'product_uom_qty': 1,
+                }),
+            ],
+        })
+
+        sale_order.action_confirm()
+
+        self.assertEqual(
+            sale_order.milestone_count, 1,
+            "There should be a milestone linked to the sale order line."
+        )

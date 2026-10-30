@@ -1,4 +1,4 @@
-import { Editor } from "@html_editor/editor";
+import { useEditor } from "@html_editor/editor";
 import { LocalOverlayContainer } from "@html_editor/local_overlay_container";
 import { isVisible } from "@html_editor/utils/dom_info";
 import { loadIframe, loadIframeBundles } from "@mail/convert_inline/iframe_utils";
@@ -9,10 +9,10 @@ import {
     onWillUnmount,
     useProps,
     signal,
-    status,
     proxy,
     t,
     useEffect,
+    useScope,
 } from "@odoo/owl";
 import { LazyComponent } from "@web/core/lazy_component";
 import { isBrowserSafari } from "@web/core/browser/feature_detection";
@@ -23,7 +23,7 @@ import { useBus, useService } from "@web/core/utils/hooks";
 import { renderToFragment } from "@web/core/utils/render";
 import { closestScrollableY } from "@web/core/utils/scrolling";
 import { useThrottleForAnimation } from "@web/core/utils/timing";
-import { useLayoutEffect, useSubEnv } from "@web/owl2/utils";
+import { useLayoutEffect } from "@web/owl2/utils";
 import { loadGoogleFonts } from "./mass_mailing_iframe_utils";
 import { useHotkey } from "@web/core/hotkeys/hotkey_hook";
 import { isBlock } from "@html_editor/utils/blocks";
@@ -55,13 +55,13 @@ export class MassMailingIframe extends Component {
     iframeRef = useProps.static("iframeRef", t.signal(t.ref()));
     iframeWrapperRef = useProps.static("iframeWrapperRef", t.signal(t.ref()));
 
+    scope = useScope();
+
     setup() {
         this.ui = useService("ui");
         this.overlayRef = signal.ref();
         this.isRTL = localization.direction === "rtl";
-        useSubEnv({
-            localOverlayContainerKey: uniqueId("mass_mailing_iframe"),
-        });
+        this.localOverlayContainerKey = uniqueId("mass_mailing_iframe");
         this.state = proxy({
             showFullscreen: this.props.showFullscreen && !this.ui.isSmall,
             isMobile: false,
@@ -88,7 +88,7 @@ export class MassMailingIframe extends Component {
             this.setupIframe();
         });
         if (!this.props.readonly && !this.props.withBuilder) {
-            this.editor = new Editor(this.props.config, this.env.services);
+            this.editor = useEditor(this.props.config);
             this.props.onEditorLoad(this.editor);
             onWillDestroy(() => {
                 this.editor.destroy(true);
@@ -170,7 +170,7 @@ export class MassMailingIframe extends Component {
             }
         };
         this.throttledResize = useThrottleForAnimation(() => {
-            if (status(this) === "destroyed") {
+            if (this.scope.isDestroyed()) {
                 return;
             }
             iframeResize();
@@ -179,7 +179,7 @@ export class MassMailingIframe extends Component {
         useLayoutEffect(
             () => {
                 this.iframeLoaded.promise.then(() => {
-                    if (status(this) === "destroyed") {
+                    if (this.scope.isDestroyed()) {
                         return;
                     }
                     this.iframeRef().contentDocument.body.classList[
@@ -194,7 +194,7 @@ export class MassMailingIframe extends Component {
         useLayoutEffect(
             () => {
                 this.iframeLoaded.promise.then(() => {
-                    if (status(this) === "destroyed") {
+                    if (this.scope.isDestroyed()) {
                         return;
                     }
                     this.iframeRef().contentDocument.body.classList[
@@ -230,7 +230,7 @@ export class MassMailingIframe extends Component {
         } catch (error) {
             loadingError = error;
         }
-        if (status(this) === "destroyed") {
+        if (this.scope.isDestroyed()) {
             return;
         } else if (loadingError) {
             throw loadingError;
@@ -288,11 +288,11 @@ export class MassMailingIframe extends Component {
 
     async setupBasicEditor() {
         await this.iframeLoaded.promise;
-        if (status(this) === "destroyed") {
+        if (this.scope.isDestroyed()) {
             return;
         }
         this.editor.config.localOverlayContainers = {
-            key: this.env.localOverlayContainerKey,
+            key: this.localOverlayContainerKey,
             ref: this.overlayRef,
         };
         this.editor.attachTo(
@@ -356,6 +356,7 @@ export class MassMailingIframe extends Component {
             getThemeTab: () =>
                 odoo.loader.modules.get("@mass_mailing/builder/tabs/design_tab").DesignTab,
             themeTabDisplayName: _t("Design"),
+            localOverlayContainerKey: this.localOverlayContainerKey,
         };
     }
 

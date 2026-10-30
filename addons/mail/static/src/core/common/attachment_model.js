@@ -9,11 +9,10 @@ import { imageUrl, url } from "@web/core/utils/urls";
 
 export class Attachment extends FileModelMixin(Record) {
     static _name = "ir.attachment";
-    static new() {
-        /** @type {import("models").Attachment} */
-        const attachment = super.new(...arguments);
-        attachment.onChange(
-            () => [attachment.extension, attachment.name],
+    setup() {
+        super.setup(...arguments);
+        this.onChange(
+            () => [this.extension, this.name],
             function onChangeName(extension, name) {
                 if (!extension && name) {
                     this.extension = name.split(".").pop();
@@ -21,7 +20,22 @@ export class Attachment extends FileModelMixin(Record) {
             },
             { immediate: true }
         );
-        return attachment;
+        this.onChange(
+            () => [this.has_thumbnail],
+            function onChangeHasThumbnail(hasThumbnail) {
+                if (
+                    (this.isPdf || this.isVideo) &&
+                    !hasThumbnail &&
+                    (this.ownership_token ||
+                        // If related to a record, must have write access to it
+                        ((!this.thread || this.thread.hasWriteAccess) &&
+                            this.store.self_user?.share === false))
+                ) {
+                    this.setThumbnail();
+                }
+            },
+            { immediate: true }
+        );
     }
 
     composer = fields.One("Composer", { inverse: "attachments" });
@@ -35,24 +49,12 @@ export class Attachment extends FileModelMixin(Record) {
     res_model;
     /** @type {string} */
     thumbnail_access_token;
-    message = fields.One("mail.message", { inverse: "attachment_ids" });
+    message_ids = fields.Many("mail.message", { inverse: "attachment_ids" });
     /** @type {string} */
     ownership_token;
     create_date = fields.Datetime();
-    has_thumbnail = fields.Attr(undefined, {
-        onUpdate() {
-            if (
-                (this.isPdf || this.isVideo) &&
-                !this.has_thumbnail &&
-                (this.ownership_token ||
-                    // If related to a record, must have write access to it
-                    ((!this.thread || this.thread.hasWriteAccess) &&
-                        this.store.self_user?.share === false))
-            ) {
-                this.setThumbnail();
-            }
-        },
-    });
+    /** @type {boolean} */
+    has_thumbnail;
     get thumbnailUrl() {
         const params = assignDefined(
             {},
@@ -119,8 +121,8 @@ export class Attachment extends FileModelMixin(Record) {
     }
 
     get isDeletable() {
-        if (this.message && this.store.self_user?.share !== false) {
-            return this.message.editable;
+        if (this.message_ids.length && this.store.self_user?.share !== false) {
+            return this.message_ids.some((m) => m.editable);
         }
         return true;
     }

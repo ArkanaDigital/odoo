@@ -16,12 +16,12 @@
     }
 
     .o_select_menu_caret {
-        @include o-position-absolute($o-input-padding-y, $o-input-padding-x, $input-border-width);
+        position: absolute;
+        top: var(--o-input-padding-y);
+        left: auto;
+        bottom: $input-border-width;
+        right: $o-input-padding-x;
         visibility: hidden;
-
-        &:after {
-            @include o-caret-down;
-        }
     }
 
     &:hover, &:focus-within {
@@ -40,17 +40,16 @@
 
     .badge {
         .o_badge_text, .o_tag_badge_text {
-            @include o-text-overflow(inline-block);
             max-width: var(--Tag-max-width, 200px);
         }
     }
 }
 
 .o_select_menu_menu {
-    background-color: $dropdown-bg;
+    background-color: var(--o-bs-dropdown-bg);
 
     .o_select_menu_searchbox {
-        background-color: $dropdown-bg;
+        background-color: var(--o-bs-dropdown-bg);
         position: relative;
         padding: 5px;
 
@@ -61,7 +60,11 @@
         }
 
         &:before {
-            @include o-position-absolute($top: 50%, $left: map-get($spacers, 2));
+            position: absolute;
+            top: 50%;
+            left: var(--o-bs-spacer-2);
+            bottom: auto;
+            right: auto;
             transform: translateY(-50%);
             content: "search";
             font-family: 'Material Symbols Outlined';
@@ -71,16 +74,18 @@
     }
 
     .o_select_menu_group {
-        background-color: $dropdown-bg;
+        background-color: var(--o-bs-dropdown-bg);
         top: calc(var(--border-width) * -1);
     }
 
     .o_select_menu-choices {
+        padding: var(--SelectMenu-padding, 0);
+
         > *:first-child {
-            margin-top: 0.5rem;
+            margin-top: var(--SelectMenuItem-margin-y, 0.5rem);
         }
         > *:last-child {
-            margin-bottom: 0.5rem;
+            margin-bottom: var(--SelectMenuItem-margin-y, 0.5rem);
         }
     }
 
@@ -94,7 +99,7 @@
 
     .o_filtered_text {
         background: var(--SelectMenu__filteredText-bg-color, none);
-        color: var(--SelectMenu__filteredText-color, #{map-get($theme-colors, "primary")});
+        color: var(--SelectMenu__filteredText-color, var(--primary));
     }
 }
 

@@ -3,14 +3,14 @@
 # * iap_mail
 #
 # "Tiffany Chang (tic)" <tic@odoo.com>, 2025.
-# Saara Hakanen <sahak@odoo.com>, 2025.
+# Saara Hakanen <sahak@odoo.com>, 2025, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 18.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-26 19:09+0000\n"
-"PO-Revision-Date: 2026-06-20 00:10+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-09-11 17:42+0000\n"
+"PO-Revision-Date: 2026-09-09 14:02+0000\n"
+"Last-Translator: Saara Hakanen <sahak@odoo.com>\n"
 "Language-Team: Finnish <https://translate.odoo.com/projects/odoo-master/"
 "iap_mail/fi/>\n"
 "Language: fi\n"
@@ -18,7 +18,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
 
 #. module: iap_mail
 #: model_terms:ir.ui.view,arch_db:iap_mail.enrich_company_by_dnb
@@ -71,11 +71,9 @@ msgstr ""
 #. module: iap_mail
 #: model_terms:ir.ui.view,arch_db:iap_mail.enrich_company
 msgid ""
-"<i class=\"oi oi-fw me-2 text-primary\" data-icon=\"oi_twitter\"/>\n"
+"<i class=\"oi oi-fw me-2 text-primary\" data-icon=\"oi_x\"/>\n"
 "                    <b>X</b>"
 msgstr ""
-"<i class=\"oi oi-fw me-2 text-primary\" data-icon=\"oi_twitter\"/>\n"
-"                    <b>X</b>"
 
 #. module: iap_mail
 #: model_terms:ir.ui.view,arch_db:iap_mail.enrich_company
@@ -182,6 +180,12 @@ msgid "Attachment Count"
 msgstr "Liitteiden määrä"
 
 #. module: iap_mail
+#: model:ir.module.module,description:base.module_iap_mail
+#: model:ir.module.module,summary:base.module_iap_mail
+msgid "Bridge between IAP and mail"
+msgstr ""
+
+#. module: iap_mail
 #. odoo-javascript
 #: code:addons/iap_mail/static/src/js/services/iap_notification_service.js:0
 msgid "Buy"
@@ -223,6 +227,11 @@ msgid "Has Message"
 msgstr "Sisältää viestin"
 
 #. module: iap_mail
+#: model:ir.module.module,shortdesc:base.module_iap_mail
+msgid "IAP / Mail"
+msgstr ""
+
+#. module: iap_mail
 #: model:ir.model,name:iap_mail.model_iap_account
 msgid "IAP Account"
 msgstr "IAP Tili"
@@ -250,7 +259,7 @@ msgstr "On seuraaja"
 #. module: iap_mail
 #: model:ir.model.fields,field_description:iap_mail.field_iap_account__message_has_error
 msgid "Message Delivery error"
-msgstr "Ongelma viestin toimituksessa"
+msgstr "Viestin toimitusvirhe"
 
 #. module: iap_mail
 #: model:ir.model.fields,field_description:iap_mail.field_iap_account__message_ids
@@ -293,3 +302,10 @@ msgstr "seuraajat"
 #: model_terms:ir.ui.view,arch_db:iap_mail.enrich_company
 msgid "http://www.twitter.com/"
 msgstr "https://www.twitter.com/"
+
+#~ msgid ""
+#~ "<i class=\"oi oi-fw me-2 text-primary\" data-icon=\"oi_twitter\"/>\n"
+#~ "                    <b>X</b>"
+#~ msgstr ""
+#~ "<i class=\"oi oi-fw me-2 text-primary\" data-icon=\"oi_twitter\"/>\n"
+#~ "                    <b>X</b>"

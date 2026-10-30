@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 from odoo.tests import tagged
 
-from .common import TestEsEdiTbaiCommonGipuzkoa
+from .common import TestEsEdiTbaiCommonGipuzkoa, mock_tbai_agency_request
 
 from datetime import date
 
@@ -16,30 +16,24 @@ class TestSendAndPrintEdiGipuzkoa(TestEsEdiTbaiCommonGipuzkoa):
         invoice = self._create_posted_invoice()
         invoice_send_wizard = self._get_invoice_send_wizard(invoice)
 
-        with patch(
-            'odoo.addons.l10n_es_edi_tbai.models.l10n_es_edi_tbai_document.requests.Session.request',
-            return_value=self.mock_response_post_invoice_success,
-        ):
+        with mock_tbai_agency_request(self.mock_response_post_invoice_success):
             invoice_send_wizard.action_send_and_print()
 
         move_reversal = self.env['account.move.reversal']\
                             .with_context(active_model="account.move", active_ids=invoice.ids)\
                             .create({
                                 'journal_id': invoice.journal_id.id,
-                                'l10n_es_tbai_refund_reason': 'R4',
                             })
         credit_note_id = move_reversal.refund_moves()['res_id']
         credit_note = self.env['account.move'].browse(credit_note_id)
         credit_note.l10n_es_original_invoice_credited = invoice.name or "INV/2026/00001"
         credit_note.action_post()
 
-        self.assertEqual(credit_note.l10n_es_tbai_refund_reason, 'R4')
+        # Not simplified -> auto-set to R4 by l10n_es's `_reverse_moves` (no wizard field anymore).
+        self.assertEqual(credit_note.l10n_es_invoice_type, 'R4')
 
         send_wizard = self._get_invoice_send_wizard(credit_note)
-        with patch(
-            'odoo.addons.l10n_es_edi_tbai.models.l10n_es_edi_tbai_document.requests.Session.request',
-            return_value=self.mock_response_post_invoice_success,
-        ):
+        with mock_tbai_agency_request(self.mock_response_post_invoice_success):
             send_wizard.action_send_and_print()
 
         self.assertEqual(credit_note.l10n_es_tbai_state, 'sent')
@@ -59,7 +53,7 @@ class TestSendAndPrintEdiGipuzkoa(TestEsEdiTbaiCommonGipuzkoa):
             'invoice_date': date(2025, 1, 1),
             'partner_id': self.partner_a.id,
             'l10n_es_original_invoice_credited': 'INV/MANUAL/00042',
-            'l10n_es_tbai_refund_reason': 'R4',
+            'l10n_es_invoice_type': 'R4',
             'l10n_es_tbai_original_invoice_date': date(2024, 12, 1),
             'invoice_line_ids': [(0, 0, {
                 'product_id': self.product_a.id,
@@ -72,15 +66,12 @@ class TestSendAndPrintEdiGipuzkoa(TestEsEdiTbaiCommonGipuzkoa):
 
         # Verify refund fields are set
         self.assertEqual(refund.l10n_es_original_invoice_credited, 'INV/MANUAL/00042')
-        self.assertEqual(refund.l10n_es_tbai_refund_reason, 'R4')
+        self.assertEqual(refund.l10n_es_invoice_type, 'R4')
         self.assertEqual(refund.l10n_es_tbai_original_invoice_date, date(2024, 12, 1))
 
         # Send refund
         refund_send_wizard = self._get_invoice_send_wizard(refund)
-        with patch(
-            'odoo.addons.l10n_es_edi_tbai.models.l10n_es_edi_tbai_document.requests.Session.request',
-            return_value=self.mock_response_post_invoice_success,
-        ):
+        with mock_tbai_agency_request(self.mock_response_post_invoice_success):
             refund_send_wizard.action_send_and_print()
 
         self.assertEqual(refund.l10n_es_tbai_state, 'sent')

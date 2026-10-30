@@ -1,6 +1,4 @@
 import {
-    click,
-    contains,
     defineMailModels,
     mockGetMedia,
     openDiscuss,
@@ -10,8 +8,9 @@ import {
     startServer,
 } from "@mail/../tests/mail_test_helpers";
 import { pttExtensionServiceInternal } from "@mail/discuss/call/common/ptt_extension_service";
-import { describe, test } from "@odoo/hoot";
-import { patchWithCleanup } from "@web/../tests/web_test_helpers";
+import { describe, test, waitFor, waitForNone } from "@odoo/hoot";
+import { patch } from "@web/core/utils/patch";
+import { contains } from "@web/../tests/web_test_helpers";
 
 describe.current.tags("desktop");
 defineMailModels();
@@ -20,7 +19,7 @@ test("display banner when ptt extension is not enabled", async () => {
     mockGetMedia();
     const pyEnv = await startServer();
     const channelId = pyEnv["discuss.channel"].create({ name: "General" });
-    patchWithCleanup(pttExtensionServiceInternal, {
+    patch(pttExtensionServiceInternal, {
         onAnswerIsEnabled(pttService) {
             pttService.isEnabled = false;
         },
@@ -29,17 +28,17 @@ test("display banner when ptt extension is not enabled", async () => {
     await start();
     await openDiscuss(channelId);
     // dropdown requires an extra delay before click (because handler is registered in useEffect)
-    await contains("[title='Open Actions Menu']");
-    await click("[title='Open Actions Menu']");
-    await click(".o-dropdown-item:text('Voice & Video Settings')");
-    await click("label[aria-label='Enable Push-to-talk']");
-    await click("[title*='Close Chat Window']");
-    await click(".o-mail-MessagingMenu-tab[data-id='meeting']");
-    await click("button:text('Meeting')");
-    await click(".o-dropdown-item:text('Start Now')");
-    await contains(".o-mail-Meeting");
-    await contains(".o-discuss-PttAdBanner");
-    await click("[title='Voice Settings']");
-    await click(".dropdown-menu button:contains('Push-to-Talk')");
-    await contains(".o-discuss-PttAdBanner", { count: 0 });
+    await waitFor("[title='Open Actions Menu']:count(1)");
+    await contains("[title='Open Actions Menu']:count(1)").click();
+    await contains(".o-dropdown-item:text('Voice & Video Settings'):count(1)").click();
+    await contains("label[aria-label='Enable Push-to-talk']:count(1)").click();
+    await contains("[title*='Close Chat Window']:count(1)").click();
+    await contains(".o-mail-MessagingMenu-tab[data-id='meeting']:count(1)").click();
+    await contains("button:text('Meeting'):count(1)").click();
+    await contains(".o-dropdown-item:text('Start Now'):count(1)").click();
+    await waitFor(".o-mail-Meeting:count(1)");
+    await waitFor(".o-discuss-PttAdBanner:count(1)");
+    await contains("[title='Voice Settings']:count(1)").click();
+    await contains(".dropdown-menu button:contains('Push-to-Talk'):count(1)").click();
+    await waitForNone(".o-discuss-PttAdBanner");
 });

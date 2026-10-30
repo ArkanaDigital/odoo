@@ -645,6 +645,61 @@ test("period and relative options of a date filter are mutually exclusive", asyn
     expect(getFacetTexts()).toEqual(["Date: March 2017"]);
 });
 
+test("filter by a date range matches the records overlapping the period", async () => {
+    mockDate("2017-03-22T01:00:00"); // Wednesday
+
+    const searchBar = await mountWithSearch(SearchBar, {
+        resModel: "foo",
+        searchViewId: false,
+        searchMenuTypes: ["filter"],
+        searchViewArch: `
+            <search>
+                <filter string="Date" name="date_field" date="date_field" end_date="date_field_end"/>
+            </search>
+        `,
+    });
+    await toggleSearchBarMenu();
+    await toggleMenuItem("Date");
+
+    // A record without an end date ends when it starts.
+    await toggleMenuItemOption("Date", "March");
+    expect(getFacetTexts()).toEqual(["Date: March 2017"]);
+    expect(searchBar.env.searchModel.domain).toEqual([
+        "&",
+        ["date_field", "<=", "2017-03-31"],
+        "|",
+        ["date_field_end", ">=", "2017-03-01"],
+        "&",
+        ["date_field_end", "=", false],
+        ["date_field", ">=", "2017-03-01"],
+    ]);
+
+    await toggleMenuItemOption("Date", "This Week");
+    expect(getFacetTexts()).toEqual(["Date: Week 12, Mar 19 - Mar 25"]);
+    expect(searchBar.env.searchModel.domain).toEqual([
+        "&",
+        ["date_field", "<", "today =week_start +1w"],
+        "|",
+        ["date_field_end", ">=", "today =week_start"],
+        "&",
+        ["date_field_end", "=", false],
+        ["date_field", ">=", "today =week_start"],
+    ]);
+
+    // The relative option can still be shifted from its facet.
+    await contains(`.o_searchview_facet [aria-label="Previous period"]`).click();
+    expect(getFacetTexts()).toEqual(["Date: Week 11, Mar 12 - Mar 18"]);
+    expect(searchBar.env.searchModel.domain).toEqual([
+        "&",
+        ["date_field", "<", "today =week_start"],
+        "|",
+        ["date_field_end", ">=", "today =week_start -1w"],
+        "&",
+        ["date_field_end", "=", false],
+        ["date_field", ">=", "today =week_start -1w"],
+    ]);
+});
+
 test("Inner filter: toggle", async () => {
     const searchBarMenu = await mountWithSearch(SearchBarMenu, {
         resModel: "foo",
@@ -1425,6 +1480,34 @@ test("Date filters have 'Custom Date...' option, that opens prefilled domain edi
     expect(getCurrentValue()).toBe("Today");
 });
 
+test("'Custom Date...' of a date range filter is prefilled with today's bounds", async () => {
+    mockDate("2017-03-22T01:00:00");
+
+    await mountWithSearch(SearchBarMenu, {
+        resModel: "foo",
+        searchMenuTypes: ["filter"],
+        searchViewId: false,
+        searchViewArch: `
+            <search>
+                <filter string="Date" name="date" date="date_field" end_date="date_field_end"/>
+            </search>
+        `,
+    });
+
+    await toggleSearchBarMenu();
+    await toggleMenuItem("Date");
+    await contains(".o_accordion_values .o_add_custom_filter").click();
+
+    // The overlap cannot be expressed with the relative "is in" operator, which
+    // works on a single field: the dialog gets the bounds of the current day,
+    // as actual dates the value editors can read back.
+    expect(".modal .o_domain_selector").toHaveCount(1);
+    expect(getCurrentPath(0)).toBe("Date");
+    expect(getCurrentValue(0)).toBe("03/22/2017");
+    expect(getCurrentPath(1)).toBe("End Date");
+    expect(getCurrentValue(1)).toBe("03/22/2017");
+});
+
 test("lazy many2one filter with multiple domains", async () => {
     Partner._records = [
         { id: 1, name: "John" },
@@ -1530,4 +1613,43 @@ test("an active relative filter keeps its accordion state when reopening the men
     await toggleSearchBarMenu(); // reopen
     expect(dateOptions()).toHaveLength(0); // Should not open with deactivated filter
     expect(birthdayOptions()).toHaveLength(0);
+});
+
+test("menu items keep reflecting a restored search state", async () => {
+    // Switching view imports the exported state into a new search model, in
+    // which the menu must stay in sync. The filter only comes from that state.
+    const searchModel = JSON.stringify({
+        nextGroupId: 2,
+        nextGroupNumber: 2,
+        nextId: 2,
+        query: [],
+        searchItems: {
+            1: {
+                id: 1,
+                type: "filter",
+                name: "foo",
+                description: "Foo",
+                domain: `[('foo', '=', 'qsdf')]`,
+                groupId: 1,
+                groupNumber: 1,
+            },
+        },
+        sections: [],
+    });
+    await mountWithSearch(SearchBar, {
+        resModel: "foo",
+        searchViewId: false,
+        searchMenuTypes: ["filter"],
+        searchViewArch: `<search/>`,
+        globalState: { searchModel },
+    });
+
+    await toggleSearchBarMenu();
+    await toggleMenuItem("Foo");
+    expect(getFacetTexts()).toEqual(["Foo"]);
+    expect(isItemSelected("Foo")).toBe(true);
+
+    await toggleMenuItem("Foo");
+    expect(getFacetTexts()).toEqual([]);
+    expect(isItemSelected("Foo")).toBe(false);
 });

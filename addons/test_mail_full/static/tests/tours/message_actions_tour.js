@@ -3,13 +3,19 @@ import { registry } from "@web/core/registry";
 registry.category("web_tour.tours").add("bookmark_message_tour", {
     steps: () => [
         {
-            trigger:
-                "#chatterRoot:shadow .o-mail-Message:not([data-bookmarked]):contains(Test Message)",
-            run: "hover && click #chatterRoot:shadow button[title='Expand']",
+            trigger: "#chatterRoot:shadow .o-mail-Message:not([data-bookmarked]):contains(Test Message)",
+            run: "hover",
+        },
+        {
+            trigger: "#chatterRoot:shadow button[title='Expand']",
+            run: "click",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message-moreMenu",
-            run: "click #chatterRoot:shadow button[name='add-bookmark']",
+        },
+        {
+            trigger: "#chatterRoot:shadow button[name='add-bookmark']",
+            run: "click",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message[data-bookmarked]:contains(Test Message)",
@@ -23,8 +29,8 @@ registry.category("web_tour.tours").add("message_actions_tour", {
             trigger: "#chatterRoot:shadow .o-mail-Thread .o-mail-Message:count(1)",
         },
         {
-            trigger: "#chatterRoot:shadow .o-mail-Composer-input",
-            run: "edit New message",
+            trigger: "#chatterRoot:shadow .o-mail-Composer-html",
+            run: "editor New message",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Composer button:contains(Send):enabled",
@@ -35,7 +41,11 @@ registry.category("web_tour.tours").add("message_actions_tour", {
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message[data-persistent]:contains(New message)",
-            run: "hover && click #chatterRoot:shadow button[title='Add a Reaction']",
+            run: "hover",
+        },
+        {
+            trigger: "#chatterRoot:shadow button[title='Add a Reaction']",
+            run: "click",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-QuickReactionMenu-emoji span:contains(❤️)",
@@ -47,15 +57,22 @@ registry.category("web_tour.tours").add("message_actions_tour", {
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message:contains(New message)",
-            run: "hover && click #chatterRoot:shadow button[title='Expand']",
+            run: "hover",
+        },
+        {
+            trigger: "#chatterRoot:shadow button[title='Expand']",
+            run: "click",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message-moreMenu",
-            run: "click #chatterRoot:shadow button[name='edit']",
         },
         {
-            trigger: "#chatterRoot:shadow .o-mail-Message .o-mail-Composer-input",
-            run: "edit Message content changed",
+            trigger: "#chatterRoot:shadow button[name='edit']",
+            run: "click",
+        },
+        {
+            trigger: "#chatterRoot:shadow .o-mail-Message .o-mail-Composer-html",
+            run: "editor Message content changed",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message button:contains(save)",
@@ -71,11 +88,18 @@ registry.category("web_tour.tours").add("message_actions_tour", {
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message:contains(Message content changed)",
-            run: "hover && click #chatterRoot:shadow button[title='Expand']",
+            run: "hover",
+        },
+        {
+            trigger: "#chatterRoot:shadow button[title='Expand']",
+            run: "click",
         },
         {
             trigger: "#chatterRoot:shadow .o-mail-Message-moreMenu",
-            run: "click #chatterRoot:shadow button[name='delete']",
+        },
+        {
+            trigger: "#chatterRoot:shadow button[name='delete']",
+            run: "click",
         },
         {
             trigger: "#chatterRoot:shadow .modal button:contains(Delete)",

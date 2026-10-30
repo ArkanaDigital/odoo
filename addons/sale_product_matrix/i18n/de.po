@@ -7,14 +7,14 @@
 # Larissa Manderfeld, 2023
 # Stefan Reisich <nafex@gmx.net>, 2023
 # "Dylan Kiss (dyki)" <dyki@odoo.com>, 2025.
-# "Larissa Manderfeld (lman)" <lman@odoo.com>, 2025.
+# "Larissa Manderfeld (lman)" <lman@odoo.com>, 2025, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0beta\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-24 17:42+0000\n"
-"PO-Revision-Date: 2026-06-20 02:27+0000\n"
-"Last-Translator: Anonymous <noreply@weblate.org>\n"
+"POT-Creation-Date: 2026-08-28 17:43+0000\n"
+"PO-Revision-Date: 2026-09-09 13:59+0000\n"
+"Last-Translator: \"Larissa Manderfeld (lman)\" <lman@odoo.com>\n"
 "Language-Team: German <https://translate.odoo.com/projects/odoo-master/"
 "sale_product_matrix/de/>\n"
 "Language: de\n"
@@ -22,7 +22,20 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: sale_product_matrix
+#: model:ir.module.module,description:base.module_sale_product_matrix
+msgid ""
+"\n"
+"This module allows to fill Sales Order rapidly\n"
+"by choosing product variants quantity through a Grid Entry.\n"
+msgstr ""
+
+#. module: sale_product_matrix
+#: model:ir.module.module,summary:base.module_sale_product_matrix
+msgid "Add variants to Sales Order through a grid entry."
+msgstr ""
 
 #. module: sale_product_matrix
 #: model:ir.model.fields.selection,name:sale_product_matrix.selection__product_template__product_add_mode__configurator
@@ -84,6 +97,11 @@ msgid "Product"
 msgstr "Produkt"
 
 #. module: sale_product_matrix
+#: model:ir.module.module,shortdesc:base.module_sale_product_matrix
+msgid "Sale Matrix"
+msgstr ""
+
+#. module: sale_product_matrix
 #: model:ir.model,name:sale_product_matrix.model_sale_order
 msgid "Sales Order"
 msgstr "Verkaufsauftrag"
@@ -119,25 +137,3 @@ msgid ""
 msgstr ""
 "Sie können die Menge eines Produkts, das in mehreren Verkaufszeilen "
 "vorhanden ist, nicht ändern."
-
-#~ msgid "Add product mode"
-#~ msgstr "Produktmodus hinzufügen"
-
-#~ msgid ""
-#~ "Configurator: choose attribute values to add the matching product variant "
-#~ "to the order.\n"
-#~ "Grid: add several variants at once from the grid of attribute values"
-#~ msgstr ""
-#~ "Konfigurator: Auswahl von Attributwerten zum Hinzufügen der passenden "
-#~ "Produktvariante zum Auftrag.\n"
-#~ "Raster: mehrere Varianten auf einmal aus dem Raster der Attributwerte "
-#~ "hinzufügen"
-
-#~ msgid "Order Grid Entry"
-#~ msgstr "Rastereintrag für Auftrag"
-
-#~ msgid "Product Configurator"
-#~ msgstr "Produktkonfigurator"
-
-#~ msgid "Sales Variant Selection"
-#~ msgstr "Auswahl der Verkaufsvariante"

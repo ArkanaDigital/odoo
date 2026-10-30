@@ -12,14 +12,13 @@ from odoo.exceptions import UserError
 
 class TestTimesheetGlobalTimeOff(common.TransactionCase):
 
-    def setUp(self):
-        super().setUp()
+    @classmethod
+    def setUpClass(self):
+        super().setUpClass()
         # Creates 1 test company and a calendar for employees that
         # work part time. Then creates an employee per calendar (one
         # for the standard calendar and one for the one we created)
-        self.test_company = self.env['res.company'].create({
-            'name': 'My Test Company',
-        })
+        self.test_company = self.env.ref('base.test_company')
 
         attendance_ids = [
             (0, 0, {'dayofweek': '0', 'hour_from': 9, 'hour_to': 12}),
@@ -66,7 +65,8 @@ class TestTimesheetGlobalTimeOff(common.TransactionCase):
         ])
 
         # Create a 2nd company
-        self.test_company_2 = self.env['res.company'].create({
+        self.test_company_2 = self.env.ref('base.test_company_with_branch')
+        self.test_company_2.write({
             'name': 'My Test Company 2',
         })
 
@@ -246,7 +246,7 @@ class TestTimesheetGlobalTimeOff(common.TransactionCase):
         """ Test the search method on is_timeoff_task"""
         task_count = self.env['project.task'].search_count([('is_timeoff_task', '!=', False)])
 
-        # Create a leave and validate it
+        # Creating a global leave should NOT change the task_count
         self.env['resource.calendar.leaves'].create({
             'name': 'Test',
             'calendar_id': self.test_company.resource_calendar_id.id,
@@ -255,7 +255,7 @@ class TestTimesheetGlobalTimeOff(common.TransactionCase):
         })
 
         new_task_count = self.env['project.task'].search_count([('is_timeoff_task', '!=', False)])
-        self.assertEqual(task_count + 1, new_task_count)
+        self.assertEqual(task_count, new_task_count)
 
     def test_timesheet_creation_for_global_time_off_wo_calendar(self):
         leave_start_datetime = datetime(2021, 1, 4, 7, 0)  # This is a monday
@@ -597,12 +597,18 @@ class TestTimesheetGlobalTimeOff(common.TransactionCase):
         """ Test that public holidays timesheet duration match the hours per days value for flexible
         """
 
+        calendar_flexible = self.env['resource.calendar'].create({
+            'name': 'Flexible Calendar',
+            'company_id': self.test_company.id,
+            'calendar_type': 'undefined',
+            'attendance_ids': [],
+            'hours_per_week': 7,
+            'hours_per_day': 7,
+        })
         self.flexible_employee = self.env['hr.employee'].create({
             'name': 'Flexible',
             'company_id': self.test_company.id,
-            'resource_calendar_id': False,
-            'hours_per_week': 7,
-            'hours_per_day': 7,
+            'resource_calendar_id': calendar_flexible.id,
         })
 
         self.env['resource.calendar.leaves'].with_company(self.test_company).create({

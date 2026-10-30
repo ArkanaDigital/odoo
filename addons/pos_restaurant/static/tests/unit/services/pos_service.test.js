@@ -3,8 +3,9 @@ import { mockDate, tick } from "@odoo/hoot-mock";
 import { definePosModels } from "@point_of_sale/../tests/unit/data/generate_model_definitions";
 import OrderPaymentValidation from "@point_of_sale/app/utils/order_payment_validation";
 import { getFilledOrder, setupPosEnv } from "@point_of_sale/../tests/unit/utils";
-import { MockServer } from "@web/../tests/web_test_helpers";
+import { MockServer, patchWithCleanup } from "@web/../tests/web_test_helpers";
 import { waitUntil } from "@odoo/hoot-dom";
+import { FloorPlan } from "@pos_restaurant/app/screens/floor_screen/floor_plan/floor_plan";
 
 const { DateTime } = luxon;
 
@@ -392,18 +393,78 @@ describe("restaurant pos_store.js", () => {
         expect(orders.length).toBe(2);
     });
 
-    test("prepareOrderTransfer", async () => {
+    test("prepareOrderTransfer moves the order into an empty destination table", async () => {
         const store = await setupPosEnv();
         const tableSrc = store.models["restaurant.table"].get(1);
         const tableDst = store.models["restaurant.table"].get(2);
         const order = store.addNewOrder({ table_id: tableSrc });
-        store.alert = {
-            dismiss: () => {},
-        };
         const result = store.prepareOrderTransfer(order, tableDst);
         expect(result).toBe(false);
         expect(order.table_id).toBe(tableDst);
         expect(store.getOrder()).toBe(order);
+    });
+
+    describe("mergeOrder", () => {
+        test("blocks transferring a self-order", async () => {
+            const store = await setupPosEnv();
+            const tableSrc = store.models["restaurant.table"].get(2);
+            const tableDst = store.models["restaurant.table"].get(3);
+            store.addNewOrder({ table_id: tableSrc, source: "mobile" });
+            let notified = null;
+            patchWithCleanup(store.notification, {
+                add: (message, options) => {
+                    notified = { message, options };
+                },
+            });
+            let callRelatedCalled = false;
+            patchWithCleanup(store.data, {
+                callRelated: () => {
+                    callRelatedCalled = true;
+                },
+            });
+
+            const result = FloorPlan.prototype.mergeOrder.call(
+                { pos: store, notification: store.notification },
+                { record: tableSrc },
+                { record: tableDst },
+                "right"
+            );
+
+            expect(result).toBe(false);
+            expect(callRelatedCalled).toBe(false);
+            expect(notified.options).toEqual({ type: "danger" });
+        });
+
+        test("blocks merging into a table with an active self-order", async () => {
+            const store = await setupPosEnv();
+            const tableSrc = store.models["restaurant.table"].get(2);
+            const tableDst = store.models["restaurant.table"].get(3);
+            store.addNewOrder({ table_id: tableSrc });
+            store.addNewOrder({ table_id: tableDst, source: "kiosk" });
+            let notified = null;
+            patchWithCleanup(store.notification, {
+                add: (message, options) => {
+                    notified = { message, options };
+                },
+            });
+            let callRelatedCalled = false;
+            patchWithCleanup(store.data, {
+                callRelated: () => {
+                    callRelatedCalled = true;
+                },
+            });
+
+            const result = FloorPlan.prototype.mergeOrder.call(
+                { pos: store, notification: store.notification },
+                { record: tableSrc },
+                { record: tableDst },
+                "right"
+            );
+
+            expect(result).toBe(false);
+            expect(callRelatedCalled).toBe(false);
+            expect(notified.options).toEqual({ type: "danger" });
+        });
     });
 
     test("transferOrder", async () => {
@@ -510,6 +571,12 @@ describe("restaurant pos_store.js", () => {
         expect(order.internal_note).toBe('[{"text":"Hello world","colorIndex":0}]');
         expect(order.lines[0].note).toBe('[{"text":"Demo note","colorIndex":0}]');
         expect(order.pricelist_id.id).toBe(pricelist.id);
+
+        // The data read from the server does not contain the local change made above,
+        // so the order must stay dirty until it is actually sent to the server.
+        expect(order.isDirty()).toBe(true);
+        store.addPendingOrder([order.id]);
+        await store.syncAllOrders();
         expect(order.isDirty()).toBe(false);
     });
 
@@ -661,34 +728,6 @@ describe("restaurant pos_store.js", () => {
         const line2 = await store.addLineToOrder({ product_tmpl_id: product2, qty: 2 }, order2);
         line2.course_id = course2;
         course2.line_ids = [line2];
-        const table1InternalNote = '[{"text":"Table 1 kitchen note","colorIndex":0}]';
-        const table2InternalNote = '[{"text":"Table 2 kitchen note","colorIndex":0}]';
-        order1.pushLastPrints({
-            addedQuantity: [{ product_id: 99, quantity: 1 }],
-            removedQuantity: [],
-            noteUpdate: [],
-            noteChange: false,
-        });
-        order1.pushLastPrints({
-            addedQuantity: [],
-            removedQuantity: [{ product_id: product1.id, quantity: 1 }],
-            noteUpdate: [],
-            noteChange: false,
-            internal_note: table1InternalNote,
-        });
-        order2.pushLastPrints({
-            addedQuantity: [{ product_id: 100, quantity: 1 }],
-            removedQuantity: [],
-            noteUpdate: [],
-            noteChange: false,
-        });
-        order2.pushLastPrints({
-            addedQuantity: [{ product_id: product2.id, quantity: 2 }],
-            removedQuantity: [],
-            noteUpdate: [],
-            noteChange: false,
-            internal_note: table2InternalNote,
-        });
         await store.mergeOrders(order1, order2);
         expect(order2.lines.length).toBe(2);
         expect(order1.lines.length).toBe(0);
@@ -696,13 +735,6 @@ describe("restaurant pos_store.js", () => {
         expect(order2.table_id.id).toBe(table2.id);
         expect(order2.course_ids.length).toBe(1);
         expect(line2.course_id.id).toBe(course2.id);
-        const lastPrint = order2.lastPrints.at(-1);
-        expect(lastPrint).not.toBe(undefined);
-        expect(lastPrint.addedQuantity.length).toBe(1);
-        expect(lastPrint.addedQuantity[0].product_id).toBe(product2.id);
-        expect(lastPrint.removedQuantity.length).toBe(1);
-        expect(lastPrint.removedQuantity[0].product_id).toBe(product1.id);
-        expect(lastPrint.internal_note).toBe(table2InternalNote);
     });
 
     test("mergeOrders sums guest counts", async () => {
@@ -1265,5 +1297,52 @@ describe("restaurant pos_store.js", () => {
         expect(printedOrderChanges[1].noteUpdate[0].product_id).toBe(10);
         expect(printedOrderChanges[1].noteUpdate[1].basic_name).toBe("Steel desk");
         expect(printedOrderChanges[1].noteUpdate[1].product_id).toBe(11);
+    });
+
+    test("name entered for a name-required preset shows as the prep ticket order_label", async () => {
+        const store = await setupPosEnv();
+        const pos_categories = store.models["pos.category"].getAll().map((c) => c.id);
+        const preset = store.models["pos.preset"].get(3); // "Name Required Preset", identification: "name"
+
+        const order = await getFilledOrder(store);
+        order.setPreset(preset);
+        expect(order.floating_order_name).toBeEmpty();
+
+        patchWithCleanup(store.dialog, {
+            add(component, props) {
+                props.getPayload("Mitchell");
+            },
+        });
+        await store.handleSelectNamePreset(order);
+        expect(order.floating_order_name).toBe("Mitchell");
+
+        const generator = store.ticketPrinter.getGenerator({ models: store.models, order });
+        const orderChange = generator.generatePreparationData(new Set([...pos_categories]), {});
+        expect(orderChange[0].extra_data.order_label).toBe("Mitchell");
+    });
+
+    test("order synced from a trusted config updates its session_id to the current session", async () => {
+        const store = await setupPosEnv();
+        const currentSession = store.session;
+        store.config.module_pos_restaurant = false;
+
+        const otherConfigId = MockServer.env["pos.config"].create({});
+        const otherSessionId = MockServer.env["pos.session"].create({
+            config_id: otherConfigId.id,
+        });
+        const otherSession = MockServer.env["pos.session"].browse(otherSessionId);
+
+        // Simulate Config A already knowing about Config B's session
+        // (as happens via notify_synchronisation for trusted configs)
+        store.deviceSync.processStaticRecords({ "pos.session": otherSession });
+
+        const orderId = MockServer.env["pos.order"].create({
+            session_id: otherSessionId,
+            config_id: otherConfigId,
+            lines: [],
+        });
+        await store.deviceSync.readDataFromServer();
+        const order = store.models["pos.order"].get(orderId);
+        expect(order.session_id.id).toBe(currentSession.id);
     });
 });

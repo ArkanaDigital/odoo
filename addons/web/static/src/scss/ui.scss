@@ -17,7 +17,11 @@
     opacity: $btn-disabled-opacity;
 
     .o_btn_loading_spinner {
-        @include o-position-absolute(-1px, -1px, -1px, -1px);
+        position: absolute;
+        top: -1px;
+        left: -1px;
+        bottom: -1px;
+        right: -1px;
         z-index: 1;
         display: grid;
         place-content: center;
@@ -26,16 +30,12 @@
     }
 }
 
-.o_text_overflow {
-    @include o-text-overflow;
-}
-
 .dropdown-menu {
     max-height: $o-dropdown-max-height;
     overflow: auto;
     background-clip: border-box;
 
-    &:not(.o-hb-select-dropdown) {
+    &:not(.o_hb_select_dropdown) {
         scrollbar-width: thin;
     }
 }
@@ -177,17 +177,6 @@ span.o_force_ltr {
     max-height: 64px;
 }
 
-// The dropdown action menu in the list views should only be visible if the
-// list view is rendered as a page and not as a modal.
-
-.modal {
-    .o_cp_action_menus {
-        .o-dropdown:has([data-icon="settings"]) {
-            display: none;
-        }
-    }
-}
-
 .o_ui_app_icon {
     width: var(--oi-font-size, 1em);
 
@@ -195,21 +184,6 @@ span.o_force_ltr {
         --oi-color: currentColor;
     }
  }
-
-.o_button_area {
-    @include o-position-absolute(0, 0, 0, 0);
-}
-
-// Remove default user-agent styles on buttons
-.o_btn_reset {
-    appearance: none;
-    margin: unset;
-    padding: unset;
-    background: unset;
-    border: unset;
-    font-family: inherit;
-    font-size: 100%;
-}
 
 // Chess-like background
 .o_preview_alpha_background {

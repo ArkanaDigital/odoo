@@ -1,10 +1,13 @@
-import { Component, proxy, t, useProps } from "@odoo/owl";
+import { Component, proxy, t, usePlugin, useProps } from "@odoo/owl";
 
 import { DiscussAvatar } from "@mail/core/common/discuss_avatar";
+import { StorePlugin } from "@mail/core/common/store_plugin";
 import { Dialog } from "@web/core/dialog/dialog";
+import { DialogPlugin } from "@web/core/dialog/dialog_plugin";
 import { _t } from "@web/core/l10n/translation";
 import { normalize } from "@web/core/l10n/utils";
 import { registry } from "@web/core/registry";
+import { UIPlugin } from "@web/core/ui/ui_plugin";
 import { useService } from "@web/core/utils/hooks";
 import { highlightText } from "@web/core/utils/html";
 
@@ -24,8 +27,7 @@ class CreateChannelDialog extends Component {
             close: t.function([t.instanceOf(MouseEvent)]),
             name: t.string().optional(),
         });
-        this.store = useService("mail.store");
-        this.orm = useService("orm");
+        this.store = usePlugin(StorePlugin);
         this.state = proxy({
             name: this.props.name || "",
             isInvalid: false,
@@ -61,8 +63,8 @@ export class DiscussCommand extends Component {
 
     setup() {
         super.setup();
-        this.store = useService("mail.store");
-        this.ui = useService("ui");
+        this.store = usePlugin(StorePlugin);
+        this.ui = usePlugin(UIPlugin);
         this.props = useProps({
             action: t
                 .object({
@@ -117,21 +119,14 @@ async function makeNewChannel(name, store, is_readonly = false) {
 }
 
 export class DiscussCommandPalette {
-    /**
-     * @param {import("@web/env").OdooEnv} env
-     * @param {import("services").ServiceFactories} env.services
-     */
-    constructor(env, options) {
-        this.env = env;
+    constructor(options) {
         this.options = options;
-        this.dialog = env.services.dialog;
+        this.dialog = usePlugin(DialogPlugin);
         /** @type {import("models").Store} */
-        this.store = env.services["mail.store"];
-        this.orm = env.services.orm;
-        this.suggestion = env.services["mail.suggestion"];
-        this.ui = env.services.ui;
+        this.store = usePlugin(StorePlugin);
+        this.suggestion = useService("mail.suggestion");
+        this.ui = this.store.ui;
         this.commands = [];
-        this.options = options;
         this.cleanedTerm = normalize(this.options.searchValue);
     }
 
@@ -142,11 +137,11 @@ export class DiscussCommandPalette {
 
     /** @param {Record[]} [filtered] persona or thread to filters, e.g. being build already in a category in a patch such as MENTIONS or RECENT */
     buildResults(filtered) {
-        const TOTAL_LIMIT = this.ui.isSmall ? 7 : 10;
+        const TOTAL_LIMIT = this.ui.isSmall() ? 7 : 10;
         const remaining = TOTAL_LIMIT - (filtered ? filtered.size : 0);
         let partners = [];
         if (this.store.self_user?.share === false) {
-            partners = Object.values(this.store["res.partner"].records).filter(
+            partners = [...this.store["res.partner"].records.values()].filter(
                 (partner) =>
                     partner.main_user_id?.share === false &&
                     (normalize(partner.displayName || "").includes(this.cleanedTerm) ||
@@ -164,7 +159,7 @@ export class DiscussCommandPalette {
             // selfPersona filtered here to put at the bottom as lowest priority
             partners = partners.filter((p) => p.notEq(selfPartner));
         }
-        const channels = Object.values(this.store["discuss.channel"].records)
+        const channels = [...this.store["discuss.channel"].records.values()]
             .filter(
                 (channel) =>
                     channel.channel_type &&
@@ -226,7 +221,9 @@ export class DiscussCommandPalette {
                     imgUrl: channel.parent_channel_id?.avatarUrl ?? channel.avatarUrl,
                     channel: channel.channel_type !== "chat" ? channel : undefined,
                     persona:
-                        channel.channel_type === "chat" ? channel.correspondent.persona : undefined,
+                        channel.channel_type === "chat"
+                            ? channel.correspondent?.persona
+                            : undefined,
                     counter: channel.importantCounter,
                 },
             };
@@ -268,7 +265,7 @@ export class DiscussCommandPalette {
                 name: _t("View hidden conversations"),
                 props: { action: {} },
                 action: () => {
-                    this.env.services.action.doAction("mail.discuss_my_conversations_action");
+                    this.store.env.services.action.doAction("mail.discuss_my_conversations_action");
                 },
             };
         }
@@ -278,11 +275,10 @@ export class DiscussCommandPalette {
 
 commandProviderRegistry.add("find_or_start_conversation", {
     namespace: "@",
-    async provide(env, options) {
-        const palette = new DiscussCommandPalette(env, options);
+    async provide(options) {
+        const palette = new DiscussCommandPalette(options);
         await palette.fetch();
         palette.buildResults();
-        palette.commands.slice(0, 8);
         if (!palette.store.inPublicPage) {
             if (palette.cleanedTerm) {
                 palette.commands.push(palette.makeDiscussCommand(NEW_CHANNEL));

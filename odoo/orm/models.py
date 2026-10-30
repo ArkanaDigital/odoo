@@ -48,8 +48,7 @@ from odoo.tools import (
     partition, split_every, unique,
     SQL, sql, groupby,
 )
-from odoo.tools.constants import PREFETCH_MAX
-from odoo.tools.func import deprecated
+from odoo.tools.constants import BIG_RECORDSET_SIZE
 from odoo.tools.lru import LRU
 from odoo.tools.misc import ReversedIterable, exception_to_unicode, unquote
 from odoo.tools.safe_eval import _UNSAFE_ATTRIBUTES, safe_checker, safe_eval
@@ -770,11 +769,15 @@ class BaseModel(metaclass=MetaModel):
 
                 fnames_by_path = dict(groupby(
                     [path for path in field_paths if path and path[0] not in ('id', '.id')],
-                    lambda path: path[0],
+                    # strip the language part of translated paths ('name@fr_FR')
+                    lambda path: path[0].split('@')[0],
                 ))
 
                 # Fetch needed fields (remove '.property_name' part)
                 fnames = list(unique(fname.split('.')[0] for fname in fnames_by_path))
+                if translated_fnames := [fname for fname in fnames if records._fields[fname].translate]:
+                    # fetch all the languages at once instead of one query each
+                    records.with_context(prefetch_langs=True).fetch(translated_fnames)
                 records.fetch(fnames)
                 # Fill the cache of the properties field
                 for fname in fnames:
@@ -828,15 +831,22 @@ class BaseModel(metaclass=MetaModel):
                     current[i] = (record._name, record.id)
                 else:
                     prop_name = None
-                    if '.' in name:  # Properties field
-                        fname, prop_name = name.split('.')
+                    fname, __, lang = name.partition('@')
+                    if '.' in fname:  # Properties field
+                        fname, prop_name = fname.split('.')
                         field = record._fields[fname]
                         field_type, cache_value = cache_properties[field].get(prop_name, ('char', None))
                         value = cache_value.get(record.id, '') if cache_value else ''
                     else:  # Normal field
-                        field = record._fields[name]
+                        field = record._fields[fname]
                         field_type = field.type
-                        value = record[name]
+                        if field.translate:
+                            # 'check_translations' skips the delayed translations,
+                            # which are not reimportable next to their source
+                            translated = record.with_context(check_translations=True)
+                            value = (translated.with_context(lang=lang) if lang else translated)[fname]
+                        else:
+                            value = record[fname]
 
                     # this part could be simpler, but it has to be done this way
                     # in order to reproduce the former behavior
@@ -903,7 +913,7 @@ class BaseModel(metaclass=MetaModel):
                 for record, xid in self.env[model].browse(ids).__ensure_xml_id():
                     for i, j in xidmap.pop((record._name, record.id)):
                         lines[i][j] = xid
-            assert not xidmap, "failed to export xids for %s" % ', '.join('{}:{}' % it for it in xidmap.items())
+            assert not xidmap, "failed to export xids for %s" % ', '.join('%s:%s' % it for it in xidmap.items())
 
         if _is_toplevel_call:
             self.env.cr.cache.pop('export_properties_cache', None)
@@ -915,6 +925,10 @@ class BaseModel(metaclass=MetaModel):
 
         This method is used when exporting data via client menu
 
+        A field path may be suffixed with ``@`` and a language code (e.g.
+        ``name@fr_FR``) to export the translation of a translated field in
+        that language, using the same convention as the import.
+
         :param list fields_to_export: list of fields
         :returns: dictionary with a *datas* matrix
         :rtype: dict
@@ -925,7 +939,7 @@ class BaseModel(metaclass=MetaModel):
         return {'datas': self._export_rows(fields_to_export)}
 
     @api.model
-    def load(self, fields, data):
+    def load(self, fields: list[str], data: list[list[str]], *, limit: int | None = None):
         """
         Attempts to load the data matrix, and returns a list of ids (or
         ``False`` if there was an error and no id could be generated) and a
@@ -936,9 +950,7 @@ class BaseModel(metaclass=MetaModel):
         directly to :meth:`~read`
 
         :param fields: list of fields to import, at the same index as the corresponding data
-        :type fields: list(str)
         :param data: row-major matrix of data to import
-        :type data: list(list(str))
         :returns: {ids: list(int)|False, messages: [Message][, lastrow: int]}
         """
         from .fields_relational import One2many  # noqa: PLC0415
@@ -950,149 +962,144 @@ class BaseModel(metaclass=MetaModel):
         # add current module in context for the conversion of xml ids
         self = self.with_context(_import_current_module=current_module)
 
-        cr = self.env.cr
-        savepoint = cr.savepoint()
-
-        fields = [fix_import_export_id_paths(f) for f in fields]
-
-        ids = []
-        messages = []
-
-        # list of (xid, vals, info) for records to be created in batch
-        batch = []
-        batch_xml_ids = set()
-        # models in which we may have created / modified data, therefore might
-        # require flushing in order to name_search: the root model and any
-        # o2m
-        creatable_models = {self._name}
-        for field_path in fields:
-            if field_path[0] in (None, 'id', '.id'):
-                continue
-            model_fields = self._fields
-            for field_name in field_path:
-                if field_name in (None, 'id', '.id'):
-                    break
-
-                if isinstance(model_fields.get(field_name), One2many):
-                    comodel = model_fields[field_name].comodel_name
-                    creatable_models.add(comodel)
-                    model_fields = self.env[comodel]._fields
-
-        def flush(*, xml_id=None, model=None):
-            if not batch:
-                return
-
-            assert not (xml_id and model), \
-                "flush can specify *either* an external id or a model, not both"
-
-            if xml_id and xml_id not in batch_xml_ids:
-                if xml_id not in self.env:
-                    return
-            if model and model not in creatable_models:
-                return
-
-            data_list = [
-                dict(xml_id=xid, values=vals, info=info, noupdate=noupdate)
-                for xid, vals, info in batch
-            ]
-            batch.clear()
-            batch_xml_ids.clear()
-
-            # try to create in batch
-            global_error_message = None
-            try:
-                with cr.savepoint():
-                    recs = self._load_records(data_list, mode == 'update')
-                    ids.extend(recs.ids)
-                return
-            except psycopg2.InternalError as e:
-                # broken transaction, exit and hope the source error was already logged
-                if not any(message['type'] == 'error' for message in messages):
-                    info = data_list[0]['info']
-                    messages.append(dict(info, type='error', message=_(u"Unknown database error: '%s'", e)))
-                return
-            except UserError as e:
-                global_error_message = dict(data_list[0]['info'], type='error', message=str(e))
-            except Exception:
-                pass
-
-            errors = 0
-            # try again, this time record by record
-            for i, rec_data in enumerate(data_list, 1):
-                try:
-                    rec = self._load_records([rec_data], mode == 'update')
-                    cr.flush()  # make sure flush exceptions are raised here
-                    ids.append(rec.id)
-                except psycopg2.Warning as e:
-                    savepoint.rollback()
-                    info = rec_data['info']
-                    messages.append(dict(info, type='warning', message=str(e)))
-                except psycopg2.Error as e:
-                    savepoint.rollback()
-                    info = rec_data['info']
-                    pg_error_info = {'message': self._sql_error_to_message(e)}
-                    if e.diag.table_name == self._table:
-                        e_fields = get_columns_from_sql_diagnostics(self.env.cr, e.diag, check_registry=True)
-                        if len(e_fields) == 1:
-                            pg_error_info['field'] = e_fields[0]
-                    messages.append(dict(info, type='error', **pg_error_info))
-                    # Failed to write, log to messages, rollback savepoint (to
-                    # avoid broken transaction) and keep going
-                    errors += 1
-                except UserError as e:
-                    savepoint.rollback()
-                    info = rec_data['info']
-                    messages.append(dict(info, type='error', message=str(e)))
-                    errors += 1
-                except Exception as e:  # noqa: BLE001
-                    savepoint.rollback()
-                    _logger.debug("Error while loading record", exc_info=True)
-                    info = rec_data['info']
-                    message = _('Unknown error during import: %(error_type)s: %(error_message)s', error_type=e.__class__, error_message=e)
-                    moreinfo = _('Resolve other errors first')
-                    messages.append(dict(info, type='error', message=message, moreinfo=moreinfo))
-                    # Failed for some reason, perhaps due to invalid data supplied,
-                    # rollback savepoint and keep going
-                    errors += 1
-                if errors >= 10 and (errors >= i / 10):
-                    messages.append({
-                        'type': 'warning',
-                        'message': _("Found more than 10 errors and more than one error per 10 records, interrupted to avoid showing too many errors.")
-                    })
-                    break
-            if errors > 0 and global_error_message and global_error_message not in messages:
-                # If we cannot create the records 1 by 1, we display the error raised when we created the records simultaneously
-                messages.insert(0, global_error_message)
-
-        # make 'flush' available to the methods below, in the case where XMLID
-        # resolution fails, for instance
-        flush_recordset = self.with_context(import_flush=flush, import_cache=LRU(10000))
-
-        # TODO: break load's API instead of smuggling via context?
-        limit = self.env.context.get('_import_limit')
         if limit is None:
             limit = float('inf')
-        extracted = flush_recordset._extract_records(fields, data, log=messages.append, limit=limit)
 
-        converted = flush_recordset._convert_records(extracted, log=messages.append, savepoint=savepoint)
+        cr = self.env.cr
+        with cr.savepoint() as savepoint:
+            fields = [fix_import_export_id_paths(f) for f in fields]
 
-        info = {'rows': {'to': -1}}
-        for id, xid, record, info in converted:
-            if self.env.context.get('import_file') and self.env.context.get('import_skip_records'):
-                if any([record.get(field) is None for field in self.env.context['import_skip_records']]):
+            ids = []
+            messages = []
+
+            # list of (xid, vals, info) for records to be created in batch
+            batch = []
+            batch_xml_ids = set()
+            # models in which we may have created / modified data, therefore might
+            # require flushing in order to name_search: the root model and any
+            # o2m
+            creatable_models = {self._name}
+            for field_path in fields:
+                if field_path[0] in (None, 'id', '.id'):
                     continue
-            if xid:
-                xid = xid if '.' in xid else "%s.%s" % (current_module, xid)
-                batch_xml_ids.add(xid)
-            elif id:
-                record['id'] = id
-            batch.append((xid, record, info))
+                model_fields = self._fields
+                for field_name in field_path:
+                    if field_name in (None, 'id', '.id'):
+                        break
 
-        flush()
-        if any(message['type'] == 'error' for message in messages):
-            savepoint.rollback()
-            ids = False
-        savepoint.close(rollback=False)
+                    if isinstance(model_fields.get(field_name), One2many):
+                        comodel = model_fields[field_name].comodel_name
+                        creatable_models.add(comodel)
+                        model_fields = self.env[comodel]._fields
+
+            def flush(*, xml_id=None, model=None):
+                if not batch:
+                    return
+
+                assert not (xml_id and model), \
+                    "flush can specify *either* an external id or a model, not both"
+
+                if xml_id and xml_id not in batch_xml_ids:
+                    if xml_id not in self.env:
+                        return
+                if model and model not in creatable_models:
+                    return
+
+                data_list = [
+                    dict(xml_id=xid, values=vals, info=info, noupdate=noupdate)
+                    for xid, vals, info in batch
+                ]
+                batch.clear()
+                batch_xml_ids.clear()
+
+                # try to create in batch
+                global_error_message = None
+                try:
+                    with cr.savepoint():
+                        recs = self._load_records(data_list, mode == 'update')
+                        ids.extend(recs.ids)
+                    return
+                except psycopg2.InternalError as e:
+                    # broken transaction, exit and hope the source error was already logged
+                    if not any(message['type'] == 'error' for message in messages):
+                        info = data_list[0]['info']
+                        messages.append(dict(info, type='error', message=_("Unknown database error: '%s'", e)))
+                    return
+                except UserError as e:
+                    global_error_message = dict(data_list[0]['info'], type='error', message=str(e))
+                except Exception:  # noqa: BLE001
+                    pass
+
+                errors = 0
+                # try again, this time record by record
+                for i, rec_data in enumerate(data_list, 1):
+                    try:
+                        rec = self._load_records([rec_data], mode == 'update')
+                        cr.flush()  # make sure flush exceptions are raised here
+                        ids.append(rec.id)
+                    except psycopg2.Warning as e:
+                        savepoint.rollback()
+                        info = rec_data['info']
+                        messages.append(dict(info, type='warning', message=str(e)))
+                    except psycopg2.Error as e:
+                        savepoint.rollback()
+                        info = rec_data['info']
+                        pg_error_info = {'message': self._sql_error_to_message(e)}
+                        if e.diag.table_name == self._table:
+                            e_fields = get_columns_from_sql_diagnostics(self.env.cr, e.diag, check_registry=True)
+                            if len(e_fields) == 1:
+                                pg_error_info['field'] = e_fields[0]
+                        messages.append(dict(info, type='error', **pg_error_info))
+                        # Failed to write, log to messages, rollback savepoint (to
+                        # avoid broken transaction) and keep going
+                        errors += 1
+                    except UserError as e:
+                        savepoint.rollback()
+                        info = rec_data['info']
+                        messages.append(dict(info, type='error', message=str(e)))
+                        errors += 1
+                    except Exception as e:  # noqa: BLE001
+                        savepoint.rollback()
+                        _logger.debug("Error while loading record", exc_info=True)
+                        info = rec_data['info']
+                        message = _('Unknown error during import: %(error_type)s: %(error_message)s', error_type=e.__class__, error_message=e)
+                        moreinfo = _('Resolve other errors first')
+                        messages.append(dict(info, type='error', message=message, moreinfo=moreinfo))
+                        # Failed for some reason, perhaps due to invalid data supplied,
+                        # rollback savepoint and keep going
+                        errors += 1
+                    if errors >= 10 and (errors >= i / 10):
+                        messages.append({
+                            'type': 'warning',
+                            'message': _("Found more than 10 errors and more than one error per 10 records, interrupted to avoid showing too many errors.")
+                        })
+                        break
+                if errors > 0 and global_error_message and global_error_message not in messages:
+                    # If we cannot create the records 1 by 1, we display the error raised when we created the records simultaneously
+                    messages.insert(0, global_error_message)
+
+            # make 'flush' available to the methods below, in the case where XMLID
+            # resolution fails, for instance
+            flush_recordset = self.with_context(import_flush=flush, import_cache=LRU(10000))
+            extracted = flush_recordset._extract_records(fields, data, log=messages.append, limit=limit)
+            converted = flush_recordset._convert_records(extracted, log=messages.append, savepoint=savepoint)
+
+            info = {'rows': {'to': -1}}
+            for id, xid, record, info in converted:
+                if self.env.context.get('import_file') and self.env.context.get('import_skip_records'):
+                    if any(record.get(field) is None for field in self.env.context['import_skip_records']):
+                        continue
+                if xid:
+                    xid = xid if '.' in xid else "%s.%s" % (current_module, xid)
+                    batch_xml_ids.add(xid)
+                elif id:
+                    record['id'] = id
+                batch.append((xid, record, info))
+
+            flush()
+            if any(message['type'] == 'error' for message in messages):
+                savepoint.rollback()
+                ids = False
 
         nextrow = info['rows']['to'] + 1
         if nextrow < limit:
@@ -2472,22 +2479,6 @@ class BaseModel(metaclass=MetaModel):
             if row['attnotnull']:
                 sql.drop_not_null(cr, self._table, row['attname'])
 
-    @deprecated("Since 20.0, field initialization is defined in Field.init_storage")
-    def _init_column(self, column_name):
-        """ Initialize the value of the given column for existing rows. """
-        field = self._fields[column_name]
-        columns = sql.table_columns(self.env.cr, self._table)
-        field.update_db(self, columns)
-
-    @api.ormcache()
-    @deprecated("Since 20.0, _table_has_rows is removed")
-    def _table_has_rows(self) -> bool:
-        """ Return whether the model's table has rows. This method should only
-            be used when updating the database schema (:meth:`~._auto_init`).
-        """
-        self.env.cr.execute(SQL('SELECT 1 FROM %s LIMIT 1', SQL.identifier(self._table)))
-        return bool(self.env.cr.rowcount)
-
     def _auto_init(self) -> None:
         """ Initialize the database schema of ``self``:
             - create the corresponding table,
@@ -2516,11 +2507,16 @@ class BaseModel(metaclass=MetaModel):
         update_custom_fields = self.env.context.get('update_custom_fields', False)
         must_create_table = not sql.table_exists(cr, self._table)
         parent_path_compute = False
+        # parent_path is compared character by character (see
+        # _parent_store_update), whatever the collation of the database
+        parent_path_type = SQL('varchar COLLATE "C"')
 
         if self._auto:
             if must_create_table:
                 def make_type(field):
                     typ = field.stored_sql_column_type
+                    if self._parent_store and field.name == 'parent_path':
+                        typ = parent_path_type
                     if field.required:
                         typ = SQL("%s NOT NULL", typ)
                     return typ
@@ -2545,8 +2541,10 @@ class BaseModel(metaclass=MetaModel):
 
             if self._parent_store:
                 if not sql.column_exists(cr, self._table, 'parent_path'):
-                    sql.create_column(self.env.cr, self._table, 'parent_path', 'varchar')
+                    sql.create_column(self.env.cr, self._table, 'parent_path', parent_path_type)
                     parent_path_compute = True
+                elif sql.column_collation(cr, self._table, 'parent_path') != 'C':
+                    sql.convert_column(cr, self._table, 'parent_path', parent_path_type)
                 self._check_parent_path()
 
             if not must_create_table:
@@ -2636,7 +2634,7 @@ class BaseModel(metaclass=MetaModel):
                 **info,
             )
 
-        if isinstance(exc, psycopg2.errors.ForeignKeyViolation):
+        if isinstance(exc, (psycopg2.errors.ForeignKeyViolation, psycopg2.errors.RestrictViolation)):
             if len(columns) != 1:
                 info['field_display'] = info['constraint_name']
             return self.env._(
@@ -2773,11 +2771,6 @@ class BaseModel(metaclass=MetaModel):
             )
 
         raise AccessError(error_msg)
-
-    @api.model
-    @deprecated("Since 20.0, use check_field_access()")
-    def _check_field_access(self, field: Field, operation: typing.Literal['read', 'write']) -> None:
-        return self.check_field_access(field, operation)
 
     @api.readonly
     def read(self, fields: Sequence[str] | None = None, load: str = '_classic_read') -> list[ValuesType]:
@@ -3064,7 +3057,7 @@ class BaseModel(metaclass=MetaModel):
             instance) for ``self`` in cache.
         """
         # determine which fields can be prefetched
-        if self.env.context.get('prefetch_fields', True) and field.prefetch:
+        if field.prefetch and self.env.context.get('prefetch_fields', len(self) < BIG_RECORDSET_SIZE):
             fnames = [
                 name
                 for name, f in self._fields.items()
@@ -3098,10 +3091,11 @@ class BaseModel(metaclass=MetaModel):
             return
 
         fields_to_fetch = self._determine_fields_to_fetch(field_names, ignore_when_in_cache=True)
-
+        queries = []
         # first determine a query that satisfies the domain and access rules
         if any(field.column_type for field in fields_to_fetch):
-            query = self._search([('id', 'in', self.ids)], active_test=False)
+            for ids in split_every(BIG_RECORDSET_SIZE, self._ids):
+                queries.append(self._search([('id', 'in', ids)], active_test=False))
         else:
             try:
                 self.check_access('read')
@@ -3114,10 +3108,17 @@ class BaseModel(metaclass=MetaModel):
                 self.check_access('read')
             if not fields_to_fetch:
                 return
-            query = self._as_query(ordered=False)
+            # The query is split into domains of BIG_RECORDSET_SIZE so no one
+            # query would have a domain large enough to spill to disk and slow
+            # the transaction
+            for ids in split_every(BIG_RECORDSET_SIZE, self._ids):
+                queries.append(self.browse(ids)._as_query(ordered=False))
 
         # fetch the fields
-        fetched = self._fetch_query(query, fields_to_fetch)
+        fetched = self.browse().union(
+            self._fetch_query(query, fields_to_fetch)
+            for query in queries
+        )
         env = self.env
         if not env.su:
             env._add_to_access_cache(fetched)
@@ -3447,6 +3448,7 @@ class BaseModel(metaclass=MetaModel):
             return True
 
         origin = self._origin
+        # check the records for read access
         if operation == 'read' and origin:
             access = self.env._access_cache[self._name]
             if all(map(access.get, origin._ids)):
@@ -3455,13 +3457,23 @@ class BaseModel(metaclass=MetaModel):
             origin.__check_access_fill_cache(access, domain)
             return all(map(access.__getitem__, origin._ids))
 
-        domain = self._access_domain(operation)
         # resolve the 'access' operator if just checking model access
         # so that a rule `('order_id', 'access', 'read')` may become false
         if not origin:
+            if operation == 'read':
+                access = self.env._access_cache[self._name]
+                if isinstance(result := access.get(0), bool):
+                    return result
+            domain = self._access_domain(operation)
             domain = domain.map_conditions(
                 lambda cond: cond.optimize_dynamic(self.sudo()) if cond.operator == 'access' else cond)
-            return not domain.is_false()
+            result = not domain.is_false()
+            if operation == 'read':
+                access[0] = result
+            return result
+
+        # check the records for other access
+        domain = self._access_domain(operation)
         if domain.is_false():
             return False
         if domain.is_true():
@@ -3515,13 +3527,7 @@ class BaseModel(metaclass=MetaModel):
         # access in batch.
         # We want to avoid rechecking *all* the prefetch every time we have an
         # inaccessible record.
-        ids_to_check = tuple(id_ for id_ in ids if not access.get(id_))
-        if len(ids) < PREFETCH_MAX and self._prefetch_ids is not ids:
-            ids_to_check = itertools.chain(ids_to_check, (
-                id_ for id_ in self._prefetch_ids
-                if id_ not in access
-            ))
-            ids_to_check = itertools.islice(unique(ids_to_check), PREFETCH_MAX)
+        ids_to_check = tuple(id_ for id_ in unique(itertools.chain(ids, self._prefetch_ids)) if not access.get(id_))
         records = self.browse(ids_to_check).sudo().with_context(active_test=False)
 
         # Check access
@@ -3543,32 +3549,6 @@ class BaseModel(metaclass=MetaModel):
             accessible_ids = set(accessible._ids)
             for id_ in records._ids:
                 access[id_] = id_ in accessible_ids
-
-    @deprecated("Since 20.0, use Model._access_domain instead")
-    def _check_access(self, operation: str) -> tuple[Self, Callable] | None:
-        """ Return ``None`` if the current user has permission to perform
-        ``operation`` on the records ``self``. Otherwise, return a pair
-        ``(records, function)`` where ``records`` are the forbidden records, and
-        ``function`` can be used to create some corresponding exception.
-
-        This method provides the base implementation of
-        methods :meth:`check_access`, :meth:`has_access`
-        and :meth:`_filtered_access`. The method may be overridden in order to
-        restrict the access to ``self``.
-        """
-        domain = self._access_domain(operation)
-        if domain.is_false():
-            return self, functools.partial(self._make_access_error_message, operation, domain)
-
-        origin = self._origin
-        if (
-            origin
-            and domain
-            and (forbidden := origin - origin.with_context(active_test=False).sudo().filtered_domain(domain))
-        ):
-            return forbidden, functools.partial(forbidden._make_access_error_message, operation, domain)
-
-        return None
 
     @api.model
     @api.ormcache('operation', 'self.env._access_context')
@@ -3636,143 +3616,265 @@ class BaseModel(metaclass=MetaModel):
         if not self:
             return True
 
+        assert all(self._ids), "unlink cannot be called with new ids"
         self.check_access('unlink')
         self.env.transaction._wrote__ = True
 
-        for func in self._ondelete_methods:
-            # func._ondelete is True => should be called during uninstallation
-            # func._ondelete is False => should be called unless its module is being uninstalled
-            if (
-                func._ondelete
-                or not self.pool.uninstalling_modules
-                or func.__module__.split('.')[2] not in self.pool.uninstalling_modules
-            ):
-                func(self)
+        # determine the records that must be deleted (explicit_deletions) and
+        # the ones that will be automatically cascade-deleted (implicit_deletions)
+        explicit_deletions = defaultdict(OrderedSet, {self._name: OrderedSet(self.ids)})
+        implicit_deletions = defaultdict(OrderedSet)
 
-        # TOFIX: this avoids an infinite loop when trying to recompute a
-        # field, which triggers the recomputation of another field using the
-        # same compute function, which then triggers again the computation
-        # of those two fields
-        for field in self._fields.values():
-            self.env.remove_to_compute(field, self)
+        todo = explicit_deletions.copy()
+        done = defaultdict(set)
+        env = self.with_context(active_test=False).sudo().env
+        many2one_targeting = env.registry.many2one_targeting
+        many2many_targeting = env.registry.many2many_targeting
 
-        self.env.flush_all()
+        while todo:
+            model_name, ids = todo.popitem()
+            ids = ids - done[model_name]
+            if not ids:
+                continue
 
-        cr = self.env.cr
-        Data = self.env['ir.model.data'].sudo().with_context({})
-        Defaults = self.env['ir.default'].sudo()
-        Attachment = self.env['ir.attachment'].sudo()
-        ir_model_data_unlink = Data
-        ir_attachment_unlink = Attachment
+            done[model_name].update(ids)
+            records = env[model_name].browse(ids)
 
-        # mark fields that depend on 'self' to recompute them after 'self' has
-        # been deleted (like updating a sum of lines after deleting one line)
-        with self.env.protecting(self._fields.values(), self):
-            self.modified(self._fields, before=True)
+            # get the records that will be cascade-deleted from 'records'
+            for field in many2one_targeting.get(model_name, ()):
+                if field.ondelete == 'cascade' and (
+                    corecords := records._get_records_linked_by(field)
+                ):
+                    implicit_deletions[corecords._name].update(corecords._ids)
+                    todo[corecords._name].update(corecords._ids)
 
-        for sub_ids in split_every(cr.IN_MAX, self.ids):
-            records = self.browse(sub_ids)
+            # get the extra records to delete with 'records'
+            for corecords in records._delete_extra():
+                if corecords:
+                    explicit_deletions[corecords._name].update(corecords._ids)
+                    todo[corecords._name].update(corecords._ids)
 
-            cr.execute(SQL(
-                "DELETE FROM %s WHERE id IN %s",
-                SQL.identifier(self._table), sub_ids,
-            ))
+        # aggregate all deleted records
+        all_deletions = defaultdict(OrderedSet)
+        for deletions in (explicit_deletions, implicit_deletions):
+            for model_name, ids in deletions.items():
+                all_deletions[model_name].update(ids)
+        all_deleted_records = tuple(
+            self.env[model_name].browse(ids)
+            for model_name, ids in all_deletions.items()
+        )
 
-            # Removing the ir_model_data reference if the record being deleted
-            # is a record created by xml/csv file, as these are not connected
-            # with real database foreign keys, and would be dangling references.
-            #
-            # Note: the following steps are performed as superuser to avoid
-            # access rights restrictions, and with no context to avoid possible
-            # side-effects during admin calls.
-            data = Data.search([('model', '=', self._name), ('res_id', 'in', sub_ids)])
-            ir_model_data_unlink |= data
+        # process ondelete methods of all the deleted records
+        post_delete_hooks = []
+        for records in all_deleted_records:
+            for func in records._ondelete_methods:
+                # func._ondelete is True => should be called during uninstallation
+                # func._ondelete is False => should be called unless its module is being uninstalled
+                if (
+                    func._ondelete
+                    or not self.pool.uninstalling_modules
+                    or func.__module__.split('.')[2] not in self.pool.uninstalling_modules
+                ):
+                    post_delete = func(records)
+                    if post_delete is not None:
+                        assert callable(post_delete), f"ondelete {func} should return a Callable or None"
+                        post_delete_hooks.append(post_delete)
 
-            # For the same reason, remove the relevant records in ir_attachment
-            # (the search is performed with sql as the search method of
-            # ir_attachment is overridden to hide attachments of deleted
-            # records)
-            cr.execute(SQL(
-                "SELECT id FROM ir_attachment WHERE res_model=%s AND res_id IN %s",
-                self._name, sub_ids,
-            ))
-            ir_attachment_unlink |= Attachment.browse(row[0] for row in cr.fetchall())
+        # ensure that many2one fields are up to date before deletion
+        for records in all_deleted_records:
+            targeting_fields = many2one_targeting.get(records._name, ())
+            for model_name, fields in groupby(targeting_fields, lambda f: f.model_name):
+                records.env[model_name].flush_model([field.name for field in fields])
 
-            # don't allow fallback value in ir.default for many2one company dependent fields to be deleted
-            # Exception: when 'force_delete', these fallbacks can be deleted by Defaults.discard_records(records)
-            if (many2one_fields := self.env.registry.many2one_company_dependents[self._name]) and not self.env.context.get('force_delete'):
-                IrModelFields = self.env["ir.model.fields"]
-                field_ids = tuple(IrModelFields._get_ids(field.model_name).get(field.name) for field in many2one_fields)
-                sub_ids_json_text = tuple(json.dumps(id_) for id_ in sub_ids)
-                if default := Defaults.search([('field_id', 'in', field_ids), ('json_value', 'in', sub_ids_json_text)], limit=1, order='id desc'):
-                    ir_field = default.field_id.sudo()
-                    field = self.env[ir_field.model]._fields[ir_field.name]
-                    record = self.browse(json.loads(default.json_value))
-                    raise UserError(_('Unable to delete %(record)s because it is used as the default value of %(field)s', record=record, field=field))
+        # collect all the many2one fields to nullify
+        cascade_many2one: list[tuple[Field, BaseModel]] = []
+        for records in all_deleted_records:
+            for field in many2one_targeting.get(records._name, ()):
+                if field.ondelete != 'set null':
+                    continue
+                corecords = records._get_records_linked_by(field)
+                if ids := all_deletions.get(corecords._name):
+                    corecords -= corecords.browse(ids)
+                if corecords:
+                    cascade_many2one.append((field, corecords))
 
+        # collect all the many2many fields that contain deleted records
+        cascade_many2many: list[tuple[Field, BaseModel]] = []
+        for records in all_deleted_records:
+            for field in many2many_targeting.get(records._name, ()):
+                corecords = records._get_records_linked_by(field)
+                if ids := all_deletions.get(corecords._name):
+                    corecords -= corecords.browse(ids)
+                if corecords:
+                    cascade_many2many.append((field, corecords))
+
+        # inside this block, we should not call any ORM method or hooks
+        protecting_info = [(records._fields.values(), records) for records in all_deleted_records]
+        with self.env.protecting(protecting_info):
+            # mark fields that depend on 'records' to recompute after 'records' have
+            # been deleted or updated (e.g., updating a sum of lines after deleting a line).
+            for records in all_deleted_records:
+                records.modified(records._fields, before=True)
+            # since we drop records from many2one/many2many fields, calling modify() once is enough
+            for field, records in cascade_many2one + cascade_many2many:
+                records.modified([field.name], before=True)
+
+            # delete the records that must be deleted from database
+            for model_name, ids in explicit_deletions.items():
+                sql_table = SQL.identifier(self.env[model_name]._table)
+                self.env.execute_query(SQL(
+                    'DELETE FROM %s WHERE "id" IN %s', sql_table, tuple(ids),
+                ))
+
+            # invalidate cache, dirty fields and recomputation of deleted records
+            for records in all_deleted_records:
+                records.invalidate_recordset(flush=False)
+                for field in records._fields.values():
+                    records.env.remove_to_compute(field, records)
+                    if field in records.env._field_dirty:
+                        records.env._field_dirty[field].difference_update(records._ids)
+
+            # update the cache of the many2one fields that are set to NULL in database
+            for field, records in cascade_many2one:
+                field._update_cache(records, None, dirty=False)
+                # update parent_path if necessary
+                if records._parent_store and field.name == records._parent_name:
+                    records._parent_store_update()
+
+            # invalidate many2many fields that contained deleted records
+            for field, records in cascade_many2many:
+                records.invalidate_recordset([field.name], flush=False)
+
+            # invalidate the ORM cache if necessary
+            for records in all_deleted_records:
+                if cache_name := records._clear_cache_name:
+                    records.env.transaction.invalidate_ormcache(cache_name)
+
+        # process post-delete hooks (from ondelete methods)
+        for post_delete in post_delete_hooks:
+            post_delete()
+
+        # auditing: deletions are infrequent and leave no trace in the database
+        msg = 'User #%s deleted %s records with IDs: %r'
+        args = [self.env.uid, self._name, self.ids]
+        for records in all_deleted_records:
+            if records._name == self._name:
+                records -= self
+                if not records:
+                    continue
+            msg += '\n cascading delete %s records with IDs: %r'
+            args.extend((records._name, records.ids))
+        _unlink.info(msg, *args)
+
+        return True
+
+    def _delete_extra(self) -> Iterator[BaseModel]:
+        """ Return records that must also be deleted whenever ``self`` is deleted.
+        This method is aimed at being overridden by models, instead of overriding
+        :meth:`unlink`.
+        """
+        # Removing the ir_model_data reference if the record being deleted
+        # is a record created by xml/csv file, as these are not connected
+        # with real database foreign keys, and would be dangling references.
+        yield self.env['ir.model.data'].with_context({}).search(
+            [('model', '=', self._name), ('res_id', 'in', self._ids)], order='id')
+        # Simulate discard_records behavior.
+        yield self.env['ir.default'].search([
+            ('field_id.ttype', '=', 'many2one'), ('field_id.relation', '=', self._name),
+            ('json_value', 'in', tuple(json.dumps(id_) for id_ in self._ids)),
+        ], order='id')
+        yield self.env['ir.attachment'].with_context(skip_res_field_check=True).search(
+            [('res_model', '=', self._name), ('res_id', 'in', self._ids)], order='id')
+
+    @typing.final
+    def _get_records_linked_by(self, field: Field) -> BaseModel:
+        """ Return the records linked to ``self`` by ``field``, i.e., the ones
+        such that ``records[field.name] <= self``.
+        """
+        assert field.type in ('many2one', 'many2many')
+        env = self.with_context(active_test=False).sudo().env
+        # use an inverse field to avoid a search query when possible
+        if not self.env.registry.uninstalling_modules:
+            for invf in self.env.registry.field_inverses[field]:
+                if invf.type in ('one2many', 'many2many') and invf.domain:
+                    continue
+                return self.with_env(env)[invf.name]
+        return env[field.model_name].search(Domain(field.name, 'in', self.ids), order='id')
+
+    @api.ondelete(at_uninstall=False)
+    def _prevent_deletion_default(self):
+        many2one_fields = self.env.registry.many2one_company_dependents[self._name]
+        if not many2one_fields:
+            return None
+        ids = self._ids
+
+        # don't allow fallback value in ir.default for many2one company dependent fields to be deleted
+        # Exception: when 'force_delete', these fallbacks can be deleted by Defaults.discard_records(records)
+        if not self.env.context.get('force_delete'):
+            IrModelFields = self.env["ir.model.fields"].sudo()
+            Defaults = self.env['ir.default'].sudo()
+
+            field_ids = tuple(IrModelFields._get_ids(field.model_name).get(field.name) for field in many2one_fields)
+            json_ids = tuple(json.dumps(id) for id in ids)
+            if default := Defaults.search([('field_id', 'in', field_ids), ('json_value', 'in', json_ids)], limit=1, order='id'):
+                ir_field = default.field_id.sudo()
+                field = self.env[ir_field.model]._fields[ir_field.name]
+                record = self.browse(json.loads(default.json_value))
+                raise UserError(_('Unable to delete %(record)s because it is used as the default value of %(field)s', record=record, field=field))
+
+        for field in many2one_fields:
+            model = self.env[field.model_name]
+            if field.ondelete == 'restrict' and not self.env.context.get('force_delete'):
+                # check there is no records with company-dependent field containing given ids for any company
+                if res := self.env.execute_query(SQL(
+                    """
+                    SELECT id, %(field)s
+                    FROM %(table)s
+                    WHERE %(field)s IS NOT NULL
+                    AND %(field)s @? %(jsonpath)s
+                    ORDER BY id
+                    LIMIT 1
+                    """,
+                    table=SQL.identifier(model._table),
+                    field=SQL.identifier(field.name),
+                    jsonpath=f"$.* ? ({' || '.join(f'@ == {id_}' for id_ in ids)})",
+                )):
+                    on_restrict_id, field_json = res[0]
+                    to_delete_id = next(iter(id_ for id_ in field_json.values()))
+                    on_restrict_record = model.browse(on_restrict_id)
+                    to_delete_record = self.browse(to_delete_id)
+                    raise UserError(_('You cannot delete %(to_delete_record)s, as it is used by %(on_restrict_record)s',
+                                        to_delete_record=to_delete_record, on_restrict_record=on_restrict_record))
+
+        def _post_delete_hook():
             # on delete set null/restrict for jsonb company dependent many2one
             for field in many2one_fields:
                 model = self.env[field.model_name]
                 if field.ondelete == 'restrict' and not self.env.context.get('force_delete'):
-                    if res := self.env.execute_query(SQL(
-                        """
-                        SELECT id, %(field)s
-                        FROM %(table)s
-                        WHERE %(field)s IS NOT NULL
-                        AND %(field)s @? %(jsonpath)s
-                        ORDER BY id
-                        LIMIT 1
-                        """,
-                        table=SQL.identifier(model._table),
-                        field=SQL.identifier(field.name),
-                        jsonpath=f"$.* ? ({' || '.join(f'@ == {id_}' for id_ in sub_ids)})",
-                    )):
-                        on_restrict_id, field_json = res[0]
-                        to_delete_id = next(iter(id_ for id_ in field_json.values()))
-                        on_restrict_record = model.browse(on_restrict_id)
-                        to_delete_record = self.browse(to_delete_id)
-                        raise UserError(_('You cannot delete %(to_delete_record)s, as it is used by %(on_restrict_record)s',
-                                          to_delete_record=to_delete_record, on_restrict_record=on_restrict_record))
-                else:
-                    self.env.execute_query(SQL(
-                        """
-                        UPDATE %(table)s
-                        SET %(field)s = (
-                            SELECT jsonb_object_agg(
-                                key,
-                                CASE
-                                    WHEN value::int4 in %(ids)s THEN NULL
-                                    ELSE value::int4
-                                END)
-                            FROM jsonb_each_text(%(field)s)
-                        )
-                        WHERE %(field)s IS NOT NULL
-                        AND %(field)s @? %(jsonpath)s
-                        """,
-                        table=SQL.identifier(model._table),
-                        field=SQL.identifier(field.name),
-                        ids=sub_ids,
-                        jsonpath=f"$.* ? ({' || '.join(f'@ == {id_}' for id_ in sub_ids)})",
-                    ))
+                    continue
+                res = self.env.execute_query(SQL(
+                    """
+                    UPDATE %(table)s
+                    SET %(field)s = (
+                        SELECT jsonb_object_agg(
+                            key,
+                            CASE
+                                WHEN value::int4 in %(ids)s THEN NULL
+                                ELSE value::int4
+                            END)
+                        FROM jsonb_each_text(%(field)s)
+                    )
+                    WHERE %(field)s IS NOT NULL AND %(field)s @? %(jsonpath)s
+                    RETURNING %(table)s."id"
+                    """,
+                    table=SQL.identifier(model._table),
+                    field=SQL.identifier(field.name, to_flush=field),
+                    ids=ids,
+                    jsonpath=f"$.* ? ({' || '.join(f'@ == {id_}' for id_ in ids)})",
+                ))
+                model.browse(id_ for id_, in res).invalidate_recordset([field.name])
 
-            # For the same reason, remove the defaults having some of the
-            # records as value
-            Defaults.discard_records(records)
-
-        # invalidate the *whole* cache, since the orm does not handle all
-        # changes made in the database, like cascading delete!
-        self.env.invalidate_all(flush=False)
-        if ir_model_data_unlink:
-            ir_model_data_unlink.unlink()
-        if ir_attachment_unlink:
-            ir_attachment_unlink.unlink()
-        if cache_name := self._clear_cache_name:
-            self.env.transaction.invalidate_ormcache(cache_name)
-
-        # auditing: deletions are infrequent and leave no trace in the database
-        _unlink.info('User #%s deleted %s records with IDs: %r', self.env.uid, self._name, self.ids)
-
-        return True
+        return _post_delete_hook
 
     def write(self, vals: ValuesType) -> typing.Literal[True]:
         """ Update all records in ``self`` with the provided values.
@@ -4311,7 +4413,8 @@ class BaseModel(metaclass=MetaModel):
                     # computed stored fields with a column
                     # have to be computed before create
                     # s.t. required and constraints can be applied on those fields.
-                    vals[fname] = field.convert_to_write(record[fname], self)
+                    field_value = record.sudo()[fname] if field.compute_sudo else record[fname]
+                    vals[fname] = field.convert_to_write(field_value, self)
                     precomputed.add(field)
 
     @api.model
@@ -4505,19 +4608,27 @@ class BaseModel(metaclass=MetaModel):
                         ir_model.name,
                     ))
 
-            # update parent_path of all records and their descendants
+            # update parent_path of all records and their descendants. The
+            # descendants were matched with
+            #     AND child.parent_path LIKE concat(node.parent_path, '%')
+            # whose pattern comes from a column, so PostgreSQL gets no index
+            # bounds and scans the table. The range below selects the same rows
+            # from the index: parent_path ends with '/' and '0' is the next
+            # character, so left(parent_path, -1) || '0' closes the range. This
+            # holds because the column has the "C" collation: others, like
+            # glibc's en_US.UTF-8, ignore the '/' and sort '12/14/' after '120'.
             updated = dict(self.env.execute_query(SQL(
                 """ UPDATE %(table)s child
                     SET parent_path = concat(%(prefix)s, substr(child.parent_path,
                             length(node.parent_path) - length(node.id || '/') + 1))
                     FROM %(table)s node
                     WHERE node.id IN %(ids)s
-                    AND child.parent_path LIKE concat(node.parent_path, %(wildcard)s)
+                    AND child.parent_path >= node.parent_path
+                    AND child.parent_path < left(node.parent_path, -1) || '0'
                     RETURNING child.id, child.parent_path """,
                 table=SQL.identifier(self._table),
                 prefix=prefix,
                 ids=tuple(records.ids),
-                wildcard='%',
             )))
 
             # update the cache of updated nodes, and determine what to recompute
@@ -4823,6 +4934,7 @@ class BaseModel(metaclass=MetaModel):
         *,
         active_test: bool = True,
         bypass_access: bool = False,
+        search_from_field: Field | None = None,
     ) -> Query:
         """
         Private implementation of search() method.
@@ -4846,7 +4958,8 @@ class BaseModel(metaclass=MetaModel):
         else:
             sec_domain = self._access_domain('read')
             if sec_domain.is_false():
-                raise self._make_access_error_message('read', sec_domain)
+                self.browse().check_access('read')
+                domain = Domain.FALSE
 
         domain = Domain(domain)
         # inactive records unless they were explicitly asked for
@@ -4861,7 +4974,7 @@ class BaseModel(metaclass=MetaModel):
             domain = Domain(self._active_name, 'in', OrderedSet((True,))) & domain
 
         # build the query
-        domain = domain.optimize_full(self)
+        domain = domain.optimize_full(self, search_from_field=search_from_field)
         if domain.is_false():
             return self.browse()._as_query()
         query = Query(self)
@@ -4870,8 +4983,8 @@ class BaseModel(metaclass=MetaModel):
 
         # security access domain
         if not sec_domain.is_true():
-            self_sudo = self.sudo().with_context(active_test=False, search_domain=domain)
-            sec_domain = sec_domain.optimize_full(self_sudo)
+            self_sudo = self.sudo().with_context(active_test=False)
+            sec_domain = sec_domain.optimize_full(self_sudo, search_domain=domain, search_from_field=search_from_field)
             if sec_domain.is_false():
                 return self.browse()._as_query()
             if (
@@ -5349,25 +5462,11 @@ class BaseModel(metaclass=MetaModel):
             return list(self._ids)  # already real records
         return list(OriginIds(self._ids))
 
-    @property
-    @deprecated("Deprecated since 19.0, use self.env.cr directly")
-    def _cr(self):
-        return self.env.cr
-
-    @property
-    @deprecated("Deprecated since 19.0, use self.env.uid directly")
-    def _uid(self):
-        return self.env.uid
-
-    @property
-    @deprecated("Deprecated since 19.0, use self.env.context directly")
-    def _context(self):
-        return self.env.context
-
     #
     # Conversion methods
     #
 
+    @typing.final
     @api.private
     def ensure_one(self) -> Self:
         """Verify that the current recordset holds a single record.
@@ -5382,6 +5481,7 @@ class BaseModel(metaclass=MetaModel):
         except ValueError:
             raise ValueError("Expected singleton: %s" % self)
 
+    @typing.final
     @api.private
     def with_env(self, env: Environment) -> Self:
         """Return a new version of this recordset attached to the provided environment.
@@ -5391,6 +5491,7 @@ class BaseModel(metaclass=MetaModel):
         """
         return self.__class__(env, self._ids, self._prefetch_ids)
 
+    @typing.final
     @api.private
     def sudo(self, flag: bool = True) -> Self:
         """ Return a new version of this recordset with superuser mode enabled or
@@ -5457,6 +5558,7 @@ class BaseModel(metaclass=MetaModel):
 
         return self.with_context(allowed_company_ids=allowed_company_ids)
 
+    @typing.final
     @api.private
     def with_context(self, ctx: dict[str, typing.Any] | None = None, /, **overrides) -> Self:
         """ Return a new version of this recordset attached to an extended
@@ -5488,6 +5590,7 @@ class BaseModel(metaclass=MetaModel):
             context['allowed_company_ids'] = self.env.context['allowed_company_ids']
         return self.with_env(self.env(context=context))
 
+    @typing.final
     @api.private
     def with_prefetch(self, prefetch_ids: Reversible[IdType] | None = None) -> Self:
         """ Return a new version of this recordset that uses the given prefetch ids,
@@ -5497,6 +5600,7 @@ class BaseModel(metaclass=MetaModel):
             prefetch_ids = self._ids
         return self.__class__(self.env, self._ids, prefetch_ids)
 
+    @typing.final
     def _update_cache(self, values: ValuesType, validate: bool = True) -> None:
         """ Update the cache of ``self`` with ``values``.
 
@@ -5525,15 +5629,7 @@ class BaseModel(metaclass=MetaModel):
                 for invf in self.pool.field_inverses[field]:
                     invf._update_inverse(inv_recs, self)
 
-    def _convert_to_record(self, values):
-        """ Convert the ``values`` dictionary from the cache format to the
-        record format.
-        """
-        return {
-            name: self._fields[name].convert_to_record(value, self)
-            for name, value in values.items()
-        }
-
+    @typing.final
     def _convert_to_write(self, values):
         """ Convert the ``values`` dictionary into the format of :meth:`write`. """
         fields = self._fields
@@ -5558,6 +5654,7 @@ class BaseModel(metaclass=MetaModel):
     def mapped[T](self, func: Callable[[Self], T]) -> list[T] | BaseModel:
         ...
 
+    @typing.final
     @api.private
     def mapped[T](self, func: str | Callable[[Self], T]) -> list | BaseModel:
         """Apply ``func`` on all records in ``self``, and return the result as a
@@ -5594,10 +5691,6 @@ class BaseModel(metaclass=MetaModel):
             records = self
             for rel_field_name in rel_field_names:
                 records = records[rel_field_name]
-            if len(records) > PREFETCH_MAX:
-                # fetch fields for all recordset in case we have a recordset
-                # that is larger than the prefetch
-                records.fetch([field_name])
             field = records._fields[field_name]
             getter = field.__get__
             if field.relational:
@@ -5634,24 +5727,61 @@ class BaseModel(metaclass=MetaModel):
         if not func:
             # align with mapped()
             return self
+        if isinstance(func, Domain):
+            return self.filtered_domain(func)
 
+        func = self._get_predicate(func)
+        ids = tuple(id_ for id_, rec in zip(self._ids, self) if func(rec))
+        return self.__class__(self.env, ids, self._prefetch_ids)
+
+    @api.private
+    def partitioned(self, *predicates: str | Callable[[Self], bool] | Domain | None) -> tuple[Self, ...]:
+        """Split the records of ``self`` according to ``predicates``, returning
+        ``len(predicates) + 1`` recordsets. Each record is put in the recordset
+        of the first predicate it satisfies, or in the last recordset if it
+        satisfies none of them. All the resulting recordsets are guaranteed to
+        be part of the same prefetch-set.
+
+        :param predicates: anything accepted by :meth:`filtered`
+
+        .. code-block:: python3
+
+            invoices, posted, others = moves.partitioned(
+                lambda m: m.is_invoice(),
+                Domain('state', '=', 'posted'),  # posted non-invoices
+            )
+        """
+        predicates = [self._get_predicate(predicate) for predicate in predicates]
+        partitions = [[] for _ in range(len(predicates) + 1)]
+        for record in self:
+            for ids, predicate in zip(partitions, predicates):
+                if predicate(record):
+                    ids.append(record._ids[0])
+                    break
+            else:
+                partitions[-1].append(record._ids[0])
+
+        cls, env, prefetch_ids = self.__class__, self.env, self._prefetch_ids
+        return tuple(cls(env, tuple(ids), prefetch_ids) for ids in partitions)
+
+    def _get_predicate(self, func: str | Callable[[Self], bool] | Domain | None) -> Callable[[Self], bool]:
+        """Return a function mapping a single record to a ``bool`` from anything
+        accepted by :meth:`filtered`.
+        """
+        if not func:
+            # align with filtered()
+            return lambda record: True
+        if isinstance(func, Domain):
+            return func._as_predicate(self)
         if callable(func):
             # normal function
-            pass
-        elif isinstance(func, str):
+            return func
+        if isinstance(func, str):
             if '.' in func:
-                seq_fnames = func
-                func = lambda record: any(record.mapped(seq_fnames))  # noqa: E731
-            else:
-                # avoid costly mapped
-                func = self._fields[func].__get__
-        elif isinstance(func, Domain):
-            return self.filtered_domain(func)
-        else:
-            raise TypeError(f"Invalid function {func!r} to filter on {self._name}")
-
-        ids = tuple(id_ for id_, rec in zip(self._ids, self) if func(rec))
-        return self.__class__(self.env, ids, Prefetch.union(ids, self._prefetch_ids))
+                return lambda record: any(record.mapped(func))
+            # avoid costly mapped
+            return self._fields[func].__get__
+        raise TypeError(f"Invalid function {func!r} to filter on {self._name}")
 
     @typing.overload
     def grouped(self, key: str) -> dict[typing.Any, Self]:
@@ -5661,6 +5791,7 @@ class BaseModel(metaclass=MetaModel):
     def grouped[T](self, key: Callable[[Self], T]) -> dict[T, Self]:
         ...
 
+    @typing.final
     @api.private
     def grouped[T](self, key: str | Callable[[Self], T]) -> dict[typing.Any, Self]:
         """Eagerly groups the records of ``self`` by the ``key``, returning a
@@ -5697,7 +5828,7 @@ class BaseModel(metaclass=MetaModel):
             return self
         predicate = Domain(domain)._as_predicate(self)
         ids = tuple(id_ for id_, rec in zip(self._ids, self) if predicate(rec))
-        return self.__class__(self.env, ids, Prefetch.union(ids, self._prefetch_ids))
+        return self.__class__(self.env, ids, self._prefetch_ids)
 
     @api.private
     def sorted(self, key: Callable[[Self], typing.Any] | str | None = None, reverse: bool = False) -> Self:
@@ -5783,11 +5914,72 @@ class BaseModel(metaclass=MetaModel):
         ]
         return lambda rec: tuple(fn(rec) for fn in item_makers)
 
+    @typing.final
     @api.private
     def update(self, values: ValuesType) -> None:
         """ Update the records in ``self`` with ``values``. """
-        for name, value in values.items():
-            self[name] = value
+        if not self._ids or not values:
+            return
+
+        env = self.env
+        fields = self._fields
+
+        # group updates by ids {ids: [(field, value)]} for new and real records
+        new_updates = defaultdict(list)
+        real_updates = defaultdict(list)
+
+        for fname, value in values.items():
+            field = fields[fname]
+            ids = self._ids
+
+            if ((protected_ids := env._protected.get(field, ())) and
+                (protected_ids := tuple(id_ for id_ in ids if id_ in protected_ids))
+            ):
+                # records being computed: no business logic, no recomputation
+                protected_records = self.__class__(env, protected_ids, self._prefetch_ids)
+                field.write(protected_records, value)
+                if len(protected_ids) == len(ids):
+                    continue
+                ids = tuple(id_ for id_ in ids if id_ not in protected_ids)
+
+            new_ids = tuple(id_ for id_ in ids if not id_)
+            if new_ids:
+                new_updates[new_ids].append((field, value))
+                if len(new_ids) == len(ids):
+                    continue
+                ids = tuple(id_ for id_ in ids if id_)
+
+            real_updates[ids].append((field, value))
+
+        # new records: no business logic
+        for ids, field_vals in new_updates.items():
+            new_records = self.__class__(env, ids, self._prefetch_ids)
+            fields_to_protect = OrderedSet(
+                f
+                for field, _ in field_vals
+                for f in env.registry.field_computed.get(field, (field,))
+            )
+            with env.protecting(fields_to_protect, new_records):
+                new_records.modified(
+                    [field.name for field, _ in field_vals if field.relational], before=True,
+                )
+                for field, value in field_vals:
+                    field.write(new_records, value)
+                new_records.modified([field.name for field, _ in field_vals])
+
+            # special case: also assign parent records if they are new
+            for field, value in field_vals:
+                if field.inherited:
+                    parents = new_records[field.related.split('.')[0]]
+                    parents.filtered(lambda r: not r.id)[field.name] = value
+
+        # base case: full business logic
+        for ids, field_vals in real_updates.items():
+            records = self.__class__(env, ids, self._prefetch_ids)
+            records.write({
+                field.name: field.convert_to_write(value, records)
+                for field, value in field_vals
+            })
 
     @api.private
     def flush_model(self, fnames: Collection[str] | None = None) -> None:
@@ -5934,13 +6126,8 @@ class BaseModel(metaclass=MetaModel):
         cls = self.__class__
         env = self.env
         prefetch_ids = self._prefetch_ids
-        if size > PREFETCH_MAX and prefetch_ids is ids:
-            for sub_ids in split_every(PREFETCH_MAX, ids):
-                for id_ in sub_ids:
-                    yield cls(env, (id_,), sub_ids)
-        else:
-            for id_ in ids:
-                yield cls(env, (id_,), prefetch_ids)
+        for id_ in ids:
+            yield cls(env, (id_,), prefetch_ids)
 
     def __reversed__(self) -> Iterator[Self]:
         """ Return an reversed iterator over ``self``. """
@@ -5953,15 +6140,9 @@ class BaseModel(metaclass=MetaModel):
             return
         cls = self.__class__
         env = self.env
-        prefetch_ids = self._prefetch_ids
-        if size > PREFETCH_MAX and prefetch_ids is ids:
-            for sub_ids in split_every(PREFETCH_MAX, reversed(ids)):
-                for id_ in sub_ids:
-                    yield cls(env, (id_,), sub_ids)
-        else:
-            prefetch_ids = ReversedIterable(prefetch_ids)
-            for id_ in reversed(ids):
-                yield cls(env, (id_,), prefetch_ids)
+        prefetch_ids = ReversedIterable(self._prefetch_ids)
+        for id_ in reversed(ids):
+            yield cls(env, (id_,), prefetch_ids)
 
     def __contains__(self, item: BaseModel | str) -> bool:
         """ Test whether ``item`` (record or field name) is an element of ``self``.
@@ -5994,6 +6175,7 @@ class BaseModel(metaclass=MetaModel):
             raise TypeError(f"unsupported operand types in: {self} + {other!r}")
         return self
 
+    @typing.final
     @api.private
     def concat(self, it: Iterable[Self] = (), /, *args: Self) -> Self:
         """ Return the concatenation of ``self`` with all the arguments (in
@@ -6062,6 +6244,7 @@ class BaseModel(metaclass=MetaModel):
             raise TypeError(f"unsupported operand types in: {self} | {other!r}")
         return self
 
+    @typing.final
     @api.private
     def union(self, it: Iterable[Self] = (), /, *args: Self) -> Self:
         """ Return the union of ``self`` with all the arguments (in linear time
@@ -6181,8 +6364,7 @@ class BaseModel(metaclass=MetaModel):
 
     def __setitem__(self, key: str, value: typing.Any):
         """ Assign the field ``key`` to ``value`` in record ``self``. """
-        # important: one must call the field's setter
-        return self._fields[key].__set__(self, value)
+        self.update({key: value})
 
     #
     # Cache and recomputation management
@@ -6206,7 +6388,24 @@ class BaseModel(metaclass=MetaModel):
         """
         if flush:
             self.flush_model(fnames)
-        self._invalidate_cache(fnames)
+
+        if fnames is None:
+            fields = self._fields.values()
+        else:
+            fields = [self._fields[fname] for fname in fnames]
+
+        env = self.env
+        for field in fields:
+            field._invalidate_cache(env)
+            if field.type == 'one2many':
+                # skip invalidation of inverse for o2m fields
+                # (o2m is "computed" from m2o)
+                continue
+            for invf in self.pool.field_inverses[field]:
+                if flush:
+                    self.env[invf.model_name].flush_model([invf.name])
+                invf._invalidate_cache(env)
+        self.env.transaction.invalidate_access_cache(self._name)
 
     @api.private
     def invalidate_recordset(self, fnames: Collection[str] | None = None, flush: bool = True) -> None:
@@ -6219,13 +6418,11 @@ class BaseModel(metaclass=MetaModel):
             It is ``True`` by default, which ensures cache consistency.
             Do not use this parameter unless you know what you are doing.
         """
+        if not self._ids:  # Avoid invalidating field_inverses for no reason
+            return
+
         if flush:
             self.flush_recordset(fnames)
-        self._invalidate_cache(fnames, self._ids)
-
-    def _invalidate_cache(self, fnames: Collection[str] | None = None, ids: Sequence[IdType] | None = None) -> None:
-        if ids is not None and not ids:  # Avoid invalidating field_inverses for no reason
-            return
 
         if fnames is None:
             fields = self._fields.values()
@@ -6234,16 +6431,18 @@ class BaseModel(metaclass=MetaModel):
 
         env = self.env
         for field in fields:
-            field._invalidate_cache(env, ids)
+            field._invalidate_cache(env, self._ids)
             if field.type == 'one2many':
                 # skip invalidation of inverse for o2m fields
                 # (o2m is "computed" from m2o)
                 continue
             for invf in self.pool.field_inverses[field]:
-                self.env[invf.model_name].flush_model([invf.name])
+                if flush:
+                    self.env[invf.model_name].flush_model([invf.name])
                 invf._invalidate_cache(env)
         self.env.transaction.invalidate_access_cache(self._name)
 
+    @typing.final
     @api.private
     def modified(self, fnames: Collection[str], create: bool = False, before: bool = False) -> None:
         """ Notify that fields will be or have been modified on ``self``. This
@@ -6329,6 +6528,7 @@ class BaseModel(metaclass=MetaModel):
                 records = self.env[field.model_name].browse(ids)
                 self.env.add_to_compute(field, records)
 
+    @typing.final
     def _modified(self, fields: list[Field], create: bool) -> Iterable[tuple[Field, BaseModel, bool]]:
         """ Return an iterator traversing a tree of field triggers on ``self``,
         traversing backwards field dependencies along the way, and yielding
@@ -6351,6 +6551,7 @@ class BaseModel(metaclass=MetaModel):
 
         return self.sudo().with_context(active_test=False)._modified_triggers(tree, create)
 
+    @typing.final
     def _modified_triggers(self, tree: TriggerTree, create: bool = False) -> Iterable[tuple[Field, BaseModel, bool]]:
         """ Return an iterator traversing a tree of field triggers on ``self``,
         traversing backwards field dependencies along the way, and yielding
@@ -6402,8 +6603,7 @@ class BaseModel(metaclass=MetaModel):
                             records = records.browse(it and NewId(it) for it in records._ids)
                         break
             else:
-                new_records = self.filtered(lambda r: not r.id)
-                real_records = self - new_records
+                new_records, real_records = self.partitioned(lambda r: not r.id)
                 records = model.browse()
                 if real_records:
                     records = model.search([(field.name, 'in', real_records.ids)], order='id')
@@ -6490,9 +6690,6 @@ class BaseModel(metaclass=MetaModel):
                     res['warning'].get('message') or "",
                     res['warning'].get('type') or "",
                 ))
-
-    def onchange(self, values: dict, field_names: list[str], fields_spec: dict) -> dict:
-        raise NotImplementedError("onchange() is implemented in module 'web'")
 
     def _get_placeholder_filename(self, field: str) -> bool:
         """ Returns the filename of the placeholder to use,

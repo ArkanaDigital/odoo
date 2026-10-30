@@ -1,5 +1,4 @@
 import { fields, Record } from "@mail/model/export";
-import { browser } from "@web/core/browser/browser";
 
 /** @typedef {{ thread?: import("models").Thread }} ChatWindowData */
 
@@ -40,14 +39,10 @@ export class ChatWindow extends Record {
         return Boolean(this.hubAsOpened);
     }
 
-    canShow = fields.Attr(true, {
-        compute() {
-            return this.computeCanShow();
-        },
-    });
+    canShow = this.computed(() => this.computeCanShow());
 
     computeCanShow() {
-        if (this.store.env.services.ui.isSmall) {
+        if (this.store.ui.isSmall()) {
             return !this.hubAsFolded || !this.store.discuss?.isActive;
         }
         return !this.store.discuss?.isActive;
@@ -144,7 +139,7 @@ export class ChatWindow extends Record {
 
     async highlight() {
         this.highlighted = true;
-        await new Promise((resolve) => browser.setTimeout(resolve, 2000));
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
         if (this.exists()) {
             this.highlighted = false;
         }

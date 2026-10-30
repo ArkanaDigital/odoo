@@ -6,13 +6,13 @@
         <strong class="s_rating_title">Rating</strong>
         <div class="s_rating_icons o_not_editable" role="img" aria-label="3 out of 5 stars">
             <span class="s_rating_active_icons" style="color: #f3cc00;">
-                <i class="oi oi-filled" data-icon="star" role="presentation"/>
-                <i class="oi oi-filled" data-icon="star" role="presentation"/>
-                <i class="oi oi-filled" data-icon="star" role="presentation"/>
+                <i class="oi oi-filled" data-icon="star" role="presentation" aria-hidden="true"/>
+                <i class="oi oi-filled" data-icon="star" role="presentation" aria-hidden="true"/>
+                <i class="oi oi-filled" data-icon="star" role="presentation" aria-hidden="true"/>
             </span>
             <span class="s_rating_inactive_icons" style="color: var(--border-color);">
-                <i class="oi oi-filled" data-icon="star" role="presentation"/>
-                <i class="oi oi-filled" data-icon="star" role="presentation"/>
+                <i class="oi oi-filled" data-icon="star" role="presentation" aria-hidden="true"/>
+                <i class="oi oi-filled" data-icon="star" role="presentation" aria-hidden="true"/>
             </span>
         </div>
     </div>
@@ -25,7 +25,7 @@
 
 <asset id="website.s_rating_001_scss" name="Rating 001 SCSS">
     <bundle>web.assets_frontend</bundle>
-    <path>website/static/src/snippets/s_rating/001.scss</path>
+    <path>website/static/src/snippets/s_rating/001.css</path>
 </asset>
 
 </odoo>

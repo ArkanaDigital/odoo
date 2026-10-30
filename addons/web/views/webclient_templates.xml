@@ -22,6 +22,15 @@
         <title t-out="title or 'Odoo'"/>
         <link type="image/x-icon" rel="shortcut icon" t-att-href="x_icon or '/web/static/img/favicon.ico'"/>
         <script id="web.layout.odooscript" type="text/javascript">
+            if (!window.isSecureContext) {
+                window.stop();
+                const pre = document.createElement("pre");
+                pre.textContent = `Odoo is designed to be served over an https:// connection. You are currently running Odoo over
+an http:// connection without SSL/TLS, which is unsupported.
+For more information, please visit: https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts`;
+                document.documentElement.replaceChildren(document.createElement("body"));
+                document.body.append(pre);
+            }
             var odoo = {
                 csrf_token: "<t t-out="request.csrf_token(None)"/>",
                 debug: "<t t-out="debug"/>",
@@ -41,7 +50,6 @@
       </xpath>
       <xpath expr="//head/link[last()]" position="after">
         <t t-call-assets="web.material_symbols_outlined" t-binary="True"/>
-        <t t-call-assets="web.material_symbols_sharp" t-binary="True"/>
         <t t-call-assets="web.odoo_ui_icons" t-binary="True"/>
         <t t-call-assets="web.assets_frontend" t-js="false"/>
       </xpath>
@@ -72,8 +80,9 @@
                     <div t-if="not no_copyright" class="o_footer_copyright">
                         <div class="container py-3">
                             <div class="row row-gap-2">
-                                <div class="col-md text-center text-sm-start text-muted">
-                                    <span class="o_footer_copyright_name me-2">Copyright &amp;copy; <span t-field="res_company.name" itemprop="name">Company name</span></span>
+                                <div name="footer_copyright_col" class="col-md text-center text-sm-start text-muted">
+                                    <span class="o_footer_copyright_name">Copyright &amp;copy; <span t-field="res_company.name" itemprop="name">Company name</span></span>
+                                    <t id="language_selector_hook"/>
                                 </div>
                                 <div class="col-md text-center text-sm-end">
                                     <t t-call="web.brand_promotion"/>
@@ -118,7 +127,7 @@
             <div class="container py-5">
                 <div t-attf-class="card border-0 mx-auto bg-100 {{login_card_classes}} o_database_list" style="max-width: 300px;">
                     <div class="card-body">
-                        <div class="text-center pb-3 border-bottom mb-4">
+                        <div class="text-center pb-3 border-bottom mb-4" t-if="not res_company.uses_default_logo">
                             <img t-attf-src="/web/binary/company_logo{{ '?dbname='+db if db else '' }}" alt="Logo" style="max-height:120px; max-width: 100%; width:auto"/>
                         </div>
                         <t t-out="0"/>
@@ -318,7 +327,7 @@
                 document.addEventListener("DOMContentLoaded", () =&gt; {
                     const cookies = document.cookie.split(';').map(c =&gt; c.trim());
                     if (cookies.includes('color_scheme=dark')) {
-                        document.body.style.backgroundColor = "#262A36";
+                        document.body.style.backgroundColor = "#25262b";
                         document.body.style.color = "#FFFFFF";
                     }
                 });

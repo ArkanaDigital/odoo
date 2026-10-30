@@ -1,6 +1,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import re
+import json
 
 import psycopg2
 
@@ -8,7 +9,6 @@ from odoo import SUPERUSER_ID, Command, api, fields, models
 from odoo.exceptions import UserError
 from odoo.modules.registry import Registry
 from odoo.tools.safe_eval import expr_eval
-from odoo.tools.translate import mark_as_copy
 
 
 class DeliveryCarrier(models.Model):
@@ -32,7 +32,7 @@ class DeliveryCarrier(models.Model):
        (they are documented hereunder)
     """
 
-    name = fields.Char(string="Delivery Method", translate=True, required=True, copy=mark_as_copy('name'))
+    name = fields.Char(string="Delivery Method", translate=True, required=True)
     active = fields.Boolean(default=True)
     sequence = fields.Integer(help="Determine the display order", default=10)
     # This field will be overwritten by internal shipping providers by adding their own type.
@@ -53,8 +53,10 @@ class DeliveryCarrier(models.Model):
         default="rate_and_ship",
     )
     prod_environment = fields.Boolean(
-        string="Environment", help="Set to True if your credentials are certified for production."
+        string="Environment", help="Set to True if your credentials are certified for production.",
+        compute="_compute_prod_environment", store=True
     )
+    support_test_environment = fields.Boolean(string="Test Environment", compute="_compute_support_test_environment")
     debug_logging = fields.Boolean(
         string="Debug logging", help="Log requests in order to ease debugging"
     )
@@ -188,6 +190,8 @@ class DeliveryCarrier(models.Model):
         "CHECK(shipping_insurance >= 0 AND shipping_insurance <= 100)",
         "The shipping insurance must be a percentage between 0 and 100.",
     )
+    delivery_cost = fields.Monetary(string="Cost", readonly=True, compute="_compute_delivery_cost", currency_field="delivery_currency_id")
+    delivery_currency_id = fields.Many2one(comodel_name="res.currency", compute="_compute_delivery_currency_id")
 
     @api.constrains("must_have_tag_ids", "excluded_tag_ids")
     def _check_tags(self):
@@ -200,6 +204,16 @@ class DeliveryCarrier(models.Model):
                         name=carrier.name,
                     )
                 )
+
+    @api.depends("delivery_type")
+    def _compute_support_test_environment(self):
+        for carrier in self:
+            carrier.support_test_environment = carrier.delivery_type not in ['fixed', 'base_on_rule']
+
+    @api.depends("support_test_environment")
+    def _compute_prod_environment(self):
+        for carrier in self:
+            carrier.prod_environment = not carrier.support_test_environment
 
     def _compute_weight_uom_name(self):
         self.weight_uom_name = self.env[
@@ -235,6 +249,8 @@ class DeliveryCarrier(models.Model):
             c.debug_logging = not c.debug_logging
 
     def install_more_provider(self):
+        # TODO: to check if we need to simply remove `delivery_stock_picking_batch` or if we have to
+        # replace it by `stock_delivery` (with additional condition on `group_stock_picking_batch` ?)
         exclude_apps = ["delivery_barcode", "delivery_stock_picking_batch", "delivery_iot"]
         return {
             "name": self.env._("New Providers"),
@@ -313,6 +329,8 @@ class DeliveryCarrier(models.Model):
 
     def _match_weight(self, source):
         self.ensure_one()
+        if not self.max_weight:
+            return True
         if source._name == "sale.order":
             total_weight = sum(
                 line.product_id.weight * line.product_qty for line in source.order_line
@@ -323,10 +341,12 @@ class DeliveryCarrier(models.Model):
             )
         else:
             raise UserError(self.env._("Invalid source document type"))
-        return not self.max_weight or total_weight <= self.max_weight
+        return total_weight <= self.max_weight
 
     def _match_volume(self, source):
         self.ensure_one()
+        if not self.max_volume:
+            return True
         if source._name == "sale.order":
             total_volume = sum(
                 line.product_id.volume * line.product_qty for line in source.order_line
@@ -337,7 +357,7 @@ class DeliveryCarrier(models.Model):
             )
         else:
             raise UserError(self.env._("Invalid source document type"))
-        return not self.max_volume or total_volume <= self.max_volume
+        return total_volume <= self.max_volume
 
     @api.onchange("integration_level")
     def _onchange_integration_level(self):
@@ -613,3 +633,54 @@ class DeliveryCarrier(models.Model):
             raise UserError(self.env._("Not available for current order"))
 
         return price
+
+    @api.depends_context("wizard_currency_id")
+    def _compute_delivery_currency_id(self):
+        wizard_currency_id = self.env.context.get("wizard_currency_id")
+        delivery_currency = self.env["res.currency"].browse(wizard_currency_id)
+        for carrier in self:
+            carrier.delivery_currency_id = delivery_currency
+
+    @api.depends("delivery_currency_id")
+    @api.depends_context("carrier_prices_dumped", "formatted_display_name")
+    def _compute_display_name(self):
+        """Change display name for the carrier selection in SO"""
+        carrier_prices_dumped = self.env.context.get("carrier_prices_dumped")
+        formatted_display_name = self.env.context.get('formatted_display_name')
+
+        super()._compute_display_name()
+
+        if not formatted_display_name or not carrier_prices_dumped:
+            return
+
+        carrier_prices = json.loads(carrier_prices_dumped)
+
+        for carrier in self:
+            if not carrier.delivery_currency_id:
+                continue
+
+            delivery_vals = carrier_prices.get(str(carrier.id), {})
+
+            if delivery_vals and "display_price" in delivery_vals:
+                formatted_price = carrier.delivery_currency_id.format(delivery_vals.get("display_price", 0.0))
+                carrier.display_name = f"{carrier.display_name}\t--{formatted_price}--"
+
+    @api.depends("delivery_currency_id")
+    @api.depends_context("carrier_prices_dumped")
+    def _compute_delivery_cost(self):
+        """Provide Cost column for the list view for carriers from SO selection"""
+        carrier_prices_dumped = self.env.context.get("carrier_prices_dumped")
+
+        if not carrier_prices_dumped:
+            for carrier in self:
+                carrier.delivery_cost = None
+            return
+
+        carrier_prices = json.loads(carrier_prices_dumped)
+
+        for carrier in self:
+            if not carrier.delivery_currency_id:
+                continue
+
+            delivery_vals = carrier_prices.get(str(carrier.id), {})
+            carrier.delivery_cost = delivery_vals.get("display_price", 0.0)

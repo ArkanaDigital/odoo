@@ -34,8 +34,7 @@ export class ProductListPage extends Component {
         if (initCategories) {
             this.selfOrder.computeAvailableCategories();
         }
-        const availableCategories = this.selfOrder.availableCategories;
-        const topCategories = availableCategories.filter((category) => !category.parent_id);
+        const topCategories = this.topCategories;
         const selectedCategory =
             initCategories && topCategories.length > 0
                 ? topCategories[0]
@@ -44,7 +43,6 @@ export class ProductListPage extends Component {
         this.state = proxy({
             selectedCategory: selectedCategory,
             quantityByProductTmplId: {},
-            topCategories: topCategories,
             subCategories: [],
         });
 
@@ -54,9 +52,7 @@ export class ProductListPage extends Component {
                 this.categoryListRef,
                 this.productListRef,
                 (catId) => {
-                    this.state.selectedCategory = this.state.topCategories.find(
-                        (c) => c.id === catId
-                    );
+                    this.state.selectedCategory = this.topCategories.find((c) => c.id === catId);
                 }
             ).scrollToCategory;
         }
@@ -135,7 +131,7 @@ export class ProductListPage extends Component {
     selectCategory(category) {
         this.state.selectedCategory = category;
         if (this.selfOrder.kioskMode) {
-            if (!category.parent_id) {
+            if (category === this.topSelectedCategory) {
                 this.toggleSubCategoryPanel();
             }
             this.ensureCategoryVisible();
@@ -146,7 +142,7 @@ export class ProductListPage extends Component {
     }
 
     ensureCategoryVisible() {
-        if (!this.selfOrder.kioskMode) {
+        if (!this.selfOrder.kioskMode || !this.selectedCategory) {
             return;
         }
 
@@ -158,7 +154,8 @@ export class ProductListPage extends Component {
     }
 
     get topSelectedCategory() {
-        return this.selectedCategory?.parent_id || this.selectedCategory;
+        const category = this.selectedCategory;
+        return category?.parent_id?.self_order_available ? category.parent_id : category;
     }
 
     get selectedCategory() {
@@ -174,17 +171,20 @@ export class ProductListPage extends Component {
         if (!currentCategory) {
             return [];
         }
-        if (currentCategory.parent_id) {
-            return currentCategory.parent_id.child_ids;
-        }
-        return currentCategory.child_ids || [];
+        return (this.topSelectedCategory.child_ids || []).filter((category) =>
+            this.selfOrder.isCategoryAvailable(category.id)
+        );
+    }
+
+    get topCategories() {
+        return this.selfOrder.topCategories;
     }
 
     get productCategories() {
         if (this.selfOrder.kioskMode) {
-            return [this.selectedCategory];
+            return this.selectedCategory ? [this.selectedCategory] : [];
         }
-        return this.state.topCategories;
+        return this.topCategories;
     }
 
     getProducts(category) {

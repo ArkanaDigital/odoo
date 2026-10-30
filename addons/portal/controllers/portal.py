@@ -200,7 +200,7 @@ class CustomerPortal(Controller):
         """
         return False, False, False
 
-    @route(['/my/counters'], type='jsonrpc', auth="user", website=True, readonly=True)
+    @route(['/my/counters'], type='jsonrpc', auth="user", website=True, replica=True)
     def counters(self, counters, **kw):
         """Compute each badges record count for /my & /my/home routes template rendering.
 
@@ -261,7 +261,7 @@ class CustomerPortal(Controller):
             'page_name': 'my_details',
         }
 
-    @route('/my/addresses', type='http', auth='user', readonly=True, website=True)
+    @route('/my/addresses', type='http', auth='user', replica=True, website=True)
     def my_addresses(self, **query_params):
         """Display the user's addresses."""
         partner_sudo = request.env.user.partner_id  # env.user is always sudoed
@@ -330,7 +330,7 @@ class CustomerPortal(Controller):
         auth='user',
         website=True,
         sitemap=False,
-        readonly=True,
+        replica=True,
     )
     def portal_address(
         self, partner_id=None, address_type='billing', use_delivery_as_billing=False, **query_params
@@ -388,17 +388,23 @@ class CustomerPortal(Controller):
         has_confirmed_documents = current_partner and current_partner._has_confirmed_documents()
 
         if partner_sudo:
-            # Existing address, use the values defined on the address
-            state_id = partner_sudo.state_id.id
+            # When editing an existing address, display this record values, even if empty
             country_sudo = partner_sudo.country_id
+            state_sudo = partner_sudo.state_id
+            city_sudo = partner_sudo.city_id
+            email = partner_sudo.email
+            phone = partner_sudo.phone
             is_main_address = partner_sudo == current_partner
             is_main_contact = (
                 is_main_address and current_partner._is_main_contact()
             )
         else:
-            # New address, take default values from current partner
+            # When creating a new address, use existing customer values as default values
             country_sudo = current_partner.country_id or self._get_default_country(**kwargs)
-            state_id = current_partner.state_id.id
+            state_sudo = current_partner.state_id
+            city_sudo = current_partner.city_id
+            email = current_partner.email
+            phone = current_partner.phone
 
             # Commercial fields can only be updated on main customer address, so they can only be
             # updated on new addresses if it's gonna be the customer main address
@@ -421,7 +427,17 @@ class CustomerPortal(Controller):
                 " account. Please contact us directly for this operation."
             )
 
-        address_fields = (country_sudo and country_sudo.get_address_fields()) or ['city', 'zip']
+        cities_data = (
+            country_sudo._enforce_city_choice()
+            and country_sudo._get_cities_data(state_sudo.id)
+        )
+        can_edit_country = not partner_sudo.country_id or partner_sudo._can_edit_country()
+        country_warning = ""
+        if not can_edit_country:
+            country_warning = self.env._(
+                "Changing country is not allowed once document(s) have been issued for your"
+                " account. Please contact us directly for this operation."
+            )
 
         return {
             'partner_sudo': partner_sudo,  # If set, customer is editing an existing address
@@ -429,29 +445,38 @@ class CustomerPortal(Controller):
             'current_partner': current_partner,
             'commercial_partner': commercial_partner,
             'is_main_address': is_main_address,
+            'discard_url': callback or '/my/addresses',
             'address_type': address_type,
             'can_edit_commercial_fields': not has_confirmed_documents and is_main_contact,
             'commercial_address_update_url': commercial_address_update_url,
             'commercial_fields_warning': commercial_fields_warning,
-            'can_edit_country': not partner_sudo.country_id or partner_sudo._can_edit_country(),
+            'country_warning': country_warning,
             'callback': callback,
-            'country': country_sudo,
-            'countries': request.env['res.country'].sudo().search([]),
             'is_used_as_billing': address_type == 'billing' or use_delivery_as_billing,
-            'use_delivery_as_billing': use_delivery_as_billing,
-            'state_id': state_id,
-            'country_states': country_sudo.state_ids,
-            'zip_before_city': (
-                'zip' in address_fields
-                and address_fields.index('zip') < address_fields.index('city')
+            'required_fields': self.env['res.partner']._get_required_address_fields(
+                address_type, country_sudo,
+                use_delivery_as_billing=use_delivery_as_billing, **kwargs
             ),
-            'vat_label': request.env._("VAT"),
+            'use_delivery_as_billing': use_delivery_as_billing,
+            'zip_applicability': country_sudo.zip_applicability,
+            'zip_before_city': country_sudo._is_zip_before_city(),
             'vat_warning': vat_warning,
-            'discard_url': callback or '/my/addresses',
-        }
+            'vat_label': country_sudo._get_vat_label(),
 
-    def _is_used_as_billing(self, address_type, **kwargs):
-        return address_type == 'billing'
+            # Form values
+            'email': email,
+            'phone': phone,
+            'phone_code': f'+{country_sudo.phone_code}' if country_sudo.phone_code != 0 else '',
+            'country': country_sudo,
+            'countries': (
+                request.env['res.country'].sudo().search([])
+                if can_edit_country else country_sudo
+            ),
+            'state': state_sudo,
+            'states': country_sudo.state_ids,
+            'city': city_sudo,
+            'cities_data': cities_data,
+        }
 
     def _get_default_country(self, **kwargs):
         """ Get country of current user country as default. """
@@ -579,7 +604,10 @@ class CustomerPortal(Controller):
                     parent_company = partner_sudo.commercial_partner_id
                     if parent_company.name != parent_name_value:
                         parent_company.name = parent_name_value
-            elif partner_sudo.is_company:
+            elif (
+                not partner_sudo.parent_id
+                and partner_sudo.child_ids.filtered(lambda c: c.type == "contact")
+            ):
                 if partner_sudo.name != parent_name_value:
                     partner_sudo.name = parent_name_value
             else:  # Current partner is an individual with no parent
@@ -627,14 +655,21 @@ class CustomerPortal(Controller):
                     address_values[key] = field.convert_to_cache(value, ResPartner)
             elif (key_upper := key.upper()) in all_additional_identifiers:
                 # Set the additional identifier values in the `additional_identifiers` field of the
-                # address values.
-                address_values.setdefault("additional_identifiers", {})
-                address_values["additional_identifiers"][key_upper] = value
+                # address values. Empty values are dropped, which clears them on the partner.
+                address_values.setdefault('additional_identifiers', {})
+                if value:
+                    address_values['additional_identifiers'][key_upper] = value
             elif value:  # The value cannot be saved on the `res.partner` model.
                 extra_form_data[key] = value
 
         if 'zipcode' in form_data and not form_data.get('zip'):
             address_values['zip'] = form_data.pop('zipcode', '')
+
+        country_id = address_values.get("country_id")
+        country_sudo = request.env['res.country'].browse(country_id)
+        if country_sudo._enforce_city_choice() and form_data.get("city_id"):
+            if city := request.env["res.city"].browse(int(form_data["city_id"])):
+                address_values["city"] = city.name
 
         return address_values, extra_form_data
 
@@ -762,7 +797,7 @@ class CustomerPortal(Controller):
                     if is_main_contact and not bool(partner_sudo_value):
                         continue
                     if partner_sudo_value != value and (bool(partner_sudo_value) or bool(value)):
-                        invalid_fields.add(additional_identifier.lower())
+                        invalid_fields.add(additional_identifier)
                         error_messages.append(get_commercial_field_error_msg(additional_identifier))
                     else:
                         address_values["additional_identifiers"].pop(additional_identifier, None)
@@ -804,7 +839,7 @@ class CustomerPortal(Controller):
                 additional_identifier, value
             )
             if not validation_vals["valid"]:
-                invalid_fields.add(additional_identifier.lower())
+                invalid_fields.add(additional_identifier)
                 identifier_label = self.env["res.partner"]._get_identifier_label(additional_identifier)
                 error_messages.append(
                     validation_error_message(
@@ -820,19 +855,14 @@ class CustomerPortal(Controller):
         # Complete the set of required fields based on the address type.
         country_id = address_values.get('country_id')
         country = request.env['res.country'].browse(country_id)
-        if address_type == 'delivery' or use_delivery_as_billing:
-            required_field_set |= self.env["res.partner"]._get_mandatory_delivery_address_fields(
-                country, **kwargs
-            )
-        if address_type == 'billing' or use_delivery_as_billing:
-            required_field_set |= self.env["res.partner"]._get_mandatory_billing_address_fields(
-                country, **kwargs
-            )
-            if not is_main_contact:
-                commercial_fields = ResPartnerSudo._commercial_fields()
-                for fname in commercial_fields:
-                    if fname in required_field_set and fname not in address_values:
-                        required_field_set.remove(fname)
+        required_field_set |= self.env["res.partner"]._get_required_address_fields(
+            address_type, country, use_delivery_as_billing=use_delivery_as_billing, **kwargs
+        )
+        if (address_type == "billing" or use_delivery_as_billing) and not is_main_contact:
+            commercial_fields = ResPartnerSudo._commercial_fields()
+            for fname in commercial_fields:
+                if fname in required_field_set and fname not in address_values:
+                    required_field_set.remove(fname)
 
         address_fields = self.env["res.partner"]._get_mandatory_address_fields(country, **kwargs)
         if any(address_values.get(fname) for fname in address_fields):
@@ -865,9 +895,9 @@ class CustomerPortal(Controller):
         :return: None
         """
         address_values['lang'] = request.lang.code
-        partner = request.env['res.partner']._get_current_partner(**kwargs)
-        address_values['company_id'] = partner.company_id.id
-        commercial_partner = partner.commercial_partner_id
+        partner_sudo = request.env['res.partner']._get_current_partner(**kwargs)
+        address_values['company_id'] = partner_sudo.company_id.id
+        commercial_partner = partner_sudo.commercial_partner_id
         if use_delivery_as_billing:
             address_values['type'] = 'other'
         elif address_type == 'billing':
@@ -902,28 +932,53 @@ class CustomerPortal(Controller):
         auth='public',
         methods=['POST'],
         website=True,
-        readonly=True,
+        replica=True,
     )
-    def portal_address_country_info(self, country, address_type, **kw):
-        address_fields = country.get_address_fields()
-        if address_type == 'billing':
-            required_fields = self.env["res.partner"]._get_mandatory_billing_address_fields(
-                country, **kw
-            )
-        else:
-            required_fields = self.env["res.partner"]._get_mandatory_delivery_address_fields(
-                country, **kw
-            )
+    def portal_address_country_info(self, country, address_type, **kwargs):
+        address_fields = country._get_address_fields()
+        required_fields = self.env['res.partner']._get_required_address_fields(
+            address_type, country, **kwargs
+        )
+        state_data = self.env['res.country.state'].sudo().search_read(
+            [('country_id', '=', country.id)],
+            ['id', 'name', 'code'],
+        )
+        cities_data = []
+        if 'city_id' in required_fields and not country.state_required:
+            # If country enforces states, cities will be fetched through the state_info route
+            # depending on the chosen state.
+            cities_data = country._get_cities_data()
+
         return {
-            'fields': address_fields,
-            'zip_before_city': (
-                'zip' in address_fields
-                and address_fields.index('zip') < address_fields.index('city')
-            ),
-            'states': [(st.id, st.name, st.code) for st in country.sudo().state_ids],
-            'phone_code': country.phone_code,
+            'address_fields': address_fields,
             'required_fields': list(required_fields),
+            'zip_before_city': country._is_zip_before_city(default_address_fields=address_fields),
+            'selection': {
+                'state_id': state_data,
+                'city_id': cities_data,
+            },
+            'phone_code': f'+{country.phone_code}' if country.phone_code != 0 else '',
+            'vat_label': country._get_vat_label(),
         }
+
+    @route(
+        '/my/address/state_info/',
+        type='jsonrpc',
+        auth='public',
+        methods=['POST'],
+        website=True,
+        replica=True,
+    )
+    def portal_address_state_info(self, country_id, state_id=False, **kw):
+        """Return the cities of the selected state, or all cities of the country when no state is
+        provided"""
+        country_sudo = self.env['res.country'].browse(country_id).sudo()
+        if country_sudo._enforce_city_choice():
+            return {
+                'cities': country_sudo._get_cities_data(state_id=state_id),
+            }
+
+        return {}
 
     @route('/my/address/archive', type='jsonrpc', auth='user', website=True, methods=['POST'])
     def address_archive(self, partner_id):

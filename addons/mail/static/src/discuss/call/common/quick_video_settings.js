@@ -2,9 +2,10 @@ import { Component } from "@odoo/owl";
 
 import { CallSettingsDialog } from "@mail/discuss/call/common/call_settings";
 import { DeviceSelect } from "@mail/discuss/call/common/device_select";
+import { useAncestors } from "@mail/core/common/ancestor_plugin";
 
 import { useService } from "@web/core/utils/hooks";
-import { isBrowserSafari } from "@web/core/browser/feature_detection";
+import { isBrowserSafari, isMobileOS } from "@web/core/browser/feature_detection";
 
 export class QuickVideoSettings extends Component {
     static template = "discuss.QuickVideoSettings";
@@ -12,9 +13,15 @@ export class QuickVideoSettings extends Component {
 
     setup() {
         super.setup();
+        this.ancestors = useAncestors();
         this.store = useService("mail.store");
+        this.rtc = useService("discuss.rtc");
         this.dialogService = useService("dialog");
         this.isBrowserSafari = isBrowserSafari;
+    }
+
+    get canSwitchCamera() {
+        return isMobileOS() && Boolean(this.rtc.selfSession?.is_camera_on);
     }
 
     onClickVideoSettings() {

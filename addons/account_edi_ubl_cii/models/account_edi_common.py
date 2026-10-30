@@ -1,13 +1,12 @@
+import logging
 import re
 
-from copy import deepcopy
-from datetime import datetime
 from collections import defaultdict
+from copy import deepcopy
 from markupsafe import Markup
-from lxml import etree
+from datetime import datetime
 
-from odoo import _, api, models
-from odoo.addons.account.tools import dict_to_xml
+from odoo import _, api, fields, models, Command
 from odoo.exceptions import UserError, ValidationError
 from odoo.fields import Domain
 from odoo.tools import float_compare, float_is_zero, float_repr, html2plaintext
@@ -17,6 +16,8 @@ from odoo.tools.translate import _lt
 from odoo.tools.xml_utils import find_xml_value
 
 from odoo.addons.base.models.res_country import EUROPEAN_ECONOMIC_AREA_COUNTRY_CODES
+
+_logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------------
 # MAPPING FOR TAX EXEMPTION
@@ -186,13 +187,6 @@ class AccountEdiCommon(models.AbstractModel):
     # HELPERS
     # -------------------------------------------------------------------------
 
-    def _vals_to_etree(self, vals):
-        document_node = vals['document_node']
-        return dict_to_xml(document_node, nsmap=document_node['_nsmap'], template=document_node['_template'])
-
-    def _etree_to_string(self, tree):
-        return etree.tostring(tree, xml_declaration=True, encoding='UTF-8')
-
     def _define_document_type(self, vals, document_type):
         vals['_document_type'] = {
             'name': document_type,
@@ -245,6 +239,29 @@ class AccountEdiCommon(models.AbstractModel):
                 (co_contractant := self.env['account.chart.template'].ref('fiscal_position_template_4', raise_if_not_found=False)) and
                 invoice.fiscal_position_id == co_contractant
         )
+
+    def _turn_price_unit_positive(self, vals):
+        """
+        Turn the unit_price positive and the quantity negative of the base_line when negative unit_price.
+        [BR-27]-The Item net price (BT-146) shall NOT be negative.
+        [BR-28]-The Item gross price (BT-148) shall NOT be negative.
+
+        :param vals: Some custom data.
+        """
+        for base_line in vals['base_lines']:
+            if base_line['price_unit'] < 0.0:
+                base_line['quantity'] *= -1
+                base_line['price_unit'] *= -1
+
+    @api.model
+    def _vat_is_equal(self, partner_vat, other_vat, country=False):
+        partner_vat = partner_vat.replace(' ', '').upper()
+        vat_to_compare = other_vat.replace(' ', '').replace('.', '').upper()
+        if country and country.code == 'CH':
+            partner_vat = re.sub(r"(TVA|IVA|MWST)?$", "", partner_vat.replace('.', '').replace('-', ''))
+            vat_to_compare = re.sub(r"(TVA|IVA|MWST)?$", "", vat_to_compare.replace('-', ''))
+        return partner_vat == vat_to_compare
+
     # -------------------------------------------------------------------------
     # TAXES
     # -------------------------------------------------------------------------
@@ -303,7 +320,7 @@ class AccountEdiCommon(models.AbstractModel):
         supplier_in_eea = supplier.country_id.code in EUROPEAN_ECONOMIC_AREA_COUNTRY_CODES
         customer_in_eea = customer.country_id.code in EUROPEAN_ECONOMIC_AREA_COUNTRY_CODES
 
-        if (supplier_in_eea or customer_in_eea) and supplier.vat:
+        if (supplier_in_eea or customer_in_eea) and supplier.has_vat:
             if tax.amount != 0 and not tax.has_negative_factor:
                 # Special case: Purchase reverse-charge taxes for self-billed invoices.
                 # See explanation above.
@@ -548,6 +565,13 @@ class AccountEdiCommon(models.AbstractModel):
         return {k: flattened for k, v in new_constraints.items() if (flattened := flatten_dict(v))}
 
     # -------------------------------------------------------------------------
+    # Export invoice
+    # -------------------------------------------------------------------------
+
+    def _get_default_notes(self, vals):
+        return {}
+
+    # -------------------------------------------------------------------------
     # Import invoice
     # -------------------------------------------------------------------------
 
@@ -632,10 +656,9 @@ class AccountEdiCommon(models.AbstractModel):
             attachment_data = document.find('{*}Attachment/{*}EmbeddedDocumentBinaryObject')
             if attachment_name is not None and attachment_data is not None:
                 mimetype = attachment_data.attrib.get('mimeCode')
-                if not (extension := SUPPORTED_FILE_TYPES.get(mimetype)):
-                    continue
                 # Strip internal newlines/spaces to prevent 'raw' field validation failure on create
-                text = ''.join((attachment_data.text or '').split())
+                if not (extension := SUPPORTED_FILE_TYPES.get(mimetype)) or not (text := ''.join((attachment_data.text or '').split())):
+                    continue
                 # Normalize the name of the file : some e-fff emitters put the full path of the file
                 # (Windows or Linux style) and/or the name of the xml instead of the pdf.
                 # Get only the filename with the right extension.
@@ -666,6 +689,15 @@ class AccountEdiCommon(models.AbstractModel):
         if routing_identifier:
             scheme, _sep, endpoint = routing_identifier.partition(':')
             domain = [('routing_scheme', '=', scheme), ('routing_endpoint', '=', endpoint)]
+        if account_numbers := kwargs.get('bank_details'):
+            bank_domain = [
+                ('bank_ids', 'any', [
+                    '&',
+                    ('account_number', 'in', account_numbers),
+                    ('allow_out_payment', '=', True),
+                ]),
+            ]
+            domain = Domain.OR([domain, bank_domain])
         partner = self.env['res.partner'] \
             .with_company(company_id) \
             ._retrieve_partner(name=name, phone=phone, email=email, vat=vat, additional_identifiers=additional_identifiers, domain=domain)
@@ -676,6 +708,12 @@ class AccountEdiCommon(models.AbstractModel):
             [('country_id', '=', country.id), ('code', '=', state_code)],
             limit=1,
         ) if state_code and country else self.env['res.country.state']
+
+        vat_mismatch = False
+        if vat and partner.vat and not self._vat_is_equal(partner.vat, vat, country):
+            vat_mismatch = True
+            partner = self.env['res.partner']
+
         if not partner and name and vat:
             partner_vals = {'name': name, 'email': email, 'phone': phone, 'is_company': True}
             if routing_identifier:
@@ -683,12 +721,15 @@ class AccountEdiCommon(models.AbstractModel):
             if additional_identifiers:
                 partner_vals['additional_identifiers'] = additional_identifiers
             partner = self.env['res.partner'].create(partner_vals)
-            if vat:
-                partner.vat, _country_code = self.env['res.partner']._run_vat_checks(country, vat, validation='setnull')
-            logs.append(_("Could not retrieve a partner corresponding to '%s'. A new partner was created.", name))
+            if vat_mismatch:
+                logs.append(_("Could not retrieve a partner corresponding to '%s' with the same VAT. A new partner was created.", name))
+            else:
+                logs.append(_("Could not retrieve a partner corresponding to '%s'. A new partner was created.", name))
         elif not partner and not logs:
             logs.append(_("Could not retrieve partner with details: Name: %(name)s, Vat: %(vat)s, Phone: %(phone)s, Email: %(email)s",
                   name=name, vat=vat, phone=phone, email=email))
+        if vat and not partner.vat:
+            partner.vat, _country_code = self.env['res.partner']._run_vat_checks(country, vat, validation='setnull')
         if not partner.country_id and not partner.street and not partner.street2 and not partner.city and not partner.zip and not partner.state_id:
             partner.write({
                 'country_id': country.id,
@@ -817,7 +858,7 @@ class AccountEdiCommon(models.AbstractModel):
             lines_values += self._retrieve_line_charges(record, line_values, line_values['tax_ids'])
             if isinstance(record, self.env.registry['account.move']) and hasattr(self.env['account.move.line'], '_get_predicted_values'):
                 for fname, value in self.env['account.move.line']._get_predicted_values(
-                    line_values['name'],
+                    self._get_line_label(line_values),
                     move=record,
                     line_domain=[('tax_ids', '=', line_values['tax_ids'][0])] if len(line_values['tax_ids']) == 1 else [],
                 ).items():
@@ -871,11 +912,10 @@ class AccountEdiCommon(models.AbstractModel):
             if start_date_node is not None and end_date_node is not None:  # there is a constraint forcing none or the two to be set
                 start_date = datetime.strptime(start_date_node.text.strip(), xpath_dict['date_format'])
                 end_date = datetime.strptime(end_date_node.text.strip(), xpath_dict['date_format'])
-            deferred_values = {
-                'deferred_start_date': start_date,
-                'deferred_end_date': end_date,
-            }
-
+                deferred_values = {
+                    'deferred_start_date': start_date,
+                    'deferred_end_date': end_date,
+                }
         line_vals = self._retrieve_line_vals(record, tree, document_type, qty_factor)
         if not line_vals.get('price_subtotal'):
             return None
@@ -1049,9 +1089,8 @@ class AccountEdiCommon(models.AbstractModel):
             elif delivered_qty == 0:
                 quantity = price_subtotal / price_unit
 
-        return {
+        line_vals = {
             # vals to be written on the document line
-            'name': self._find_value(xpath_dict['name'], tree),
             'product_id': product.id,
             'product_uom_id': product_uom.id,
             'price_unit': price_unit,
@@ -1061,6 +1100,19 @@ class AccountEdiCommon(models.AbstractModel):
             'charges': charges,  # see `_retrieve_line_charges`
             'price_subtotal': price_subtotal,
         }
+
+        name = self._find_value(xpath_dict['name'], tree) or ''
+        if product:
+            name = re.sub(rf"^{re.escape(product.name)}($|\n)", "", name)
+
+        if name:
+            line_vals['name'] = name
+
+        return line_vals
+
+    def _get_line_label(self, line_values):
+        product = self.env['product.product'].browse(line_values.get('product_id'))
+        return ' '.join(filter(None, [product.name, line_values.get('name')]))
 
     def _import_product(self, partner, **product_vals):
         return self.env['product.product']._retrieve_product(**product_vals)
@@ -1196,6 +1248,7 @@ class AccountEdiCommon(models.AbstractModel):
         fpos_domain = [('fiscal_position_ids', '=', record.fiscal_position_id.id)]
         if record.fiscal_position_id.is_domestic:
             fpos_domain = ['|', ('fiscal_position_ids', '=', False)] + fpos_domain
+        line_label = self._get_line_label(line_values)
         for tax_node in line_values.pop('tax_nodes'):
             amount = float(tax_node.text)
             domain = [
@@ -1206,7 +1259,7 @@ class AccountEdiCommon(models.AbstractModel):
             ]
             tax = self.env['account.tax']
             if hasattr(record, '_get_specific_tax'):
-                tax = record._get_specific_tax(line_values['name'], domain).filtered_domain(domain)[:1]
+                tax = record._get_specific_tax(line_label, domain).filtered_domain(domain)[:1]
             if tax_exigibility is not None:
                 if not tax:
                     tax = self.env['account.tax'].search(domain + fpos_domain + [('price_include', '=', False), ('tax_exigibility', '=', tax_exigibility)], limit=1)
@@ -1220,7 +1273,7 @@ class AccountEdiCommon(models.AbstractModel):
                     logs.append(
                         _("Tax with matching exigibility could not be retrieved: '%(exigibility)s' for line '%(line)s'.",
                         exigibility=tax_exigibility,
-                        line=line_values['name']),
+                        line=line_label),
                     )
             if not tax:
                 tax = self.env['account.tax'].search(domain + fpos_domain + [('price_include', '=', False)], limit=1)
@@ -1235,7 +1288,7 @@ class AccountEdiCommon(models.AbstractModel):
                 logs.append(
                     _("Could not retrieve the tax: %(amount)s %% for line '%(line)s'.",
                     amount=amount,
-                    line=line_values['name']),
+                    line=line_label),
                 )
             else:
                 taxes.append(tax.id)
@@ -1283,3 +1336,704 @@ class AccountEdiCommon(models.AbstractModel):
 
     def _correct_invoice_tax_amount(self, tree, invoice):
         pass  # To be implemented by the format if needed
+
+    def _import_init_collected_values(self, invoice, file_data):
+        tree = file_data['xml_tree']
+        company = invoice.company_id
+
+        return {
+            'invoice': invoice,
+            'company': company,
+            'odoo_document_type': 'sale' if invoice.journal_id.type == 'sale' else 'purchase',
+            'tree': tree,
+            'file_data': file_data,
+            'logs': [],
+            'to_write': {},
+        }
+
+    def _import_invoice_document_sign(self, collected_values):
+        tree = collected_values['tree']
+        suffix_invoice_type, document_sign = self._get_import_document_amount_sign(tree)
+        collected_values['is_refund'] = suffix_invoice_type == 'refund'
+        collected_values['file_document_sign'] = document_sign or 1
+
+    def _import_invoice_update_move_type(self, collected_values):
+        invoice = collected_values['invoice']
+        odoo_document_type = collected_values['odoo_document_type']
+        is_refund = collected_values['is_refund']
+        logs = collected_values['logs']
+
+        prefix = 'out' if odoo_document_type == 'sale' else 'in'
+        suffix = 'refund' if is_refund else 'invoice'
+        move_type = f'{prefix}_{suffix}'
+        if invoice.move_type != move_type:
+            invoice.move_type = move_type
+
+            if is_refund:
+                logs.append(self.env._("The invoice has been converted into a credit note and the quantities have been reverted."))
+
+    def _import_retrieve_customer(self, collected_values):
+        company = collected_values['company']
+        customer_values = collected_values['customer_values']
+        customer_values['company'] = company
+        if collected_values['invoice'].move_type in ('out_refund', 'in_invoice'):
+            customer_values['account_numbers'] = collected_values.get('partner_bank_values', {}).get('account_numbers')
+        self.env['res.partner']._import_retrieve_customer(
+            search_plan=self._import_retrieve_customer_search_plan(collected_values),
+            company=company,
+            customer_values_list=[customer_values],
+        )
+        if partner := customer_values.get('customer'):
+            collected_values['to_write']['partner_id'] = partner.id
+
+    def _import_retrieve_country(self, collected_values):
+        customer_values = collected_values['customer_values']
+        country_code = customer_values.get('country_code')
+        if not country_code:
+            return None
+
+        if country_code == 'GB':
+            # While the code is gb, the xml_id is uk
+            country_code = 'UK'
+        return self.env.ref(f'base.{country_code.lower()}', raise_if_not_found=False)
+
+    def _import_retrieve_customer_search_plan(self, collected_values):
+        ResPartner = self.env['res.partner']
+        return [
+            ResPartner._import_retrieve_customer_from_vat,
+            ResPartner._import_retrieve_customer_from_additional_identifiers,
+            ResPartner._import_retrieve_customer_from_routing_identifier,
+            ResPartner._import_retrieve_customer_from_email,
+            ResPartner._import_retrieve_customer_from_phone,
+            ResPartner._import_retrieve_customer_from_name,
+        ]
+
+    def _check_customer_vat_match(self, customer, vat, collected_values):
+        """
+        Compare the VAT from an EDI document against a partner's stored VAT,
+        with country-specific normalization where needed.
+        Should stay consistent with `_get_country_specific_vat_variants`.
+        """
+        country = self._import_retrieve_country(collected_values)
+        return self._vat_is_equal(customer.vat, vat, country)
+
+    def _import_create_missing_customer(self, collected_values):
+        customer_values = collected_values['customer_values']
+        logs = collected_values['logs']
+        customer = customer_values.get('customer')
+
+        name = customer_values.get('name')
+        vat = customer_values.get('vat')
+        if not name or not vat:
+            return
+
+        vat_mismatch = False
+        if customer:
+            if not customer.vat:
+                country = self._import_retrieve_country(collected_values)
+                customer.vat, _country_code = self.env['res.partner']._run_vat_checks(country, vat, validation='setnull')
+                return
+            if self._check_customer_vat_match(customer, vat, collected_values):
+                return
+            vat_mismatch = True
+
+        partner_create_values = self._import_prepare_missing_customer_create_values(collected_values)
+        customer = self.env['res.partner'].create(partner_create_values)
+        if vat_mismatch:
+            logs.append(_("Could not retrieve a partner corresponding to '%s' with the same VAT. A new partner was created.", name))
+        else:
+            logs.append(_("Could not retrieve a partner corresponding to '%s'. A new partner was created.", name))
+        customer_values['customer'] = customer
+        collected_values['to_write']['partner_id'] = customer.id
+
+    def _import_prepare_missing_customer_create_values(self, collected_values):
+        customer_values = collected_values['customer_values']
+        partner_create_values = {
+            'is_company': True,
+        }
+        for key in ('phone', 'name', 'email', 'street', 'street2', 'zip', 'city', 'routing_scheme', 'routing_endpoint'):
+            if value := customer_values.get(key):
+                partner_create_values[key] = value
+
+        # The additional identifiers and routing endpoint come from an external
+        # file: keep only the values that validate, so create() does not raise
+        if identifiers := customer_values.get('additional_identifiers'):
+            valid_identifiers = {
+                key: value
+                for key, value in identifiers.items()
+                if self.env['res.partner']._validate_identifier(key, value)['valid']
+            }
+            if valid_identifiers:
+                partner_create_values['additional_identifiers'] = valid_identifiers
+
+        if (scheme := customer_values.get('routing_scheme')) and (endpoint := customer_values.get('routing_endpoint')):
+            result = self.env['res.partner']._validate_identifier_by_scheme(scheme, endpoint)
+            if result['valid']:
+                partner_create_values['routing_scheme'] = scheme
+                partner_create_values['routing_endpoint'] = result['value']
+
+        country = self._import_retrieve_country(collected_values)
+        if country:
+            partner_create_values['country_id'] = country.id
+        if vat := customer_values.get('vat'):
+            partner_create_values['vat'], _country_code = self.env['res.partner']._run_vat_checks(country, vat, validation='setnull')
+        return partner_create_values
+
+    def _import_invoice_add_currency(self, collected_values):
+        currency_values = collected_values['currency_values']
+        logs = collected_values['logs']
+        company = collected_values['company']
+        currency = company.currency_id
+        if currency_code := currency_values['currency_code']:
+            currency = currency.with_context(active_test=False).search([('name', '=', currency_code)], limit=1)
+            if currency:
+                if not currency.active:
+                    logs.append(self.env._("The currency '%s' is not active.", currency.name))
+            else:
+                logs.append(self.env._(
+                    "Could not retrieve currency: %s. Did you enable the multicurrency option "
+                    "and activate the currency?",
+                    currency_code,
+                ))
+
+        currency_values['currency'] = currency
+        if invoice_date := collected_values['to_write'].get('invoice_date'):
+            currency_date = invoice_date
+        else:
+            currency_date = fields.Date.context_today(self)
+        currency_values['rate'] = currency._get_conversion_rate(
+            from_currency=company.currency_id,
+            to_currency=currency,
+            company=company,
+            date=currency_date,
+        )
+
+        collected_values['to_write']['currency_id'] = currency.id
+
+    def _import_retrieve_partner_bank(self, collected_values):
+        company = collected_values['company']
+        move_type = collected_values['invoice'].move_type
+        if move_type in ('out_refund', 'in_invoice'):
+            partner = collected_values.get('customer_values', {}).get('customer')
+        elif move_type in ('out_invoice', 'in_refund'):
+            partner = company.partner_id
+        else:
+            return
+        if not partner:
+            return
+
+        partner_bank_values = collected_values['partner_bank_values']
+        account_numbers = partner_bank_values['account_numbers']
+        logs = collected_values['logs']
+        partner_banks = self.env['res.partner.bank']
+        for account_number in account_numbers:
+            try:
+                partner_banks += self.env['res.partner.bank']._find_or_create_bank_account(
+                    account_number=account_number,
+                    partner=partner,
+                    company=company,
+                )
+            except UserError as e:
+                logs.append(self.env._("The bank account couldn't be fetched: %s", str(e)))
+
+        partner_bank_values['partner_banks'] = partner_banks
+        if partner_banks:
+            collected_values['to_write']['partner_bank_id'] = partner_banks.sorted(lambda bank: not bank.allow_out_payment)[:1].id
+
+    def _import_invoice_predict_values(self, collected_values):
+        if (
+            self.module_installed('account_accountant')
+            and (partner := collected_values.get('customer_values', {}).get('customer'))
+        ):
+            for line_collected_values in collected_values['lines_collected_values']:
+                taxes_values = line_collected_values['taxes_values']
+                line_domain = []
+                if len(taxes_values) == 1:
+                    tax_domain = [
+                        ('amount_type', '=', taxes_values[0]['amount_type']),
+                        ('type_tax_use', '=', taxes_values[0]['type_tax_use']),
+                    ]
+                    if taxes_values[0]['amount'] or taxes_values[0].get('ubl_cii_tax_category_code') != 'AE':
+                        tax_domain.append(('amount', '=', taxes_values[0]['amount']))
+                    else:
+                        # Reverse charge taxes can be reported as 0% in the document even though
+                        # the tax itself isn't, so ignore the amount and rely on the category code.
+                        tax_domain.append(('ubl_cii_tax_category_code', '=', 'AE'))
+                    line_domain = [('tax_ids', 'any', tax_domain)]
+
+                line_collected_values['predicted_vals'] = self.env['account.move.line']._get_predicted_values(
+                    name=line_collected_values['name'],
+                    move=self.env['account.move'].new({
+                        'move_type': collected_values['invoice'].move_type,
+                        'journal_id': collected_values['invoice'].journal_id,
+                        'partner_id': partner,
+                    }),
+                    line_domain=line_domain,
+                )
+
+    def _import_retrieve_products_search_plan(self, collected_values):
+        ProductProduct = self.env['product.product']
+        return [method[1] for method in sorted(ProductProduct._get_retrieval_product_search_plan())]
+
+    def _import_invoice_retrieve_products(self, collected_values):
+        company = collected_values['company']
+        lines_collected_values = collected_values['lines_collected_values']
+        product_values_list = []
+        for line_collected_values in lines_collected_values:
+            product_values_list.append(line_collected_values['product_values'])
+            if product := line_collected_values.get('predicted_vals', {}).get('product_id'):
+                product_values_list[-1]['product'] = product
+
+        self.env['product.product']._import_retrieve_product(
+            search_plan=self._import_retrieve_products_search_plan(collected_values),
+            company=company,
+            product_values_list=product_values_list,
+        )
+
+        for line_collected_values in lines_collected_values:
+            to_write = line_collected_values['to_write']
+            if product := line_collected_values['product_values'].get('product'):
+                to_write['product_id'] = product.id
+                # If the imported description matches the product's name, omit the `name`
+                # so the default product description is used instead of storing a redundant value.
+                if to_write.get('name') == product.name:
+                    to_write.pop('name')
+                elif to_write.get('name', '').startswith(f"{product.name}\n"):
+                    to_write['name'] = to_write.get('name').removeprefix(f"{product.name}\n")
+            else:
+                to_write['product_id'] = False
+
+    def _import_invoice_retrieve_product_uoms(self, collected_values):
+        lines_collected_values = collected_values['lines_collected_values']
+        logs = collected_values['logs']
+        cache = {}
+        for line_collected_values in lines_collected_values:
+            product_uom_values = line_collected_values['product_uom_values']
+            uom_code = product_uom_values.get('uom_code')
+            to_write = line_collected_values['to_write']
+
+            to_write['product_uom_id'] = False
+            if uom_code:
+                if uom_code in cache:
+                    uom = cache[uom_code]
+                else:
+                    uom = cache[uom_code] = self.env['uom.uom']._get_uom_from_unece_code(uom_code)
+                if uom:
+                    product = line_collected_values['product_values'].get('product')
+                    product_uom = product.product_tmpl_id.uom_id if product else self.env['uom.uom']
+                    if product and not uom._has_common_reference(product_uom):
+                        logs.append(_(
+                            "The Unit of Measure '%(uom)s' (from unit code '%(code)s') was "
+                            "ignored on the line for product '%(product)s' because it is not "
+                            "compatible with the product's Unit of Measure '%(product_uom)s'. "
+                            "The UoM was left empty.",
+                            uom=uom.name,
+                            code=uom_code,
+                            product=product.display_name,
+                            product_uom=product_uom.name,
+                        ))
+                        product_uom_values['force_empty'] = True
+                        continue
+                    to_write['product_uom_id'] = uom.id
+                    product_uom_values['uom'] = uom
+
+    def _import_invoice_retrieve_accounts(self, collected_values):
+        lines_collected_values = collected_values['lines_collected_values']
+        for line_collected_values in lines_collected_values:
+            account_values = line_collected_values['account_values']
+            if account := line_collected_values.get('predicted_vals', {}).get('account_id'):
+                account_values['account'] = account
+
+    def _import_invoice_retrieve_analytic_distribution(self, collected_values):
+        lines_collected_values = collected_values['lines_collected_values']
+        for line_collected_values in lines_collected_values:
+            to_write = line_collected_values['to_write']
+            if analytic_distribution := line_collected_values.get('predicted_vals', {}).get('analytic_distribution'):
+                to_write['analytic_distribution'] = analytic_distribution
+
+    def _import_retrieve_taxes_search_plan(self, collected_values):
+        AccountTax = self.env['account.tax']
+        return [
+            AccountTax._import_retrieve_tax_from_account_default_tax,
+            AccountTax._import_retrieve_tax_from_predicted_tax,
+            AccountTax._import_retrieve_tax_from_price_include_exclude,
+            AccountTax._import_retrieve_tax_from_fixed_allowance_charge,
+        ]
+
+    def _import_invoice_retrieve_taxes(self, collected_values):
+        company = collected_values['company']
+        logs = collected_values['logs']
+        lines_collected_values = collected_values['lines_collected_values']
+        tax_values_list = list(collected_values.setdefault('taxes_values', {}))
+        for line_collected_values in lines_collected_values:
+            if account := line_collected_values['account_values'].get('account'):
+                for tax_values in line_collected_values['taxes_values']:
+                    tax_values['account'] = account
+            line_tax_values_list = line_collected_values['taxes_values']
+            if predicted_tax_ids := line_collected_values.get('predicted_vals', {}).get('tax_ids'):
+                for line_tax_values in line_tax_values_list:
+                    line_tax_values['predicted_tax_ids'] = predicted_tax_ids
+            tax_values_list.extend(line_tax_values_list)
+
+        for allowance_charge_value in collected_values['allowances'] + collected_values['charges']:
+            if tax_values := allowance_charge_value.get('taxes_values'):
+                tax_values_list.append(tax_values)
+
+        for tax_values in tax_values_list:
+            tax_values['extra_domain'] = [('price_include_override', 'in', [False, 'tax_excluded'])]
+
+        if customer := collected_values.get('customer_values', {}).get('customer'):
+            fiscal_position = self.env['account.move'].new({
+                'company_id': collected_values['company'].id,
+                'move_type': collected_values['invoice'].move_type,
+                'partner_id': customer.id,
+            }).fiscal_position_id
+            for tax_values in tax_values_list:
+                tax_values['fiscal_position'] = fiscal_position
+
+        self.env['account.tax']._import_retrieve_tax(
+            search_plan=self._import_retrieve_taxes_search_plan(collected_values),
+            company=company,
+            tax_values_list=tax_values_list,
+        )
+
+        for tax_values in collected_values['taxes_values']:
+            tax_key = tax_values.get('_tax_key')
+            if tax_key and (global_tax_values := collected_values['tax_total_values'].get(tax_key)):
+                global_tax_values['related_taxes_values'].append(tax_values)
+
+        # Taxes at the document line level.
+        for line_collected_values in lines_collected_values:
+            to_write = line_collected_values['to_write']
+            tax_ids_commands = to_write['tax_ids'] = [Command.set([])]
+            for tax_values in line_collected_values['taxes_values']:
+                if tax := tax_values.get('tax'):
+                    tax_ids_commands[0][2].append(tax.id)
+                elif reason := tax_values.get('name'):
+                    logs.append(self.env._(
+                        "Could not retrieve the tax: %(tax_percentage)s %% for line '%(line)s'.",
+                        tax_percentage=tax_values['amount'],
+                        line=reason,
+                    ))
+                else:
+                    logs.append(self.env._(
+                        "Could not retrieve the tax: %s for the document level allowance/charge.",
+                        tax_values['amount'],
+                    ))
+
+        # Taxes at the document level.
+        for tax_values in collected_values.get('taxes_values', []):
+            if tax_values.get('tax'):
+                continue
+
+            if reason := tax_values.get('name'):
+                logs.append(self.env._(
+                    "Could not retrieve the tax: %(tax_percentage)s %% for line '%(line)s'.",
+                    tax_percentage=tax_values['amount'],
+                    line=reason,
+                ))
+            else:
+                logs.append(self.env._(
+                    "Could not retrieve the tax: %s for the document level allowance/charge.",
+                    tax_values['amount'],
+                ))
+
+    def _import_invoice_get_default_base_line_kwargs(self, collected_values):
+        invoice = collected_values['invoice']
+
+        taxes = self.env['account.tax']
+        for tax_values in collected_values['taxes_values']:
+            if tax := tax_values.get('tax'):
+                taxes |= tax
+
+        base_line_kwargs = {
+            'sign': invoice.direction_sign,
+            'is_refund': invoice.move_type in ('out_refund', 'in_refund'),
+            'currency_id': collected_values['currency_values']['currency'],
+            'rate': collected_values['currency_values']['rate'],
+            'special_mode': 'total_excluded',
+            '_create_values': {},
+        }
+        if partner := collected_values['customer_values'].get('partner'):
+            base_line_kwargs['partner_id'] = partner
+
+        return base_line_kwargs
+
+    def _import_invoice_get_allowance_charge_line_kwargs(self, collected_values):
+        allowance_charge = collected_values['allowance_charge']
+        file_document_sign = collected_values['file_document_sign']
+        tax_values = allowance_charge.get('taxes_values')
+        multiplier_factor_numeric = allowance_charge['multiplier_factor_numeric']
+        amount = allowance_charge['amount']
+        reason = allowance_charge['reason']
+
+        charge_indicator = allowance_charge['charge_indicator']
+        if charge_indicator.lower() == 'true':
+            charge_indicator_sign = 1
+        else:
+            charge_indicator_sign = -1
+
+        if base_amount := allowance_charge.get('base_amount'):
+            price_unit = base_amount * charge_indicator_sign * file_document_sign
+            quantity = multiplier_factor_numeric / 100
+        else:
+            price_unit = amount * charge_indicator_sign * file_document_sign
+            quantity = 1
+
+        base_line_kwargs = {
+            **self._import_invoice_get_default_base_line_kwargs(collected_values),
+            'quantity': quantity,
+            'price_unit': price_unit,
+            'tax_ids': tax_values.get('tax') if tax_values else None,
+        }
+        base_line_kwargs['_create_values']['name'] = reason
+        return base_line_kwargs
+
+    def _import_invoice_line_get_product_base_line_kwargs(self, collected_values):
+        to_write = collected_values['to_write']
+
+        taxes = self.env['account.tax']
+        for tax_values in collected_values['taxes_values']:
+            if tax := tax_values.get('tax'):
+                taxes |= tax
+
+        base_line_kwargs = {
+            **self._import_invoice_get_default_base_line_kwargs(collected_values),
+            'quantity': to_write['quantity'],
+            'price_unit': to_write['price_unit'],
+            'discount': to_write['discount'],
+            'tax_ids': taxes,
+        }
+        if product := collected_values['product_values'].get('product'):
+            base_line_kwargs['product_id'] = product
+        if uom := collected_values['product_uom_values'].get('uom'):
+            base_line_kwargs['product_uom_id'] = uom
+        elif collected_values['product_uom_values'].get('force_empty'):
+            # Override the product_uom_id compute so the saved line keeps no UoM.
+            base_line_kwargs['_create_values']['product_uom_id'] = False
+        if account := collected_values['account_values'].get('account'):
+            base_line_kwargs['account_id'] = account
+
+        if name := to_write.get('name'):
+            base_line_kwargs['_create_values']['name'] = name
+        if analytic_distribution := to_write.get('analytic_distribution'):
+            base_line_kwargs['_create_values']['analytic_distribution'] = analytic_distribution
+        if vehicle_id := to_write.get('vehicle_id'):
+            base_line_kwargs['_create_values']['vehicle_id'] = vehicle_id
+        if deferred_start_date := to_write.get('deferred_start_date'):
+            base_line_kwargs['_create_values']['deferred_start_date'] = deferred_start_date
+        if deferred_end_date := to_write.get('deferred_end_date'):
+            base_line_kwargs['_create_values']['deferred_end_date'] = deferred_end_date
+
+        base_line_kwargs['_create_values'] = {
+            **base_line_kwargs['_create_values'],
+            **self._import_invoice_line_add_optional_fields(collected_values),
+        }
+        return base_line_kwargs
+
+    def _import_invoice_line_add_optional_fields(self, collected_values):
+        return {}
+
+    def _import_invoice_add_base_lines(self, collected_values):
+        AccountTax = self.env['account.tax']
+        base_lines = collected_values['base_lines'] = []
+        company = collected_values['company']
+        lines_collected_values = collected_values['lines_collected_values']
+
+        # Allowances / charges lines at document level.
+        for allowance_charge in collected_values['charges'] + collected_values['allowances']:
+            base_line_kwargs = self._import_invoice_get_allowance_charge_line_kwargs({
+                **collected_values,
+                'allowance_charge': allowance_charge,
+            })
+            base_lines.append(AccountTax._prepare_base_line_for_taxes_computation(
+                record=None,
+                **base_line_kwargs,
+            ))
+
+        for line_collected_values in lines_collected_values:
+            to_write = line_collected_values['to_write']
+
+            # Extract charges matched with a fixed tax.
+            for charge in line_collected_values['charges']:
+                attempt_tax_values = charge.get('attempt_tax_values')
+                if not attempt_tax_values or not attempt_tax_values.get('tax'):
+                    continue
+
+                # Suppose price_unit = 19, quantity = 10, discount = 10%
+                # for a total of 190 (before discount) and 171 (after discount).
+                # A charge of 25 is already accounted in 190 and we retrieve a fixed tax of 50 / 10 = 5.
+                # We need now to extract 25 from 190 as:
+                # price_subtotal_before = 171
+                # price_subtotal_after = 171 - 50 = 121
+                # price_unit = 19 - 5 = 14
+                # new_price_subtotal_before_discount = 140
+                # discount = (1 - (121 / 140)) * 100 = 13.5714286%
+                # That way, 14 * 10 * (1 - 0.135714286) = 121.
+                # The fix tax is giving an amount of 50.
+                # 121 + 50 = the original 171 we had at the beginning!
+                price_subtotal_before = to_write['price_unit'] * to_write['quantity'] * (1.0 - to_write['discount'] / 100.0)
+                price_subtotal_after = price_subtotal_before - charge['amount']
+                to_write['price_unit'] -= charge['amount'] / to_write['quantity']
+                new_price_subtotal_before_discount = to_write['price_unit'] * to_write['quantity']
+                to_write['discount'] = (1 - (price_subtotal_after / new_price_subtotal_before_discount)) * 100.0
+
+            # Product line.
+            base_line_kwargs = self._import_invoice_line_get_product_base_line_kwargs(line_collected_values)
+            base_lines.append(AccountTax._prepare_base_line_for_taxes_computation(
+                record=None,
+                **base_line_kwargs,
+            ))
+
+        AccountTax._add_tax_details_in_base_lines(base_lines, company)
+        AccountTax._round_base_lines_tax_details(base_lines, company)
+
+        # Remove lines having a zero amount.
+        collected_values['base_lines'] = [
+            base_line
+            for base_line in collected_values['base_lines']
+            if (not base_line['currency_id'].is_zero(base_line['tax_details']['total_included_currency']) or base_line.get('discount'))
+        ]
+
+    def _import_invoice_write_collected_values(self, collected_values):
+        invoice = collected_values['invoice']
+        base_lines = collected_values['base_lines']
+
+        to_write = collected_values['to_write']
+        invoice_line_ids = to_write['invoice_line_ids'] = []
+        for base_line in base_lines:
+            create_values = {
+                **base_line['_create_values'],
+                'quantity': base_line['quantity'],
+                'price_unit': base_line['price_unit'],
+                'discount': base_line['discount'],
+                'tax_ids': [Command.set(base_line['tax_ids'].ids)]
+            }
+            # If the values were not initialized, we don't want to prevent compute by explicitly putting them empty
+            if base_line['product_id']:
+                create_values['product_id'] = base_line['product_id'].id
+            if base_line['product_uom_id']:
+                create_values['product_uom_id'] = base_line['product_uom_id'].id
+            if base_line['account_id']:
+                create_values['account_id'] = base_line['account_id'].id
+            invoice_line_ids.append(Command.create(create_values))
+
+        container = {'records': invoice}
+        with (
+            invoice._check_balanced(container),
+            invoice._disable_discount_precision(),
+            invoice._sync_dynamic_lines(container),
+        ):
+            invoice.write(to_write)
+
+    def _import_invoice_fix_taxes_amounts(self, collected_values):
+        AccountTax = self.env['account.tax']
+        invoice = collected_values['invoice']
+        tax_total_values = collected_values['tax_total_values']
+        tolerance = 0.03
+        total_tax_amount = sum(x['tax_amount_currency'] for x in tax_total_values.values())
+        currency = collected_values['currency_values']['currency']
+
+        tax_to_taxes = {}
+        taxes_to_tax_amount_currency = {}
+        is_complete = True
+        for tax_key, global_tax_values in tax_total_values.items():
+            taxes = self.env['account.tax']
+            for related_tax_values in global_tax_values['related_taxes_values']:
+                tax = related_tax_values.get('tax')
+                if tax:
+                    taxes |= tax
+                else:
+                    is_complete = False
+                    break
+
+            for tax in taxes:
+                tax_to_taxes[tax] = taxes
+            taxes_to_tax_amount_currency[taxes] = global_tax_values['tax_amount_currency']
+
+        # If we are too far away from the total retrieved in the xml, don't fix anything: the error is elsewhere.
+        collected_values['are_taxes_complete'] = is_complete
+        if (
+            not is_complete
+            or currency.compare_amounts(abs(invoice.amount_tax - total_tax_amount) - tolerance, 0.0) > 0
+        ):
+            return
+
+        # Fix the base lines.
+        def grouping_function(_base_line, tax_data):
+            return tax_data and tax_to_taxes.get(tax_data['tax'])
+
+        base_lines, tax_lines = invoice._get_rounded_base_and_tax_lines()
+        base_lines_aggregated_values = AccountTax._aggregate_base_lines_tax_details(base_lines, grouping_function)
+        values_per_grouping_key = AccountTax._aggregate_base_lines_aggregated_values(base_lines_aggregated_values)
+        for taxes, values in values_per_grouping_key.items():
+            if not taxes:
+                continue
+
+            delta_tax_amount_currency = taxes_to_tax_amount_currency[taxes] - sum(
+                tax_data['tax_amount_currency']
+                for _base_line, taxes_data in values['base_line_x_taxes_data']
+                for tax_data in taxes_data
+            )
+            target_factors = [
+                {
+                    'factor': tax_data['raw_tax_amount_currency'],
+                    'tax_data': tax_data,
+                }
+                for _base_line, taxes_data in values['base_line_x_taxes_data']
+                for tax_data in taxes_data
+            ]
+            amounts_to_distribute = AccountTax._distribute_delta_amount_smoothly(
+                precision_digits=currency.decimal_places,
+                delta_amount=delta_tax_amount_currency,
+                target_factors=target_factors,
+                allow_negative_factors=True,
+            )
+            for target_factor, amount_to_distribute in zip(target_factors, amounts_to_distribute):
+                tax_data = target_factor['tax_data']
+                tax_data['tax_amount_currency'] += amount_to_distribute
+
+        AccountTax._add_accounting_data_in_base_lines_tax_details(base_lines, invoice.company_id, include_caba_tags=invoice.always_tax_exigible)
+        tax_results = AccountTax._prepare_tax_lines(base_lines, invoice.company_id, tax_lines=tax_lines)
+
+        line_ids_commands = []
+        for tax_line_vals, grouping_key, to_update in tax_results['tax_lines_to_update']:
+            line_ids_commands.append(Command.update(tax_line_vals['record'].id, {
+                'amount_currency': to_update['amount_currency'],
+                'balance': to_update['balance'],
+            }))
+
+        container = {'records': invoice}
+        with (
+            invoice._check_balanced(container),
+            invoice._disable_discount_precision(),
+            invoice._sync_dynamic_lines(container),
+        ):
+            invoice.line_ids = line_ids_commands
+
+    def _import_invoice_post_processing(self, collected_values):
+        # During the import, fill 'ubl_cii_xml_file' to be retrieved later if necessary.
+        invoice = collected_values['invoice']
+        if collected_values['file_data']['attachment'] and invoice.is_purchase_document(include_receipts=True):
+            collected_values['file_data']['attachment'].write({
+                'res_field': 'ubl_cii_xml_file',
+                'res_model': invoice._name,
+                'res_id': invoice.id,
+            })
+
+        if originator_pdf := collected_values['file_data'].get('originator_pdf'):
+            invoice._message_set_main_attachment_id(originator_pdf)
+
+        # Collect the embedded documents.
+        invoice = collected_values['invoice']
+        source_attachment = collected_values['file_data']['attachment'] or self.env['ir.attachment']
+        attachments = source_attachment + self._import_attachments(invoice, collected_values['tree'])
+
+        # Chatter.
+        body = Markup("<strong>%s</strong>") % self.env._(
+            "Format used to import the invoice: %s",
+            self.env['ir.model']._get(self._name).name,
+        )
+        if logs := dict.fromkeys(collected_values['logs']):
+            body += Markup("<ul>%s</ul>") % Markup().join(Markup("<li>%s</li>") % l for l in logs)
+        invoice.with_context(no_new_invoice=True).message_post(body=body, attachment_ids=attachments.ids)

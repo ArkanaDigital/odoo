@@ -16,6 +16,8 @@ class ResConfigSettings(models.TransientModel):
         implied_group='stock.group_stock_lot_print_gs1')
     group_lot_on_delivery_slip = fields.Boolean("Display Lots & Serial Numbers on Delivery Slips",
         implied_group='stock.group_lot_on_delivery_slip', group="base.group_user,base.group_portal")
+    group_stock_picking_batch = fields.Boolean("Batch, Wave & Cluster Transfers",
+        implied_group='stock.group_stock_picking_batch')
     group_stock_tracking_lot = fields.Boolean("Packages",
         implied_group='stock.group_tracking_lot')
     group_stock_tracking_owner = fields.Boolean("Consignment",
@@ -25,7 +27,6 @@ class ResConfigSettings(models.TransientModel):
         help="Add and customize route operations to process product moves in your warehouse(s): e.g. unload > quality control > stock for incoming products, pick > pack > ship for outgoing products. \n You can also set putaway strategies on warehouse locations in order to send incoming products into specific child locations straight away (e.g. specific bins, racks).")
     group_warning_stock = fields.Boolean("Warnings for Stock", implied_group='stock.group_warning_stock')
     group_stock_sign_delivery = fields.Boolean("Signature", implied_group='stock.group_stock_sign_delivery')
-    module_stock_picking_batch = fields.Boolean("Batch, Wave & Cluster Transfers")
     module_stock_barcode = fields.Boolean("Barcode Scanner")
     module_stock_barcode_barcodelookup = fields.Boolean("Stock Barcode Database")
     stock_move_email_validation = fields.Boolean(related='company_id.stock_move_email_validation', readonly=False)
@@ -63,6 +64,11 @@ class ResConfigSettings(models.TransientModel):
         if not self.group_stock_multi_locations:
             self.group_stock_adv_location = False
 
+    @api.onchange('group_stock_picking_batch')
+    def _onchange_group_stock_picking_batch(self):
+        if not self.group_stock_picking_batch:
+            self.module_stock_fleet = False
+
     @api.onchange('group_stock_production_lot')
     def _onchange_group_stock_production_lot(self):
         if not self.group_stock_production_lot:
@@ -84,6 +90,11 @@ class ResConfigSettings(models.TransientModel):
         if self.module_stock_barcode_barcodelookup:
             self.module_product_barcodelookup = True
 
+    @api.onchange('module_stock_fleet')
+    def _onchange_module_stock_fleet(self):
+        if self.module_stock_fleet and not self.group_stock_picking_batch:
+            self.group_stock_picking_batch = True
+
     @api.onchange('group_stock_adv_location')
     def onchange_adv_location(self):
         if self.group_stock_adv_location and not self.group_stock_multi_locations:
@@ -95,7 +106,7 @@ class ResConfigSettings(models.TransientModel):
         base_user = self.env.ref('base.group_user')
         base_user_implied_ids = base_user.implied_ids
         if not self.group_stock_multi_locations and location_grp in base_user_implied_ids and warehouse_grp in base_user_implied_ids:
-            raise UserError(_("You can't deactivate the multi-location if you have more than once warehouse by company"))
+            raise UserError(_("You can't deactivate the multi-location feature if you have more than one warehouse per company"))
 
         # Update all picking types of this company to keep their move_type aligned with the configured picking policy
         picking_types = self.env['stock.picking.type'].search([

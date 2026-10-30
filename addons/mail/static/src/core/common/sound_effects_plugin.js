@@ -1,6 +1,4 @@
-import { usePlugin, Plugin } from "@odoo/owl";
-import { browser } from "@web/core/browser/browser";
-import { registry } from "@web/core/registry";
+import { Plugin } from "@odoo/owl";
 import { url } from "@web/core/utils/urls";
 import { services } from "@web/core/services";
 
@@ -36,7 +34,7 @@ export class SoundEffectsPlugin extends Plugin {
      *   If not provided, uses the default volume of this sound effect.
      */
     play(soundEffectName, { loop = false, volume } = {}) {
-        if (typeof browser.Audio === "undefined") {
+        if (typeof window.Audio === "undefined") {
             return;
         }
         const soundEffect = this.soundEffects[soundEffectName];
@@ -44,7 +42,7 @@ export class SoundEffectsPlugin extends Plugin {
             return;
         }
         if (!soundEffect.audio) {
-            const audio = new browser.Audio();
+            const audio = new window.Audio();
             const ext = audio.canPlayType("audio/ogg; codecs=vorbis") ? ".ogg" : ".mp3";
             this._setAudioSrc(audio, url(soundEffect.path + ext));
             soundEffect.audio = audio;
@@ -84,17 +82,3 @@ export class SoundEffectsPlugin extends Plugin {
 }
 
 services.add(SoundEffectsPlugin);
-
-/**
- * -----------------------------------------------------------------------------
- * @todo owl3 migration
- * temporary - to remove when all use of the sound effects service are removed
- * -----------------------------------------------------------------------------
- */
-export const soundEffects = {
-    start() {
-        return usePlugin(SoundEffectsPlugin);
-    },
-};
-
-registry.category("services").add("mail.sound_effects", soundEffects);

@@ -111,9 +111,9 @@ class Properties(Field):
             definition_record_field.properties_fields += (self,)
         return super().setup(model)
 
-    def setup_related(self, model):
-        super().setup_related(model)
-        if self.inherited_field and not self.definition:
+    def _setup(self, model):
+        super()._setup(model)
+        if self.related and self.inherited_field and not self.definition:
             self.definition = self.inherited_field.definition
             self._setup_definition_attrs(model)
 
@@ -1167,6 +1167,10 @@ class PropertiesDefinition(Field):
     def convert_to_write(self, value, record):
         return value
 
+    def convert_to_export(self, value, record):
+        # record format -> export format (the JSON the import reads back)
+        return json.dumps(value) if value else ''
+
     def _validate_properties_definition(self, properties_definition, env):
         """Raise an error if the property definition is not valid."""
         allowed_keys = self.ALLOWED_KEYS + env["base"]._additional_allowed_keys_properties_definition()
@@ -1189,14 +1193,14 @@ class PropertiesDefinition(Field):
                     ', '.join(invalid_keys),
                 )
 
-            check_property_field_value_name(property_definition['name'])
-
             required_keys = set(self.REQUIRED_KEYS) - property_definition_keys
             if required_keys:
                 raise ValueError(
                     'Some key are missing for a properties definition [%s].' %
                     ', '.join(required_keys),
                 )
+
+            check_property_field_value_name(property_definition['name'])
 
             property_type = property_definition.get('type')
             property_name = property_definition.get('name')

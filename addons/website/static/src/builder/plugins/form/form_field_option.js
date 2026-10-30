@@ -1,40 +1,61 @@
 import { BaseOptionComponent } from "@html_builder/core/base_option_component";
 import { useDomState } from "@html_builder/core/utils";
-import { onWillStart, onWillUpdateProps, proxy } from "@odoo/owl";
-import { FormActionFieldsOption } from "./form_action_fields_option";
-import {
-    getDependencyEl,
-    getFieldName,
-    getMultipleInputs,
-    isFieldCustom,
-    getCurrentFieldInputEl,
-    getModelName,
-} from "./utils";
+import { computed, t, useProps } from "@odoo/owl";
 import { formatDate, formatDateTime } from "@web/core/l10n/dates";
 import { _t } from "@web/core/l10n/translation";
+import { useAsyncComputed } from "@web/core/utils/hooks";
+import { FormActionFieldsOption } from "./form_action_fields_option";
+import {
+    getCurrentFieldInputEl,
+    getDependencyEl,
+    getFieldName,
+    getModelName,
+    getMultipleInputs,
+    isFieldCustom,
+} from "./utils";
 
 const { DateTime } = luxon;
 
 export const RANGE_COMPARATORS = ["between", "!between"];
 
+export const formFieldOptionProps = {
+    redrawSequence: t.number().optional(),
+};
+
 export class FormFieldOption extends BaseOptionComponent {
     static template = "website.s_website_form_field_option";
     static dependencies = ["websiteFormOption"];
-    static props = {
-        redrawSequence: { type: Number, optional: true },
-    };
     static components = { FormActionFieldsOption };
+
+    props = useProps(formFieldOptionProps);
+
+    loadedFieldOptionData = computed(() => {
+        const error = this.fieldOptionData.error();
+        if (error) {
+            throw error;
+        }
+        return this.fieldOptionData.loading() ? null : this.fieldOptionData();
+    });
 
     setup() {
         super.setup();
-        const { loadFieldOptionData } = this.dependencies.websiteFormOption;
-        this.state = proxy({
-            availableFields: [],
-            conditionInputs: [],
-            conditionValueList: [],
-            dependencyEl: null,
-            valueList: null,
-        });
+
+        this.customFieldsData = [
+            { name: _t("Text"), value: "char" },
+            { name: _t("Long Text"), value: "text" },
+            { name: _t("Email"), value: "email" },
+            { name: _t("Telephone"), value: "tel" },
+            { name: _t("Url"), value: "url" },
+            { name: _t("Number"), value: "integer" },
+            { name: _t("Decimal Number"), value: "float" },
+            { name: _t("Checkbox"), value: "boolean", id: "custom_field_boolean_opt" },
+            { name: _t("Multiple Checkboxes"), value: "one2many" },
+            { name: _t("Radio Buttons"), value: "selection" },
+            { name: _t("Selection"), value: "many2one" },
+            { name: _t("Date"), value: "date" },
+            { name: _t("Date & Time"), value: "datetime" },
+            { name: _t("File Upload"), value: "binary" },
+        ];
         this.domState = useDomState((el) => {
             const modelName = getModelName(el.closest("form"));
             const fieldName = getFieldName(el);
@@ -112,27 +133,31 @@ export class FormFieldOption extends BaseOptionComponent {
             return { value: getFieldName(el) === "state_id" && hasCountryField };
         });
 
-        onWillStart(async () => {
-            const el = this.env.getEditingElement();
-            const fieldOptionData = await loadFieldOptionData(el);
-            this.state.fields = fieldOptionData.fields;
-            this.state.availableFields.push(...fieldOptionData.availableFields);
-            this.state.conditionInputs.push(...fieldOptionData.conditionInputs);
-            this.state.valueList = fieldOptionData.valueList;
-            this.state.conditionValueList.push(...fieldOptionData.conditionValueList);
-        });
-        onWillUpdateProps(async (props) => {
-            const el = this.env.getEditingElement();
-            const fieldOptionData = await loadFieldOptionData(el);
-            this.state.fields = fieldOptionData.fields;
-            this.state.availableFields.length = 0;
-            this.state.availableFields.push(...fieldOptionData.availableFields);
-            this.state.conditionInputs.length = 0;
-            this.state.conditionInputs.push(...fieldOptionData.conditionInputs);
-            this.state.valueList = fieldOptionData.valueList;
-            this.state.conditionValueList.length = 0;
-            this.state.conditionValueList.push(...fieldOptionData.conditionValueList);
-        });
+        this.fieldOptionData = useAsyncComputed(
+            async () => {
+                this.props.redrawSequence;
+                const { loadFieldOptionData } = this.dependencies.websiteFormOption;
+                const el = this.env.getEditingElement();
+                const data = await loadFieldOptionData(el);
+                const fieldKey = isFieldCustom(el) ? el.dataset.type : getFieldName(el);
+                return {
+                    ...data,
+                    fieldKey,
+                    fieldTypeItems: this.computeFieldTypeItems(data),
+                };
+            },
+            {
+                initial: {
+                    fields: undefined,
+                    availableFields: [],
+                    conditionInputs: [],
+                    valueList: null,
+                    conditionValueList: [],
+                    fieldKey: undefined,
+                    fieldTypeItems: [],
+                },
+            }
+        );
         // TODO select field's hack ?
     }
     get canHaveTextValidationCondition() {
@@ -182,6 +207,7 @@ export class FormFieldOption extends BaseOptionComponent {
         }
         return {
             title,
+            tooltip: _t("At least one of these words should match"),
             defaultValue: isDomainComparator ? "example.com" : _t("example"),
         };
     }
@@ -277,7 +303,10 @@ export class FormFieldOption extends BaseOptionComponent {
     }
     get isExistingFieldSelectTypeMultiple() {
         const el = this.env.getEditingElement();
-        return !isFieldCustom(el) && this.state.fields[getFieldName(el)].type === "many2many";
+        return (
+            !isFieldCustom(el) &&
+            this.fieldOptionData().fields[getFieldName(el)].type === "many2many"
+        );
     }
     get isOtherOptionSupported() {
         const el = this.env.getEditingElement();
@@ -312,9 +341,38 @@ export class FormFieldOption extends BaseOptionComponent {
      * Dynamic key to force BuilderList to re-render when field type changes.
      */
     get getFieldKey() {
-        if (this.domState.elClassList.includes("s_website_form_custom")) {
-            return this.domState.elDataset.type;
-        }
-        return this.domState.fieldName;
+        return this.fieldOptionData().fieldKey;
+    }
+    /**
+     * Generate the entries for the field type selector.
+     */
+    computeFieldTypeItems(fieldOptionData) {
+        const customFieldItems = this.customFieldsData.map((field) => ({
+            label: field.name,
+            props: {
+                id: field.id,
+                action: "customField",
+                actionValue: field.value,
+            },
+            attrs: {
+                "data-action-id": "customField",
+                "data-action-value": field.value,
+            },
+        }));
+        const existingFieldItems = fieldOptionData.availableFields.map((field) => ({
+            label: field.string,
+            props: {
+                action: "existingField",
+                actionValue: field.name,
+            },
+            attrs: {
+                "data-action-id": "existingField",
+                "data-action-value": field.name,
+            },
+        }));
+        return [
+            { label: _t("Custom Field"), choices: customFieldItems },
+            { label: _t("Existing fields"), choices: existingFieldItems },
+        ];
     }
 }

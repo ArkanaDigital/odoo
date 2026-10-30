@@ -2,22 +2,47 @@
 # This file contains the translation of the following modules:
 # * base_import
 #
-# Weblate <noreply-mt-weblate@weblate.org>, 2025.
+# Weblate <noreply-mt-weblate@weblate.org>, 2025, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 18.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-03 17:37+0000\n"
-"PO-Revision-Date: 2026-06-19 05:03+0000\n"
+"POT-Creation-Date: 2026-08-28 17:41+0000\n"
+"PO-Revision-Date: 2026-08-31 14:11+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
-"Language-Team: Hindi <https://translate.odoo.com/projects/odoo-master/"
+"Language-Team: Hindi <https://translate.odoo.com/projects/odoo-s19-4/"
 "base_import/hi/>\n"
 "Language: hi\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: nplurals=2; plural=n > 1;\n"
-"X-Generator: Weblate 2026.6.1\n"
+"X-Generator: Weblate 2026.8.1\n"
+
+#. module: base_import
+#: model:ir.module.module,description:base.module_base_import
+msgid ""
+"\n"
+"New extensible file import for Odoo\n"
+"======================================\n"
+"\n"
+"Re-implement Odoo's file import system:\n"
+"\n"
+"* Server side, the previous system forces most of the logic into the\n"
+"  client which duplicates the effort (between clients), makes the\n"
+"  import system much harder to use without a client (direct RPC or\n"
+"  other forms of automation) and makes knowledge about the\n"
+"  import/export system much harder to gather as it is spread over\n"
+"  3+ different projects.\n"
+"\n"
+"* In a more extensible manner, so users and partners can build their\n"
+"  own front-end to import from other file formats (e.g. OpenDocument\n"
+"  files) which may be simpler to handle in their work flow or from\n"
+"  their data production sources.\n"
+"\n"
+"* In a module, so that administrators and users of Odoo who do not\n"
+"  need or want an online import can avoid it being available to users.\n"
+msgstr ""
 
 #. module: base_import
 #. odoo-javascript
@@ -49,8 +74,7 @@ msgstr "%s रिकॉर्ड सफलतापूर्वक इंपो�
 msgid ""
 "A single column was found in the file, this often means the file separator "
 "is incorrect."
-msgstr ""
-"फ़ाइल में सिर्फ़ एक कॉलम मिला, इसका मतलब यह हो सकता है कि फ़ाइल सेपरेटर गलत है।"
+msgstr "फ़ाइल में सिर्फ़ एक कॉलम मिला, इसका मतलब यह हो सकता है कि फ़ाइल सेपरेटर गलत है।"
 
 #. module: base_import
 #. odoo-javascript
@@ -74,8 +98,9 @@ msgstr ""
 #. module: base_import
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_data_sidepanel/import_data_sidepanel.xml:0
+#, fuzzy
 msgid "Attachments"
-msgstr ""
+msgstr "अटैचमेंट"
 
 #. module: base_import
 #: model:ir.model,name:base_import.model_base
@@ -93,10 +118,16 @@ msgid "Base Import Mapping"
 msgstr "बेस इंपोर्ट मैपिंग"
 
 #. module: base_import
+#: model:ir.module.module,shortdesc:base.module_base_import
+msgid "Base import"
+msgstr ""
+
+#. module: base_import
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_data_progress/import_data_progress.xml:0
+#, fuzzy
 msgid "Batch"
-msgstr ""
+msgstr "बैच"
 
 #. module: base_import
 #. odoo-javascript
@@ -235,8 +266,9 @@ msgstr "डिस्प्ले का नाम"
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_action/import_action.xml:0
 #: code:addons/base_import/static/src/import_data_sidepanel/import_data_sidepanel.xml:0
+#, fuzzy
 msgid "Documentation"
-msgstr ""
+msgstr "दस्तावेज़"
 
 #. module: base_import
 #. odoo-javascript
@@ -254,8 +286,9 @@ msgstr "डाउनलोड"
 #. module: base_import
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_model.js:0
+#, fuzzy
 msgid "Encoding"
-msgstr ""
+msgstr "एन्कोडिंग"
 
 #. module: base_import
 #. odoo-python
@@ -274,8 +307,7 @@ msgstr "पंक्ति %(row)s में गड़बड़ी: \"%(error)s\
 #: code:addons/base_import/models/base_import.py:0
 msgid ""
 "Error while importing records: Text Delimiter should be a single character."
-msgstr ""
-"रिकॉर्ड इंपोर्ट करते समय गड़बड़ी: टेक्स्ट डिलिमिटर एक सिंगल कैरेक्टर होना चाहिए।"
+msgstr "रिकॉर्ड इंपोर्ट करते समय गड़बड़ी: टेक्स्ट डिलिमिटर एक सिंगल कैरेक्टर होना चाहिए।"
 
 #. module: base_import
 #. odoo-python
@@ -347,8 +379,9 @@ msgstr ""
 #. module: base_import
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_data_progress/import_data_progress.xml:0
+#, fuzzy
 msgid "Finalizing current batch before interrupting..."
-msgstr ""
+msgstr "रोकने से पहले, चालू काम को पूरा किया जा रहा है..।"
 
 #. module: base_import
 #. odoo-javascript
@@ -408,20 +441,18 @@ msgstr ""
 #. module: base_import
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_data_content/import_data_content.xml:0
+#, fuzzy
 msgid ""
 "If the file contains\n"
 "                    the column names, Odoo can try auto-detecting the\n"
 "                    field corresponding to the column. This makes imports\n"
 "                    simpler especially when the file has many columns."
 msgstr ""
-
-#. module: base_import
-#. odoo-python
-#: code:addons/base_import/models/base_import.py:0
-msgid ""
-"Image size excessive, imported images must be smaller than 42 million pixel"
-msgstr ""
-"इमेज का साइज़ बहुत ज़्यादा है, इंपोर्ट की गई इमेज 42 मिलियन पिक्सल से छोटी होनी चाहिए"
+"अगर फ़ाइल में\n"
+"                    कॉलम के नाम शामिल हैं, तो Odoo अपने-आप कॉलम\n"
+"                    से संबंधित फ़ील्ड का पता लगाने की कोशिश कर सकता है. यह इंपोर्ट को "
+"आसान बनाता है\n"
+"                    खासकर जब फ़ाइल में बहुत से कॉलम हों।"
 
 #. module: base_import
 #. odoo-javascript
@@ -446,8 +477,9 @@ msgstr "इंपोर्ट की गई फ़ाइल में कोई स
 #. module: base_import
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_data_content/import_data_content.xml:0
+#, fuzzy
 msgid "Import preview failed due to: \""
-msgstr ""
+msgstr "इंपोर्ट प्रीव्यू असफल रहा, इसकी वजह है: \""
 
 #. module: base_import
 #. odoo-javascript
@@ -476,6 +508,18 @@ msgstr ""
 #: code:addons/base_import/models/base_import.py:0
 msgid "Invalid cell value at row %(row)s, column %(col)s: %(cell_value)s"
 msgstr "पंक्ति %(row)s, कॉलम %(col)s में सेल का मान अमान्य है: %(cell_value)s"
+
+#. module: base_import
+#. odoo-javascript
+#: code:addons/base_import/static/src/import_data_content/import_data_content.xml:0
+msgid "Lang:"
+msgstr ""
+
+#. module: base_import
+#. odoo-javascript
+#: code:addons/base_import/static/src/import_data_content/import_data_content.xml:0
+msgid "Language"
+msgstr ""
 
 #. module: base_import
 #: model:ir.model.fields,field_description:base_import.field_base_import_import__write_uid
@@ -515,8 +559,9 @@ msgstr "मॉडल"
 #. module: base_import
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_data_column_error/import_data_column_error.xml:0
+#, fuzzy
 msgid "Multiple errors occurred"
-msgstr ""
+msgstr "एक से ज़्यादा गड़बड़ियां हुईं"
 
 #. module: base_import
 #. odoo-javascript
@@ -545,8 +590,9 @@ msgstr "कोई फ़ाइल नहीं चुनी गई"
 #. module: base_import
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_data_column_error/import_data_column_error.xml:0
+#, fuzzy
 msgid "No matching records found for the following name"
-msgstr ""
+msgstr "दिए गए नाम से कोई रिकॉर्ड नहीं मिला"
 
 #. module: base_import
 #. odoo-javascript
@@ -557,8 +603,9 @@ msgstr "Odoo फ़ील्ड"
 #. module: base_import
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_model.js:0
+#, fuzzy
 msgid "Other"
-msgstr ""
+msgstr "अन्य"
 
 #. module: base_import
 #. odoo-javascript
@@ -570,8 +617,7 @@ msgstr "कृपया कोई सिंगल फ़ाइल अपलो�
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_action/import_action.js:0
 msgid "Please upload an Excel (.xls or .xlsx) or .csv file to import."
-msgstr ""
-"कृपया इंपोर्ट करने के लिए एक एक्सेल (.xls या .xlsx) या .csv फ़ाइल अपलोड करें।"
+msgstr "कृपया इंपोर्ट करने के लिए एक एक्सेल (.xls या .xlsx) या .csv फ़ाइल अपलोड करें।"
 
 #. module: base_import
 #. odoo-javascript
@@ -628,9 +674,16 @@ msgstr "फ़ील्ड खोजें..।"
 
 #. module: base_import
 #. odoo-javascript
-#: code:addons/base_import/static/src/import_data_column_error/import_data_column_error.xml:0
-msgid "See possible values"
+#: code:addons/base_import/static/src/import_data_content/import_data_content.xml:0
+msgid "Search a language..."
 msgstr ""
+
+#. module: base_import
+#. odoo-javascript
+#: code:addons/base_import/static/src/import_data_column_error/import_data_column_error.xml:0
+#, fuzzy
+msgid "See possible values"
+msgstr "संभावित वैल्यू देखें"
 
 #. module: base_import
 #. odoo-javascript
@@ -647,8 +700,9 @@ msgstr "सेमीकॉलन"
 #. module: base_import
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_model.js:0
+#, fuzzy
 msgid "Separator"
-msgstr ""
+msgstr "सेपरेटर"
 
 #. module: base_import
 #. odoo-javascript
@@ -801,8 +855,9 @@ msgstr "बिना टाइटल"
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_action/import_action.xml:0
 #: code:addons/base_import/static/src/import_data_sidepanel/import_data_sidepanel.xml:0
+#, fuzzy
 msgid "Upload"
-msgstr ""
+msgstr "अपलोड करें"
 
 #. module: base_import
 #. odoo-javascript
@@ -841,8 +896,9 @@ msgstr ""
 #. module: base_import
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_data_sidepanel/import_data_sidepanel.xml:0
+#, fuzzy
 msgid "Use first row as header"
-msgstr ""
+msgstr "पहली पंक्ति को हैडर के तौर पर इस्तेमाल करें"
 
 #. module: base_import
 #. odoo-javascript
@@ -875,8 +931,7 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_model.js:0
 msgid "You can test or reload your file before resuming the import."
-msgstr ""
-"इंपोर्ट जारी रखने से पहले, आप अपनी फ़ाइल की जांच या उसे फिर से लोड कर सकते हैं।"
+msgstr "इंपोर्ट जारी रखने से पहले, आप अपनी फ़ाइल की जांच या उसे फिर से लोड कर सकते हैं।"
 
 #. module: base_import
 #. odoo-python
@@ -887,20 +942,23 @@ msgstr "आपको इंपोर्ट करने के लिए कम 
 #. module: base_import
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_data_column_error/import_data_column_error.xml:0
+#, fuzzy
 msgid "at multiple rows"
-msgstr ""
+msgstr "कई सारी पंक्तियों पर"
 
 #. module: base_import
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_data_column_error/import_data_column_error.xml:0
+#, fuzzy
 msgid "at row"
-msgstr ""
+msgstr "पंक्ति पर"
 
 #. module: base_import
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_data_column_error/import_data_column_error.xml:0
+#, fuzzy
 msgid "in field"
-msgstr ""
+msgstr "फ़ील्ड में"
 
 #. module: base_import
 #. odoo-javascript
@@ -911,8 +969,9 @@ msgstr "मिनट"
 #. module: base_import
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_data_column_error/import_data_column_error.xml:0
+#, fuzzy
 msgid "more"
-msgstr ""
+msgstr "ज़्यादा"
 
 #. module: base_import
 #. odoo-javascript
@@ -923,8 +982,9 @@ msgstr ""
 #. module: base_import
 #. odoo-javascript
 #: code:addons/base_import/static/src/import_data_progress/import_data_progress.xml:0
+#, fuzzy
 msgid "out of"
-msgstr ""
+msgstr "से"
 
 #. module: base_import
 #. odoo-javascript

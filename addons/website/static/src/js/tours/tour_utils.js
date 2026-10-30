@@ -2,7 +2,6 @@ import { registry } from "@web/core/registry";
 import { cookie } from "@web/core/browser/cookie";
 
 import { omit } from "@web/core/utils/objects";
-import { stepUtils } from "@web_tour/tour_utils";
 
 export function addMedia() {
     return {
@@ -13,7 +12,6 @@ export function addMedia() {
 }
 export function assertCssVariable(variableName, variableValue, trigger = ":iframe body") {
     return {
-        isActive: ["auto"],
         content: `Check CSS variable ${variableName}=${variableValue}`,
         trigger: trigger,
         run() {
@@ -77,7 +75,7 @@ export function changeOption(
     const noPalette = allowPalette
         ? ""
         : !document.querySelector(".o_popover .o_font_color_selector") &&
-          ".o-tab-content > [role='tabpanel']";
+          ".o_hb_tab_content > [role='tabpanel']";
     const option_block = `${noPalette} [data-container-title='${blockName}']`;
     return {
         trigger: `${option_block} ${actionId}, ${option_block} [data-action-id="${actionId}"]`,
@@ -111,14 +109,18 @@ export function changeOptionInPopover(blockName, optionName, elementName) {
         `.o_popover .o-dropdown-item:contains(${elementName})`,
     ].join(", ");
     return [
+        {
+            content: "Wait for the popover of a previous option to be closed",
+            trigger: "body:not(:has(.o_popover .o-dropdown-item))",
+        },
         changeOption(blockName, `[data-label='${optionName}'] .dropdown-toggle`),
         {
             content: `Check if "${elementName}" option is shown. If not, search for it.`,
-            trigger: ".o_popover .o-dropdown-item",
-            async run({ waitFor, edit }) {
-                let item = await waitFor(itemSelector).catch(() => false);
+            trigger: ".o_popover .o-dropdown-item:not(.o_we_m2o_search_more)",
+            async run({ waitFor, queryFirst, edit }) {
+                let item = queryFirst(itemSelector);
                 if (!item) {
-                    const popoverInput = await waitFor(".o_popover input").catch(() => false);
+                    const popoverInput = queryFirst(".o_popover input");
                     if (popoverInput) {
                         await edit(elementName, ".o_popover input");
                     }
@@ -261,7 +263,7 @@ export function clickOnSnippet(snippet, position = "bottom") {
     const trigger = snippet.id ? `#wrapwrap .${snippet.id}` : snippet;
     return [
         {
-            trigger: ".o-website-builder_sidebar",
+            trigger: ".o_website_builder_sidebar",
         },
         {
             trigger: `:iframe ${trigger}`,
@@ -274,7 +276,7 @@ export function clickOnSnippet(snippet, position = "bottom") {
 export function clickOnSave(timeout = 50000, withContains = true) {
     return [
         {
-            trigger: ".o-snippets-menu:not(:has(.o_we_ongoing_insertion))",
+            trigger: ".o_hb_snippets_menu:not(:has(.o_we_ongoing_insertion))",
         },
         {
             trigger: "body:not(:has(.o_dialog))",
@@ -291,7 +293,10 @@ export function clickOnSave(timeout = 50000, withContains = true) {
             trigger: "body:not(.o_builder_open)",
             timeout,
         },
-        stepUtils.waitIframeIsReady(),
+        {
+            content: "Wait until the iframe is ready",
+            trigger: ":iframe body[is-ready=true]",
+        },
     ];
 }
 
@@ -381,7 +386,7 @@ export function goBackToBlocks() {
 export function goToTheme() {
     return [
         {
-            trigger: ".o-website-builder_sidebar",
+            trigger: ".o_website_builder_sidebar",
         },
         {
             trigger: "button[data-name='theme']",
@@ -390,7 +395,7 @@ export function goToTheme() {
         },
         {
             content: "Check that the theme tab is active",
-            trigger: ".o-tab-content .options-container [data-action-id='switchTheme']",
+            trigger: ".o_hb_tab_content .o_hb_options_container [data-action-id='switchTheme']",
         },
     ];
 }
@@ -407,7 +412,7 @@ export function unfoldOptionsGroup(name) {
     return [
         {
             content: `Unfold the "${name}" group`,
-            trigger: `.options-container[data-container-title="${name}"] .options-container-label i[data-icon='arrow_right']`,
+            trigger: `.o_hb_options_container[data-container-title="${name}"] .o_hb_options_container_label i[data-icon='arrow_right']`,
             run: "click",
         },
     ];
@@ -507,28 +512,6 @@ export function registerThemeHomepageTour(name, steps) {
     );
 }
 
-export function registerBackendAndFrontendTour(name, options, steps) {
-    if (typeof steps !== "function") {
-        throw new Error(`tour.steps has to be a function that returns TourStep[]`);
-    }
-    if (window.location.pathname === "/odoo") {
-        return registerWebsitePreviewTour(name, options, () => {
-            const newSteps = [];
-            for (const step of steps()) {
-                const newStep = Object.assign({}, step);
-                newStep.trigger = `:iframe ${step.trigger}`;
-                newSteps.push(newStep);
-            }
-            return newSteps;
-        });
-    }
-
-    return registry.category("web_tour.tours").add(name, {
-        ...options,
-        steps: () => steps(),
-    });
-}
-
 /**
  * Switches to a different website by clicking on the website switcher.
  *
@@ -620,7 +603,7 @@ export function toggleMobilePreview(toggleOn) {
         },
         {
             content: `Toggle the mobile preview ${onOrOff}`,
-            trigger: ".o-snippets-top-actions [data-action='mobile']",
+            trigger: ".o_hb_snippets_top_actions [data-action='mobile']",
             run: "click",
         },
         {
@@ -769,21 +752,21 @@ export function changeBackgroundShape(shape = "html_builder/Connections/01") {
     return [
         {
             content: "Open Background Shape selector",
-            trigger: "div[data-label='Background'] ~ div[data-label='Shape'] button.o-hb-btn",
+            trigger: "div[data-label='Background'] ~ div[data-label='Shape'] button.o_hb_btn",
             run: "click",
         },
         {
             content: "Wait for panel to open",
-            trigger: ".hb-sliding-panel.d-block",
+            trigger: ".o_hb_sliding_panel.d-block",
         },
         {
             content: "Pick a Background Shape",
-            trigger: `.o_pager_container .o-hb-bg-shape-btn [data-action-id='setBackgroundShape'][data-action-value='${shape}']`,
+            trigger: `.o_pager_container .o_hb_bg_shape_btn [data-action-id='setBackgroundShape'][data-action-value='${shape}']`,
             run: "click",
         },
         {
             content: "Wait for panel to close",
-            trigger: "body:not(:has(.hb-panel-slide-out))",
+            trigger: "body:not(:has(.o_hb_panel_slide_out))",
         },
     ];
 }
@@ -792,21 +775,21 @@ export function changeImageShape(shape = "html_builder/geometric/geo_shuriken") 
     return [
         {
             content: "Open Image Shape selector",
-            trigger: "div[data-label='Media'] ~ div[data-label='Shape'] button.o-hb-btn",
+            trigger: "div[data-label='Media'] ~ div[data-label='Shape'] button.o_hb_btn",
             run: "click",
         },
         {
             content: "Wait for panel to open",
-            trigger: ".hb-sliding-panel.d-block",
+            trigger: ".o_hb_sliding_panel.d-block",
         },
         {
             content: "Pick an Image Shape",
-            trigger: `.o_pager_container .o-hb-img-shape-btn [data-action-id='setImageShape'][data-action-value='${shape}']`,
+            trigger: `.o_pager_container .o_hb_img_shape_btn [data-action-id='setImageShape'][data-action-value='${shape}']`,
             run: "click",
         },
         {
             content: "Wait for panel to close",
-            trigger: ".options-container:visible",
+            trigger: ".o_hb_options_container:visible",
         },
     ];
 }

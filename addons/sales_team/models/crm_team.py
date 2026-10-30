@@ -2,6 +2,7 @@ import random
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
+from odoo.fields import Domain
 
 
 class CrmTeam(models.Model):
@@ -47,6 +48,7 @@ class CrmTeam(models.Model):
         # for team belonging to a user in C1/C2 -> only results for C1 will be returned
         team = self.env['crm.team']
         teams = self.env['crm.team'].search([
+            ('active', '=', True),
             ('company_id', 'in', valid_cids),
              '|', ('user_id', '=', user.id), ('member_ids', 'in', [user.id])
         ])
@@ -69,7 +71,7 @@ class CrmTeam(models.Model):
             team = default_team
 
         if not team:
-            teams = self.env['crm.team'].search([('company_id', 'in', valid_cids)])
+            teams = self.env['crm.team'].search([('active', '=', True), ('company_id', 'in', valid_cids)])
             # 4- default: based on company rule, first one matching domain
             if teams and domain:
                 team = teams.filtered_domain(domain)[:1]
@@ -153,12 +155,12 @@ class CrmTeam(models.Model):
             users_current = team.member_ids
             users_new = users_current - memberships.user_id
 
-            # add missing memberships
-            self.env['crm.team.member'].create([{'crm_team_id': team.id, 'user_id': user.id} for user in users_new])
-
             # activate or deactivate other memberships depending on members
             for membership in memberships:
                 membership.active = membership.user_id in users_current
+
+            # add missing memberships
+            self.env['crm.team.member'].create([{'crm_team_id': team.id, 'user_id': user.id} for user in users_new])
 
     @api.depends('is_membership_multi', 'member_ids')
     def _compute_member_warning(self):
@@ -182,7 +184,12 @@ class CrmTeam(models.Model):
                                   )
 
     def _search_member_ids(self, operator, value):
-        return [('crm_team_member_ids.user_id', operator, value)]
+        if operator in Domain.NEGATIVE_OPERATORS:
+            return NotImplemented
+        domain = Domain('crm_team_member_ids.user_id', operator, value)
+        if operator == 'in' and False in value:  # relation may be falsy
+            domain |= Domain('crm_team_member_ids', '=', False)
+        return domain
 
     # 'name' should not be in the trigger, but as 'company_id' is possibly not present in the view
     # because it depends on the multi-company group, we use it as fake trigger to force computation
@@ -223,9 +230,6 @@ class CrmTeam(models.Model):
 
     def write(self, vals):
         res = super().write(vals)
-
-        if vals.get('company_id'):  # Force re-check of memberships constraint for this team
-            self.crm_team_member_ids._constrains_membership()
 
         if vals.get('member_ids'):
             self._add_members_to_favorites()

@@ -31,12 +31,15 @@ export class Interaction {
      * through the `selector` attribute by only considering those which contain
      * at least an element which matches this `selectorHas` selector.
      *
+     * It can also be defined as an array of selectors, in which case all
+     * selectors must match (AND logic).
+     *
      * Note that this is the equivalent of setting up a `selector` using the
      * `:has` pseudo-selector but that pseudo-selector is known to not be fully
      * supported in all browsers. To prevent useless crashes, using this
      * `selectorHas` attribute should be preferred.
      *
-     * @type {string}
+     * @type {string|string[]}
      */
     static selectorHas = "";
 
@@ -44,10 +47,13 @@ export class Interaction {
      * Similar to `selectorHas` but equivalent to the `:not(:has(...)))`
      * pseudo-selectors combination.
      *
+     * It can also be defined as an array of selectors, in which case none of
+     * the selectors must match (AND logic).
+     *
      * Note that both `selectorHas` and `selectorNotHas` can be used
      * simultaneously.
      *
-     * @type {string}
+     * @type {string|string[]}
      */
     static selectorNotHas = "";
 
@@ -97,6 +103,7 @@ export class Interaction {
      *  - `.stop`: calls event.stopPropagation()
      *  - `.capture`: sets { capture: true }
      *  - `.once`: sets { once: true }
+     *  - `.passive`: sets { passive: true }
      *  - `.noUpdate`: the dynamicContent will not be reevaluated after the
      *                 handler, generally because `updateContent` is called
      *                 explicitly.
@@ -270,6 +277,31 @@ export class Interaction {
                 }
             }
         }, parseInt(delay));
+    }
+
+    /**
+     * Sets an interval with which to execute the given function (unless the
+     * interaction has been destroyed). The dynamic content is then applied.
+     * Also makes sure it is cleared upon destroy.
+     *
+     * @param {Function} fn
+     * @param {number} delay
+     * @returns {number} the interval id
+     */
+    setSafeInterval(fn, delay) {
+        fn = this.__colibri__.protectSyncAfterAsync(this, "setSafeInterval", fn);
+        const interval = setInterval(() => {
+            if (!this.isDestroyed) {
+                fn.call(this);
+                if (this.isReady) {
+                    this.updateContent();
+                }
+            }
+        }, parseInt(delay));
+        this.registerCleanup(() => {
+            clearInterval(interval);
+        });
+        return interval;
     }
 
     /**

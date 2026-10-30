@@ -24,6 +24,7 @@ from . import website_rewrite
 from . import ir_access
 from . import ir_ui_menu
 from . import ir_ui_view
+from . import mail_message
 from . import res_company
 from . import res_partner
 from . import res_users
@@ -36,3 +37,5 @@ from . import website_snippet_filter
 from . import website_visitor
 from . import website_controller_page
 from . import website_technical_page
+
+from . import res_groups

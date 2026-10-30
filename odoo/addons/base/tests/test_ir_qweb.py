@@ -26,7 +26,7 @@ class TestQWebTField(TransactionCase):
 
     def test_trivial(self):
         field = etree.Element('span', {'t-field': 'company.name'})
-        company = self.env['res.company'].create({'name': "My Test Company"})
+        company = self.add_company('base.test_company', {'name': "My Test Company"})
 
         result = self.engine._render(field, {'company': company})
         self.assertEqual(
@@ -42,7 +42,7 @@ class TestQWebTField(TransactionCase):
     def test_i18n(self):
         field = etree.Element('span', {'t-field': 'company.name'})
         s = "Testing «ταБЬℓσ»: 1<2 & 4+1>3, now 20% off!"
-        company = self.env['res.company'].create({'name': s})
+        company = self.add_company('base.test_company', {'name': s})
 
         result = self.engine._render(field, {'company': company})
         self.assertEqual(
@@ -76,7 +76,7 @@ class TestQWebTField(TransactionCase):
             """
         })
         text = etree.fromstring(self.env['ir.qweb']._render(view1.id)).find('span').text
-        self.assertEqual(text, '5.0000')
+        self.assertEqual(text, '5')
 
     def test_xss_breakout(self):
         view = self.env['ir.ui.view'].create({
@@ -2148,7 +2148,7 @@ class TestQWebBasic(TransactionCase):
         })
 
         rendered = self.env['ir.qweb'].with_context(lang=current_lang)._render(view2.id).strip()
-        self.assertEqual(rendered, '9/000/000*00')
+        self.assertEqual(rendered, '9/000/000')
 
     def test_render_barcode(self):
         partner = self.env['res.partner'].create({

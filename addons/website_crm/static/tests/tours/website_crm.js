@@ -12,12 +12,12 @@ function setFormActionToCreateOpportunity() {
             run: "click",
         },
         {
-            trigger: ".o-snippets-menu .o-snippets-tabs [data-name='customize'].active",
+            trigger: ".o_hb_snippets_menu .o_hb_snippets_tabs [data-name='customize'].active",
         },
         {
             content: "Open action select",
             trigger:
-                ".o-snippets-menu [data-container-title='Form'] [data-label='Action'] .dropdown-toggle",
+                ".o_hb_snippets_menu [data-container-title='Form'] [data-label='Action'] .dropdown-toggle",
             run: "click",
         },
         {
@@ -114,12 +114,12 @@ registerWebsitePreviewTour(
         {
             content: "Open Sales Team select",
             trigger:
-                ".o-snippets-menu [data-container-title='Form'] [data-label='Sales Team'] .dropdown-toggle",
+                ".o_hb_snippets_menu [data-container-title='Form'] [data-label='Sales Team'] .dropdown-toggle",
             run: "click",
         },
         {
             content: "Select 'Sales' as Sales Team",
-            trigger: ".o_popover [data-action-id='addActionField']:contains(Test Sales Team)",
+            trigger: ".o_popover .o-dropdown-item:contains(Test Sales Team)",
             run: "click",
         },
         {
@@ -133,7 +133,7 @@ registerWebsitePreviewTour(
         },
         {
             content: "Open field Type selector",
-            trigger: "[data-container-title=Field] button#type_opt",
+            trigger: "[data-container-title=Field] [data-label=Type] button",
             run: "click",
         },
         {

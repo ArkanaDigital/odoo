@@ -1,4 +1,4 @@
-import { Component, onMounted, onWillDestroy, proxy, signal } from "@odoo/owl";
+import { Component, onMounted, onWillDestroy, proxy, signal, useProps, t } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { Tooltip } from "@web/core/tooltip/tooltip";
 import { closestScrollableY, getScrollingElement, isScrollableY } from "@web/core/utils/scrolling";
@@ -20,15 +20,16 @@ import { CustomInnerSnippet } from "./custom_inner_snippet";
  * @typedef {((arg: { droppedEl: HTMLElement, dragState: DragState, x, y }) => void)[]} on_snippet_move_handlers
  * @typedef {((arg: { droppedEl: HTMLElement, dragState: DragState }) => void)[]} on_snippet_out_dropzone_handlers
  * @typedef {((arg: { droppedEl: HTMLElement, dragState: DragState }) => void)[]} on_snippet_over_dropzone_handlers
+ * @typedef {((arg: { snippetEl: HTMLElement, dropzoneEl: HTMLElement }) => void)[]} on_snippet_inserted_handlers
  */
 
 export class BlockTab extends Component {
     static template = "html_builder.BlockTab";
     static components = { Snippet, CustomInnerSnippet };
-    static props = {
-        snippetsName: String,
-        newInstalledModule: { type: String, optional: true },
-    };
+    props = useProps({
+        snippetsName: t.string(),
+        newInstalledModule: t.string().optional(),
+    });
 
     blockTabRef = signal.ref();
     groupSnippetsContainer = signal.ref();
@@ -197,7 +198,7 @@ export class BlockTab extends Component {
                 const draggedEl = element.cloneNode(true);
                 draggedEl
                     .querySelectorAll(
-                        ".o_snippet_thumbnail_title, .o_snippet_thumbnail_area, .rename-delete-buttons"
+                        ".o_snippet_thumbnail_title, .o_snippet_thumbnail_area, .o_hb_rename_delete_buttons"
                     )
                     .forEach((el) => el.remove());
                 draggedEl.style.position = "fixed";
@@ -395,6 +396,7 @@ export class BlockTab extends Component {
                             dragState,
                         });
                     }
+
                     // The dragged element may have changed, so get it again.
                     draggedEl = dragState.draggedEl;
 
@@ -411,6 +413,8 @@ export class BlockTab extends Component {
                     // Replay the drop.
                     currentDropzoneEl.after(draggedEl);
                     this.shared.dropzone.removeDropzones();
+
+                    this.env.editor.trigger("on_snippet_inserted_handlers", draggedEl);
 
                     // Process the dropped element.
                     if (!isSnippetGroup) {

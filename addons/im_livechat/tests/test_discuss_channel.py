@@ -304,7 +304,7 @@ class TestDiscussChannel(TestImLivechatCommon, TestGetOperatorCommon, MailCase):
         self.assertEqual(
             channel_history,
             "<strong>Michel Operator:</strong><br/>Operator Here<br/>%(attachment_1)s<br/>"
-            "<br/><strong>Rajesh:</strong><br/>Visitor Here<br/>%(attachment_2)s<br/>"
+            "<br/><strong>Rajesh:</strong><br/>Visitor Here<br/>%(attachment_2)s"
             % {
                 "attachment_1": _convert_attachment_to_html(attachment1),
                 "attachment_2": _convert_attachment_to_html(attachment2),
@@ -319,20 +319,43 @@ class TestDiscussChannel(TestImLivechatCommon, TestGetOperatorCommon, MailCase):
             "message": "Hello joey, how you doing?",
             "step_type": "text",
         })
-        data = self.make_jsonrpc_request(
-            "/im_livechat/get_session",
-            {
-                "anonymous_name": "Thomas",
-                "chatbot_script_id": chatbot_script.id,
-                "channel_id": self.livechat_channel.id,
-            },
-        )
+        # Simulate a day of inactivity over the end of DST in Europe/Brussels.
+        with freeze_time("2026-10-24 21:00:00"):
+            data = self.make_jsonrpc_request(
+                "/im_livechat/get_session",
+                {
+                    "anonymous_name": "Thomas",
+                    "chatbot_script_id": chatbot_script.id,
+                    "channel_id": self.livechat_channel.id,
+                },
+            )
         channel = self.env["discuss.channel"].browse(data["channel_id"])
-        with freeze_time(fields.Datetime.to_string(fields.Datetime.now() + timedelta(hours=23))):
+        with freeze_time("2026-10-25 20:00:00"):
+            channel.with_context(tz="Europe/Brussels")._gc_bot_only_ongoing_sessions()
             self.assertFalse(channel.livechat_end_dt)
-        with freeze_time(fields.Datetime.to_string(fields.Datetime.now() + timedelta(days=1))):
-            channel._gc_bot_only_ongoing_sessions()
+        with freeze_time("2026-10-25 21:00:00"):
+            channel.with_context(tz="Europe/Brussels")._gc_bot_only_ongoing_sessions()
         self.assertTrue(channel.livechat_end_dt)
+
+    def test_gc_empty_livechat_sessions(self):
+        with self.mock_datetime_and_now(self.env.cr.now() - timedelta(hours=2)):
+            empty_session, session = self.env["discuss.channel"].create([
+                {
+                    "channel_type": "livechat",
+                    "livechat_channel_id": self.livechat_channel.id,
+                    "name": "Empty",
+                },
+                {
+                    "channel_type": "livechat",
+                    "livechat_channel_id": self.livechat_channel.id,
+                    "name": "Not empty",
+                },
+            ])
+            session.message_post(body="Hello", message_type="comment")
+            self.env.flush_all()
+        self.env["discuss.channel"]._gc_empty_livechat_sessions()
+        self.assertFalse(empty_session.exists())
+        self.assertTrue(session.exists())
 
     def test_expertises_added_from_discuss_are_kept(self):
         bob = self._create_operator()

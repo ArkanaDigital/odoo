@@ -1,14 +1,12 @@
 import {
-    click,
-    contains,
     defineMailModels,
     openFormView,
     start,
     startServer,
 } from "@mail/../tests/mail_test_helpers";
 import { describe, expect, test } from "@odoo/hoot";
-import { tick } from "@odoo/hoot-dom";
-import { onRpc, pagerNext, pagerPrevious } from "@web/../tests/web_test_helpers";
+import { tick, waitFor, waitForNone } from "@odoo/hoot-dom";
+import { contains, onRpc, pagerNext, pagerPrevious } from "@web/../tests/web_test_helpers";
 
 describe.current.tags("desktop");
 defineMailModels();
@@ -18,20 +16,20 @@ test("base rendering follow, edit subscription and unfollow button", async () =>
     const threadId = pyEnv["res.partner"].create({});
     await start();
     await openFormView("res.partner", threadId);
-    await contains(".o-mail-Followers-counter:text('0')");
-    await contains("[title='Show Followers'] [data-icon='person']");
-    await click("[title='Show Followers']");
-    await click(".o-dropdown-item:text('Follow')");
-    await contains(".o-mail-Followers-counter:text('1')");
-    await contains("[title='Show Followers'] .oi-filled[data-icon='person']");
-    await click("[title='Show Followers']");
-    await contains(".o-mail-Followers-dropdown");
-    await click("[title='Edit Notification Preferences']");
-    await contains(".o-mail-Followers-dropdown", { count: 0 });
-    await click("[title='Show Followers']");
-    await click(".o-dropdown-item:text('Unfollow')");
-    await contains(".o-mail-Followers-counter:text('0')");
-    await contains("[title='Show Followers'] [data-icon='person']");
+    await waitFor(".o-mail-Followers-counter:text('0'):count(1)");
+    await waitFor("[title='Show Followers'] [data-icon='person']:count(1)");
+    await contains("[title='Show Followers']:enabled:count(1)").click();
+    await contains(".o-dropdown-item:text('Follow'):count(1)").click();
+    await waitFor(".o-mail-Followers-counter:text('1'):count(1)");
+    await waitFor("[title='Show Followers'] .oi-filled[data-icon='person']:count(1)");
+    await contains("[title='Show Followers']:enabled:count(1)").click();
+    await waitFor(".o-mail-Followers-dropdown:count(1)");
+    await contains("[title='Edit Notification Preferences']:count(1)").click();
+    await waitForNone(".o-mail-Followers-dropdown");
+    await contains("[title='Show Followers']:enabled:count(1)").click();
+    await contains(".o-dropdown-item:text('Unfollow'):count(1)").click();
+    await waitFor(".o-mail-Followers-counter:text('0'):count(1)");
+    await waitFor("[title='Show Followers'] [data-icon='person']:count(1)");
 });
 
 test("following during a slow RPC should not reload another record opened via the pager", async () => {
@@ -53,18 +51,18 @@ test("following during a slow RPC should not reload another record opened via th
         resIds: [partnerId_1, partnerId_2],
     });
     await expect.waitForSteps([`read ${partnerId_1}`]);
-    await click("[title='Show Followers']");
-    await click(".o-dropdown-item:text('Follow')");
+    await contains("[title='Show Followers']:enabled:count(1)").click();
+    await contains(".o-dropdown-item:text('Follow'):count(1)").click();
     await expect.waitForSteps(["subscribe"]);
     // Switch to the second record while the subscribe RPC of the first is still pending.
     await pagerNext();
-    await contains(".o_pager:text(2 / 2)");
+    await waitFor(".o_pager:text(2 / 2):count(1)");
     await expect.waitForSteps([`read ${partnerId_2}`]);
     subscribeDeferred.resolve();
     await tick();
     // The follow callback targets the first record: it must not reload the second one.
     expect.verifySteps([]);
     await pagerPrevious();
-    await contains(".o-mail-Followers-counter:text('1')");
+    await waitFor(".o-mail-Followers-counter:text('1'):count(1)");
     await expect.waitForSteps([`read ${partnerId_1}`]);
 });

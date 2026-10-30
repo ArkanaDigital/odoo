@@ -77,14 +77,6 @@ class PosPrinter(models.Model):
     timeout = fields.Integer(string="Connection Timeout (ms)", default=15000, help="Time in milliseconds before considering that the printer is not responding.")
     is_split_per_product = fields.Boolean(string='Split per product', help="Print one ticket for each product instead of one ticket grouping all products of the order.")
 
-    def copy_data(self, default=None):
-        default = dict(default or {})
-        vals_list = super().copy_data(default=default)
-        if 'name' not in default:
-            for printer, vals in zip(self, vals_list):
-                vals['name'] = _("%s (copy)", printer.name)
-        return vals_list
-
     @api.depends('printer_type')
     def _compute_paper_size_keys(self):
         for record in self:
@@ -102,6 +94,19 @@ class PosPrinter(models.Model):
         for rec in self:
             if rec.use_type == "preparation" and rec.use_cashdrawer:
                 rec.use_cashdrawer = False
+
+    def _can_print_backend_receipt(self):
+        self.ensure_one()
+        return self.printer_type == 'epson_epos' and self.paper_size != 'label'
+
+    def _get_backend_receipt_format(self):
+        self.ensure_one()
+        return 'epos'
+
+    def _get_backend_print_data(self):
+        self.ensure_one()
+        printer_fields = ['name', 'printer_type', 'printer_ip', 'use_lna', 'paper_size', 'timeout']
+        return self.read(printer_fields, load=False)[0]
 
     @api.model
     def _load_pos_data_domain(self, data):

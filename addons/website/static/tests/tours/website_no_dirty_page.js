@@ -1,4 +1,3 @@
-import { browser } from "@web/core/browser/browser";
 import {
     clickOnEditAndWaitEditMode,
     clickOnSave,
@@ -14,7 +13,7 @@ const makeSteps = (steps = []) => [
     }),
     {
         content: "Click on Discard",
-        trigger: ".o-snippets-top-actions [data-action='cancel']",
+        trigger: ".o_hb_snippets_top_actions [data-action='cancel']",
         run: "click",
     },
     {
@@ -39,7 +38,7 @@ const makeSteps = (steps = []) => [
         async run(actions) {
             actions.click();
             await new Promise((resolve) => {
-                browser.setTimeout(() => {
+                setTimeout(() => {
                     document.body.classList.add("o_test_delay");
                     resolve();
                 }, 999);
@@ -51,7 +50,7 @@ const makeSteps = (steps = []) => [
     },
     {
         content: "Click on Discard",
-        trigger: ".o-snippets-top-actions [data-action='cancel']",
+        trigger: ".o_hb_snippets_top_actions [data-action='cancel']",
         run: "click",
     },
     {

@@ -646,6 +646,41 @@ export const accountTaxHelpers = {
      * [!] Mirror of the same method in account_tax.py.
      * PLZ KEEP BOTH METHODS CONSISTENT WITH EACH OTHERS.
      */
+    reverse_quantity_base_line_extra_tax_data(extra_tax_data) {
+        if (!extra_tax_data || !Object.keys(extra_tax_data).length) {
+            return null;
+        }
+        const new_extra_tax_data = { ...extra_tax_data };
+        for (const field of [
+            "quantity",
+            "manual_total_excluded_currency",
+            "manual_total_excluded",
+        ]) {
+            if (new_extra_tax_data[field]) {
+                new_extra_tax_data[field] *= -1;
+            }
+        }
+        if (new_extra_tax_data.manual_tax_amounts) {
+            new_extra_tax_data.manual_tax_amounts = {};
+            for (const [tax_id_str, amounts] of Object.entries(extra_tax_data.manual_tax_amounts)) {
+                new_extra_tax_data.manual_tax_amounts[tax_id_str] = { ...amounts };
+                for (const suffix of ["_currency", ""]) {
+                    for (const prefix of ["base", "tax"]) {
+                        const field = `${prefix}_amount${suffix}`;
+                        if (amounts[field]) {
+                            new_extra_tax_data.manual_tax_amounts[tax_id_str][field] *= -1;
+                        }
+                    }
+                }
+            }
+        }
+        return new_extra_tax_data;
+    },
+
+    /**
+     * [!] Mirror of the same method in account_tax.py.
+     * PLZ KEEP BOTH METHODS CONSISTENT WITH EACH OTHERS.
+     */
     get_base_line_field_value_from_record(record, field, extra_values, fallback) {
         if (field in extra_values) {
             return extra_values[field] || fallback;
@@ -1459,7 +1494,10 @@ export const accountTaxHelpers = {
                         cash_rounding_base_amount;
                 } else if (strategy === "biggest_tax") {
                     const all_subtotal_tax_group = tax_totals_summary.subtotals.flatMap(
-                        (subtotal) => subtotal.tax_groups.map((tax_group) => [subtotal, tax_group])
+                        (subtotal) =>
+                            subtotal.tax_groups
+                                .filter((tax_group) => !floatIsZero(tax_group.tax_amount_currency, currency.decimal_places))
+                                .map((tax_group) => [subtotal, tax_group])
                     );
 
                     if (all_subtotal_tax_group.length) {
@@ -1474,6 +1512,7 @@ export const accountTaxHelpers = {
                         tax_totals_summary.tax_amount_currency +=
                             cash_rounding_base_amount_currency;
                         tax_totals_summary.tax_amount += cash_rounding_base_amount;
+                        tax_totals_summary.has_biggest_tax_cash_rounding = true;
                     } else {
                         // Failed to apply the cash rounding since there is no tax.
                         cash_rounding_base_amount_currency = 0.0;

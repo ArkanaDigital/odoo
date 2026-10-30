@@ -1,4 +1,3 @@
-import { stepUtils } from "@web_tour/tour_utils";
 import {
     clickOnEditAndWaitEditMode,
     clickOnSave,
@@ -17,7 +16,6 @@ const clickOnImgAndWaitForLoad = [
     },
 ];
 const enterEditModeOfTestProduct = () => [
-    stepUtils.waitIframeIsReady(),
     {
         content: "Click on the product anchor",
         trigger: ":iframe a:contains('Test Remove Image')",
@@ -54,7 +52,7 @@ registerWebsitePreviewTour("website_sale.add_and_remove_main_product_image_no_va
     {
         content: "Click on Remove",
         trigger:
-            ".o_customize_tab [data-container-title='Image']:has(.o-hb-image-size-info:not(:contains(3.7 kB))) button[data-action-id='removeMedia']",
+            ".o_customize_tab [data-container-title='Image']:has(.o_hb_image_size_info:not(:contains(3.7 kB))) button[data-action-id='removeMedia']",
         run: "click",
     },
     // If the snippet editor is not visible, the remove process is considered as finished.
@@ -76,7 +74,7 @@ registerWebsitePreviewTour("website_sale.remove_main_product_image_with_variant"
     {
         content: "Click on Remove",
         trigger:
-            ".o_customize_tab [data-container-title='Image']:has(.o-hb-image-size-info) button[data-action-id='removeMedia']",
+            ".o_customize_tab [data-container-title='Image']:has(.o_hb_image_size_info) button[data-action-id='removeMedia']",
         run: "click",
     },
     // If the snippet editor is not visible, the remove process is considered as finished.

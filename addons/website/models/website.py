@@ -13,6 +13,7 @@ import unicodedata
 import werkzeug.routing
 
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from lxml import etree, html
 from markupsafe import Markup
 from requests import RequestException
@@ -139,6 +140,7 @@ class Website(models.CachedModel):
         ondelete='restrict',
     )
     configurator_done = fields.Boolean(help='True if configurator has been completed or ignored')
+    brief = fields.Text(string="Brief", help="A short description of what this website is about: industry, aim of the website, vibe. AI features read it to tailor their output.")
     block_third_party_domains = fields.Boolean(
         'Block 3rd-party domains',
         help="Block 3rd-party domains that may track users (YouTube, Google Maps, etc.).",
@@ -178,6 +180,24 @@ class Website(models.CachedModel):
 
     robots_txt = fields.Html('Robots.txt', translate=False, groups='website.group_website_designer', sanitize=False)
     llms_txt = fields.Text('LLMs.txt', translate=False)
+
+    header_search_type = fields.Char(
+        string="Header Search Scope",
+        help="Type of records the header search bar searches within.",
+        default='all',
+        required=True,
+    )
+    header_search_order_by = fields.Char(
+        string="Header Search Sort",
+        help="Order in which the header search bar sorts its results.",
+        default='name asc',
+        required=True,
+    )
+    header_search_limit = fields.Integer(
+        string="Header Search Suggestions",
+        help="Number of autocomplete suggestions of the header search bar, 0 to disable them.",
+        default=30,
+    )
 
     def _default_favicon(self):
         with file_open('web/static/img/favicon.ico', 'rb') as f:
@@ -390,6 +410,12 @@ class Website(models.CachedModel):
             lambda b: (b.res_id, b.checksum) not in mirrored,
         ).copy({'res_field': False})
 
+    def _website_xmlid(self, xmlid):
+        module_name = 'website'
+        if '.' in xmlid:
+            module_name, xmlid = xmlid.split('.', 1)
+        return f"{module_name}.{self.id}_{xmlid}"
+
     @api.model
     def _handle_create_write(self, vals):
         self._handle_favicon(vals)
@@ -399,6 +425,7 @@ class Website(models.CachedModel):
     @api.model
     def _handle_favicon(self, vals):
         if icon := vals.get('favicon'):
+            icon = self._fields['favicon'].convert_to_cache(icon, self)
             filename = icon.filename if isinstance(icon, BinaryValue) else ''
             vals['favicon'] = BinaryBytes(image_process(icon, size=(256, 256), crop='center', output_format='ICO'), filename)
 
@@ -467,17 +494,11 @@ class Website(models.CachedModel):
 
         if default_website.id != first_website.id:
             existing_settings = filter(lambda s: s in self._fields, self._get_settings_to_copy_onto_new_default_website())
-            transferred_settings = []
             for s in existing_settings:
                 if default_website[s] and not first_website[s]:
                     # If s is set in the old default website and not in the new
                     # default website, transfer it
                     first_website[s] = default_website[s]
-                    field_description = self.env['ir.model.fields'].search([
-                        ('name', '=', s),
-                        ('model', '=', 'website'),
-                    ], limit=1).field_description
-                    transferred_settings.append(field_description)
 
             # Mark the first website as default
             self.env['ir.model.data']._update_xmlids([{
@@ -490,26 +511,22 @@ class Website(models.CachedModel):
             self.env['ir.model.data'].invalidate_model()
 
             # Display a notification to inform the user
-            if len(transferred_settings) > 0:
-                self.env.user._bus_send("simple_notification", {
-                    'type': 'info',
-                    'title': _("Default website changed"),
-                    'message': _(
-                        'The new default website is %(default_website_name)s. '
-                        'The following default settings were copied from the old default website '
-                        'to the new one: %(transferred_settings)s. Note that these settings are still '
-                        'present on the old default website.',
-                        default_website_name=first_website.name,
-                        transferred_settings=", ".join(transferred_settings)),
-                    'sticky': True,
-                })
-            else:
-                self.env.user._bus_send("simple_notification", {
-                    'type': 'success',
-                    'title': _("Default website changed"),
-                    'message': _('The new default website is %(default_website_name)s.',
-                        default_website_name=first_website.name),
-                })
+            self.env.user._bus_send("simple_notification", {
+                'type': 'success',
+                'message': _("Default website changed to %(default_website_name)s.",
+                    default_website_name=first_website.name),
+            })
+
+    @api.ondelete(at_uninstall=True)
+    def _unlink_recompute_companies(self):
+        companies = self.company_id
+        if not companies:
+            return None
+
+        def recompute_companies():
+            companies.env.transaction.invalidate_ormcache()
+            companies._compute_website_id()
+        return recompute_companies
 
     @api.ondelete(at_uninstall=False)
     def _unlink_except_default_website(self):
@@ -517,25 +534,19 @@ class Website(models.CachedModel):
         if default_website and default_website in self:
             raise UserError(_("You cannot delete default website %s. Try to change its settings instead", default_website.name))
 
-    def unlink(self):
-        self._remove_attachments_on_website_unlink()
+    def _delete_extra(self):
+        yield from super()._delete_extra()
+        yield self._attachments_on_website_to_unlink()
 
-        companies = self.company_id
-        res = super().unlink()
-        self.env.transaction.invalidate_ormcache()
-        companies._compute_website_id()
-        return res
-
-    def _remove_attachments_on_website_unlink(self):
+    def _attachments_on_website_to_unlink(self):
         # Do not delete invoices, delete what's strictly necessary
-        attachments_to_unlink = self.env['ir.attachment'].search([
+        return self.env['ir.attachment'].search([
             ('website_id', 'in', self.ids),
             '|', '|',
             ('key', '!=', False),  # theme attachment
             ('url', '=like', '/_custom/%'),  # customized theme attachment
             ('url', 'ilike', '.assets\\_'),
         ])
-        attachments_to_unlink.unlink()
 
     def create_and_redirect_configurator(self):
         self._force()
@@ -577,6 +588,7 @@ class Website(models.CachedModel):
         # For text content generation
         return self._api_rpc(route, params, 'website.olg_api_endpoint', DEFAULT_OLG_ENDPOINT, **kwargs)
 
+    @api.private
     def get_cta_data(self, website_purpose, website_type):
         return {'cta_btn_text': False, 'cta_btn_href': '/contactus', 'shop_btn_href': '#'}
 
@@ -687,6 +699,7 @@ class Website(models.CachedModel):
         el.set('style', ' '.join(snippet_style))
 
     @api.model
+    @api.private
     def get_theme_configurator_snippets(self, theme_name):
         """
         Prepare and return configurator_snippets by fetching theme snippets and
@@ -727,11 +740,17 @@ class Website(models.CachedModel):
 
         return configurator_snippets
 
+    def _check_configurator_access(self):
+        if not self.env.user.has_group('website.group_website_designer'):
+            raise AccessError(_("You don't have the necessary access rights to use the website configurator."))
+
+    @api.private
     def configurator_set_menu_links(self, menu_company, module_data):
         menus = self.env['website.menu'].search([('url', 'in', list(module_data.keys())), ('website_id', '=', self.id)])
         for m in menus:
             m.sequence = module_data[m.url]['sequence']
 
+    @api.private
     def configurator_get_footer_links(self):
         return [
             {'text': _("Privacy Policy"), 'href': '/privacy'},
@@ -739,6 +758,7 @@ class Website(models.CachedModel):
 
     @api.model
     def configurator_init(self):
+        self._check_configurator_access()
         r = dict()
         current_website = self.env.website or self.env.website.browse(self.env.context.get('host_id')) or self.env.ref('base.default_website')
         company = current_website.company_id
@@ -754,6 +774,11 @@ class Website(models.CachedModel):
             r['industries'] = []
         return r
 
+    def _get_configurator_preview_urls(self):
+        """Allow-list of the non-theme previews the preview route may render,
+        filled by website_sale with the ``preview_url`` of its ``const.py``."""
+        return set()
+
     def _get_configurator_theme_preview_url(self, theme_name):
         preview_path = f"{theme_name}/static/description/preview.html"
         try:
@@ -765,6 +790,7 @@ class Website(models.CachedModel):
     @api.model
     def configurator_recommended_themes(self, industry_id, result_nbr_max=6,
                                         industry_name='', website_type='', positioning='', skip_ai=False):
+        self._check_configurator_access()
         Module = self.env['ir.module.module']
         domain = Module.get_themes_domain()
         domain = Domain.AND([[('name', '!=', 'theme_default')], domain])
@@ -802,12 +828,8 @@ class Website(models.CachedModel):
 
         themes_with_previews = []
         for theme_name in themes_suggested:
-            preview_url = self._get_configurator_theme_preview_url(theme_name)
-            if preview_url:
-                themes_with_previews.append({
-                    'name': theme_name,
-                    'preview_url': preview_url,
-                })
+            if self._get_configurator_theme_preview_url(theme_name):
+                themes_with_previews.append({'name': theme_name})
             if len(themes_with_previews) >= result_nbr_max:
                 break
         return themes_with_previews
@@ -851,50 +873,65 @@ class Website(models.CachedModel):
 
     @api.model
     def configurator_skip(self):
+        self._check_configurator_access()
         website = self.env.website or self.env['website'].browse(self.env.context.get('host_id'))
         website.ensure_one()
+        if website.configurator_done:
+            return website.button_go_website()
         theme = self.env["ir.module.module"].search([("name", "=", "theme_default")])
         website.configurator_done = True
         return theme.with_context(website_id=website.id).button_choose_theme()
 
     @api.model
     def configurator_missing_industry(self, unknown_industry):
-        self._website_api_rpc(
-            '/api/website/unknown_industry',
-            {
-                'unknown_industry': unknown_industry,
-                'lang': self.env.context.get('lang'),
-            }
-        )
+        self._check_configurator_access()
+        try:
+            self._website_api_rpc(
+                '/api/website/unknown_industry',
+                {
+                    'unknown_industry': unknown_industry,
+                    'lang': self.env.context.get('lang'),
+                },
+            )
+        except RequestException as e:
+            logger.warning(e.args[0])
 
     @api.model
-    def configurator_get_images(self, industry_id, theme=''):
+    def configurator_get_custom_resources(self, industry_id, theme=''):
+        self._check_configurator_access()
         if not industry_id or industry_id <= 0:
             return {}
         try:
             custom_resources = self._website_api_rpc(
                 '/api/website/2/configurator/custom_resources/%s' % industry_id,
-                {'theme': theme or ''},
+                {'theme': theme or '', 'lang': self.env.context.get('lang')},
             )
         except (AccessError, RequestException) as e:
             logger.warning(
-                "Failed to fetch configurator images for industry %s: %s",
+                "Failed to fetch configurator resources for industry %s: %s",
                 industry_id,
                 e,
             )
             return {}
         if not isinstance(custom_resources, dict):
             return {}
-        return custom_resources.get('images', {})
+        return custom_resources
+
+    @api.model
+    def configurator_get_images(self, industry_id, theme=''):
+        return self.configurator_get_custom_resources(industry_id, theme).get('images', {})
 
     @api.model
     def configurator_apply(self, **kwargs):
+        self._check_configurator_access()
         website = self.env.website or self.env.website.browse(self.env.context.get('host_id')) or self.env.ref('base.default_website')
         self = self.with_context(website_id=website.id)  # noqa: PLW0642
         skip_ai = kwargs.get('skip_ai')  # Used by design-themes tooling
         theme_name = kwargs['theme_name']
         theme = self.env['ir.module.module'].search([('name', '=', theme_name)])
-        redirect_url = theme.button_choose_theme()
+        redirect_url = theme.with_context(
+            is_dark_palette=kwargs.get('is_dark_palette'),
+        ).button_choose_theme()
 
         module = self.env['ir.module.module'].search([
             ('name', '=', WEBSITE_TYPE_MODULES.get(kwargs.get('website_type'))),
@@ -908,6 +945,21 @@ class Website(models.CachedModel):
         website = self.env['website'].browse(website.id)
 
         website.configurator_done = True
+
+        website_aims = {
+            'business': self.env._('present the business and get contacted'),
+            'ecommerce': self.env._('sell products online'),
+            'blog': self.env._('publish blog posts'),
+            'event': self.env._('promote events and sell tickets'),
+            'elearning': self.env._('sell and deliver online courses'),
+        }
+        brief_description = [self.env._('Industry: %s', kwargs['industry_name'])]
+        if website_aim := website_aims.get(kwargs.get('website_type')):
+            brief_description.append(self.env._('Website aim: %s', website_aim))
+        if (website_purpose := kwargs.get('website_purpose')) and website_purpose != 'general':
+            # Some users make a website purpose too long, we limit it here.
+            brief_description.append(self.env._('Vibe: %s', website_purpose[:50]))
+        website.brief = '\n'.join(brief_description)
 
         # Enable tour
         tour_asset_id = self.env.ref('website.configurator_tour')
@@ -1142,31 +1194,49 @@ class Website(models.CachedModel):
             ('module', '=', 'website'),
             ('model', '=', 'ir.attachment')
         ]).mapped('name')
-        for name, image_src in images.items():
-            extn_identifier = 'configurator_%s_%s' % (website.id, name.split('.')[1])
-            if extn_identifier in names:
-                continue
+
+        def get_attachment_identifier(name):
+            return 'configurator_%s_%s' % (website.id, name.split('.')[1])
+
+        def download_image(image_src):
             try:
                 response = requests.get(image_src, timeout=3)
                 response.raise_for_status()
             except Exception as e:
                 logger.warning("Failed to download image: %s.\n%s", image_src, e)
-            else:
-                attachment = self.env['ir.attachment'].create({
-                    'name': name,
-                    'website_id': website.id,
-                    'key': name,
-                    'type': 'binary',
-                    'raw': response.content,
-                    'public': True,
-                })
-                self.env['ir.model.data'].create({
-                    'name': extn_identifier,
-                    'module': 'website',
-                    'model': 'ir.attachment',
-                    'res_id': attachment.id,
-                    'noupdate': True,
-                })
+                return None
+            return response.content
+
+        images_to_download = {
+            name: image_src for name, image_src in images.items()
+            if get_attachment_identifier(name) not in names
+        }
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            downloaded_images = dict(zip(
+                images_to_download,
+                executor.map(download_image, images_to_download.values()),
+            ))
+
+        for name, image_content in downloaded_images.items():
+            if image_content is None:
+                continue
+
+            attachment = self.env['ir.attachment'].create({
+                'name': name,
+                'website_id': website.id,
+                'key': name,
+                'type': 'binary',
+                'raw': image_content,
+                'public': True,
+            })
+            self.env['ir.model.data'].create({
+                'name': get_attachment_identifier(name),
+                'module': 'website',
+                'model': 'ir.attachment',
+                'res_id': attachment.id,
+                'noupdate': True,
+            })
 
         def fallback_create_missing_industry_image(image_name, fallback_img_name):
             """ If an industry did not specify an image, this method allows that
@@ -1253,6 +1323,7 @@ class Website(models.CachedModel):
     # Extension hook: allows installed modules (e.g. website_sale, website_blog, ...) to perform
     # additional setup steps on the generated website. This acts as an entry point for modules to
     # customize the website.
+    @api.private
     def configurator_addons_apply(self, industry_name=None, **kwargs):
         pass
 
@@ -1287,8 +1358,8 @@ class Website(models.CachedModel):
         homepage_page.url = '/'
 
         # Bootstrap default menu hierarchy, create a new minimalist one if no default
-        default_menu = self.env.ref('website.main_menu')
-        self.copy_menu_hierarchy(default_menu)
+        if not self.menu_id and (default_menu := self.env.ref('website.main_menu', raise_if_not_found=False)):
+            default_menu._copy_menu_hierarchy(self)
         home_menu = self.env['website.menu'].search([('website_id', '=', self.id), ('url', '=', '/')])
         home_menu.page_id = homepage_page
 
@@ -1300,10 +1371,9 @@ class Website(models.CachedModel):
             cache='assets',
         ),
     )
-    def _get_font_urls(self):
-        """Return the list of font URLs to emit as <link> tags in <head>."""
-
-        # 1. Compile the font_urls_export bundle using Odoo's asset system.
+    def _get_scss_exports(self):
+        """Return the CSS of the export bundle, which prints the scss values the
+        server needs to build the <head> as custom properties."""
         try:
             bundle = self.env['ir.qweb']._get_asset_bundle(
                 'website.font_urls_export',
@@ -1311,29 +1381,20 @@ class Website(models.CachedModel):
                 css=True,
                 assets_params=self.env['ir.asset']._get_asset_params(),
             )
-            compiled = bundle.preprocess_css()
+            return bundle.preprocess_css()
         except Exception as e:
-            logger.warning("Font URL bundle compilation failed: %s", e)
+            logger.warning("Scss export bundle compilation failed: %s", e)
             raise
 
-        # 2. Parse --o-font-url-N: "..." custom properties
-        return re.findall(r'--o-font-url-\d+:\s*"([^"]*)"', compiled)
+    def _get_font_urls(self):
+        """Return the list of font URLs to emit as <link> tags in <head>."""
+        return re.findall(r'--o-font-url-\d+:\s*"([^"]*)"', self._get_scss_exports())
 
-    def copy_menu_hierarchy(self, top_menu):
-        def copy_menu(menu, t_menu):
-            new_menu = menu.copy({
-                'parent_id': t_menu.id,
-                'website_id': self.id,
-            })
-            for submenu in menu.child_id:
-                copy_menu(submenu, new_menu)
-        for website in self:
-            new_top_menu = top_menu.copy({
-                'name': _('Top Menu for Website %s', website.id),
-                'website_id': website.id,
-            })
-            for submenu in top_menu.child_id:
-                copy_menu(submenu, new_top_menu)
+    def _get_icon_font_family(self):
+        """Return the icon font the website renders with, empty if the default
+        one is used."""
+        match = re.search(r'--o-icon-font-family:\s*"([^"]*)"', self._get_scss_exports())
+        return match[1] if match else ''
 
     @api.model
     def new_page(self, name=False, add_menu=False, template='website.default_page', ispage=True, namespace=None, page_values=None, menu_values=None, sections_arch=None, page_title=None):
@@ -1493,8 +1554,7 @@ class Website(models.CachedModel):
         page_model_name = 'Page'
 
         def _handle_views_and_pages(views):
-            page_views = views.filtered('page_ids')
-            views = views - page_views
+            page_views, views = views.partitioned('page_ids')
             if page_views:
                 dependencies.setdefault(page_model_name, [])
                 dependencies[page_model_name] += [{
@@ -1726,6 +1786,10 @@ class Website(models.CachedModel):
 
         homepage_url = self.homepage_url
         pages = self._get_website_pages(domain)
+
+        # Only fetch the fields needed below: lazily reading a view field would
+        # prefetch arch_db arch_prev for every page and may end in a out-of-memory error.
+        pages.view_id.fetch(['name', 'priority', 'write_date'])
 
         for page in pages:
             if ignore_custom_homepage and homepage_url == page['url']:
@@ -2105,7 +2169,7 @@ class Website(models.CachedModel):
         snippet_assets = self.env['ir.asset'].with_context(active_test=False).search_fetch(
             [('path', 'like', '/static%/snippets/')],
             ['active', 'path'], order='id')
-        snippet_re = re.compile(r'(\w*)\/.*\/snippets\/(\w*)\/(\d{3})(?:_\w*)?\.(js|scss)')
+        snippet_re = re.compile(r'(\w*)\/.*\/snippets\/(\w*)\/(\d{3})(?:_\w*)?\.(js|scss|css)')
         # regex will match /module/static/[.../]/snippets/snippet_id/XXX[_variable].asset_type
         # _variable is not kept since only module, snippet_id, asset_version (XXX), asset_type are relevant
         html_fields = self._get_html_fields()
@@ -2167,6 +2231,67 @@ class Website(models.CachedModel):
         tree = etree.fromstring('<p>%s</p>' % html_fragment, etree.XMLParser(recover=True))
         return ' '.join(tree.itertext())
 
+    def _get_search_scopes(self):
+        """
+        Returns the search scopes that can be selected in the search bar options.
+
+        :return: dict, per search type, of the scope label and of the path of its results page
+        """
+        return {
+            'all': {'label': self.env._("Everything"), 'url': '/website/search'},
+            'pages': {'label': self.env._("Pages"), 'url': '/pages'},
+        }
+
+    def get_search_scopes(self):
+        """
+        Returns the search scopes selectable in the search bar options.
+
+        :return: list of dicts of the search type, of the label and of the results page
+            path of each scope
+        """
+        if not self.env.user.has_group('website.group_website_restricted_editor'):
+            return []
+
+        return [
+            {
+                'search_type': search_type,
+                'label': scope['label'],
+                'url': scope['url'],
+            }
+            for search_type, scope in self._get_search_scopes().items()
+        ]
+
+    def set_header_search(self, search_type=None, order_by=None, limit=None):
+        """
+        Stores the header search bar settings edited from the builder.
+
+        :param str search_type: search type to scope the header search bar to
+        :param str order_by: order in which the header search bar sorts its results
+        :param int limit: number of autocomplete suggestions, 0 to disable them
+        """
+        self.ensure_one()
+        values = {}
+        if search_type in self._get_search_scopes():
+            values['header_search_type'] = search_type
+        if order_by:
+            values['header_search_order_by'] = order_by
+        if isinstance(limit, int) and limit >= 0:
+            values['header_search_limit'] = limit
+        self.write(values)
+
+    def _get_header_search_scope(self):
+        """
+        Returns the search type of the header search bar and the path of its results page.
+
+        Falls back to the main search if the configured scope is gone, as the module that
+        declared it may have been uninstalled.
+
+        :return: dict of the search type and of the path of its results page
+        """
+        scopes = self._get_search_scopes()
+        search_type = self.header_search_type if self.header_search_type in scopes else 'all'
+        return {'search_type': search_type, 'url': scopes[search_type]['url']}
+
     def _search_get_details(self, search_type, order, options):
         """
         Returns indications on how to perform the searches
@@ -2205,13 +2330,15 @@ class Website(models.CachedModel):
         fuzzy_term = False
         search_details = self._search_get_details(search_type, order, options)
         if search and options.get('allowFuzzy', True):
-            fuzzy_term = self._search_find_fuzzy_term(search_details, search)
-            if fuzzy_term:
-                if fuzzy_term.lower() != search.lower():
-                    search = fuzzy_term
+            count, results = self._search_exact(search_details, search, offset, limit, order)
+            if not count:
+                fuzzy_term = self._search_find_fuzzy_term(search_details, search)
+                if fuzzy_term and fuzzy_term.lower() != search.lower():
+                    count, results = self._search_exact(search_details, fuzzy_term, offset, limit, order)
                 else:
                     fuzzy_term = False
-        count, results = self._search_exact(search_details, search, offset, limit, order)
+        else:
+            count, results = self._search_exact(search_details, search, offset, limit, order)
         return count, results, fuzzy_term
 
     def _search_exact(self, search_details, search, offset, limit, order):
@@ -2539,7 +2666,7 @@ class Website(models.CachedModel):
     def _should_remove_third_party_trackers(self):
         return (self.cookies_bar
             and self.block_third_party_domains
-            and not self.env['ir.http']._is_allowed_cookie('optional')
+            and not self.env.context.get('cookies_allowed')
             and not self.env.user.has_group('website.group_website_restricted_editor'))
 
     def _remove_third_party_trackers(self, tagName, atts, cookies_watchlist):
